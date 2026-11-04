@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Waypoint-1.5: Higher-Fidelity Interactive Worlds for Everyday GPUs</title>
+    <title>Profiling in PyTorch (Part 1): A Beginner&#x27;s Guide to torch.profiler</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10152.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,111 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Waypoint-1.5: Higher-Fidelity Interactive Worlds for Everyday GPUs</h1>
+        <h1>Profiling in PyTorch (Part 1): A Beginner&#x27;s Guide to torch.profiler</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/torch-profiler/thumbnail.png" alt="Profiling in PyTorch (Part 1): A Beginner&#x27;s Guide to torch.profiler" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/torch-profiler/thumbnail.png" alt="Profiling in PyTorch (Part 1): A Beginner's Guide to torch.profiler" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>What you cannot profile, you cannot optimize.</p>
+<p>Whether you are trying to squeeze more tokens per second out of a Large Language Model (LLM), shave milliseconds off inference, or just understand why your training loop runs slower than the spec sheet promises, the path eventually runs through profiling.</p>
+<p>The catch is that profiling has a steep on-ramp. The traces are dense walls of colored rectangles. The events carry intimidating names. Most tutorials assume you can already read them. So even when we know we should be profiling, opening a trace can feel like a chore best left for later (or for someone else). This post, and the series it kicks off, is our attempt to lower that on-ramp.</p>
+<p>This is the opening post of Profiling in PyTorch, a series where we slowly build the skill of reading profiler traces and use it to drive optimization:</p>
+<p>We document the journey from a beginner's point of view. No prerequisites apart from basic PyTorch. Treat this as a leisurely read with some "Aha!" moments. The structure of the post is intentionally question-led: we open a trace, ask "wait, why is that happening?", and chase the answer until something clicks. By the end you should know:</p>
+<p>Before we begin, two definitions that will make everything below read better:</p>
+<p>You don't usually have to write GPU kernels yourself; when you use a PyTorch operation, it is automatically translated to one or more kernels that do the job on GPU.</p>
+<p>With those two ideas in your back pocket, let's start asking questions.</p>
+<p>Here is the entire script that we use for the post: 01_matmul_add.py. We recommend opening this script in a separate tab and walk through the code step by step. We use the NVIDIA A100-SXM4-80GB GPU to run the scripts. It is really easy to setup a GPU on the Hugging Face infrastructure and experiment with the scripts using the Dev Mode with Spaces. One could also run the scripts with the Hugging Face Jobs pipeline.(Note: The traces in this blog were generated using PyTorch 2.13. If you are using a different version, some trace details like CompiledFxGraph might differ or be absent.)</p>
+<p>As correctly quipped by Dr. Sara Hooker, just as we are primarily made up of water, Deep Neural Networks are primarily made up of matrix multiplies. As fundamental as they are, it would be a shame to start our profiling journey with anything else.</p>
+<p>The matrix addition along with the matrix multiplication mimics how weights and biases interact in a neuron. This addition (pun intended) will help us understand how it paves the way for compilation later in the post.</p>
+<p>To profile, we will be using the torch.profiler module. The steps involved are:</p>
+<p>The profiler exports two distinct artifacts:</p>
+<p>Let's see the two in action with our first execution. (Here is the entire 01_matmul_add.py script)</p>
+<p>It is recommended to run this script on a machine with a GPU.</p>
+<p>If you run the above script (on a GPU machine) you will find a folder traces/01_matmul_add with the two artifacts:</p>
+<p>The .txt file holds the profiler table. Upon opening the file, as shown in Figure 1, one would be greeted with a big table with the first column consisting of the events that were triggered inside the scope of profile.</p>
+<p>The other columns are related to the time the event takes on the CPU or GPU or any other device(s) specified in activities within torch.profiler.profile. Look at which events take the most amount of time, and try to intuitively understand if that event should in fact take that time. It is also important to look at the column "# of Calls" which dictates how many times the event was triggered.</p>
+<p>While we are at it, let's also talk about "Self CPU/CUDA" vs "CPU/CUDA total". The "Self" columns measure time spent only inside the event itself, excluding its children. The "total" columns include the event and all of its children together. So if you look at the "CPU total" of matmul_add, it consists of the time it took on self plus the children events it triggered. This is an important nuance to note.</p>
+<p>If you look at the last two lines out of the table you would notice that the profiler tells us that</p>
+<p>The CPU time is in ms while the GPU time is in us. To put things in perspective, the time spent on GPUs (the kernel ampere_bf16_s16816gemm...) is less than 1% of the time spent on the CPU (the matmul_add operation).  The GPU stays idle most of the time, which is an immediate red flag. The reason this happens is that the GPU can compute a small matmul very quickly, so our code spends most of the time preparing the kernels, launching them on the GPU, sending the data to multiply and gathering the results. This concept is known as an overhead-bound algorithm.</p>
+<p>The easiest way to move out of this regime is to use bigger matrix multiplications.</p>
+<p>Both times are in ms, which means we have materialized more GPU time just by increasing the size of the matrix multiplications. If you look at Figure 2 you would also notice that the most CUDA time is now taken by the GPU kernel (ampere_bf16_s16816gemm_..) and not by the CPU operation that launched it (matmul_add). This means that we were indeed able to move from overhead bound to compute bound.</p>
+<p>We now move into visualising the dispatch chain, which lives inside the .json artifacts. You can upload them to Perfetto UI and see the traces, or you can use uvx trace-util -f traces -b <hf_uname>/traces to generate the Perfetto links directly.</p>
+<p>In Figure 3, we see the profiler trace for the matrix multiplication and addition. Here the bar width indicates the duration of an event, the vertical nesting is the call hierarchy, the CPU lane denotes the events that happen on the CPU, while the GPU lane shows the actual kernel executions. One might also notice the empty spaces which are the waiting or idle time.</p>
+<p>The script was run with default configurations which are:</p>
+<p>With Perfetto we suggest using the keyboard for quicker access to the trace. One could use "W A S D" for navigating the trace.</p>
+<p>There are two lanes in Figure 4, one for the CPU activity and one for the GPU activity. In the CPU lane one would notice three profile steps (starting from ProfilerStep#2). This comes from the schedule.</p>
+<p>The wait skips noisy initializations (ProfilerStep#0), warmup runs through the profiler without recording (ProfilerStep#1), and active is what shows up in trace. One can find the schedule being used in the script here.</p>
+<p>Let's put on our detective hats and investigate the trace and ask some questions.</p>
+<p>In Figure 5, we notice that ProfileStep#2 takes more time compared to the other steps, and upon looking closely you would see a similar pattern with the matmul_add annotation as well. The smoking gun is inside the annotation, not the annotation itself:</p>
+<p>That ~228 µs shown in Figure 6 is the "dead window" between entering record_function("matmul_add") and PyTorch actually dispatching aten::matmul. This can happen for multiple reasons, including workspace allocations, cuBLAS (NVIDIA’s proprietary, GPU-accelerated library for performing fundamental linear algebra operations) heuristics, or lazy module loading. We can either look away or run some more warmup steps before we profile (which is the standard)</p>
+<p>In terms of profiling, warmup is when you run the events a couple of times before actually profiling it. The pre-work done by the GPU (including the above pointers) are one time efforts which we do not want to profile. In our example, we have two warmup stages, one where we actually loop over the function before entering the profiler, and two inside the profiler which is achieved by the warmup argument. In this section, we have enabled the actual iterations along with the schedule.</p>
+<p>In Figure 7 we see that each profile step takes a similar time, but this does not mean we were able to optimize the one time overheads. We warmed up the runs so that the overheads were not profiled. We think that closing this section abruptly without a hint to solving this would do injustice to the reader, so here is a link to read about further optimizing launch overheads.</p>
+<p>In Figure 8, we see that the CPU and GPU lanes have an offset of around 2.5 ms: this is the delay after the CPU submits the CUDA kernels and the time they actually start executing. One might think the warmup stage combined with the schedule's wait and warmup should keep a GPU busy and would diminish the offset.</p>
+<p>To uncover what is really happening, let's change our schedule a little:</p>
+<p>Figure 9 shows us that there is an Activity Buffer Request in the GPU lane before any operation. Let's zoom in a little more.</p>
+<p>Upon zooming into the GPU trace, we notice that the matmul and add kernels for ProfileStep#0 (the CPU trace of which is not visible in the Figure) happen one after the other, while the kernels for ProfileStep#1 have a window in between. The best explanation for this is that there was an overflow of buffers, and another buffer request (a request to allocate some memory on the GPU VRAM) was issued during the kernel execution.</p>
+<p>The best way to rule out other possibilities is to profile for more iterations and see whether a similar window appears in other parts of the trace. To do that we run with active=20.</p>
+<p>As shown in Figure 11, we see a similar trend in ProfileStep#1. This is aligned with our previous findings, and we can safely conclude that it was indeed another buffer request.</p>
+<p>In Figure 12, we see the nested CPU calls. This is an important visualization, where one gets to understand what a chain of dispatch really looks like.</p>
+<p>We begin with ProfileStep#<id> which encapsulates the profiling step. Due to us annotating the step, we see the matmul_add row. The matmul_add consists of two aten calls, one for matrix multiplication and one for matrix addition.</p>
+<p>The aten::matmul is the ATen-level dispatch that those user-facing PyTorch matmul calls land on. aten::mm is the 2D matrix-matrix multiply backend.</p>
+<p>It is very interesting to note how PyTorch calls aten::bmm (batched matrix multiplication) if we add the batch axis to our matrices. Let's take a detour and see the aten::bmm in action.</p>
+<p>In Figure 13, upon adding the batch axis to the inputs, aten::matmul now encapsulates a bunch of other prerequisite CUDA runtime calls along with aten::bmm (instead of aten::mm). This also hints at the heuristics that cuBLAS needs to do in order to dispatch the right (most suitable) kernel for the program.</p>
+<p>In the rest of the post, we will be working with simple 2D matrices, unless otherwise mentioned.</p>
+<p>We notice that for aten::mm there are two CUDA Runtime calls, namely cudaOccupancyMaxActiveBlocksPerMultiprocessor (boxed in Figure 14) and cudaLaunchKernel, while for aten::add there is only the cudaLaunchKernel.</p>
+<p>cudaOccupancyMaxActiveBlocksPerMultiprocessor is a planning call and is purely CPU side. It asks: "given a kernel function, a chosen block size, and a chosen dynamic shared memory size, how many blocks of this kernel can simultaneously reside on one SM (Streaming Multiprocessor)?"</p>
+<p>This begs the question, why do we need planning for matmul and not for add?</p>
+<p>To understand this, we have to look at the kernel's resource footprint. If you click on the GPU kernels, you will be able to inspect the resource footprint for the respective kernel.</p>
+<p>In Figure 15, we note that for matrix multiplication the registers per thread and shared memory are dynamic (based on the size of the matrix). cuBLAS ships hundreds of kernel variants, and each has a heuristic-driven launch path that needs runtime information about hardware capacity. The occupancy query is part of that heuristic. Conceptually, we can think of GPU-accelerated matmuls as working on independent tiles: how many tiles we use and how big each tile needs to be depends on the matrices and the hardware. Modern algorithms are way more complicated than that, but this is still a good reference framework.</p>
+<p>From Figure 16 we see that the footprint of addition says 32 registers and zero shared memory. That fits trivially. There's nothing to query, because no hardware resource is going to limit occupancy. The kernel is, by design, resource-light.</p>
+<p>You can use this as a quick diagnostic when reading any trace. Scan the CPU lane for cudaOccupancyMaxActiveBlocksPerMultiprocessor. Each occurrence flags a "heavyweight, adaptively launched" kernel, usually a GEMM (GEneral Matrix Multiplication), conv, or similar. The kernels without a preceding occupancy query are the elementwise/reduction crowd that PyTorch launches mechanically.</p>
+<p>cudaDeviceSynchronize blocks the CPU until all GPU work on this device finishes. The profiler emits this sync at the end of the active window to flush events. Without it, kernel timings would be missing.</p>
+<p>A 1.78 ms sync covering 26 µs of real GPU work tells you this run was 98% idle. That's the textbook overhead-bound symptom.</p>
+<p>We already know from the profiler table analysis (above) that providing bigger matrices to our algorithm moves it out from the overhead-bound region to being compute-bound.</p>
+<p>Let's run the command and dive deeper into the traces.</p>
+<p>In Figure 17, we notice that the matmul kernel for ProfileStep#3 takes longer on the GPU than the other steps. This is particularly interesting to note, because the other kernels launched were the exact same, which means there were no cuBLAS heuristics involved. There are no scheduling gaps, the CPU launches are normal, and it is not a profiler artifact.</p>
+<p>This trace in Figure 17 makes a useful point that's easy to miss in idealized examples: kernel runtimes are not constants, even on the same hardware environment running identical code on identical data.</p>
+<p>Let's make this more concrete by modifying the script a little. We run the iteration 20 times, capturing each of the steps.</p>
+<p>Figure 18 reveals a similar finding. While each kernel was the exact same, they time differently. The different compute times can be blamed on a bunch of reasons:</p>
+<p>A reader who only saw the average would conclude that a matmul took ~1 ms (mean of 5 = 1084 µs); a reader who looked at the trace would see that the matmul takes ~580 µs except when the GPU throws a fit. Those are very different mental models, and only one of them is correct.</p>
+<p>Working with torch.compile has always amazed us. One writes normal eager PyTorch code, but PyTorch tries to capture tensor-heavy regions, turn them into graphs, optimize them, and run generated code. The default backend is usually TorchInductor, and the broad pipeline is:</p>
+<p>In this section, we talk about compilation and look at the profiler traces.</p>
+<p>The args.compile flag triggers the following code:</p>
+<p>In Figure 19, we see the new CPU rows named Torch-Compiled Region: 0/0 which points us to the compiled functions being used.</p>
+<p>Looking at Figure 20 we ask the question, did we actually fuse the multiplication and addition operations together into one?</p>
+<p>This is operator fusion at the graph level. Inductor took our torch.add(torch.matmul(x, w), b) and rewrote it into a single aten::addmm(b, x, w) call. The important thing to note here is that it did not produce a new fused CUDA kernel. The actual GPU work is still ampere_bf16_s16816gemm_bf16_128x256_ldg8_f2f_stages_64x3_nn, the same cuBLAS kernel eager mode used. So the "fusion" here is at the dispatcher level, not at the kernel level.</p>
+<p>PyTorch provides the torch.addmm function that does what we did in two steps, that is multiply and add. We encourage the reader to look at the traces of this function and comment your observations in the comments below!</p>
+<p>While we know in theory what happens when we compile our functions it is equally important to see it in action. Let's look at the CPU-side hierarchy which reflects torch.compile's runtime architecture.</p>
+<p>TorchDynamo Cache Lookup is where Dynamo checks that the current call still matches what was compiled with the same input shapes, dtypes, devices, and tensor metadata. If anything mismatched, Dynamo would recompile. This cost is paid every call, even after compilation.</p>
+<p>Torch-Compiled Region is the wrapper that "enters" the compiled version. AOTDispatcher Runtime Wrapper Prologue is AOT Autograd's runtime wrapper. Even though we don't need gradients here, AOTDispatcher is always in the stack handling tensor metadata, view tracking, and would set up the backward pass if requires_grad were true.</p>
+<p>## Call CompiledFxGraph  is where the actual generated code runs. The string after "CompiledFxGraph" is the content hash of the FX graph. It's the same across all three active steps, confirming cache hits.</p>
+<p>You can find the generated code on disk under /tmp/torchinductor_<user>/fxgraph keyed by this hash, useful when you want to read the Triton/C++ that Inductor actually produced.</p>
+<p>Looking at the traces in Figure 21, we were really happy to notice only one cudaLaunchKernel per step. This observation was directly contradicting what we were seeing in the GPU trace. There were still two kernels being launched per step, namely the Memcpy DtoD (Device -> Device) and the GEMM. Going back to the CPU trace, we noticed that we had completely missed the cudaMemcpyAsync dispatch.</p>
+<p>addmm computes out = α·A·B + β·C, and cuBLAS's GEMM-with-bias-add epilogue writes into a destination buffer that needs to already contain the bias. An epilogues can be thought of all the operations that happen after a GEMM. In the world of deep-learning we constantly come up with GEMM-Epilogues like activations, bias addition, normalization and many more. This is why there are cuBLAS GEMM-with- kernel variants.</p>
+<p>If you use different modes for torch.compile you would notice different kernel variants being launched. You can try it for yourself and add a comment below about your observations!</p>
+<p>The result is mathematically still the same. The bias add isn't free, as we pay a memcpy upfront plus a slightly more expensive GEMM epilogue.</p>
+<p>The fusion one might have hoped for, where x·w + b (here out = α·A·B + β·C) collapses into a single kernel with no extra memory traffic, isn't what happened. Inductor preserved the two memory-touching operations, it just relabeled the bias copy as a memcpy and the addition as a GEMM epilogue.</p>
+<p>A truly fused implementation would skip the memcpy. That's what FlashAttention-style hand-written kernels do, and what Inductor can do via Triton codegen, but for a 4096×4096 bf16 matmul, Inductor evidently decided "use cuBLAS, do the bias via epilogue setup" was the best path.</p>
+<p>This is the easiest thing to miss when comparing an eager and a compiled run:</p>
+<p>torch.compile is roughly 2× more expensive on the CPU per step. That's because every call walks the full Dynamo > AOTAutograd > Inductor stack, on top of the same aten::addmm dispatch we have anyway. The compile pipeline is built for ML models with dozens of ops where the per-call overhead amortizes (for a single op it's a tax).</p>
+<p>torch.compile has a mode argument. It is for the reader to take home as an assignment to read the documentation and come up with a mode that could take the CPU overhead down. 🤗</p>
+<p>A quick reference for the patterns we walked through. The idea is: if you see this in a trace, this is what it usually means.</p>
+<p>We started with a tiny matmul + add and used it as an excuse to learn how to read a PyTorch profiler. Along the way we picked up a few mental models that travel well to bigger workloads. This was the first stop in the Profiling PyTorch series. In the posts that follow, we will gradually leave this two-op toy behind and walk up the ladder of complexity, looking at larger building blocks and, eventually, real models.</p>
+<p>Thanks to Noe Flandre, Suvaditya Mukherjee, and Vidit Ostwal for their reviews on the early draft of the post!</p>
+<p>The blog post was polished using an LLM. This in no way means that we have let an agent run in the background and let it generate the blog. Some of us in the team are non-english speakers and think LLMs (which are mostly trained in the English Language) can rectify silly grammar mistakes or rephrase sentences that sound less intimidating and cleaner. Hope this helps with the idea of "why should I read, if this was LLM generated". 🤗</p>
+<p>Thanks a bunch for this blog post series -really much needed! Especially the Trace reading cheatsheet sections are very beneficial.</p>
+<p>There are some parts I have been thinking about:</p>
+<p>Firstly, thanks for the questions. To answer 2 you are right, the context manager should take care of it, but I personally like putting an extra sync to be sure. You can omit it in your own scripts.</p>
+<p>Coming to 1, this was really interesting, I had to go back to docs to get more idea. You are right with your observation about cudaMemcpyAsync vanishing and only one kernel launch ..._ldg8_relu_f2f_stages_64x3_nn. It turns out that the new kernels is a relu family kernel, which does the EPILOGUE properly where it falls under the contract of using a bias and broadcasting it across rows. Previously the bias was 2D and did not fall under the correct EPILOGUE contract, and hence there was an extra cudaMemcpyAsync.</p>
+<p>Thanks for the kind words! Glad you liked it.</p>
+<p>Good read! Helped introduce me to the world of GPUs and lower level stuff.  While I understood the shape of things, it made me realise I have a lot of gaps in my knowledge wrt to this aspect of ML.</p>
+<p>It would be great if the PyTorch version that was used was mentioned here as well. I was stuck because my trace was not displaying CompiledFxGraph. It worked on Colab but not on my local machine. I was using PyTorch 2.8.0, which does not show CompiledFxGraph in the trace.</p>
+<p>Ah! This is an important pointer I missed in the blog. I was using 2.13 throughout the post. Thanks for catching it. Do you mind sending a PR to the blog (github.com/huggingface/blog) and I could merge it! 🤗</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/waypoint-1-5" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/torch-profiler" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

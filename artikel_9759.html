@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help</title>
+    <title>Your GitHub Actions Cron Job Can Disappear Without Failing</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9759.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,74 +15,38 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help</h1>
+        <h1>Your GitHub Actions Cron Job Can Disappear Without Failing</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/vJT8c3O4IJed0rk4Wq67FpVtiwu1-uya3cdg.png" alt="Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/FrXwz2OOpLRbd0xvRNk08vBI1oo1-d083byq.jpeg" alt="Your GitHub Actions Cron Job Can Disappear Without Failing" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/vJT8c3O4IJed0rk4Wq67FpVtiwu1-uya3cdg.png" alt="Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/FrXwz2OOpLRbd0xvRNk08vBI1oo1-d083byq.jpeg" alt="Your GitHub Actions Cron Job Can Disappear Without Failing" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
-<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
-<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
-<p>Imagine you are building a two-week staff schedule. The requirements look simple enough:</p>
-<p>None of these rules is hard to understand by itself. Then you look at weekend coverage.</p>
-<p>Across the four weekend days, the staffing targets ask for 35 employee shifts. But there are 14 employees, and each can work only one weekend, which means at most two weekend days each. Fourteen times two is 28.</p>
-<p>Before I assign a single person to a single shift, at least seven weekend slots are already impossible to fill.</p>
-<p>This is the part of scheduling that interests me when large language models are involved. A model can understand every requirement correctly and still hand back a schedule that breaks once those requirements start affecting each other. In this article I will show that with a public example, explain why it happens, and lay out how I would split the work between a language model and ordinary software.</p>
-<p>To keep it reproducible, I used Instance2 from the University of Nottingham nurse rostering benchmark and rebuilt it as an optimization model. [1] The examples use public benchmark data and general engineering patterns. They do not describe any employer's internal implementation.</p>
-<p>Instance2 covers 14 days with 14 employees and two shift types, Early and Late, each eight hours long.</p>
-<p>Its rules fall into two groups, and the difference between them turns out to be the whole story.</p>
-<p>If staffing coverage were a hard rule too, the weekend numbers alone would make this schedule impossible. No valid answer would exist.</p>
-<p>Because coverage is soft, the question changes. It is no longer "can I satisfy everything?" It becomes "what is the best valid schedule when not every goal can be met?"</p>
-<p>Fourteen employees, one weekend each, two days in that weekend: 28 possible shifts against 35 requested. The minimum shortage is seven, and that is before I consider days off, who is allowed to work which shift, working-time limits, or the Late-to-Early rule.</p>
-<p>The arithmetic is easy. Finding the best schedule once all of those rules start interacting is the hard part.</p>
-<p>For this experiment, I rebuilt Instance2 as a mathematical optimization model and solved it with HiGHS, an open-source solver, through the SciPy library in Python. I will skip the equations and describe the idea, because the idea is what matters.</p>
-<p>Think of every possible assignment as a yes-or-no switch. "Employee A works the Late shift on day 5" is one switch. With 14 employees, 14 days, and 2 shifts, there are 392 of them. A schedule is simply a choice of which switches are on.</p>
-<p>Each hard rule then becomes a restriction on which switches may be on together:</p>
-<p>The weekend rule needs one extra step, and it is worth spelling out because it drives the opening example. I add a second kind of switch that says "this employee works this weekend." Turning on any Saturday or Sunday shift forces that weekend switch on. Then the rule is simple: each employee may have at most one weekend switch on.</p>
-<p>With that in place, the 35 versus 28 conflict stops being an observation in my introduction. It lives inside the model, where the solver has to respect it.</p>
-<p>Coverage is soft, so it gets counters, not locks. For every shift, I track how many people are missing and how many are extra. The number assigned, plus the number missing, minus the number extra, must equal the number required.</p>
-<p>Then each kind of miss gets a price. In Instance2:</p>
-<p>The solver's job is to find the valid schedule with the lowest total penalty.</p>
-<p>This gives the system three things a paragraph of instructions never does: an exact definition of what makes a schedule invalid, a list of what may be traded away, and a price for each trade.</p>
-<p>The solver finished with a proven best score of 828.</p>
-<p>The public benchmark lists Instance2 with a best-known lower bound of 828 and a best-known solution of 828. When a real schedule reaches the lower bound, nothing better can exist, so 828 is optimal. [1] My rebuilt model landed on the same number, which told me I had reconstructed the problem correctly.</p>
-<p>The score breaks down like this: 8 missing staffing assignments at 100 points each makes 800, and employee preference penalties add 28, for a total of 828.</p>
-<p>The weekend arithmetic had already proved that at least seven assignments would be missing. Once every other rule was included, the best possible schedule needed eight.</p>
-<p>One detail is worth noting. A score of 828 does not point to one unique schedule. Different schedules can spread those eight gaps differently and still score the same. The useful result is that the schedule is valid and the score is proven, not any particular arrangement of names.</p>
-<p>Take five of these requirements: Employee D cannot work Late. Employee A must have day 3 off. Late cannot be followed by Early. Each employee can work at most one weekend. Saturday needs ten people.</p>
-<p>A language model may understand every one of those statements perfectly. The trouble starts when assignments begin to affect each other:</p>
-<p>Every assignment changes the choices that remain. Keeping track of all of that at once is a different skill from reading a rule.</p>
-<p>A recent benchmark called SCHEDBench shows the same thing at larger scale. It evaluates 13 language models across 1,132 scheduling problems whose correct answers are backed by a solver. [2] On its nurse rostering problems, the share of model-produced schedules that were valid averaged 97.0% on easy problems, 62.4% on medium ones, and 1.7% on hard ones.</p>
-<p>The study also found that models were sensitive to the order in which the rules were presented. The underlying problem stayed exactly the same, yet shuffling the rules changed how often the models broke them.</p>
-<p>Another benchmark, R-ConstraintBench, reports a related pattern: validity drops as resource limits, downtime, time windows, and either-or constraints begin to interact. [3]</p>
-<p>So the boundary that matters is not whether a model can read a rule. It is whether it can hold the entire valid state in mind while many rules push against each other.</p>
-<p>Real scheduling requirements rarely arrive as equations. A manager writes things like:</p>
-<p>"Bob can work one weekend, but not both."</p>
-<p>"Anyone finishing Late should not open the next morning."</p>
-<p>This is where a language model earns its place. It can turn Bob's sentence into a structured rule: the employee is Bob, the rule type is a maximum number of weekends, the value is one, and the window is 14 days.</p>
-<p>I would keep these out of the model's hands:</p>
-<p>Suppose the original requirement says "Alice must have Saturday off," and the interpretation step records it as a preference instead of a requirement.</p>
-<p>The solver will return a mathematically perfect answer to the wrong problem, and Alice will be on the Saturday rota.</p>
-<p>For any rule that matters, I would keep three things side by side:</p>
-<p>A solver can only guarantee what it was given. The translation into rules still needs a human or a separate check to sign it off.</p>
-<p>I would also check the finished schedule outside the solver. Useful checks include:</p>
-<p>By independent checking, I do not mean running the same model twice. Where practical, the checks should be written separately from the model, so a mistake made while building the model is less likely to appear in both places.</p>
-<p>A solver, an interpretation layer, and an independent checker all add complexity. They should earn it.</p>
-<p>If you are putting a language model anywhere near scheduling, rostering, or planning, here is what I would do:</p>
-<p>The first useful result appeared before the solver ever ran: 35 weekend shifts requested, 28 possible under the weekend rule, at least 7 gaps unavoidable. The full model needed 8 gaps and produced a proven best score of 828.</p>
-<p>Every individual requirement was easy to read. The difficult part was making them all hold at once.</p>
-<p>That is the boundary I would protect in any LLM-assisted scheduling system. Let the language model help interpret messy requirements. Once those requirements become precise rules, let deterministic software search for the schedule and verify it.</p>
-<p>A schedule can look reasonable and still break a rule somewhere you were not looking. In any system with this many interacting rules, validity has to be checked, never assumed.</p>
-<p>[1] University of Nottingham, Nurse Rostering Benchmark Instances, including the raw data for Instance2 and its published optimal score of 828.</p>
-<p>[2] Shrenil Shaun Sharma and Avi Sharma, “SCHEDBench: A Benchmark for Evaluating LLM Constraint Faithfulness in Natural-Language Combinatorial Scheduling,” arXiv:2608.00991 (2026).</p>
-<p>[3] Raj Jain and Marc Wetter, “R-ConstraintBench: Evaluating LLMs on NP-Complete Scheduling,” arXiv:2508.15204 (2025).</p>
-<p>Your Database Can Time-Travel and Still Get the Past Wrong</p>
-<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
+                <p>Head of Revenue Operations. Revenue analytics, sales ops, and the SQL behind both. Atlanta.</p>
+<p>Head of Revenue Operations. Revenue analytics, sales ops, and the SQL behind both. Atlanta.</p>
+<p>Head of Revenue Operations. Revenue analytics, sales ops, and the SQL behind both. Atlanta.</p>
+<p>Every morning, a bot posts a short report to Slack: what moved volume and revenue yesterday, driver by driver. It runs on a GitHub Actions schedule and checks its own numbers before it posts. For a small team, it's a good setup. There's no server to babysit, the logs and secrets live in one place, and anyone on the team can read the run history.</p>
+<p>It's also a scheduler with fine print, and nearly all of the fine print is about the morning the report doesn't arrive. Here's what GitHub's documentation says about scheduled workflows, what it means for a daily report, and the safeguards that make up for it.</p>
+<p>These are all in GitHub's docs for the schedule event, roughly in order of how likely they are to bite.</p>
+<p>Scheduled runs can be late, and some never happen. GitHub warns that scheduled runs can be delayed when Actions is under heavy load, that the start of every hour is one of those times, and that under enough load "some queued jobs may be dropped." A dropped run doesn't fail. It just doesn't happen.</p>
+<p>Schedules run in UTC unless you say otherwise. Schedules now accept a timezone with an IANA name like America/New_York. Without it, a 7 AM report drifts to 6 AM or 8 AM local twice a year when daylight saving time changes. With it, a time that doesn't exist on the spring-forward day moves to the next valid time.</p>
+<p>Schedules only run from the default branch, on its latest commit. Editing a workflow on a feature branch won't tell you whether its schedule works.</p>
+<p>In public repositories, schedules switch off after 60 days with no repository activity. A report that just works for two months and then stops is the most frustrating version of all of this.</p>
+<p>The shortest interval is five minutes. Irrelevant for a daily report, worth knowing before you build a poller on it.</p>
+<p>Most of those lines answer the fine print. The cron is 17 7, not 0 7, because the top of the hour is the busiest time, and a report at 7:17 that arrives beats one at 7:00 that doesn't. workflow_dispatch adds a "Run workflow" button for the mornings the schedule doesn't fire. concurrency stops a manual run and a late scheduled run from overlapping. And the QA rules run as tests before the report does, so a change to the rules can't quietly switch them off.</p>
+<p>A daily report should never post a number it can't defend. Before anything goes to the channel, run checks like these:</p>
+<p>When a check fails, the report goes to its owner instead of the channel:</p>
+<p>Each rule has its own unit test. A held report is a good outcome. It means the bot caught something before a room full of people did.</p>
+<p>Retries and manual reruns are good for reliability and bad for a Slack channel. Before posting, check whether today's report is already there:</p>
+<p>The marker is the report's own title. A rerun after a successful post does nothing, and a rerun after a held report posts normally once the data is fixed.</p>
+<p>None of those checks help when the run never starts. A dropped schedule doesn't fail, so nothing alerts. The answer is a second workflow that runs later and asks one question: did today's report succeed?</p>
+<p>It isn't perfect. The watchdog runs on the same scheduler with the same fine print, so it's a second chance, not a guarantee. For a report that really matters, have the bot ping an external heartbeat monitor when it succeeds, and let that service complain when the ping doesn't come. The principle is the same either way: alert on the absence of success, not the presence of failure.</p>
+<p>When a report has to arrive at a specific minute, or runs often enough that a few dropped runs a month would matter, use a scheduler that makes promises: a cloud scheduler, Airflow, or a plain cron server you monitor. For one report a day that can arrive at 7:17 or 7:24 without anyone noticing, GitHub Actions is hard to beat. Just read the fine print, and build for the morning it doesn't show up.</p>
+<p>Little's Law Says Part of Your Sales Pipeline Is Dead. Here's the SQL to Find It.</p>
+<p>Head of Revenue Operations. Revenue analytics, sales ops, and the SQL behind both. Atlanta.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/why-llms-struggle-with-constraint-based-scheduling-and-how-optimization-solvers-help?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/your-github-actions-cron-job-can-disappear-without-failing?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Vibe Coded App Security Audit: How to Vet Code Before Running It</title>
+    <title>Google releases Gemma 2 2B, ShieldGemma and Gemma Scope</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10971.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,76 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Vibe Coded App Security Audit: How to Vet Code Before Running It</h1>
+        <h1>Google releases Gemma 2 2B, ShieldGemma and Gemma Scope</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_data_4144745585.png" alt="Vibe Coded App Security Audit: How to Vet Code Before Running It" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_data_4144745585.png" alt="Vibe Coded App Security Audit: How to Vet Code Before Running It" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Vibe coding accelerates prototyping dramatically, but "working" and "safe" are different properties. This playbook provides a repeatable, ordered checklist for auditing AI-generated Node.js applications before you run or ship them.</p>
-<p>Vibe coding, the practice of prompt-driven development where a developer describes desired functionality and an AI model generates the implementation, accelerates prototyping dramatically. But "working" and "safe" are different properties, and AI models optimize aggressively for the former. A vibe-coded app security audit addresses the gap that opens when generated code ships without systematic review.</p>
-<p>AI code generators pull from training corpora that include insecure patterns, deprecated APIs, and supply-chain antipatterns. The generated code often contains hardcoded secrets, unnecessary dependencies, overly permissive configurations, calls to eval(), disabled TLS verification, or lifecycle scripts that execute arbitrary commands during installation. None of this requires malicious intent from the model. It reflects the statistical reality that training data contains plenty of insecure-but-functional code, and the model has no threat model of its own.</p>
-<p>The risk compounds because vibe-coded projects often include dependencies the developer never explicitly chose. The AI picks packages based on pattern frequency, not security posture, which means typosquatted or abandoned libraries can slip into a package.json without anyone noticing.</p>
-<p>This guide targets Node.js and npm projects generated or scaffolded by AI tools. The goal is a repeatable, ordered checklist that answers two questions: "Is this safe to run?" and "Is this safe to ship?" The workflow chains together Git, npm script suppression, static analysis via Semgrep, dependency auditing, and Docker network isolation into a single copy-paste process. Every step builds on the previous one. Skipping steps weakens the guarantees downstream.</p>
-<p>An AI-generated package.json may contain lifecycle scripts such as preinstall, install, or postinstall that execute arbitrary code the moment npm install runs. A postinstall hook pointing to curl ... | sh would download and execute a remote script with the permissions of the current user. Running this on a development workstation exposes SSH keys, cloud credentials, browser sessions, and anything else accessible to that user account.</p>
-<p>Docker containers provide process and filesystem isolation, but they allow outbound network connections by default. A malicious script running inside a container can still exfiltrate data to an external server unless you apply additional flags. This step creates the isolated environment; later steps lock down network access and suppress script execution.</p>
-<p>Start with a minimal Dockerfile based on node:24-slim (Node.js 24 is an LTS line; Node.js 20 reached end of life in March 2026, per the Node.js release schedule. For stricter reproducibility, pin an exact patch tag from hub.docker.com/_/node). This image provides Node.js 24 and npm but requires additional packages for the audit workflow, which the Dockerfile installs:</p>
-<p>Build the image and enter it interactively with a bind-mounted directory from the host:</p>
-<p>Note: The bind-mount exposes the host path $(pwd)/app to the container. Do not mount directories containing sensitive credentials or production data. On Windows, replace $(pwd) with ${PWD} (PowerShell) or %cd% (cmd).</p>
-<p>The --rm flag ensures the container is destroyed on exit, leaving no residual state. The bind-mount at /audit/app makes the target repository accessible inside the container without copying it into the image layer.</p>
-<p>For developers without Docker installed, GitHub Codespaces provides a browser-based disposable environment with Node.js pre-installed. A lightweight VM via Multipass or VirtualBox achieves similar isolation. The key requirement is that the environment is ephemeral and disconnected from production credentials. If using an alternative environment, install git, jq, python3, and python3-venv manually.</p>
-<p>From inside the container, perform a shallow clone. To avoid path collisions with the bind-mount at /audit/app, clone into a separate directory:</p>
-<p>Important: Do not clone into /audit/app if that path is already bind-mounted from the host. If the host directory is non-empty, git clone will fail with "destination path already exists and is not an empty directory," or worse, you may silently audit the host directory's pre-existing content instead of the cloned repository.</p>
-<p>A depth-1 clone fetches only the latest commit on the default branch, reducing clone time and bandwidth.</p>
-<p>The --ignore-scripts flag tells npm to skip all lifecycle hooks during installation. This prevents preinstall, install, and postinstall scripts from executing untrusted code during dependency resolution. The npm docs for ignore-scripts say that npm does not run scripts specified in package.json files. Commands that explicitly run a script, such as npm start or npm test, still run it later, so the flag only protects the install step. Review any git-sourced dependencies in package.json manually, since they come from outside the npm registry.</p>
-<p>Expected output will show packages added without any script execution lines:</p>
-<p>If lifecycle scripts were present and suppressed, npm completes silently rather than executing them. This is the single most important flag in the entire workflow; without it, every subsequent step is moot because arbitrary code may have already run.</p>
-<p>Before proceeding, inspect the scripts block to understand what the project defines:</p>
-<p>Any lifecycle hook (preinstall, install, postinstall, prepare, prepublish) that invokes curl, wget, sh, bash, or references external URLs is a pre-run blocker.</p>
-<p>Prerequisites: The jq command is already installed in the Dockerfile. If you are using an alternative environment, install it via apt-get install jq.</p>
-<p>With dependencies installed (scripts suppressed), run the built-in vulnerability scanner:</p>
-<p>Excluding dev dependencies with --omit=dev focuses the audit on packages that will run in production. Step 4's triage matrix uses these severity levels directly: critical and high findings are typically pre-ship blocks or pre-run blocks depending on the vulnerability type, while moderate and low findings fall into the fix or accept categories.</p>
-<p>Automated audits only catch known CVEs. Typosquatted packages, where the name is one character off from a popular library (e.g., lodasg instead of lodash), won't appear in vulnerability databases because they may not have been reported yet. Manual heuristics to flag suspicious packages: a first publish date within the last 30 days, only a single version published, fewer than 100 weekly downloads, or a name that is a slight misspelling of a well-known library.</p>
-<p>This lists direct dependencies and their direct children (one level of transitive dependencies). Scan for names that look unfamiliar or suspiciously similar to popular packages. A project generated by an AI model may include packages the developer never heard of, and each one deserves a quick check on the npm registry page. For a complete tree, use --depth=Infinity (note: output may be very large for projects with many dependencies).</p>
-<p>Semgrep matches code structurally using AST-based rules rather than regular expressions. In our experience, this produces fewer false positives for structural patterns like nested function calls or variable-flow tracking, though results depend on which community rulesets you use and how well-maintained they are. Semgrep ships with free, community-maintained rulesets covering JavaScript, TypeScript, and dozens of other languages. For AI-generated code, Semgrep has rules that cover the categories of issues models frequently produce: eval() calls, hardcoded secrets, insecure fs usage, disabled TLS verification, and dangerous child_process invocations.</p>
-<p>Inside the container, Semgrep is already installed via the Dockerfile's virtual environment. Run the auto-configured ruleset, which selects community rules based on detected languages:</p>
-<p>Important: --config=auto fetches rules from semgrep.dev at scan time and sends anonymized telemetry by default. The SEMGREP_SEND_METRICS=off environment variable is set in the Dockerfile to suppress telemetry globally within the container. For fully offline operation (e.g., when auditing proprietary code that must not be exposed to any external service), download rules while connected -- such as semgrep --config=p/javascript -- cache the resulting rules directory, and pass --config=<local-path> instead of --config=auto. This step must be performed before applying --network none in Step 5, since network access is required to fetch rules.</p>
-<p>Language detection triggers automatically with --config=auto, pulling the appropriate rule bundles for JavaScript and TypeScript files found in the scan path. Results appear inline with rule ID, severity, file path, and line number.</p>
-<p>The default rulesets are broad. A targeted rule file catches patterns specific to vibe-coded projects. Save the following as vibe-audit-rules.yml:</p>
-<p>Validate the custom rules before running them:</p>
-<p>Run the custom rules against the project:</p>
-<p>Semgrep output displays each finding with a rule ID (e.g., vibe-eval-usage), severity level (ERROR, WARNING, INFO), the file path, the line number, and the matching code snippet. Not every finding is a blocker. An eval() call inside a well-known JSON schema validation library's internals is different from an eval() on user-supplied input in an Express route handler. The next step provides a framework for making that distinction systematically.</p>
-<p>Raw scan results need classification to become actionable decisions. The framework below splits findings into four categories based on two axes: how dangerous is the finding, and when must it be resolved.</p>
-<p>Consider a Semgrep finding of vibe-eval-usage in routes/api.js at line 42, where user input from req.body.code is passed directly to eval(). That is a pre-run block: the application would execute arbitrary code from any HTTP request. Contrast that with the same rule firing inside node_modules/ajv/dist/compile/codegen.js, where eval is used internally by a widely adopted JSON schema validator. That falls into the accept category -- and with the paths.exclude on the custom rules above, findings from node_modules are already suppressed.</p>
-<p>A finding of vibe-hardcoded-secret flagging const API_KEY = "sk-proj-abc123..." in config.js is a pre-ship block. It is safe to test locally in an isolated container, but deploying it would expose the key. The fix is to move the value to an environment variable before any merge to a shared branch.</p>
-<p>By default, Docker containers connect to a bridge network with outbound internet access. As described in the Docker networking documentation at docs.docker.com/engine/network, the default bridge network provides NAT-based external connectivity. A malicious application running inside a default container can reach any external endpoint, so a malicious script can exfiltrate data to any server it can resolve.</p>
-<p>After triaging all findings and confirming no pre-run blockers remain, copy the repository to the shared bind-mount so it is accessible from a new network-isolated container, then execute the application with network access completely disabled:</p>
-<p>Removing all external network interfaces is exactly what --network none does. The loopback interface (lo) remains available inside the container, but no DNS resolution or outbound TCP/UDP traffic is possible. The application cannot make HTTP requests or reach any external endpoint.</p>
-<p>When the application legitimately requires network access, such as connecting to a localhost database, create a user-defined network with docker network create --internal instead of reverting to the default bridge. Containers on an internal network can talk to each other but not to the outside. This permits container-to-container communication while still blocking internet-bound traffic.</p>
-<p>1. mkdir -p "$(pwd)/app" && docker run --rm -it -v "$(pwd)/app:/audit/app" vibe-audit /bin/bash -- create host directory and enter disposable container</p>
-<p>2. git clone --depth 1 <repo-url> /audit/repo && cd /audit/repo -- shallow clone (to a path separate from the bind-mount)</p>
-<p>3. jq '.scripts' package.json -- inspect lifecycle hooks</p>
-<p>4. npm install --ignore-scripts -- safe install</p>
-<p>5. npm audit --omit=dev -- vulnerability check (requires npm >= 8.7.0; use --production on older npm)</p>
-<p>6. NPM_MAJOR=$(npm --version | cut -d. -f1); [ "$NPM_MAJOR" -ge 7 ] && npm ls --all --depth=1 2>/dev/null || npm ls --depth=1 2>/dev/null -- dependency tree scan (version-aware)</p>
-<p>7. SEMGREP_SEND_METRICS=off semgrep --config=auto /audit/repo || { echo "[FATAL] semgrep failed"; exit 1; } -- static analysis (requires network; run before Step 10)</p>
-<p>8. semgrep --config=vibe-audit-rules.yml --validate || exit 1 && semgrep --config=vibe-audit-rules.yml /audit/repo -- custom vibe-code rules</p>
-<p>9. Triage findings using the Pre-run / Pre-ship matrix</p>
-<p>10. cp -r /audit/repo /audit/app/repo && docker run --rm --network none -v "$(pwd)/app:/audit/app" vibe-audit node /audit/app/repo/index.js -- isolated execution</p>
-<p>This playbook covers only Node.js and npm. Python, Go, and Rust projects follow similar principles but require different tooling.</p>
-<p>This playbook does not address full penetration testing, dynamic application security testing (DAST), or license compliance auditing.</p>
-<p>The workflow also excludes runtime behavioral analysis tools such as strace or eBPF-based monitoring, which can detect malicious behavior that static analysis misses. Running strace inside Docker requires --cap-add=SYS_PTRACE and installation via apt-get install strace.</p>
-<p>One practical caveat: --ignore-scripts may cause packages with native add-ons (such as bcrypt or sharp) to be non-functional because their compilation steps are skipped. Address these on a case-by-case basis after manually reviewing the build script for safety.</p>
-<p>Vibe coding reduces initial coding time but shifts security responsibility entirely onto the developer who runs the output. Integrating this checklist as a CI pre-merge gate for any AI-generated pull request turns a manual discipline into an automated gate that blocks the merge on failure. When building that gate, use npm audit --audit-level=critical to fail only on critical vulnerabilities (rather than any finding), and use semgrep --error --severity=ERROR to control which severity levels produce a non-zero exit code. Run the checklist on every AI-generated PR before merge.</p>
-<p>Sharing our passion for building incredible internet things.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/vibe-coded-app-security-audit-playbook/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/gemma-july-update" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

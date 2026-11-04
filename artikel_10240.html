@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Sideload 050: The phones Samsung and Google won’t make</title>
+    <title>Falcon Perception</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10240.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,23 +15,86 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The Sideload 050: The phones Samsung and Google won’t make</h1>
+        <h1>Falcon Perception</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://9to5google.com/wp-content/uploads/sites/4/2025/08/sideload-podcast-wider-copy-1.jpg?quality=82&amp;strip=all&amp;resize=1200,628" alt="The Sideload 050: The phones Samsung and Google won’t make" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/659bc8a7b0f43ed69f0b2300/e0EmVVRs4ITxTaPMJ-VPh.png" alt="Falcon Perception" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://9to5google.com/wp-content/uploads/sites/4/2025/08/sideload-podcast-wider-copy-1.jpg?quality=82&strip=all&resize=1200,628" alt="The Sideload 050: The phones Samsung and Google won’t make" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/659bc8a7b0f43ed69f0b2300/e0EmVVRs4ITxTaPMJ-VPh.png" alt="Falcon Perception" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Welcome to episode 50 of The Sideload, a 9to5Google podcast. This week, Will and Daniel are joined by Nick Sutrich to discuss the ever-present split between North American and global phones, what the marketplace looks like with OnePlus gone, and why your next smartphone might actually replace your Steam Deck. Plus, some thoughts on how AI is choking out the games space.</p>
-<p>Sponsored by NordVPN: Listeners to The Sideload can save up to 76% on a two-year subscription alongside four extra months for absolutely free by signing up for NordVPN using this link. Thanks to NordVPN for sponsoring this week’s episode.</p>
-<p>Drop us a line at gtips@9to5g.com, leave a comment on the post, or reach out to our producer. And for even more Android discussion, dive into the official 9to5Google forums!</p>
-<p>FTC: We use income earning auto affiliate links. More.</p>
-<p>Check out 9to5Google on YouTube for more news:</p>
-<p>Will Sattelberg is a writer and podcaster at 9to5Google.
-You can reach out to Will at will@9to5mac.com, or find him on Twitter @will_sattelberg</p>
+                <p>TL;DR — Falcon Perception is a 0.6B-parameter early-fusion Transformer for open-vocabulary grounding and segmentation from natural language prompts. The model processes image patches + text in one sequence using a hybrid attention mask, and produces variable numbers of instances with a small, structured token interface and lightweight output heads. On SA-Co, Falcon Perception reaches 68.0 Macro-F1 (vs. 62.3 for SAM 3) with the main remaining gap being presence calibration (MCC 0.64 vs. 0.82). We also introduce PBench, a diagnostic benchmark that breaks down performance by capability (attributes, OCR-guided disambiguation, spatial constraints, relations) and by dense long-context crowded scenes.</p>
+<p>We also relase Falcon OCR, a 0.3B-parameter model which reaches a score of 80.3 and 88.6 on the olmOCR benchmark and OmniDocBench respectively, while having the highest throughput of any open source OCR model.</p>
+<p>This post is a brief, practical write-up of what we built, why we built it this way, and what we learned along the way.</p>
+<p>Many open-vocabulary perception systems are built as modular pipelines: a (often frozen) vision backbone extracts features, a separate fusion/decoder stage combines them with language, and additional components handle matching and post-processing. This family of designs works well in many settings, but it comes with trade-offs: it can be hard to scale cleanly, hard to attribute improvements to the right component, and easy to accumulate complexity as we add a new fix for each failure mode.</p>
+<p>We asked a simpler question: can a single early-fusion Transformer backbone handle both perception and language modeling, if we choose the right attention pattern, output interface, and training signal?</p>
+<p>In our experiments, the answer is largely yes. The rest of this post describes the main design choices and the evidence behind them.</p>
+<p>A single autoregressive Transformer processes a unified sequence of image patches, text, and task tokens.
+The model predicts object properties in a fixed order: <coord> → <size> → <seg>.
+Bounding box coordinates and sizes are decoded via specialized heads and re-injected as Fourier features.
+High-resolution segmentation masks are generated by a dot product between the <seg> token and upsampled image features.</p>
+<p>At its core, Falcon Perception is a dense Transformer that processes image patches and text tokens in a shared parameter space from the first layer. Instead of a separate vision backbone followed by a late-fusion decoder, we keep a single backbone and rely on masking and a lightweight output interface to make the dense prediction problem tractable.</p>
+<p>Images and text have different structure: pixels are 2D and benefit from bidirectional context, while the prediction interface is naturally sequential. We address this with a hybrid attention mask:</p>
+<p>This allows the same backbone to behave like a bidirectional visual encoder on image tokens, while still supporting autoregressive prediction over task tokens.</p>
+<p>Dense perception is not a fixed-size prediction problem: an image may contain zero instances or hundreds. Autoregressive generation gives a clean variable-length interface, but fully autoregressive dense generation (e.g., polygons or high-resolution masks token-by-token) quickly becomes expensive.</p>
+<p>We use a small structured interface, Chain-of-Perception, which decomposes each instance into three steps:</p>
+<p>This ordering is deliberate. Committing to geometry first reduces ambiguity (“which instance?”), and makes the mask prediction step closer to pixel refinement conditioned on the resolved object.</p>
+<p>The backbone is shared, while decoding uses lightweight heads tailored to the output type:</p>
+<p>Coordinate & Size Heads use Fourier feature encoding : mapping continuous coordinates through a random Gaussian projection into a high-dimensional sinusoidal space. This overcomes the spectral bias of neural networks, yielding more precise localization than discrete binning alone. Decoded coordinates are re-injected into the sequence as conditioning for subsequent tokens.</p>
+<p>Segmentation Head computes a dot product between the <seg> token’s hidden state and content-aware upsampled image features. Because the <seg> token is produced after geometry and has access to early-fused visual context, we can avoid the separate mask-query machinery and Hungarian matching that often appears in decoder-based instance segmentation training.</p>
+<p>Existing referring-expression benchmarks like RefCOCO are saturated — models routinely hit 90%+ — and they conflate what went wrong. Did the model fail because it can't read text? Can't understand spatial relationships? Can't handle a crowd?</p>
+<p>We introduce PBench, a diagnostic benchmark that separates samples by the dominant capability required:</p>
+<p>Each sample targets one dominant capability: OCR prompts avoid spatial qualifiers, and spatial prompts avoid in-image text disambiguators. This yields a capability profile rather than a single opaque score, and makes it easier to decide where to invest next (data, training curriculum, or post-training).</p>
+<p>Rather than training from random weights (which in our ablations was unstable for segmentation), Falcon Perception initializes via multi-teacher distillation. Two strong vision teachers contribute complementary signals:</p>
+<p>The distilled initialization achieves 74.25% zero-shot accuracy on ImageNet-1k and 85.11% linear-probe mIoU on Pascal VOC, providing a strong visual foundation before perception-specific training.</p>
+<p>We build the training set through a multi-stage pipeline:</p>
+<p>We maintain a strict 1:1 ratio of positive to negative samples. This makes presence calibration a first-class target: the model should reliably say “absent,” not only draw masks when confident.</p>
+<p>Stage 1 — In-Context Listing (450 GT): The model learns to autoregressively list scene inventories — predicting text expressions and their locations. Full causal attention between queries enables learning of object co-occurrence ("fork, then knife, then plate"). This builds broad scene understanding.</p>
+<p>Stage 2 — Task Alignment (225 GT): The attention mask is modified so queries can no longer see each other, simulating independent queries at inference time. Loss on text tokens is masked, focusing gradient signal entirely on presence classification and localization. This stage transitions from "scene understanding" to "answer this specific question."</p>
+<p>Stage 3 — Long-Context Finetuning (10 GT): A short phase with the mask limit raised to 600 per expression and a minimal constant learning rate. This adapts the model for extreme crowd density without forgetting earlier capabilities.</p>
+<p>Key design choices validated through ablations:</p>
+<p>On the SA-Co open-vocabulary segmentation benchmark, Falcon Perception (0.6B parameters) achieves 68.0 Macro-F1, compared to 62.3 for SAM 3, with large gains on attribute-heavy (+8.2), food & drink (+12.2), and sports equipment (+4.0) splits. At the same time, Falcon Perception lags SAM 3 on presence calibration (MCC: 0.64 vs 0.82), which is the clearest remaining improvement axis.</p>
+<p>Here's an example output — the prompt "Falcon" produces precise instance masks:</p>
+<p>Falcon Perception also performs well for reffering expressions, able to correctly segment the burger with a black bun in each frame of the video:</p>
+<p>This is where the early-fusion design shows the largest differences:</p>
+<p>On simple objects, the gap is modest. As prompts become more compositional—requiring OCR-guided disambiguation, spatial constraints, or relational binding—the gap widens.</p>
+<p>In our PBench Dense split, Falcon Perception (0.6B) substantially outperforms generalist VLM baselines (e.g., 72.6 vs 8.9 for Qwen3-VL-30B in our evaluation setup), and matches or exceeds the 8B model on spatial and relational tiers.</p>
+<p>As prompts grow more compositional — requiring OCR-guided disambiguation, spatial constraints, relational binding, or scaling to hundreds of instances — the early-fusion advantage becomes visually clear:</p>
+<p>"168 wine bottles": Falcon Perception identifies the bottles labeled "168",
+while SAM 3 highlights every bottle. "Honolulu direction sign": Falcon reads the text to find the right sign.</p>
+<p>"Lower meat skewer on left grill," "black car to the right of red car at bottom,"
+"Belgian flag on the left" — Falcon Perception resolves the correct instance from spatial constraints.
+SAM 3 predicts false positives for multiple candidates.</p>
+<p>"Pastry next to brown round bread," "person using phone,"
+"person holding helmet in hand" — Falcon Perception identifies the interacting instance.
+SAM 3 highlights all instances of the object class, ignoring the relational constraint.</p>
+<p>"Snow goose," "pigeon," "colorful canned drinks" — Falcon Perception autoregressively
+segments hundreds of instances. SAM 3's fixed-size decoder runs out of query tokens beyond ~200 instances.</p>
+<p>Modern OCR has moved well beyond extracting text from clean scans. Today's systems must handle multi-column layouts, mathematical formulas, tables, charts, and multilingual content — all in one pass. Most competitive OCR VLMs tackle this with a familiar recipe: a vision encoder feeding a separate text decoder, plus task-specific glue. These systems work, but they tend to be large (1B–3B+ parameters).</p>
+<p>We took a different path: reuse the same early-fusion dense Transformer from Falcon Perception, but train a smaller 0.3B-parameter variant from scratch specifically for OCR. The result is Falcon OCR — a single backbone that processes image patches and text tokens in a shared parameter space with the same hybrid attention mask (bidirectional for image tokens, causal for text tokens), and switches tasks through prompts rather than additional modules.</p>
+<p>We trained from scratch (no multi-teacher distillation) because the visual features OCR needs — fine-grained glyph recognition, stroke-level discrimination — differ substantially from the object-level features useful for segmentation. Starting fresh lets the backbone develop text-optimized representations from the ground up.</p>
+<p>We train on a curated English-language mixture spanning three core tasks: general document text parsing (digital PDFs, old scans, typewritten documents), mathematical and scientific formula recognition, and table structure recognition. The mixture also includes handwriting, real-world scene text, and synthetic samples generated from rendered LaTeX and HTML sources. The training objective is pure next-token prediction on structured text outputs.</p>
+<p>Training proceeds in two phases: a long pre-training phase at constant learning rate where the model learns core OCR capabilities across all element types, followed by a short cosine-decay finetuning phase where the learning rate is annealed to near zero.</p>
+<p>We evaluate on olmOCR (binary correctness checks across diverse inputs) and OmniDocBench (continuous metrics over full-page parses). All comparison models are significantly larger and/or use proprietary infrastructure. At 80.3% on olmOCR with only 0.3B parameters, Falcon OCR is within 1.7 points of the top system and leads all models on Multi-Column (87.1%) and Tables (90.3%). On OmniDocBench it scores 88.64 overall, ahead of DeepSeek OCR v2, GPT 5.2, and Mistral OCR 3.</p>
+<p>At 0.3B parameters, Falcon OCR is roughly 3x smaller than 0.9B-class OCR VLMs, which translates directly into higher serving throughput. Measured on a single A100-80GB with vLLM at high concurrency:</p>
+<p>The compact footprint and vLLM integration (continuous batching, PagedAttention, optimized CUDA kernels) make it practical for large-scale document digitization where millions of pages need processing.</p>
+<p>More broadly, these results suggest that the early-fusion single-stack Transformer is a viable alternative to the "vision encoder plus text decoder" recipe for OCR. One backbone, shared parameter space, one decoding interface, and better data and training signals rather than increasingly complex pipelines. We hope this encourages more work in this direction.</p>
+<p>Falcon OCR processes images captured under challenging real-world conditions with varying lighting, diverse text semantics (mathematical formulae, structured tables, handwritten notes), and complex document layouts, to produce structured text output.</p>
+<p>Falcon OCR extracts text from handwritten documents and real-world photographs with variable lighting, orientation, and content complexity.</p>
+<p>Falcon OCR accurately reproduces cell entries and structural layout from tables of varying formats and complexity.</p>
+<p>Falcon OCR correctly transcribes mathematical expressions ranging from simple equations to multi-line derivations with nested operators.</p>
+<p>Falcon OCR preserves reading order and structural fidelity when extracting text from documents with multi-column layouts, figures, and footnotes.</p>
+<p>The release includes an inference stack built on PyTorch’s FlexAttention, which makes it practical to express the custom attention patterns and efficiently serve packed variable-length sequences.</p>
+<p>In our setup on an H100, typical latencies are on the order of ~100ms prefill, ~200ms upsampling (0ms if cached), and ~50ms decode for a handful of instances. (These numbers depend on resolution, sequence length, and the number of predicted instances.)</p>
+<p>For the Falcon-OCR model, we also provide a vLLM docker server for fast deployment and MLX integration for Apple-Silicon</p>
+<p>Please check out the github repo for details.</p>
+<p>Falcon Perception is intentionally minimal: one backbone, one objective family, and small heads only where outputs are continuous and dense. The working assumption is that most gains should come from data, compute, and training signals, rather than continually expanding the pipeline with specialized modules.</p>
+<p>The architecture doesn't block any obvious scaling path: add more images and harder prompts for better grounding, mix in text-only data for better language, increase context length for denser scenes. It's still just one sequence model.</p>
+<p>Falcon Perception is developed by the Falcon Vision Team at the Technology Innovation Institute (TII), Abu Dhabi, UAE.</p>
+<p>If you use Falcon-Perception, please cite</p>
+<p>very cool release! will build on this soon 🤗</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://9to5google.com/2026/11/03/the-sideload-050-the-phones-samsung-and-google-wont-make/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tiiuae/falcon-perception" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
