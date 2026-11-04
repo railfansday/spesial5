@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shipping a Trillion Parameters With a Hub Bucket: Delta Weight Sync in TRL</title>
+    <title>Is it agentic enough? Benchmarking open models on your own tooling</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10158.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,68 +15,205 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Shipping a Trillion Parameters With a Hub Bucket: Delta Weight Sync in TRL</h1>
+        <h1>Is it agentic enough? Benchmarking open models on your own tooling</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/delta-weight-sync/thumbnail.png" alt="Shipping a Trillion Parameters With a Hub Bucket: Delta Weight Sync in TRL" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/is-it-agentic-enough/thumbnail.png" alt="Is it agentic enough? Benchmarking open models on your own tooling" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/delta-weight-sync/thumbnail.png" alt="Shipping a Trillion Parameters With a Hub Bucket: Delta Weight Sync in TRL" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/is-it-agentic-enough/thumbnail.png" alt="Is it agentic enough? Benchmarking open models on your own tooling" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>TL;DR, because you have models to train and we respect that:</p>
-<p>Async RL just got a lot cheaper. Read on.</p>
-<p>If you read our previous post on the landscape of async RL training, you already know the punchline. Every async RL library, regardless of how it spells "actor model" or which color its NCCL backend is painted, eventually trips over the same root: weight synchronization.</p>
-<p>The inference engine speaks the policy of step N. The trainer just finished step N+1. The fresh weights have to get from one side to the other before the inference engine starts drifting hopelessly off-policy. This sits on the critical path whether you are running sync or async: a blocking transfer is wasted idle compute of GPUs not generating tokens. With a sparse delta path you collapse that idle time into seconds, and the trainer does not even have to wait for the inference engine to be ready: it just publishes "weights ready" and uploads the weights to the shared bucket the moment its optimizer step finishes, while the inference engine fetches on its own time.</p>
-<p>Fireworks put a very memorable number on this in their post Frontier RL Is Cheaper Than You Think: for a frontier 1T-parameter checkpoint at fp8 (their setting), a full snapshot is 1024 GiB, and that is what conventional wisdom says you have to ship every time you update your rollout fleet. That is the kind of number that gets people to start drawing diagrams with mega-clusters, RDMA fabrics, and dedicated cross-region links. Their measured average delta between adjacent checkpoints lands at 20.3 GiB, or 1.98% of the full model, and "more than 98% of weights in bf16 format remain bit-equivalent between consecutive checkpoints".</p>
-<p>Cursor's Composer 2 report tells a parallel story. They run training and inference in different regions and stitch them together with a shared S3 bucket (their exact words), into which the trainer uploads compressed weight diffs every training step. Each cluster independently downloads and reconstructs from the shared delta chain, "requiring no direct connectivity to the training cluster". The two sides never speak to each other about parameters directly. The bucket is the wire.</p>
-<p>Both papers agree on three things, and we want to repeat them slowly, because the rest of this post is essentially a faithful open source translation:</p>
-<p>The only thing missing was a version of this story that you can pip install. So we wrote one.</p>
-<p>Before we wire anything up, it is worth understanding why this whole game is even winnable. The "98% of weights do not change" claim sounds suspiciously like one of those numbers that works in the demo and falls apart in the wild. It is not. It falls out of how bf16 arithmetic works at the learning rates RL uses.</p>
-<p>A bf16 number has 7 mantissa bits. Between two consecutive powers of two, there are exactly 27=1282^7 = 12827=128 representable values, so the spacing between adjacent bf16 numbers around ∣w∣|w|∣w∣ is roughly ∣w∣⋅2−7|w| \cdot 2^{-7}∣w∣⋅2−7. An update gets absorbed by the bf16 cast whenever it sits below half of that spacing, i.e., when ∣Δw∣<∣w∣/256|\Delta w| < |w|/256∣Δw∣<∣w∣/256. This is the "bf16 visibility threshold" PULSE plots in their Figure 3.</p>
-<p>Now look at what Adam does. At an RL learning rate of, say, 3×10−63 \times 10^{-6}3×10−6, the update to a single weight is:
- Δw=−η⋅m^v^+ϵ\Delta w = -\eta \cdot \frac{\hat{m}}{\sqrt{\hat{v}} + \epsilon}Δw=−η⋅v^​+ϵm^​</p>
-<p>The normalized step m^/(v^+ϵ)\hat{m}/(\sqrt{\hat{v}}+\epsilon)m^/(v^​+ϵ) is roughly order one, so ∣Δw∣≈η≈3×10−6|\Delta w| \approx \eta \approx 3 \times 10^{-6}∣Δw∣≈η≈3×10−6. For most weights, ∣w∣|w|∣w∣ sits somewhere around 10−210^{-2}10−2 to 10−110^{-1}10−1 (PULSE reports a median of 0.019 for representative LLM weights). The threshold ∣w∣/256|w|/256∣w∣/256 at that magnitude is around 4×10−54 \times 10^{-5}4×10−5 to 4×10−44 \times 10^{-4}4×10−4, which is bigger than the update.</p>
-<p>In other words: the optimizer is whispering, and bf16 cannot hear it. The update gets absorbed by rounding, the byte representation of www does not change, and from the inference engine's perspective, this weight did not move. Multiply that by a few hundred million parameters, and you get the >99% sparsity number, for free, with zero approximation.</p>
-<p>This is exactly the argument made formal in the PULSE paper (Mihai & Belilovsky, 2026). They define two thresholds. The absorption bound 10η10\eta10η is the conservative worst case for an Adam update, and the effective bound η\etaη is the regime you actually live in. The bf16 visibility threshold is ∣w∣/256|w|/256∣w∣/256. Whenever the update sits below the visibility threshold, it gets absorbed, and the bf16 byte does not change. Their Figure 3 plots both bounds against a cloud of representative LLM weights, and the conclusion is unambiguous: at η=3×10−6\eta = 3 \times 10^{-6}η=3×10−6, the absorption bound itself already sits below the visibility threshold for almost every weight in the model. They measure this empirically across Qwen2.5 (0.5B/1.5B/7B), Llama-3.2-3B, and Gemma-3-4B, and consistently find a mean per-step sparsity of ~99%, with a standard deviation of 0.2 to 0.4% over 400 training steps. The worst-case step stays above 98%. So <1% changed is not a lucky measurement; it is what the arithmetic guarantees.</p>
-<p>We do not have to predict this analytically (and indeed, we tried predicting the change mask from Adam's mmm and vvv statistics, but recall was a sad 30%, more on that later). We just need to observe which bytes flipped. That is a tiny boolean tensor per parameter, computed right around the optimizer step.</p>
-<p>Here is where the second piece of the story comes in, and where this post stops being a translation of Fireworks/Cursor and starts being a Hugging Face thing.</p>
-<p>A Bucket is a repo type on the Hub designed for high-frequency object storage. No commit ceremony, no PR workflow, no LFS quirks. You add files, you list files, you download files. The Python interface is two functions:</p>
-<p>That is it. Two function calls and your weights are in flight.</p>
-<p>Under the hood, buckets are backed by Xet, the Hub's content-defined chunking storage layer. Xet looks at every file you upload, slices it into chunks based on its actual content (not fixed offsets), and deduplicates against everything already in the bucket. The practical upshot, which is delightful in this context, is that even if we were too lazy to write the sparse encoding and just uploaded full anchors every step, Xet would still only transfer the changed chunks. Sparse encoding + Xet stack: we pay for what moved, and we pay for it once.</p>
-<p>This is the open source equivalent of the "shared S3 bucket" both Fireworks and Cursor reach for, except the storage layer already knows about content hashing, your existing HF token already has permission, and it composes natively with the rest of the stack (Spaces, datasets, models).</p>
-<p>The full architecture has exactly three boxes and one shared substrate:</p>
-<p>The property to internalize, the one Cursor's paper sells hard and that holds verbatim here: the trainer and the rollout server never talk to each other about weights. They exchange a tiny POST containing {"repo_id": ..., "filename": ...}, and that is the entire control plane. The actual byte transfer happens between each side and the bucket, in parallel, with no shared network fabric.</p>
-<p>The trainer writes. Replicas read. The Hub does the plumbing.</p>
-<p>Now we can open the hood. The protocol has four parts: a wire format, a bucket layout, a 30 line vLLM extension, and a trainer side change detector. It is honestly less code than it sounds.</p>
-<p>We picked safetensors for the on-disk and on-wire format. It is already the canonical checkpoint format on the Hub, every reasonable framework can read it, and the header carries arbitrary string metadata. That metadata field is where we hide the protocol.</p>
-<p>There are two kinds of files in the bucket.</p>
-<p>Anchors look like a normal checkpoint: one tensor per parameter, full bf16 weights, written every NNN syncs (we default to N=10N=10N=10).</p>
-<p>Deltas are the interesting bit. For each parameter that actually changed, we store two entries: a flat int32 tensor of element indices, and a bf16 tensor of values at those indices.</p>
-<p>The cadence is straightforward: anchor every Nth step, delta in between. Both end up in the same bucket under anchors/ and deltas/ prefixes. Each new inference replica only needs to grab the most recent anchor and then replay the deltas since.</p>
-<p>The trainer needs to know which bf16 elements actually flipped. We do this with a tiny BF16ChangeDetector that registers a pre-step and post-step hook on the optimizer:</p>
-<p>The actual code in the PR has a bit more plumbing (matching optimizer param objects to model params via data_ptr(), because Accelerate wraps them as different Python objects), but the idea fits on a napkin: snapshot, step, diff.</p>
-<p>This is ground truth. We tried the more elegant path of predicting the mask from Adam's mmm and vvv statistics, using the bf16 ULP threshold directly. It works in principle. In practice, recall was around 30%, which means we would have shipped a delta missing two thirds of the actual updates. Adam's normalization is messy enough that the analytical threshold is not tight. So we just compare bytes. It costs one bf16 CPU snapshot of the model on the trainer side, which we are willing to pay.</p>
-<p>The four phases of the new _sync_weight flow are:</p>
-<p>The line that matters is the parenthesis. Inference was paused for 1.1 seconds. The remaining 9.4 seconds were spent uploading, which occurred while the rollout server was still generating tokens. With NCCL, we were paying the full sync time as pause time. Here we are paying for it as background time.</p>
-<p>vLLM has a clean abstraction for this called WeightTransferEngine. We implement a DeltaWeightTransferEngine whose receive_weights method is, in spirit:</p>
-<p>We register it via vLLM's --worker-extension-cls flag, which means no fork of vLLM is required. You install TRL into the same image as vLLM, point the CLI at our class, and you are done.</p>
-<p>Worth mentioning: vLLM itself has an in-flight effort to land sparse weight transfer natively, vllm-project/vllm#40096. It adds receive_sparse_weights() and trainer_send_sparse_weights() directly on the WeightTransferEngine base class, with patches encoded as (indices, values) and applied in place via index_copy_(), removing the GPU/CPU validation roundtrip entirely. The PR reports a transfer of 0.16 MB in 0.40 ms for a sparse patch on Qwen3-1.7B versus 942 MB in 192 ms for a full dense send.</p>
-<p>One honest caveat in our implementation on the inference side: we keep a CPU bf16 snapshot of the model so we can reconstruct full tensors from sparse (indices, values) patches, because load_weights in vLLM today expects full tensors. Once #40096 (or its successor) lands and exposes an in-place sparse load_weights path, we can apply the indices directly on the GPU and drop the snapshot!</p>
-<p>This is the part we are smug about. Everything we have described so far works on your laptop, but the point of routing weights through a Hub bucket is that the trainer and the rollout server do not have to live anywhere near each other. So we ran a fully disaggregated training with three machines, none of which share a network:</p>
-<p>Setting this up is genuinely a few hf CLI calls. The vLLM Space's Dockerfile is essentially the upstream vLLM image plus pip install trl@... plus the entrypoint:</p>
-<p>And kick off training from anywhere on the planet that can talk HTTPS:</p>
-<p>The trainer never opens a port. The Space never sees the trainer's IP. The Wordle environment does not know either of them exists. They all talk to the Hub. Training converged on the immediate-EOS sanity check, then on real Wordle rollouts: reward went up, delta payloads stayed in the 20 to 35 MB band, and the inference-paused window per sync stayed around a second. The full run logs are linked in the companion PR.</p>
-<p>Async RL training without a cluster. If you have one GPU and a Hugging Face account, you can now do real disaggregated training. Your trainer is on the GPU; your rollout fleet lives in Spaces; your environment lives in another Space; weights move through a bucket. This used to require either a colocated setup (with all the throughput compromises that brings) or a real cluster with shared networking. It does not anymore.</p>
-<p>Multi-replica inference, for free. Stand up two vLLM Spaces, or ten. They all pull from the same bucket. Xet content-addresses storage so consecutive anchors share chunks at rest (which keeps your bucket from blowing up), and the Hub's edge cache makes repeated downloads of the same file cheap to serve. Want a globally distributed rollout fleet? That is now a small DevOps exercise, not a research project.</p>
-<p>A wire format you can debug with your existing tools. A delta is a safetensors file. You can safe_open it from a notebook, list its keys, inspect the indices, compute the sparsity yourself. We have spent enough hours in tcpdump on opaque NCCL streams to appreciate this.</p>
-<p>A path to frontier scale. The 20 to 35 MB number is for Qwen3-0.6B. The interesting question is what the curve looks like once you turn the dial up. Let us do the napkin math.</p>
-<p>Take Llama-3.1-405B. In bf16 that is 810 GB on disk. PULSE measures ~99% mean per-step sparsity at RL learning rates, so the actual delta sits around 1% of the parameters. Their deployment-measured encoding hits 108 MB on a 7B model, which is the ~130× reduction PULSE reports. Scaled linearly to 405B, the delta lands at roughly 6 GB per step.</p>
-<p>What does that buy you in wall-clock? NCCL is fast inside a cluster, sure. Assume a generous 100 GB/s aggregate broadcast bandwidth (multi-node, RDMA, the works). A full sync is 810 GB / 100 GB/s ≈ 8 seconds of inference pause, every step. With the delta path, the trainer streams 6 GB to a bucket in the background while generation keeps running, and the rollout server's actual paused window is just the apply step, which on this scale lands at a couple of seconds. So even before we leave the cluster, delta cuts the visible pause by 4× and the bytes on the wire by ~130×.</p>
-<p>Now leave the cluster. NCCL straight up does not work across clouds. Once you want a rollout fleet in us-east, another in eu-west, maybe one in a Hugging Face Space, the bucket-based path is the only path. At 1 GB/s of usable internet bandwidth, a single full broadcast would take 13 minutes; the delta does it in 6 seconds.</p>
-<p>For a 1 TB-class model in the Fireworks framing, their own measured numbers show 20.3 GiB deltas vs the 1024 GiB full snapshot, a ~50× reduction. PULSE's tighter, sparse encoding would push that further (extrapolating ~15 GB per delta, closer to ~65×). Either way, you are in a regime where shipping weights through commodity object storage stops being a hack and starts being the only sensible architecture.</p>
-<p>We are not pretending this is finished. Here is the honest list.</p>
+                <p>Benchmarking transformers revisions across different metrics</p>
+<p>This is a human-made, agent-focused blogpost.</p>
+<p>Coding agents increasingly work with our software instead of us: describe a task, and the agent picks the library,
+writes the calls, runs them, and debugs its own mistakes. When the library gets in the way, it will
+happily bypass it and rewrite the logic from scratch. This introduces a new concept in library development:
+the code should not only be correct and fast, but should be designed so that an agent can drive it effectively. A clunky API
+or stale docs annoy us developers, but it now also sends the agent down a longer, more expensive path.</p>
+<p>Most benchmarks just look at the final answer. We wanted the whole process instead: not just whether the agent got
+it right, but how much work it took to get there, and how that shifts across models, library revisions, and
+tasks. We measured exactly that, using transformers as our case study.</p>
+<p>Here, we will introduce a tool specific benchmark focusing on how the answer was found, and provide a simple 
+implementation of one such harness, running entirely on open models driven by the
+pi coding agent, with the full sweep of
+models × revisions × tasks fanned out across Hugging Face Jobs
+so every run sees identical hardware.</p>
+<p>But, how do you optimize software for agents?</p>
+<p>We're strong believers in the following two software principles:</p>
+<p>This remains the same within the realm of agentic-optimized tooling, and, for once, the two are directly tied to
+each other.</p>
+<p>You want your tool to exist for an agent: it needs to be discoverable. The API needs to be clear and the docs
+need to be extensive. They need to be structured in a way that the agent has rapid access to the useful files and
+examples. If you want your tool to work for an agent, then you should test it for agentic-use.</p>
+<p>We'll use transformers as an example throughout this blogpost: agents using it to solve ML tasks (classifying
+text, captioning images, transcribing audio), not contributing code to it; though the harness was designed to work
+with any tool that can be operated from the command line.</p>
+<p>Our intuition on transformers was that usage could be dramatically simplified
+with a few changes: a CLI, a Skill, and self-contained, task-specific examples. This is the same recipe
+recently applied to the hf CLI, redesigned to be agent-optimized,
+where agents used 1.3–1.8× (and up to 6×) fewer tokens. We wanted to know whether that kind of win generalizes, and
+whether it could be useful for transformers as well.</p>
+<p>Intuition is a powerful tool, but we wanted more evidence before we opened PRs that add several thousand lines of code to such a widely used codebase as transformers. We set out to measure what success looks like.</p>
+<p>Two agents can both produce the correct label for a sentiment-classification task,
+but one:</p>
+<p>Both reach POSITIVE (0.9999), and here are the two paths an agent actually took on this exact task:</p>
+<p>Both methods reach the same result. But they have very different profiles in cost, latency, token usage, and failures.</p>
+<p>If your evaluation only checks the final string, you're blind to these as well as
+whether a change you shipped to the library (a CLI improvement, better error messages, a
+Skill) actually helped agents.</p>
+<p>Our goal with this harness is to evaluate how much work
+an agent has to do to perform a given task, and whether changes to the library improve performance.</p>
+<p>A few words on how we'll evaluate agents here.</p>
+<p>We run every task under three variants (or "tiers"); three different ways an agent can come at transformers:</p>
+<p>These aren't nested: skill doesn't contain clone (it ships curated docs, not the source tree), and neither
+strictly contains the other, each gives the agent a different kind of help. As we'll see, a model can sometimes 
+do better on clone than on skill.</p>
+<p>Not all models driving agents are equal, and their difference changes what you should look at when running them.</p>
+<p>At one end, you have the largest, most capable open models. On reasonably common tasks,
+these should get the right answer, eventually. For them, task completion saturates near
+100% and stops telling you much about your tool; a more relevant benchmark is the effort
+it took the agent to get there: how many turns, tokens and seconds it took, and whether they walked a clean
+path or used deprecated APIs.</p>
+<p>Local models vary widely in size, and so do their abilities.
+Metrics such as "match %" are more relevant than for their larger counterparts,
+as you can see how model sizes/capabilities affect results on your specific
+tool.</p>
+<p>This harness not only provides guidance to library maintainers on how to improve a repository for agent interactions, it also helps assess how different agents and models perform on the tasks users care about.</p>
+<p>The harness scores every run on several axes, so that you can ask what actually matters
+for each class of model:</p>
+<p>All of it lands in a report you can directly examine:</p>
+<p>The live report: Overview, Coverage, and Results, all client-side.</p>
+<p>And because it captures the native agent trace of every run, numbers are just the beginning: you
+can read exactly what the agent did, command by command. The traces are shareable
+through the Hub's agent-traces viewer:</p>
+<p>A run rendered in the Hub's agent-traces viewer: MiniMax-M2.7 on the answer-question task.
+Open this trace on the Hub ↗</p>
+<p>Before the results, a quick recap of the setup. Each run varies four things: the model driving the agent,
+the transformers revision it runs against, the task, and the tier (bare / clone / skill).
+As discussed, we look at different metrics for the two different model categories.</p>
+<p>Since a large open model will usually get to the correct result, what you're really
+measuring is the effort it took to do so. Did it take ten turns or one? Did it follow
+an API path you deprecated because it trusted obsolete documentation? Did it hit an
+error you hadn't foreseen?</p>
+<p>The natural experiment is to fix one strong model and vary the tool's
+revisions: the successive git versions of transformers we test against, from released tags like
+v5.8.0 and v5.9.0 to the specific commit that introduces the CLI and Skill. We want to watch whether the load
+it puts on the agent goes up or down. We used the harness on transformers to check
+whether adding a dedicated CLI and Skill actually lightened the agents' work.</p>
+<p>For the three large models we used in our tests, the average time spent on all tasks indicates that the Skill commit
+results in less time spent working on the tasks:</p>
+<p>Median time per revision, by tier: the skill commit (green dot) is the fastest.</p>
+<p>On the other hand, in the experiments in which we cloned the repository, we can see a significant increase
+in token consumption due to the commit that introduced the CLI and examples, as we'll see in a moment.</p>
+<p>Median new tokens per revision, by tier: the clone variant jumps once the CLI lands in the repo.</p>
+<p>Reading the clone-variant traces explains why. The commit adds a command, but it also ships the
+CLI's implementation and a set of cli/agentic/*.py usage examples into the repository directly.</p>
+<p>On the clone variant the agent has a full transformers checkout in front of it, and roughly a third of the runs go read the new
+surface (the /cli/ tree and the example scripts) to learn the interface before calling it. This raises the
+median input from ~4k to ~6.4k tokens.</p>
+<p>The two charts are then two sides of one tradeoff: the commit buys the large models less time 
+(they reach for the CLI instead of debugging Python) at the cost of more
+tokens (they read the code that taught them the CLI). A tradeoff worth knowing about before merging PRs.</p>
+<p>One caveat works in the CLI's favor, though, which isn't benchmarked yet: the cost of reading it is amortized 
+with successive runs. Our setup is built for one-off experiments. Each run is a fresh agent that rediscovers 
+the CLI from scratch, so it pays the discovery cost every time. In real usage an agent learns the interface 
+once and then solves task after task within the same session, amortizing that cost across many requests. The
+token bump we measure here is closer to a worst case than to what a user would see day to day.</p>
+<p>Open models give us fine-grained control over the variables that matter most here: size, configuration, quantization,
+provider, training, and anything that would differ from one model to the next. They're also where a good tool surface
+matters most: a small model asked to "use transformers to do X" on a bare environment can
+guess an API that changed some releases ago, may do unnecessary tool calls, and can
+get the wrong answer.</p>
+<p>So here the experiment is the opposite of the above: hold the revision and sweep the model. This helps
+see which models actually take care of the task, not just by token count and time,
+but down to which ones can't reliably handle the tool calls. Our intuition is
+that the smaller the model, the harder both tool use and the task get; we ran the
+harness across a range of model sizes to test exactly that:</p>
+<p>Match % across models, by tier: the skill tier lifts the larger models but drops the smaller ones.</p>
+<p>which also seems to be correlated with the number of tokens ingested</p>
+<p>Median new tokens across models, by tier.</p>
+<p>A note on fair comparison: naively averaging across tasks is misleading when
+coverage is uneven (a model that only finished the quick tasks looks fast). The
+report has a "shared tasks only" toggle (across models and/or revisions) so
+you compare like-for-like, and a Coverage heatmap so you can see exactly which
+task × revision × model cells actually ran.</p>
+<p>Two things come together here: how to look past whether the agent succeeded to what it did and how it
+did it; as well as the first results we pulled out of the harness.</p>
+<p>Match %, tokens, and time tell you the cost of a run but don't tell you much about what happened under the hood.</p>
+<p>This is why we've introduced the concept of markers. A marker is a named pattern the profile (the
+small per-tool plugin that teaches the harness how to build and drive a given library) matches against
+a run.</p>
+<p>It is a one-line label for a behavior you care about, checked against the shell
+commands the agent ran, the code it wrote, the files it read, or its final
+answer. A run can fire several markers or none; the report shows how often each one fired,
+per model and per revision.</p>
+<p>For transformers we declare a handful but we'll only look at the two most relevant ones:</p>
+<p>These are what we watch to see whether a change actually shifted the agent's behavior. Interestingly here,
+the larger the model, the more it leverages the new context instead of using its memory; therefore leveraging
+the newly introduced CLI.</p>
+<p>CLI adoption by tier across models: only the skill tier reaches for it, and more so as models grow.</p>
+<p>CLI adoption is new: the CLI lands in a single commit, isn't in any model's training data, and is only
+lightly documented. The effect is clear: it's the Skill variant, the one that ships the CLI's
+documentation, that actually reaches for it, at 55.3%.</p>
+<p>Comparing the commit across model sizes, the CLI + Skill helps the bigger models: on the skill tier, Kimi and the other large agents reach for the CLI and finish in fewer turns. (On clone they spend more input tokens first, reading the new CLI code, as we saw above, so the win shows up in time and turns, not raw tokens.)</p>
+<p>Kimi-K2.6, GLM-5.1, and MiniMax-M2.7 across revisions</p>
+<p>But in some smaller-model settings, it appears to hurt performance. One plausible explanation is that small
+models lean on memorized API patterns, reproducing pipeline(...) snippets
+they've seen in their training data. The new concepts are then a larger
+surface for them to get wrong. You can watch this directly on the harness: lower
+match %, more retries, the cli marker barely firing. It is particularly striking on the Qwen3-4B model:
+the Skill barely changes its match rate yet its cost distribution is significantly affected.</p>
+<p>Almost all of that comes from the clone tier. The checkout now contains
+the CLI's implementation and cli/agentic/*.py examples, and the 4B agent reads them in bulk: its median new
+tokens jump from ~2.4k to ~23k, with time and output skyrocketing as well, for no gain in
+accuracy.</p>
+<p>Qwen3-4B across revisions. The CLI + Skill commit fans the cost distribution wide open, on the clone tier the agent reads the newly-shipped CLI source in bulk (~10× the new tokens), for no gain in match %. (repeat tokens stays flat: this setup uses no prompt caching.)</p>
+<p>Sometimes, though, the Skill breaks correctness outright. Reading the traces shows how, for example for Qwen3-14B: 
+adding the Skill drops its overall match rate from 67% (bare) to 43%, and on the simplest tasks the collapse is very
+visible: classify-sentiment goes from 100% on the clone variant to 0% with the Skill.</p>
+<p>Qwen3-14B on classify-sentiment, by tier: clone (blue) holds at 100% across revisions, but the Skill variant (green) collapses to 0% at the CLI + Skill revision.</p>
+<p>Looking at the traces, the model mistakes the CLI for a tool it can call directly (as in an agentic-harness
+tool, like web-search). The Skill is not an executable tool: it's documentation loaded
+into the agent's context, and the transformers CLI is only ever meant to be run from the shell (via bash); so this
+will not work.</p>
+<p>Qwen3-14B reads the Skill and, in 39 of its 56 Skill runs, either emits a transformers(command="classify", ...)
+tool call (a tool that was never registered) or, finding nothing like it among its read/bash/edit/write
+tools, concludes it can't run a model and gives up. Either way, rather than fall back to the one-line
+pipeline(...) that scored 100% on the clone checkout, it declares the task impossible.</p>
+<p>Qwen3-14B on classify-sentiment (Skill variant): it reasons that read/bash/edit/write can't run a model, and gives up.</p>
+<p>This is exactly what we built the harness to catch: the same change that speeds the large models
+ends up breaking the small ones, which seemed a bit counterintuitive to us at first and something we'd likely have
+shipped as-is. The takeaway for maintainers: agent-facing APIs should be evaluated across model sizes, because a
+new affordance can reduce work for strong models while adding ambiguity for smaller ones. It also hints at a fix:
+rather than hand-write a Skill and check it after the fact, you could generate and validate one against the weaker
+models up front.</p>
+<p>This is exactly what Upskill does: it turns a strong model's solution into 
+a Skill only when it measurably helps the smaller ones.</p>
+<p>The harness is one CLI, agent-eval. Install it, run a suite, fan it out across models × revisions on HF Jobs, and publish the
+report as a Hugging Face Space.</p>
+<p>Trusted local use only. The harness runs a coding agent with bypassed permissions and executes code from
+whatever revision you point it at, and traces can contain prompts, output, and local paths. See
+SECURITY.md before pointing it at code you didn't write or sharing results.</p>
+<p>The full, kept-current setup and usage instructions live in the README.</p>
+<p>Checking the final answer tells you whether an agent can use your library. It
+doesn't tell you what it costs: the turns, tokens, errors, and the path it took to
+get there. This harness measures that, across the revisions and models you pick.</p>
+<p>On transformers, it caught something we'd have shipped on faith: the CLI + Skill
+helps the largest open models and hurts the smallest ones. Worth knowing before merging!</p>
+<p>It's profile-based, and designed to be adaptable: point it at your own library, define
+a few tasks and their expected answers, get the same report. Code and tasks are in
+the repo, traces are on the Hub.
+Let us know if you use it for your project!</p>
+<p>This harness stands entirely on
+pi, Mario
+Zechner's coding-agent CLI: it drives every open-model run, and only needs an
+HF_TOKEN to serve a model, which is what made the open-model sweep practical at
+all.</p>
+<p>Thanks to the model builders and inference providers behind the models we
+swept. Across the board they performed well above what the bare baseline would
+suggest.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/delta-weight-sync" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/is-it-agentic-enough" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

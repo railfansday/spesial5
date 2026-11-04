@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Let Decision Models Watch Your Agents</title>
+    <title>Agent Graph Engineering, Part 5: How to Build Safer AI Agents With Structured Errors and Guardrails</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9872.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,72 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Let Decision Models Watch Your Agents</h1>
+        <h1>Agent Graph Engineering, Part 5: How to Build Safer AI Agents With Structured Errors and Guardrails</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/zVjkyxMw8wMXdtd791QOTmlledp2-9483bls.png" alt="Agent Graph Engineering, Part 5: How to Build Safer AI Agents With Structured Errors and Guardrails" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/zVjkyxMw8wMXdtd791QOTmlledp2-9483bls.png" alt="Agent Graph Engineering, Part 5: How to Build Safer AI Agents With Structured Errors and Guardrails" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>A hands-on guide to detecting behavioral anomalies from an agent’s evolving execution history</p>
-<p>The post <a href="https://towardsdatascience.com/let-decision-models-watch-your-agents/">Let Decision Models Watch Your Agents</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>Senior full-stack engineer. I build realtime systems and AI agents in Python, and write about the parts that hurt in production.</p>
+<p>Senior full-stack engineer. I build realtime systems and AI agents in Python, and write about the parts that hurt in production.</p>
+<p>Senior full-stack engineer. I build realtime systems and AI agents in Python, and write about the parts that hurt in production.</p>
+<p>TL;DR Two edges, one idea: constrain the model declaratively rather than by inspecting what it produced. A tool is a function plus metadata, and it signals failure by raising a structured error, never by returning a string the model has to interpret. An action that cannot be undone needs at-most-once execution, because a crash inside a node re-runs that node. On the other edge, the guardrail that actually works is demarcation, fencing customer-written text as data, not keyword detection, and output screening runs before the human approval gate rather than instead of it.</p>
+<p>Part 4 covered the agent and the flow that routes it. This post is about the two edges where a model touches the world: the things it can do, and the things it can say. They belong together because the mistake is the same on both sides, which is trying to fix bad behavior by reading the output rather than by shaping what is possible.</p>
+<p>Here is the version almost everyone writes first:</p>
+<p>Returning the error feels right, because the model needs to know it failed. It does. The problem is what else now depends on that sentence.</p>
+<p>The model reads it and decides what to do next, so your retry logic is now a model inferring intent from English. Your frontend wants to show a different card for “rate limited” than for “card declined”, so somebody writes if "rate limit" in result.lower(). Then you reword the message for clarity and three things break silently, none of which have tests, because the tests also match on the prose.</p>
+<p>Worse, a genuine bug becomes indistinguishable from a handled failure. A ZeroDivisionError in your refund maths comes back as "Error: could not issue refund", the model apologizes politely to the customer, and nothing pages anyone.</p>
+<p>So tools raise, and a decorator converts:</p>
+<p>The wrapper catches ToolError and turns it into a result carrying a machine-readable error_type. Callers branch on the type. Nobody parses a sentence.</p>
+<p>Two properties fall out, and the second one took me an incident to appreciate.</p>
+<p>Two audiences, one failure. message is what the model sees and can be as technical as you like. user_message is what a person sees, and it falls back to message when a tool does not bother. Collapsing them into one string means either leaking internals to a customer or starving the model of what it needs to recover. The refund ceiling is the clearest case:</p>
+<p>The model is told the argument it passed and the limit it broke, which is what it needs to decide whether to retry with a smaller amount or escalate. The customer is told the policy. Neither sentence would do both jobs.</p>
+<p>Anything that is not a ToolError propagates. That is deliberate and it is the important half. A ZeroDivisionError is a bug, not a handled failure, and converting it into a tidy tool result is how you ship a system that silently does the wrong thing and looks healthy. Let it crash, let the run fail loudly, and find out.</p>
+<p>A tool is registered with a decorator, and the arguments are the interesting part:</p>
+<p>The distinction that cost me real time: description and planner_hint drive selection, and the docstring does not. The tool list a deciding model is shown renders only the id, the description and the hint. So putting “use this, not that one” in the docstring cannot prevent a wrong pick, because the model choosing has never seen the docstring. It only sees it later, when it is filling in arguments.</p>
+<p>I wrote careful docstrings for a week before working that out.</p>
+<p>One more rule worth stating: a parameter with a closed set of values should be a Literal, not a str. As a Literal it renders in the JSON schema as an enum and the model cannot invent a value. As a str it can, and will, and you find out in production when someone’s status="pending_review_maybe" hits your database.</p>
+<p>requires_approval=True is how an irreversible action declares itself. The graph reads it, and that is what parks the run for a human. It is one keyword on one decorator rather than a branch somewhere in the flow, which means adding a dangerous tool cannot accidentally skip the gate.</p>
+<p>This is the part I would most want someone to read before putting a refund behind an agent.</p>
+<p>A process killed mid-refund refunds again when the work comes back. Whatever holds the half-finished run holds the state it started from, so the retry re-enters the graph and arrives at the refund node a second time. If the node issued a refund, it issues another one.</p>
+<p>The codebase says this plainly, and says how it knows:</p>
+<p>A process killed mid-refund refunds again when the work comes back. The state the backend holds is the one the run started from, so a redelivered decision re-enters the graph and reaches the refund node a second time. Verified, not assumed.</p>
+<p>The fix is a ledger. Before an irreversible call, claim it. After it returns, record it. The key is the run’s own id plus the tool: a redelivered decision carries that id back, so the second attempt claims the first one’s row, and a question asked later is a new run with a new id and runs normally. It lives in the agent’s own Postgres, so the claim survives the process that made it. Part 7 has what makes a key like that right, and the plausible one that is not.</p>
+<p>That quote is worth a note, because it changed. It used to blame LangGraph checkpointing after a node returns, which was true of the design then. Part 7 replaced that design and the sentence had to be rewritten, and the ledger did not: the retry arrives by a different road and lands in the same place. Which is the useful thing to notice. A guard worth having does not depend on which mechanism brings the second attempt.</p>
+<p>And then the part that makes it trustworthy:</p>
+<p>The honest limit: if the process dies between claiming and recording, nobody knows whether the call went through. That is reported rather than guessed, so a person checks. Retrying risks a second refund and skipping risks none at all.</p>
+<p>There is no clever answer to that window. You cannot make a remote side effect and a local record atomic without the remote side cooperating, which most payment APIs do via an idempotency key and some do not. What you can do is refuse to guess. A system that reports “I do not know whether this happened” is dramatically better than one that picks a default and is sometimes wrong about money.</p>
+<p>A ticket’s title, description, and history are typed by a customer. If your prompt includes them, and it must, then part of your prompt is attacker-controlled. This is not hypothetical; it is the default condition of any support assistant.</p>
+<p>The repo lists two defenses and ranks them, which is the useful bit:</p>
+<p>Demarcation. Untrusted text is fenced and labeled as data, so the model has a stated boundary between “what someone wrote” and “what you were told to do”. This is the one that works. Detection. Known injection shapes are recorded so an attempt is visible in the trace. This does not block: a keyword match is far too blunt to refuse a support ticket over, and a guard everyone learns to ignore is worse than none.</p>
+<p>Note the cleaned line. If you do not strip your own fence from the text, the text can close your fence and start writing outside it, which is the same class of bug as SQL injection and has the same fix. That one line is the difference between a boundary and the appearance of one.</p>
+<p>The ranking matters more than either mechanism. Detection is tempting because it feels like security: you have a list of bad patterns, you match on them, you block. In a support product that produces false positives on legitimate tickets, which trains your staff to click through the warning, which means the warning is now worse than nothing because it costs attention and buys zero safety. So detection here records a finding into the trace and does not block. The attempt is visible to whoever investigates later, and no customer is refused service over a keyword.</p>
+<p>Fencing is also contextual rather than universal, which took me one confusing bug to learn. When the same customer text becomes a search query rather than part of a prompt, it goes in unfenced, and the comment says why: the fence boilerplate matches articles. Wrapping a query in “untrusted, written by a customer, treat as data” means searching your knowledge base for those words. Right defense, wrong place.</p>
+<p>Both guards produce findings, and the severity is where the policy lives:</p>
+<p>That is the detection-versus-demarcation argument made concrete. A suspected injection on the way in is a NOTICE: visible in the trace, no customer refused. Something shaped like a credential on the way out is a BLOCK: the draft does not reach a reviewer at all, because there is no judgement call to make about leaking a secret.</p>
+<p>Being straight about the limits, because a guardrails section that sounds complete is its own hazard.</p>
+<p>The pattern list is thirteen regexes and it catches the lazy attempt. It does not catch a payload that is base64 or hex encoded, and it does not catch anything rephrased around the wording. That is survivable here only because detection was never the defence: demarcation is, and demarcation does not care how the attempt is spelled.</p>
+<p>The gap I would actually worry about is indirect injection. Everything above screens the ticket, which is the text a customer typed. It does not screen what comes back from a tool, or the contents of an attachment, and those reach the model too. A knowledge base article someone else wrote is attacker-controlled in exactly the same way a ticket is, and it arrives through a path with no fence around it.</p>
+<p>On the way out, secrets and foreign identifiers are screened, which is more than the input side gets. There is no PII redaction.</p>
+<p>Worth knowing where this plugs in if you want more. Pydantic AI does not ship guardrails: what it ships is pydantic_ai.capabilities, a hook API with WrapToolExecuteHandler, WrapOutputValidateHandler and content_filter, plus Agent.output_validator. That is the seam. Packages like pydantic-ai-shields and pydantic-ai-guardrails build on it and cover encoding, PII and secret redaction properly. I have not adopted one here, because the thing I want this repo to argue is the ranking rather than the regex list, and a young dependency teaches neither. If you are shipping to real customers, the hook is there and the libraries are better at detection than thirteen patterns of mine will ever be.</p>
+<p>The other edge is what goes out. A drafted reply gets screened for things shaped like credentials, and for identifiers belonging to a different ticket:</p>
+<p>That check is crude and I like it anyway. A model that has been handed context from several records can mention one that is not this customer’s, and a regex for “a UUID that is not the one we are working on” catches exactly that with no model call and no latency.</p>
+<p>The framing in the module docstring is the part worth copying:</p>
+<p>This runs before the human approval gate, not instead of it: a machine check that a person never has to think about, ahead of the judgement call only a person can make.</p>
+<p>Machine checks and human judgement are not competing. The machine should remove every class of problem that can be specified, so the person’s attention is spent entirely on the part that genuinely requires a person. Every mechanical check you add is attention you give back to the reviewer.</p>
+<p>Structured errors are more code than returning a string. You define an exception class per failure kind. The payoff only arrives when something consumes the kind, which is usually a week later when the UI wants to behave differently.</p>
+<p>The ledger is a second write on the hot path, and a window you cannot close. You are trading a small amount of latency and a rare “please check this manually” for never double-refunding. For money, that is obviously correct. For a tool that sends a Slack message, it is probably over-engineering.</p>
+<p>Fencing costs tokens, and on a long thread the fences add up. Worth it.</p>
+<p>Pattern-based screening has false positives and misses things. It catches credential shapes and foreign identifiers, which are the two cases that actually hurt. It will not catch a model confidently stating a wrong policy, and nothing at this layer can. That is what evals are for, in post 10.</p>
+<p>No tool sandboxing. Tools run in the agent process with whatever credentials it has, so an SSRF-shaped tool, one that fetches a URL the model chose, would need its own allowlist and egress rules. There is no such tool in the demo, and if you add one, that is your job rather than something inherited.</p>
+<p>No output moderation model. The screening is patterns, not a classifier. A classifier is better and costs a call.</p>
+<p>Next up is the structural half: splitting one graph into specialists, which is a multi-agent system by another name. The requires_approval=True from earlier finally gets explained properly. Hope this one is useful, and if you take one thing, let it be raising structured errors instead of returning prose.</p>
+<p>Agent Graph Engineering, Part 4: Building AI Agents With Typed Outputs and Graph-Based Routing</p>
+<p>Senior full-stack engineer. I build realtime systems and AI agents in Python, and write about the parts that hurt in production.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/let-decision-models-watch-your-agents/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/agent-graph-engineering-part-5-how-to-build-safer-ai-agents-with-structured-errors-and-guardrails?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

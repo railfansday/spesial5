@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open-sourcing Knowledge Distillation Code and Weights of SD-Small and SD-Tiny</title>
+    <title>SDXL in 4 steps with Latent Consistency LoRAs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11147.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Open-sourcing Knowledge Distillation Code and Weights of SD-Small and SD-Tiny</h1>
+        <h1>SDXL in 4 steps with Latent Consistency LoRAs</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/lcm_sdxl/lcm_thumbnail.png" alt="SDXL in 4 steps with Latent Consistency LoRAs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/lcm_sdxl/lcm_thumbnail.png" alt="SDXL in 4 steps with Latent Consistency LoRAs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Latent Consistency Models (LCM) are a way to decrease the number of steps required to generate an image with Stable Diffusion (or SDXL) by distilling the original model into another version that requires fewer steps (4 to 8 instead of the original 25 to 50). Distillation is a type of training procedure that attempts to replicate the outputs from a source model using a new one. The distilled model may be designed to be smaller (that’s the case of DistilBERT or the recently-released Distil-Whisper) or, in this case, require fewer steps to run. It’s usually a lengthy and costly process that requires huge amounts of data, patience, and a few GPUs.</p>
+<p>Well, that was the status quo before today!</p>
+<p>We are delighted to announce a new method that can essentially make Stable Diffusion and SDXL faster, as if they had been distilled using the LCM process! How does it sound to run any SDXL model in about 1 second instead of 7 on a 3090, or 10x faster on Mac? Read on for details!</p>
+<p>So, what’s the trick? 
+For latent consistency distillation, each model needs to be distilled separately. The core idea with LCM LoRA is to train just a small number of adapters, known as LoRA layers, instead of the full model. The resulting LoRAs can then be applied to any fine-tuned version of the model without having to distil them separately. If you are itching to see how this looks in practice, just jump to the next section to play with the inference code. If you want to train your own LoRAs, this is the process you’d use:</p>
+<p>For more details on the process, please download our paper.</p>
+<p>Fast inference of Stable Diffusion and SDXL enables new use-cases and workflows. To name a few:</p>
+<p>To gauge the speed difference we are talking about, generating a single 1024x1024 image on an M1 Mac with SDXL (base) takes about a minute. Using the LCM LoRA, we get great results in just ~6s (4 steps). This is an order of magnitude faster, and not having to wait for results is a game-changer. Using a 4090, we get almost instant response (less than 1s). This unlocks the use of SDXL in applications where real-time events are a requirement.</p>
+<p>The version of diffusers released today makes it very easy to use LCM LoRAs:</p>
+<p>This would result in the following full-resolution image:</p>
+<p>Image generated with SDXL in 4 steps using an LCM LoRA.</p>
+<p>Let’s see how the number of steps impacts generation quality. The following code will generate images with 1 to 8 total inference steps:</p>
+<p>These are the 8 images displayed in a grid:</p>
+<p>As expected, using just 1 step produces an approximate shape without discernible features and lacking texture. However, results quickly improve, and they are usually very satisfactory in just 4 to 6 steps. Personally, I find the 8-step image in the previous test to be a bit too saturated and “cartoony” for my taste, so I’d probably choose between the ones with 5 and 6 steps in this example. Generation is so fast that you can create a bunch of different variants using just 4 steps, and then select the ones you like and iterate using a couple more steps and refined prompts as necessary.</p>
+<p>Note that in the previous examples we used a guidance_scale of 1, which effectively disables it. This works well for most prompts, and it’s fastest, but ignores negative prompts. You can also explore using negative prompts by providing a guidance scale between 1 and 2 – we found that larger values don’t work.</p>
+<p>How does this compare against the standard SDXL pipeline, in terms of quality? Let’s see an example!</p>
+<p>We can quickly revert our pipeline to a standard SDXL pipeline by unloading the LoRA weights and switching to the default scheduler:</p>
+<p>Then we can run inference as usual for SDXL. We’ll gather results using varying number of steps:</p>
+<p>SDXL pipeline results (same prompt and random seed), using 1, 4, 8, 15, 20, 25, 30, and 50 steps.</p>
+<p>As you can see, images in this example are pretty much useless until ~20 steps (second row), and quality still increases noticeably with more steps. The details in the final image are amazing, but it took 50 steps to get there.</p>
+<p>This technique also works for any other fine-tuned SDXL or Stable Diffusion model. To demonstrate, let's see how to run inference on collage-diffusion, a model fine-tuned from Stable Diffusion v1.5 using Dreambooth.</p>
+<p>The code is similar to the one we saw in the previous examples. We load the fine-tuned model, and then the LCM LoRA suitable for Stable Diffusion v1.5.</p>
+<p>LCM LoRA technique with a Dreambooth Stable Diffusion v1.5 model, allowing 4-step inference.</p>
+<p>The integration of LCM in diffusers makes it possible to take advantage of many features and workflows that are part of the diffusers toolbox. For example:</p>
+<p>This section is not meant to be exhaustive, but illustrative of the generation speed we achieve on various computers. Let us stress again how liberating it is to explore image generation so easily.</p>
+<p>These tests were run with a batch size of 1 in all cases, using this script by Sayak Paul.</p>
+<p>For cards with a lot of capacity, such as A100, performance increases significantly when generating multiple images at once, which is usually the case for production workloads.</p>
+<p>Latent Consistency Models LoRAs Collection</p>
+<p>latent-consistency/lcm-sdxl. Full fine-tuned consistency model derived from SDXL 1.0 base.</p>
+<p>latent-consistency/lcm-ssd-1b. Full fine-tuned consistency model derived from segmind/SSD-1B.</p>
+<p>Using the diffusers + PEFT integration, you can combine LCM LoRAs with regular SDXL LoRAs, giving them the superpower to run LCM inference in only 4 steps.</p>
+<p>Here we are going to combine CiroN2022/toy_face LoRA with the LCM LoRA:</p>
+<p>Standard and LCM LoRAs combined for fast (4 step) inference.</p>
+<p>Need ideas to explore some LoRAs? Check out our experimental LoRA the Explorer (LCM version) Space to test amazing creations by the community and get inspired!</p>
+<p>As part of the diffusers release today, we are providing training and fine-tuning scripts developed in collaboration with the LCM team authors. They allow users to:</p>
+<p>For more details, please check the instructions for SDXL or Stable Diffusion in the repo.</p>
+<p>We hope these scripts inspire the community to try their own fine-tunes. Please, do let us know if you use them for your projects!</p>
+<p>Latent Consistency Models project page, paper.</p>
+<p>LoRA the Explorer (experimental LCM version)</p>
+<p>The amazing work on Latent Consistency Models was performed by the LCM Team, please make sure to check out their code, report and paper. This project is a collaboration between the diffusers team, the LCM team, and community contributor Daniel Gu. We believe it's a testament to the enabling power of open source AI, the cornerstone that allows researchers, practitioners and tinkerers to explore new ideas and collaborate. We'd also like to thank @madebyollin for their continued contributions to the community, including the float16 autoencoder we use in our training scripts.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/sd_distillation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/lcm_lora" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

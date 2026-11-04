@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How //go:embed Works: From Source Files to Binary</title>
+    <title>Netflix Launches First AI-Branded Content Recommendations Feature on TVs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9995.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,297 +15,26 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How //go:embed Works: From Source Files to Binary</h1>
+        <h1>Netflix Launches First AI-Branded Content Recommendations Feature on TVs</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://internals-for-interns.com/images/guest-header.png" alt="How //go:embed Works: From Source Files to Binary" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/tv_64.png" alt="Netflix Launches First AI-Branded Content Recommendations Feature on TVs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://internals-for-interns.com/images/guest-header.png" alt="How //go:embed Works: From Source Files to Binary" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/tv_64.png" alt="Netflix Launches First AI-Branded Content Recommendations Feature on TVs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Since its release in Go 1.16 (2021), //go:embed has quickly proven to be one of the most loved
-features of the Go language. Russ Cox and Brad Fitzpatrick originally designed the feature in 2020
-to embed files and directories into Go binaries using a go directive (more on what that is later).
-It allows engineers to quickly embed anything they want instead of using awkwardly formatted
-constant string literals or reaching for flaky third-party tooling to bake data directly next to
-their program.</p>
-<p>Feedback on the proposal
-was overwhelmingly positive.
-It was quickly coined as one of the stand-out features of Go, not only because it’s an easy way to
-embed strings and byte slices, but because it also shipped with a read-only file system. That was
-the part that set it apart from other languages; D
-and
-Zig
-shipped expressions, but Go shipped a file
-system you could interact with easily, straight from the standard library.</p>
-<p>Iâm unreasonably excited about this feature. I feel like I always have some big olâ JSON or
-template or something chilling in a constant making the file looking more unruly than it actually
-is, but donât want to ship the file with the binary or bring in some sort of 3rd party tool like
-packr into the mix.</p>
-<p>So let’s have a look into //go:embed, to see how to use it, but also see how it works under the
-hood; so you’re able to make more informed decisions when shipping static assets alongside your
-programs.</p>
-<p>So how do we use it? Here’s a simple example to whet your appetite:</p>
-<p>Before we get into any of that, it’s worth remembering the problem this was built to solve.</p>
-<p>I’m sure we’ve all seen something like this before:</p>
-<p>How annoying is this to debug? It’s usually not difficult or cumbersome, but fiddly and
-time-consuming. You usually have to debug some weird absolute/relative path fiasco or go into some
-glob patterns. This is exactly why an embed feature was needed, it makes static assets incredibly
-easy to ship.</p>
-<p>We’ve talked about what //go:embed is, but let’s just touch on what it isn’t for a moment.</p>
-<p>So now we’ve seen what it is, let’s remind ourselves how to use it on a high level. If you’re
-familiar with the concepts of how to use it, feel free to skip
-this section
-.</p>
-<p>There are three data types we can use with //go:embed; a string, a byte slice and a read-only
-file system. Here are all three of them in one program:</p>
-<p>We first need to import the embed package. The import isn’t blank here because we’re naming
-embed.FS below, so we need the package itself. A blank import (import _ "embed") is for when
-you’re only embedding into strings and byte slices. Either way, it sends a signal to the compiler
-that we need to embed data, and you’ll see exactly how that works later on.</p>
-<p>Then it’s one directive per variable, one type each:</p>
-<p>And then we just use them. They’re variables. No os.Open, no path fiddling, no “did I ship the
-migrations folder?”. The contents are already there, just like any other variable in your program.
-Note that a file inside an FS keeps the path it was embedded with, which is why we’re asking for
-assets/index.css rather than just index.css.</p>
-<p>The FS type has a bit more going on with it, so it’s worth a proper look.
-You can see the methods below: Open, ReadDir and ReadFile.</p>
-<p>The most important thing to note is that it satisfies the fs.FS interface, which means we can use
-it in many different ways. It makes it easy to plug and play across packages, such as
-http.FileServer to serve it as a static site or template.ParseFS to parse HTML templates.</p>
-<p>Before we dive any deeper, let’s give ourselves a folder to work with. This is the example we’ll
-be coming back to all the way down to the linker, so it’s worth a proper look.</p>
-<p>We’re serving a normal website. An index.html at the root, and some css and js in a folder
-called assets. No more, no less.</p>
-<p>To embed that into the program, we create a string variable for the contents of index.html, and an
-embed.FS for the contents of the assets folder, and then just print them. In a production
-environment you’d serve these through a handler, but we’ve kept it simple for now.</p>
-<p>The assets/* pattern gets us every file in that folder; naming the directory on its own
-(//go:embed assets) takes the whole tree instead. The difference isn’t only depth: naming the
-directory skips every file beginning with . or _ anywhere beneath it, where the /* glob still
-pulls those in at the top level. Write all:assets when you want the whole tree, dotfiles and all.
-There are more gotchas in the pkg.go.dev/embed
-docs.</p>
-<p>Now that we know what //go:embed is, we’ve seen how it works. Let’s dive a little bit deeper to
-see how it’s constructed under the hood. If I were to show you a bunch of code from the Go
-compiler out of context in the next section, I’ll probably have you lost; like it did me for a few
-days researching into how Go is built (TLDR; it’s challenging but worth it).</p>
-<p>Everything below was read against Go 1.27.1, and every file and line number links to that tag
-on GitHub, so the lines quoted here stay put even after the toolchain moves on.</p>
-<p>So before we go anywhere near how go is built, let’s zoom all the way out. When you type go build,
-six steps run in order and out the other end comes a binary. This is the path that matters for
-//go:embed; it isn’t everything the toolchain does, just the part your files travel through.</p>
-<p>I’m aware that there’s a whole heap of stuff that we’re not going into here such as SSA,
-inlining, escape analysis, etc… But none of it really touches the embed packages, because your
-data never becomes instructions; they are just bytes after all.</p>
-<p>The first thing worth knowing is that there isn’t one program doing all of this. There are several,
-each responsible for its own thing, and go build is the one that runs the other two.</p>
-<p>Notice the three different sections, that’s the bit that tripped me up for the longest, go
-runs once for the whole build, compile runs once per package, and link runs once at the
-end. It’s an important nuance to understand.</p>
-<p>Check out go.dev/src/cmd/compile/README
-for more information.</p>
-<p>So now, onto the juicy bits. Let’s start with how Go looks at your project. When you run go build it needs to know what files and packages exist, so it knows what to parse and build.</p>
-<p>A package directory goes in, and a *build.Package comes out. So it walks your project, finds every
-.go file and then works out which package each one belongs to. For every file, it notes down where
-it lives, what it imports, and any directives (such as //go:embed) that it carries.</p>
-<p>You can see our assets/ folder and index.html being skipped, because they aren’t Go files and
-this pass only cares about Go. main.go makes it through the condition into matchFile, and
-out the other side comes a Package which details its name, its Go files, and the position of
-every //go:embed pattern in it.</p>
-<p>Reference: src/go/build/build.go
-((*Context).Import, simplified)</p>
-<p>Our //go:embed index.html and //go:embed assets/* have been spotted and recorded along with
-their file names and token positions.</p>
-<p>But how did it spot the comment originally? This is where the lexer comes into play.</p>
-<p>The lexer (or scanner, or tokeniser, whatever you fancy) is the first thing that actually reads your
-code as Go, rather than as a blob of bytes. It scans the file one character at a time and chops it
-up into little tokens, which are the pieces of code that mean something on their own. Such as
-func, var, =, a string literal, or a comment.</p>
-<p>This is the stage that makes //go:embed actually possible. In Go, a comment is a real token
-(token.COMMENT).</p>
-<p>Lexer: one character at a time, into tokens</p>
-<p>Characters go in and tokens come out. The whole //go:embed index.html line becomes a single
-COMMENT token, and the two words of var indexHTML string become a VAR and two IDENTs.</p>
-<p>The go command’s scan is deliberately inexpensive as it stops at the end of the import block,
-because that’s normally all it needs. Unless, however it saw import "embed" on the way past,
-in which case it reads on to the end of the file, picking out every
-comment starting //go:embed:</p>
-<p>Reference: src/go/build/read.go#L374-L392
-(readGoInfo, simplified)</p>
-<p>That hasEmbed flag is the real reason import _ "embed" is mandatory even when you never type the
-package name. If you don’t import the package, we’ll never go into this code block.</p>
-<p>What comes out is a list of the patterns it found, and where each one was written:</p>
-<p>We now have patterns to file names and line numbers, but there are no files? This is where resolving
-embed patterns comes in.</p>
-<p>Within the go command we have a fairly important function called resolveEmbed which resolves
-patterns into actual files and trees. File patterns go in, and real file paths come out.</p>
-<p>Patterns: resolveEmbed turns patterns into files</p>
-<p>The glob is where it gets interesting. Our index.html was only ever going to match itself, but
-assets/* fans out to assets/index.css and assets/index.js, neither of which we named anywhere.
-That’s the first time anything in this whole process has actually gone and looked at your disk.</p>
-<p>So these patterns get expanded, globbing it against the disk and walking any directory it
-matches, into a list of actual file names. You can see this in action below:</p>
-<p>Reference: src/cmd/go/internal/load/pkg.go#L2165
-(resolveEmbed, simplified)</p>
-<p>Those two return values become the two data points that the compiler needs:</p>
-<p>The go command marshals them into JSON, writes it to a file called embedcfg in the build’s
-temporary work directory, and passes that path to the compiler as -embedcfg, once per package.</p>
-<p>Why a file, why not just hand it over directly? Because go build and the compiler are two separate
-processes, as we saw in that first diagram, so it gets written down instead.</p>
-<p>For our example project, the generated embedcfg looks like:</p>
-<p>Reference: work/exec.go#L893-L906
-builds and marshals it, work/gc.go#L148-L152
-writes it and passes -embedcfg (simplified)</p>
-<p>(Tip: go list -json=EmbedPatterns,EmbedFiles . surfaces these exact matched patterns and files
-straight from the package metadata, any time you want to look.)</p>
-<p>We’re in a different program now. Tokens go in, along with the path to that embedcfg, and what
-comes out is a tree with your directive attached to the right node.</p>
-<p>The parser is where the real magic happens in the Go compiler. It takes those tokens and little
-bits of Go code and works out their structure. A bit like breaking a sentence down into a
-subject, verb and object.</p>
-<p>The result is a syntax tree; you may have heard of the term AST before, which is short for
-abstract syntax tree. It’s the building blocks of our program. Every piece of your code (a
-function, a variable, an if statement) becomes a node within that tree.</p>
-<p>Directives such as //go:embed get attached to the node, which is how Go knows which variable to
-put your embedded file in.</p>
-<p>The below example is captured from the two lines from our example above:</p>
-<p>Parser: the directive and the variable are one node</p>
-<p>Both the Doc and Specs come under GenDecl. The comment and the variable aren’t two things that
-happen to be near each other in a file; they’re two branches of one node. That’s how the compiler
-knows the contents of index.html go into indexHTML, and not into whatever is declared next.</p>
-<p>Which looks like this. The dump is go/ast, which is what ast.Print gives you and what most
-tooling reads. The compiler’s own parser is cmd/compile/internal/syntax and holds the same shape
-under different names, which is why checkEmbed in the next section takes a *syntax.VarDecl:</p>
-<p>Clever stuff, right? This was the aha moment for me. The comment and variable are one declaration
-in Go’s eyes.</p>
-<p>Now onto the nuts and bolts, the compiler. A tree goes in, and what comes out is an object archive,
-one per package, which is your code compiled but not yet runnable on its own. This is also the stage
-where your data is actually allocated.</p>
-<p>Everything so far has been bookkeeping; finding files, expanding patterns and writing lists, but not
-one byte of your index.html has actually been allocated into your program. However, in this step,
-it does.</p>
-<p>The compiler lays your variable out in memory and fills it with the file’s contents, as static data,
-that’s there before your program runs a single line of your app’s code.</p>
-<p>Although its first job isn’t your files at all, it’s the rules. Remember, the go command spotted
-your directive and wrote the pattern down, but it never checked anything about it, which is
-mentioned in the comments:</p>
-<p>Reference: src/go/build/read.go#L369-L373
-(readGoInfo)</p>
-<p>Now it checks what you’ve written is actually valid. Nearly every //go:embed error message you’ve
-probably seen comes from this switch statement:</p>
-<p>Reference: src/cmd/compile/internal/noder/noder.go#L462-L481
-(checkEmbed, simplified)</p>
-<p>Compiler: WriteEmbed lays <h1>Hello</h1> out as 14 bytes of read-only data</p>
-<p>Reference: src/cmd/compile/internal/staticdata/embed.go#L101-L134
-(WriteEmbed, simplified)</p>
-<p>Here we can see WriteEmbed switching on the variable’s data type. It then goes on to call a
-function called fileStringSym, which opens your file and returns a symbol for its contents, as
-well as the size.</p>
-<p>Okay, but what’s a symbol? Forget []byte for a second. A symbol is a box with a name on it, what
-it’s called, how big it is, and where it lives in the binary. That’s what the linker actually needs
-to do its job, and it’s why fileStringSym hands one back rather than the bytes themselves.
-This is where your asset has stopped being a path and has actually become data.</p>
-<p>The rest is ordinary compilation. The tree gets turned into machine code
-(cmd/compile/internal/ssagen), and out comes one object archive per package, which is code that
-can’t run yet, which is where the linker comes into play.</p>
-<p>Although the linker has little to do with //go:embed, it plays a crucial part in the
-build process. It’s a separate program, located under cmd/link. Many .a files go in, and one
-executable comes out. All of the object archives that we mentioned above, now are joined together.
-It fills in all the gaps so every piece can find the others.</p>
-<p>Which is where the Go runtime is injected. The runtime is built-in code that manages memory,
-goroutines and all of the stuff that makes Go, Go.</p>
-<p>Linker: object archives and the runtime become one binary</p>
-<p>There’s main.a still carrying our 14 bytes, along with fmt.a, embed.a, every other package you
-pulled in, and runtime.a. On the right is what they become, one binary, and our <h1>Hello</h1>
-sitting in the rodata section, which is where read-only data lives.</p>
-<p>Now run it (./myapp) and voilÃ ! We have your finished program; maybe we should take a
-breather…</p>
-<p>I know that was a lot to take in, so let’s go back to where we started and walk it once more, now
-that all the names mean something. I always find this easier to read as pseudocode, so here we go.
-It isn’t real or runnable; it just connects all the dots:</p>
-<p>Three separate processes, and they don’t run the same number of times, go runs once for the whole
-build, compile runs once per package and link runs once at the end. That’s why embedcfg is
-written per package, immediately before each compile invocation.</p>
-<p>And you don’t have to take my word for any of it. go build -x prints the real command lines and the
-temporary directory, so you can watch embedcfg being written and passed along, and
-ls $(go env GOROOT)/pkg/tool/$(go env GOOS)_$(go env GOARCH)/ shows you that compile and link
-really are separate binaries sitting on your disk. Every Reference link above points at the exact
-lines in Go 1.27.1 if you’d like to read the real thing.</p>
-<p>So the bytes are in the binary. The last question is what happens when your program actually
-opens them, because that depends on which of the three types you picked.</p>
-<p>For a string or a []byte, there’s almost nothing to tell, and that’s rather the point. The
-compiler wrote a pointer and a length, and the pointer aims at bytes sitting in the rodata section
-we just watched the linker build. Reading the variable is an ordinary variable read.</p>
-<p>An embed.FS is more involved, and it’s the more interesting half. Remember it’s a single pointer to
-a hidden list, and here’s what’s on the end of it:</p>
-<p>Reference: src/embed/embed.go#L151-L212
-(FS and file, simplified)</p>
-<p>Each file’s contents are a string, pointing into the same read-only data our indexHTML did,
-so a 40MB asset isn’t sitting in your heap waiting for you.</p>
-<p>Asking for a file is a search, not a syscall. The list is sorted, so
-lookup
-does a binary search
-over it, and readDir
-does two
-of them to find where a directory starts and ends, then hands back that stretch of the slice. There’s
-no disk involved at any point, which is why ModTime on an embedded file is the zero time. There’s
-nothing there to have been modified.</p>
-<p>There’s one detail worth the whole section, though, and it’s the difference between the two ways of
-getting at your bytes. Open hands you back an openFile that reads straight out of that string,
-copying only as much as fits the buffer you gave it. ReadFile ends looking a bit like this:</p>
-<p>Reference: src/embed/embed.go#L322-L332
-(ReadFile)</p>
-<p>That conversion is a copy, and a fresh one on every call. So the 40MB asset that wasn’t sitting in
-your heap a moment ago lands there the moment you call ReadFile on it. Open doesn’t; it fills
-your buffer a chunk at a time, which is the path http.FileServer and io.Copy take. Neither
-touches the disk, but only one of them allocates the file.</p>
-<p>You’ve seen how it works and how it’s used, so let’s talk about what it costs you, because embedding
-isn’t free.</p>
-<p>Remember what WriteEmbed did with those bytes. They’re read-only data in the object file now, which
-means your file isn’t really a file any more. So change one line of CSS, and you have to rebuild.</p>
-<p>This can be a bit painful because nobody wants a full build on every save. The fix is the last
-in this section, so hold onto that.</p>
-<p>And here’s the one that catches people out. Embedded bytes are just data in the binary, which means
-they’re readable:</p>
-<p>Anyone with your binary has your file. So no .env, no private keys, no credentials. It might seem
-obvious, but it’s an easy one to forget when you’re embedding a whole config directory.</p>
-<p>Now for the good news. Remember checkEmbed, that big switch statement? Bad patterns, no matching
-files, the wrong type, a variable inside a function; all of them are build failures. But the
-compiler knows the file exists. It doesn’t know it’s the file you meant. That’s where the
-standard library has a package that can help you out.</p>
-<p>testing/fstest is the handy little package of the standard library that doesn’t get enough
-attention, which is a shame, as it works perfectly alongside embed. fstest.TestFS takes your FS
-and a list of paths you expect to find within it, and then does two jobs at once:</p>
-<p>The trick is what you list. It shouldn’t be a whole inventory of the FS, just a handful of the
-files your code actually opens:</p>
-<p>Only name what you’d notice missing; the template your handler executes, the migration directory,
-the default config. Everything else is just noise that makes the test brittle.</p>
-<p>And this is the one thing I’d really like you to take away, and the answer to the rebuild problem we
-started this section with.</p>
-<p>Take fs.FS in your constructors, not embed.FS. Your server doesn’t care where the files came
-from; it cares that it can open them. Which means a test can hand you an fstest.MapFS instead,
-with the files declared inline as a map.</p>
-<p>And now you can ask the questions a good unit test should ask. What if this file is empty? What if
-it’s corrupt, or 40 megabytes? You can answer all of that without touching the disk or waiting on a
-build. It’s also how you sidestep the rebuild-to-change-a-byte problem in development: the same
-constructor takes os.DirFS("./assets") while you’re working and your embed.FS in production, and
-nothing else in your program needs to know which one it got.</p>
-<p>So that’s the whole journey, from a comment in your source to bytes in the rodata section of a
-binary you can copy anywhere.</p>
-<p>//go:embed is one of those quiet features about Go that makes it so easy to reason about. It’s
-a kind of feature that you didn’t know you needed until it came along. It makes for a great
-experience when you’re building a package that needs to ship some data with it.</p>
-<p>I would really encourage you to have a look at the Go source code, although it can look scary at
-first (I spent some time dazed and confused looking at it). But it really makes you a better
-engineer for knowing how these constructs work.</p>
-<p>Please reach out to me at hello@ainsley.dev
-if you have any questions!
-I hope you’ve enjoyed reading this post as much as I have writing it.</p>
-<p>A reminder for each section, its program, package and line numbers are below:</p>
-<p>A collection of blog posts explaining software internals in an approachable way</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>So, other than labeling it AI and joining the AI marketing wave, how is this different than the recommendation algorithms from Apple, Amazon, Paramount, Hulu...</p>
+<p>Will Netflix be more subtle in recommending its new titles? Or will they be recommended no matter what until we watch it and then less frequently after that?</p>
+<p>I'm curious as to how it's different than what they've been doing in general.</p>
+<p>Didn't they have big ol machine learning competitions for recommendations a decade ago?</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Waymo Cuts Ties With Uber, Will Serve Riders Directly</p>
+<p>It is better to never have tried anything than to have tried something and
+failed.
+- motto of jerks, weenies and losers everywhere</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://internals-for-interns.com/posts/how-go-embed-works/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://entertainment.slashdot.org/story/26/11/04/2034237/netflix-launches-first-ai-branded-content-recommendations-feature-on-tvs?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

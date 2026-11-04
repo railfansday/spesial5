@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open-Source Text Generation &amp; LLM Ecosystem at Hugging Face</title>
+    <title>The N Implementation Details of RLHF with PPO</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11155.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,69 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Open-Source Text Generation &amp; LLM Ecosystem at Hugging Face</h1>
+        <h1>The N Implementation Details of RLHF with PPO</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/167_the_n_implementation_details_of_rlhf_with_ppo/thumbnail.png" alt="The N Implementation Details of RLHF with PPO" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/167_the_n_implementation_details_of_rlhf_with_ppo/thumbnail.png" alt="The N Implementation Details of RLHF with PPO" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>RLHF / ChatGPT has been a popular research topic these days. In our quest to research more on RLHF, this blog post attempts to do a reproduction of OpenAI’s 2019 original RLHF codebase at openai/lm-human-preferences. Despite its “tensorflow-1.x-ness,” OpenAI’s original codebase is very well-evaluated and benchmarked, making it a good place to study RLHF implementation engineering details.</p>
+<p>This work is just for educational / learning purposes. For advanced users requiring more features, such as running larger models with PEFT, huggingface/trl would be a great choice.</p>
+<p>Our main contribution is to reproduce OAI’s results in stylistic tasks, such as sentiment and descriptiveness. As shown in the figure below, our codebase (orange curves) can produce nearly identical learning curves as OAI’s codebase (blue curves).</p>
+<p>To make a direct comparison, we ran the original RLHF code at openai/lm-human-preferences, which will offer valuable metrics to help validate and diagnose our reproduction. We were able to set the original TensorFlow 1.x code up, but it requires a hyper-specific setup:</p>
+<p>We now take a technical deep dive into the implementation details that are relevant to reproducing OAI’s work. In this section, we talk about basic details, such as how rewards/values are generated and how responses are generated. Here are these details in no particular order:</p>
+<p>The reward model and policy’s value head take input as the concatenation of query and response</p>
+<p>Pad with a special padding token and truncate inputs.</p>
+<p>OAI sets a fixed input length for query query_length; it pads sequences that are too short with pad_token (lm_human_preferences/language/datasets.py#L66-L67) and truncates sequences that are too long (lm_human_preferences/language/datasets.py#L57). See here for a general introduction to the concept). When padding the inputs, OAI uses a token beyond the vocabulary (lm_human_preferences/language/encodings.py#L56).</p>
+<p>Note that having no padding token is a default setting for decoder models, since they train with “packing” during pretraining, which means that many sequences are concatenated and separated by the EOS token and chunks of this sequence that always have the max length are fed to the model during pretraining.</p>
+<p>When putting everything together, here is an example</p>
+<p>Adjust position indices correspondingly for padding tokens</p>
+<p>When calculating the logits, OAI’s code works by masking out padding tokens properly. This is achieved by finding out the token indices corresponding to the padding tokens (lm_human_preferences/language/model.py#L296-L297), followed by adjusting their position indices correspondingly (lm_human_preferences/language/model.py#L320).</p>
+<p>For example, if the query=[23073, 50259, 50259] and response=[11, 339, 561], where (50259 is OAI’s padding token), it then creates position indices as [[0 1 1 1 2 3]] and logits as follows. Note how the logits corresponding to the padding tokens remain the same as before! This is the effect we should be aiming for in our reproduction.</p>
+<p>Note on HF’s transformers — position_ids and padding_side. We can replicate the exact logits using Hugging Face’s transformer with 1) left padding and 2) pass in the appropriate position_ids:</p>
+<p>Note on HF’s transformers — position_ids during generate: during generate we should not pass in position_ids because the position_ids are already adjusted in transformers (see huggingface/transformers#/7552.</p>
+<p>Usually, we almost never pass position_ids in transformers. All the masking and shifting logic are already implemented e.g. in the generate function (need permanent code link).</p>
+<p>Response generation samples a fixed-length response without padding.</p>
+<p>During response generation, OAI uses top_k=0, top_p=1.0 and just do categorical samples across the vocabulary  (lm_human_preferences/language/sample.py#L43) and the code would keep sampling until a fixed-length response is generated (lm_human_preferences/policy.py#L103). Notably, even if it encounters EOS (end-of-sequence) tokens, it will keep sampling.</p>
+<p>Note on HF’s transformers — sampling could stop at eos_token: in transformers, the generation could stop at eos_token (src/transformers/generation/utils.py#L2248-L2256), which is not the same as OAI’s setting. To align the setting, we need to do set pretrained_model.generation_config.eos_token_id = None, pretrained_model.generation_config.pad_token_id = None. Note that transformers.GenerationConfig(eos_token_id=None, pad_token_id=None, ...) does not work because pretrained_model.generation_config would override and set a eos_token.</p>
+<p>Note that in a more recent codebase https://github.com/openai/summarize-from-feedback, OAI does stop sampling when encountering EOS token (summarize_from_feedback/utils/experiment_helpers.py#L19). However in this work we aim to do a 1:1 replication, so we align the setting that could keep sampling even eos_token is encountered</p>
+<p>Learning rate annealing for reward model and policy training.</p>
+<p>Use different seeds for different processes</p>
+<p>In this section, we discuss reward-model-specific implementation details. We talk about details such as reward normalization and layer initialization. Here are these details in no particular order:</p>
+<p>In this section, we will delve into details, such as layer initialization, data post-processing, and dropout settings. We will also explore techniques, such as of rejection sampling and reward "whitening", and adaptive KL. Here are these details in no particular order:</p>
+<p>Scale the logits by sampling temperature.</p>
+<p>Select query texts that start and end with a period</p>
+<p>Token truncation: We want to truncate at the first occurrence of truncate_token that appears at or after position truncate_after in the responses (lm_human_preferences/train_policy.py#L378)</p>
+<p>Run reward model on truncated response: After the response has been truncated by the token truncation process, the code then runs the reward model on the truncated response.</p>
+<p>Rejection sampling: if there is not a period between tokens 16 and 24, then replace the score of the response with a fixed low value (such as -1)(lm_human_preferences/train_policy.py#L384, lm_human_preferences/train_policy.py#L384-L402)</p>
+<p>To give some examples in descriptiveness:</p>
+<p>Samples extracted from our reproduction https://wandb.ai/openrlbenchmark/lm_human_preference_details/runs/djf8yymv/logs. Notice the 1st and 3rd example has too many tokens after the period, so its score was replaced by -1.</p>
+<p>Terminology of the training loop: batches and minibatches in PPO</p>
+<p>OAI uses the following training loop (lm_human_preferences/train_policy.py#L184-L192). Note: we additionally added the micro_batch_size to help deal with the case in gradient accumulation. At each epoch, it shuffles the batch indices.</p>
+<p>Per-minibatch reward and advantage whitening, with optional mean shifting</p>
+<p>In each minibatch, OAI then whitens the reward whiten(rewards, shift_mean=False) without shifting the mean (lm_human_preferences/train_policy.py#L325) and whitens the advantages whiten(advantages) with the shifted mean (lm_human_preferences/train_policy.py#L338).</p>
+<p>Optimization note: if the number of minibatches is one (which is the case in this reproduction) we only need to whiten rewards, calculate and whiten advantages once since their values won’t change.</p>
+<p>TensorFlow vs PyTorch note: Different behavior of tf.moments vs torch.var: The behavior of whitening is different in torch vs tf because the variance calculation is different:</p>
+<p>The KL divergence penalty coefficient β\betaβ is modified adaptively based on the KL divergence between the current policy and the previous policy. If the KL divergence is outside a predefined target range, the penalty coefficient is adjusted to bring it closer to the target range (lm_human_preferences/train_policy.py#L115-L124). It’s implemented as follows:</p>
+<p>For the sentiment and descriptiveness tasks examined in this work, we have init_kl_coef=0.15, hparams.target=6, hparams.horizon=10000.</p>
+<p>pytorch adam :θt=θt−1−α⋅m^t/(v^t+ε)=θt−1−α[mt/(1−β1t)]⏟=m^t/[vt/(1−β2t)⏟=v^t+ε]=θt−1−α[mt/(1−β1t)]1−β2tvt+ε1−β2t\begin{aligned}\text{pytorch adam :}\quad \theta_t & =\theta_{t-1}-\alpha \cdot \hat{m}_t /\left(\sqrt{\hat{v}_t}+\varepsilon\right) \\& =\theta_{t-1}- \alpha \underbrace{\left[m_t /\left(1-\beta_1^t\right)\right]}_{=\hat{m}_t} /\left[\sqrt{\underbrace{v_t /\left(1-\beta_2^t\right)}_{=\hat{v}_t} }+\varepsilon\right]\\& =\theta_{t-1}- \alpha\left[m_t /\left(1-\beta_1^t\right)\right]\frac{\sqrt{1-\beta_2^t}}{\sqrt{v_t}+\color{green}{\varepsilon \sqrt{1-\beta_2^t}}}\end{aligned}pytorch adam :θt​​=θt−1​−α⋅m^t​/(v^t​​+ε)=θt−1​−α=m^t​[mt​/(1−β1t​)]​​/​=v^t​vt​/(1−β2t​)​​​+ε​=θt−1​−α[mt​/(1−β1t​)]vt​​+ε1−β2t​​1−β2t​​​​</p>
+<p>tensorflow adam:θt=θt−1−αtmt/(vt+ε^)=θt−1−[α1−β2t/(1−β1t)]⏟=αtmt/(vt+ε^)=θt−1−α[mt/(1−β1t)]1−β2tvt+ε^\begin{aligned}\text{tensorflow adam:}\quad \theta_t & =\theta_{t-1}-\alpha_t m_t /\left(\sqrt{v_t}+\hat{\varepsilon}\right) \\& =\theta_{t-1}-\underbrace{\left[\alpha \sqrt{1-\beta_2^t} /\left(1-\beta_1^t\right)\right]}_{=\alpha_t} m_t /\left(\sqrt{v_t}+\hat{\varepsilon}\right) \\& =\theta_{t-1}- \alpha\left[m_t /\left(1-\beta_1^t\right)\right] \frac{\sqrt{1-\beta_2^t}}{\sqrt{v_t}+\color{green}{\hat{\varepsilon}}} \end{aligned}tensorflow adam:θt​​=θt−1​−αt​mt​/(vt​​+ε^)=θt−1​−=αt​[α1−β2t​​/(1−β1t​)]​​mt​/(vt​​+ε^)=θt−1​−α[mt​/(1−β1t​)]vt​​+ε^1−β2t​​​​</p>
+<p>The equations above highlight that the distinction between pytorch and tensorflow implementation is their normalization terms, ε1−β2t\color{green}{\varepsilon \sqrt{1-\beta_2^t}}ε1−β2t​​  and ε^\color{green}{\hat{\varepsilon}}ε^. The two versions are equivalent if we set  ε^=ε1−β2t\hat{\varepsilon}  =\varepsilon \sqrt{1-\beta_2^t}ε^=ε1−β2t​​ .  However, in the pytorch and tensorflow APIs, we can only set ε\varepsilonε (pytorch) and ε^\hat{\varepsilon}ε^ (tensorflow) via the eps argument, causing differences in their update equations. What if we set  ε\varepsilonε and ε^\hat{\varepsilon}ε^  to the same value, say, 1e-5? Then for tensorflow adam, the normalization term ε^=1e-5\hat{\varepsilon} = \text{1e-5}ε^=1e-5  is just a constant. But for pytorch adam, the normalization term ε1−β2t{\varepsilon \sqrt{1-\beta_2^t}}ε1−β2t​​ changes over time. Importantly, initially much smaller than 1e-5 when the timestep ttt is small, the term  ε1−β2t{\varepsilon \sqrt{1-\beta_2^t}}ε1−β2t​​  gradually approaches to 1e-5 as timesteps increase. The plot below compares these two normalization terms over timesteps:</p>
+<p>The above figure shows that, if we set the same eps in pytorch adam and tensorflow adam, then pytorch-adam uses a much smaller normalization term than tensorflow-adam in the early phase of training. In other words, pytorch adam goes for more aggressive gradient updates early in the training. Our experiments support this finding, as we will demonstrate below.</p>
+<p>How does this impact reproducibility and performance? To align settings, we record the original query, response, and rewards from https://github.com/openai/lm-human-preferences and save them in https://huggingface.co/datasets/vwxyzjn/lm-human-preferences-debug/tree/main. I also record the metrics of the first two epochs of training with TF1’s AdamOptimizer optimizer as the ground truth.  Below are some key metrics:</p>
+<p>PyTorch’s Adam produces a more aggressive update for some reason. Here are some evidence:</p>
+<p>Larger models get affected more. We conducted experiments comparing PyTorch’s Adam (codename pt_adam) and our custom TensorFlow-style (codename tf_adam) with gpt2 and gpt2-xl. We found that the performance are roughly similar under gpt2; however with gpt2-xl, we observed a more aggressive updates, meaning that larger models get affected by this issue more.</p>
+<p>Noticed this work does not try to reproduce the summarization work in CNN DM or TL;DR. This was because we found the training to be time-consuming and brittle.</p>
+<p>The particular training run we had showed poor GPU utilization (around 30%), so it takes almost 4 days to perform a training run, which is highly expensive (only AWS sells p3dn.24xlarge, and it costs $31.212 per hour)</p>
+<p>Additionally, training was brittle. While the reward goes up, we find it difficult to reproduce the “smart copier” behavior reported by Ziegler et al. (2019). Below are some sample outputs — clearly, the agent overfits somehow. See https://wandb.ai/openrlbenchmark/lm-human-preferences/runs/1ab47rqi/logs for more complete logs.</p>
+<p>In this work, we took a deep dive into OAI’s original RLHF codebase and compiled a list of its implementation details. We also created a minimal base which reproduces the same learning curves as OAI’s original RLHF codebase, when the dataset and hyperparameters are controlled. Furthermore, we identify surprising implementation details such as the adam optimizer’s setting which causes aggressive updates in early RLHF training.</p>
+<p>This work is supported by Hugging Face’s Big Science cluster 🤗. We also thank the helpful discussion with @lewtun and @natolambert.</p>
+<p>I am confused about the whitening function.</p>
+<p>Note it’s rsqrt: https://pytorch.org/docs/stable/generated/torch.rsqrt.html</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/os-llms" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/the_n_implementation_details_of_rlhf_with_ppo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

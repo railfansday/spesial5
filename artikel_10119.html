@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Migrating Your GitHub CI to Hugging Face Jobs</title>
+    <title>Introducing Amazon ECS Gateway: A fully-managed ingress solution for ECS services</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10119.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Migrating Your GitHub CI to Hugging Face Jobs</h1>
+        <h1>Introducing Amazon ECS Gateway: A fully-managed ingress solution for ECS services</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/github-ci-hf-jobs/thumbnail.gif" alt="Migrating Your GitHub CI to Hugging Face Jobs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2024/10/21/ECS-icon.png" alt="Introducing Amazon ECS Gateway: A fully-managed ingress solution for ECS services" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/github-ci-hf-jobs/thumbnail.gif" alt="Migrating Your GitHub CI to Hugging Face Jobs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2024/10/21/ECS-icon.png" alt="Introducing Amazon ECS Gateway: A fully-managed ingress solution for ECS services" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you have a GitHub repository and you have GitHub Actions enabled, you probably use GitHub-hosted runners for CI. That is the default for many projects because it is simple: add a workflow, write runs-on: ubuntu-latest, and GitHub gives you a machine.</p>
-<p>That default is convenient, but it also has limits. GitHub Actions can be slow or down for maintenance, the hosted machines are generic, and GPU access is not something most open-source projects can just turn on. For Trackio, those limits started to matter. We wanted both reliable CPU CI for basic unit tests and frontend checks, but also GPU CI for tests that need to run on actual CUDA hardware.</p>
-<p>So built an alternative: keep GitHub Actions in charge of CI, but run the jobs on Hugging Face Jobs.</p>
-<p>The result: Trackio's CI now runs on Hugging Face Jobs and streams back real-time logs, cutting our CI time for CPU jobs by about 30% and enabling a whole new test suite that runs on GPU machines!</p>
-<p>In this article, we explain step-by-step how to recreate the same setup for your GitHub repo. If you are using an agent, you can point it to this article, since we provide CLI instructions alongside browser-based instructions for us humans.</p>
-<p>Let's start with a quick intro to Hugging Face Jobs!</p>
-<p>Hugging Face Jobs lets you run commands or scripts on Hugging Face's serverless infrastructure with almost any hardware flavor. A Job is essentially:</p>
-<p>That makes Jobs a natural fit for CI. CI jobs are already command-driven, already run in clean environments, and often benefit from choosing exactly the right hardware. For ML libraries, the GPU case is especially compelling: you can run a test suite on real GPU hardware without maintaining your own always-on runner.</p>
-<p>The key step is connecting GitHub Actions to HF Jobs, which we describe below.</p>
-<p>For this setup, we created huggingface/jobs-actions, a small bridge that turns a GitHub Actions job into an ephemeral self-hosted runner running inside an HF Job.</p>
-<p>From GitHub's point of view, this is just a self-hosted runner. From Hugging Face's point of view, it is just a Job that launches a container to run the workflow steps from the repo’s GitHub Actions.</p>
-<p>The first thing you need is the dispatcher. This is a small Docker Space that receives GitHub workflow_job webhook events and launches HF Jobs in response.</p>
-<p>Create this first because the GitHub App needs a webhook URL, and that URL comes from the Space. This Space should be under your own namespace or under a Hugging Face org that you have write access to.</p>
-<p>Go to huggingface/jobs-actions-dispatcher and click Duplicate this Space.</p>
-<p>Use cpu-upgrade for real CI so the dispatcher stays available for GitHub webhooks. cpu-basic is fine for testing and will probably work, but it can sleep after inactivity; if GitHub's webhook arrives while it is waking up, the workflow may stay queued forever.</p>
-<p>After it builds, open the duplicated Space. You will see a section that says "Required Space secrets," which you can ignore for now. The landing page should display the GitHub App webhook URL you need in the next step. It will look like this:</p>
-<p>If you'd prefer to set up the dispatcher Space with an agent or use a CLI workflow:</p>
-<p>Next, create and install the GitHub App from the dispatcher Space itself. This App needs permission to listen for queued workflow jobs and create ephemeral self-hosted runner registration tokens.</p>
-<p>In the setup form, enter the GitHub repo whose CI should run on HF Jobs:</p>
-<p>Then click the button to create the GitHub App. GitHub will ask you to choose a name for the App; the name can be anything, as long as it is available in your GitHub account or org. After you submit, the final screen tells you exactly how to upload the App credentials to the dispatcher Space with the hf CLI.</p>
-<p>Important note: you will need to provide an Hugging Face token that has permissions to launch Jobs, corresponding to your personal account or an org under which Jobs should be charged. This token should be saved as the HF_TOKEN secret in your dispatcher Space.</p>
-<p>Finally, you will install the App on the same GitHub repo you entered in the Space. In the Trackio setup, we installed it on gradio-app/trackio.</p>
-<p>The GitHub App manifest flow is still browser-based, but an agent can follow the same Space-driven path:</p>
-<p>Paste $GITHUB_REPO into the Space, click the GitHub App creation button, choose any available App name, and follow the generated GitHub instructions.</p>
-<p>After the App exists, install it on your repo from the App settings page. For a GitHub org, the installation settings are under:</p>
-<p>At this point, the dispatcher Space should be configured. The GitHub App setup flow generated the commands that upload the App credentials, webhook secret, and Hugging Face token to the Space.</p>
-<p>By default, HF Jobs are launched under the same namespace as the dispatcher Space. Optionally, set HF_NAMESPACE as a Space variable if you want to bill jobs to a different Hugging Face user or org:</p>
-<p>The token you set in Step 2 should correspond to this namespace.</p>
-<p>The actual workflow change is small. Instead of:</p>
-<p>use one of the labels handled by the dispatcher:</p>
-<p>For any GitHub Action you'd like to run on HF Jobs, this 1-line change is all you need!</p>
-<p>To add a minimal smoke-test workflow from the CLI:</p>
-<p>You should be able to see logs just like a regular GitHub Action—for example, in this Trackio PR #565.</p>
-<p>Our first CPU setup used ubuntu:22.04 and installed missing system packages during every run. That worked, but it was slower than it needed to be. GitHub's ubuntu-latest image includes a lot of developer tooling by default; a bare Ubuntu image does not.</p>
-<p>For Trackio, the UI tests need Playwright browsers, Node, ffmpeg, sqlite, git, and normal Linux build dependencies. Hugging Face Jobs supports using any Docker image, so we switched to the Microsoft Playwright image, which worked well:</p>
-<p>Here are the numbers from the Trackio CI:</p>
-<p>The biggest win was GPU CI. The Trackio GPU check ran on HF Jobs and passed in 45s, costing less than a cent at the t4-small rate for that duration.</p>
-<p>The CPU result was also encouraging. With the right image, the Linux test job was faster than the GitHub-hosted baseline. That suggests HF Jobs can be a practical CI backend, especially for ML projects that need custom images or accelerators.</p>
-<p>Logs were another pleasant surprise. GitHub Actions logs are useful, but the web UI can be heavy for large logs. HF Jobs logs are easy to fetch from the CLI:</p>
-<p>That makes them easy to inspect with local tools or coding agents. In our bridge, we also mirrored the GitHub Actions job log into the HF Job log, so either system had enough information to debug a run.</p>
-<p>Finally, although we didn't need them for Trackio's CI, HF Jobs also supports mounting volumes, which can be very helpful if you need to load datasets or models from Hugging Face quickly as part of your CI.</p>
-<p>Hopefully, this gives you all you need to try HF Jobs for running your GitHub Actions!</p>
-<p>GitHub CI is limitless and free. In Huggingface now I can't even run more 3 CPU spaces.</p>
-<p>Hi @k-l-lambda  what error do you see when try to run more than 3 CPU Spaces? Can you share a bit more about your CI setup?</p>
-<p>Please feel free to drop a comment if you need any help migrating your CI!</p>
+                <p>AWS is the world's most comprehensive cloud, enabling organizations to accelerate innovation, reduce costs, and scale more efficiently</p>
+<p>Migrate to modernize → Modernize to unlock data → unlock data to run AI</p>
+<p>Get started with one of these featured services or browse all</p>
+<p>From startups to enterprises, find AWS solutions scaled to your needs. Access tailored resources, pricing models, and support levels.</p>
+<p>When platform teams manage containerized applications at scale on Amazon Elastic Container Service (Amazon ECS), configuring ingress networking for each service often becomes a bottleneck. For every new service, teams must provision and connect Application Load Balancers (ALBs), AWS Certificate Manager (ACM) certificates, AWS WAF web ACLs, and security groups, then keep those resources in sync as services scale, update, or operate. This per-service overhead slows down deployment velocity and increases the risk of configuration drift across an organization.</p>
+<p>Today, we’re announcing Amazon ECS Gateway, a new account-level resource that simplifies ingress networking for containerized workloads by dynamically provisioning and managing the necessary infrastructure on your behalf, with all resources created directly in your account.</p>
+<p>ECS Gateway introduces a clear separation of responsibilities between platform teams and application teams.</p>
+<p>ECS Gateway offers host-based routing using ALBs and enables up to 25 services to share a single ALB, optimizing infrastructure costs. ECS manages the full lifecycle of the underlying infrastructure, provisioning the first ALB when your first service connects, adding more ALBs as capacity is reached, and removing them when no longer needed. Each service receives a unique DNS hostname, giving your teams a ready-to-use endpoint the moment provisioning completes.</p>
+<p>A first look at ECS Gateway
+         In the ECS console, platform team can create a gateway and sets its configuration. The infrastructure role is an IAM role that ECS assumes to provision and manage networking resources such as ALBs, security groups, and certificates in your account. To create a gateway, provide a gateway name and select an infrastructure role. You can optionally associate the gateway with ECS clusters during creation or later.</p>
+<p>Choose a load balancing scheme, either public or VPC-internal traffic routing. Under Additional Settings, you can also set up a listener, port, maximum count of load balancers the gateway can scale to, and a web ACL lets you protect your web applications. Some settings, including the name, scheme, VPC, subnets, IP address type, listener protocol and port cannot be changed after gateway creation.</p>
+<p>Using AWS Command Line Interface (AWS CLI), call CreateGateway with a name (unique per account), an infrastructure role, and a configuration object. No infrastructure is provisioned until a service connects with a gateway connector.</p>
+<p>Once the gateway is created, you can take a look at the detailed configuration, gateway routes, load balancers, and associated clusters.</p>
+<p>Now associate the gateway with one or more clusters (many-to-many), to make it available to ECS services on those clusters.</p>
+<p>Use AssociateGatewayWithCluster to make the gateway available to services on a cluster:</p>
+<p>To create and manage the ECS Gateway programmatically, including calling APIs and searching documentation, try the AWS MCP Server and plugins with your preferred AI coding tool. To learn more, visit the Amazon ECS Gateway documentation.</p>
+<p>ECS Gateway:Behind the scenesA gateway can be associated with up to 10,000 clusters, and a single cluster supports up to five gateway associations. This many-to-many relationship gives platform teams the flexibility to share a gateway across environments or assign multiple gateways (for example, public and private) to a single cluster.</p>
+<p>Platform teams can control access by choosing which gateways to associate with which clusters. For additional control, use IAM policies to restrict who can deploy services to specific clusters.</p>
+<p>Application teams add the gateway connector to each service definition in CreateService or UpdateService. If you have an existing ECS service with its own load balancer, you can adopt ECS Gateway incrementally by calling UpdateService to add a gateway connector. Both ingress paths remain available, allowing you to validate the gateway connection before removing the existing load balancer configuration.</p>
+<p>At deployment time, Amazon ECS evaluates the gateways associated with the cluster and connects the service to every compatible gateway. A gateway is compatible when its access type matches the service’s connector filter, it is in the same VPC as the service, and it covers all Availability Zones used by the service’s configured subnets.</p>
+<p>For each connection, Amazon ECS assigns the service to an ALB with available capacity and provisions the per-service resources: an ACM certificate, a unique DNS hostname, a listener rule routing traffic for that hostname to the service target group, and a service security group allowing inbound traffic only from the ALB security group. If no existing ALB has capacity, ECS creates a new one (up to maxAlbCount referring to quota limit). Once provisioning completes, the gateway route becomes ACTIVE, and the service URL is ready to receive traffic.</p>
+<p>ECS Gateway handles common operational scenarios automatically:</p>
+<p>Things to Know
+         Here are a few important details to keep in mind:</p>
+<p>Now available
+         Amazon ECS Gateway is available now in all commercial AWS Regions where ECS is available at no additional charge. You pay only for the underlying infrastructure provisioned in your account when services connect to a gateway, including applicable ALB charges, CloudWatch logs and metrics, ACM certificates, and data transfer charges. To learn more, visit the Amazon ECS Pricing page.</p>
+<p>To get started, create your first gateway today in the ECS console, and send feedback to AWS re:Post for ECS or through your usual AWS Support contacts.</p>
+<p>Channy is a Lead Blogger of AWS News Blog and Principal Developer Advocate for AWS Cloud. As an open web enthusiast and blogger at heart, he loves community-driven learning and sharing of technology.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/github-ci-hf-jobs" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aws.amazon.com/blogs/aws/introducing-amazon-ecs-gateway-a-fully-managed-ingress-solution-for-ecs-services/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

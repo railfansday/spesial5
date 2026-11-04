@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐶Safetensors audited as really safe and becoming the default</title>
+    <title>Optimizing Bark using 🤗 Transformers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11185.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,86 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>🐶Safetensors audited as really safe and becoming the default</h1>
+        <h1>Optimizing Bark using 🤗 Transformers</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/bark_optimization/thumbnail.png" alt="Optimizing Bark using 🤗 Transformers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/bark_optimization/thumbnail.png" alt="Optimizing Bark using 🤗 Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>🤗 Transformers provides many of the latest state-of-the-art (SoTA) models across domains and tasks. To get the best performance from these models, they need to be optimized for inference speed and memory usage.</p>
+<p>The 🤗 Hugging Face ecosystem offers precisely such ready & easy to use optimization tools that can be applied across the board to all the models in the library. This makes it easy to reduce memory footprint and improve inference with just a few extra lines of code.</p>
+<p>In this hands-on tutorial, I'll demonstrate how you can optimize Bark, a Text-To-Speech (TTS) model supported by 🤗 Transformers, based on three simple optimizations. These optimizations rely solely on the Transformers, Optimum and Accelerate libraries from the 🤗 ecosystem.</p>
+<p>This tutorial is also a demonstration of how one can benchmark a non-optimized model and its varying optimizations.</p>
+<p>For a more streamlined version of the tutorial 
+with fewer explanations but all the code, see the accompanying Google Colab.</p>
+<p>Bark is a transformer-based text-to-speech model proposed by Suno AI in suno-ai/bark. It is capable of generating a wide range of audio outputs, including speech, music, background noise, and simple sound effects. Additionally, it can produce nonverbal communication sounds such as laughter, sighs, and sobs.</p>
+<p>Bark has been available in 🤗 Transformers since v4.31.0 onwards!</p>
+<p>You can play around with Bark and discover it's abilities here.</p>
+<p>At the time of writing, two Bark checkpoints are available, a smaller and a larger version.</p>
+<p>The pre-trained Bark small and large checkpoints can be loaded from the pre-trained weights on the Hugging Face Hub. You can change the repo-id with the checkpoint size that you wish to use.</p>
+<p>We'll default to the small checkpoint, to keep it fast. But you can try the large checkpoint by using "suno/bark" instead of "suno/bark-small".</p>
+<p>Place the model to an accelerator device to get the most of the optimization techniques:</p>
+<p>Load the processor, which will take care of tokenization and optional speaker embeddings.</p>
+<p>In this section, we'll explore how to use off-the-shelf features from the 🤗 Optimum and 🤗 Accelerate libraries to optimize the Bark model, with minimal changes to the code.</p>
+<p>Let's prepare the inputs and define a function to measure the latency and GPU memory footprint of the Bark generation method.</p>
+<p>Measuring the latency and GPU memory footprint requires the use of specific CUDA methods. We define a utility function that measures both the latency and GPU memory footprint of the model at inference time. To ensure we get an accurate picture of these metrics, we average over a specified number of runs nb_loops:</p>
+<p>Before incorporating any optimizations, let's measure the performance of the baseline model and listen to a generated example. We'll benchmark the model over five iterations and report an average of the metrics:</p>
+<p>The output sounds like this (download audio):</p>
+<p>Here, the number of iterations is actually quite low. To accurately measure and compare results, one should increase it to at least 100.</p>
+<p>One of the main reasons for the importance of increasing nb_loops is that the speech lengths generated vary greatly between different iterations, even with a fixed input.</p>
+<p>One consequence of this is that the latency measured by measure_latency_and_memory_use may not actually reflect the actual performance of optimization techniques! The benchmark at the end of the blog post reports the results averaged over 100 iterations, which gives a true indication of the performance of the model.</p>
+<p>Better Transformer is an 🤗 Optimum feature that performs kernel fusion under the hood. This means that certain model operations will be better optimized on the GPU and that the model will ultimately be faster.</p>
+<p>To be more specific, most models supported by 🤗 Transformers rely on attention, which allows them to selectively focus on certain parts of the input when generating output. This enables the models to effectively handle long-range dependencies and capture complex contextual relationships in the data.</p>
+<p>The naive attention technique can be greatly optimized via a technique called Flash Attention, proposed by the authors Dao et. al. in 2022.</p>
+<p>Flash Attention is a faster and more efficient algorithm for attention computations that combines traditional methods (such as tiling and recomputation) to minimize memory usage and increase speed. Unlike previous algorithms, Flash Attention reduces memory usage from quadratic to linear in sequence length, making it particularly useful for applications where memory efficiency is important.</p>
+<p>Turns out that Flash Attention is supported by 🤗 Better Transformer out of the box! It requires one line of code to export the model to 🤗 Better Transformer and enable Flash Attention:</p>
+<p>The output sounds like this (download audio):</p>
+<p>There's no performance degradation, which means you can get exactly the same result as without this function, while gaining 20% to 30% in speed! Want to know more? See this blog post.</p>
+<p>Most AI models typically use a storage format called single-precision floating point, i.e. fp32. What does it mean in practice? Each number is stored using 32 bits.</p>
+<p>You can thus choose to encode the numbers using 16 bits, with what is called half-precision floating point, i.e. fp16, and use half as much storage as before! More than that, you also get inference speed-up!</p>
+<p>Of course, it also comes with small performance degradation since operations inside the model won't be as precise as using fp32.</p>
+<p>You can load a 🤗 Transformers model with half-precision by simpling adding torch_dtype=torch.float16 to the BarkModel.from_pretrained(...) line!</p>
+<p>The output sounds like this (download audio):</p>
+<p>With a slight degradation in performance, you benefit from a memory footprint reduced by 50% and a speed gain of 5%.</p>
+<p>As mentioned in the first section of this booklet, Bark comprises 4 sub-models, which are called up sequentially during audio generation. In other words, while one sub-model is in use, the other sub-models are idle.</p>
+<p>Why is this a problem? GPU memory is precious in AI, because it's where operations are fastest, and it's often a bottleneck.</p>
+<p>A simple solution is to unload sub-models from the GPU when inactive. This operation is called CPU offload.</p>
+<p>Good news: CPU offload for Bark was integrated into 🤗 Transformers and you can use it with only one line of code.</p>
+<p>You only need to make sure 🤗 Accelerate is installed!</p>
+<p>The output sounds like this (download audio):</p>
+<p>With a slight degradation in speed (10%), you benefit from a huge memory footprint reduction (60% 🤯).</p>
+<p>With this feature enabled, bark-large footprint is now only 2GB instead of 5GB.
+That's the same memory footprint as bark-small!</p>
+<p>Want more? With fp16 enabled, it's even down to 1GB. We'll see this in practice in the next section!</p>
+<p>Let's bring it all together. The good news is that you can combine optimization techniques, which means you can use CPU offload, as well as half-precision and 🤗 Better Transformer!</p>
+<p>The output sounds like this (download audio):</p>
+<p>Ultimately, you get a 23% speed-up and a huge 80% memory saving!</p>
+<p>Altogether, the 3 optimization techniques bring even better results when batching.
+Batching means combining operations for multiple samples to bring the overall time spent generating the samples lower than generating sample per sample.</p>
+<p>Here is a quick example of how you can use it:</p>
+<p>The output sounds like this (download first, second, and last audio):</p>
+<p>As mentioned above, the little experiment we've carried out is an exercise in thinking and needs to be extended for a better measure of performance. One also needs to warm up the GPU with a few blank iterations before properly measuring performance.</p>
+<p>Here are the results of a 100-sample benchmark extending the measurements, using the large version of Bark.</p>
+<p>The benchmark was run on an NVIDIA TITAN RTX 24GB with a maximum of 256 new tokens.</p>
+<p>It measures the duration of a single call to the generation method, regardless of batch size.</p>
+<p>In other words, it's equal to elapsedTimenbLoops\frac{elapsedTime}{nbLoops}nbLoopselapsedTime​.</p>
+<p>It measures the maximum memory used during a single call to the generation method.</p>
+<p>It measures the number of samples generated per second. This time, the batch size is taken into account.</p>
+<p>In other words, it's equal to nbLoops∗batchSizeelapsedTime\frac{nbLoops*batchSize}{elapsedTime}elapsedTimenbLoops∗batchSize​.</p>
+<p>As expected, CPU offload greatly reduces memory footprint while slightly increasing latency.</p>
+<p>However, combined with bettertransformer and fp16, we get the best of both worlds, huge latency and memory decrease!</p>
+<p>And here are the benchmark results but with batch_size=8 and throughput measurement.</p>
+<p>Note that since bettertransformer is a free optimization because it does exactly the same operation and has the same memory footprint as the non-optimized model while being faster, the benchmark was run with this optimization enabled by default.</p>
+<p>This is where we can see the potential of combining all three optimization features!</p>
+<p>The impact of fp16 on latency is less marked with batch_size = 1, but here it is of enormous interest as it can reduce latency by almost half, and almost double throughput!</p>
+<p>This blog post showcased a few simple optimization tricks bundled in the 🤗 ecosystem. Using anyone of these techniques, or a combination of all three, can greatly improve Bark inference speed and memory footprint.</p>
+<p>You can use the large version of Bark without any performance degradation and a footprint of just 2GB instead of 5GB, 15% faster, using 🤗 Better Transformer and CPU offload.</p>
+<p>Do you prefer high throughput? Batch by 8 with 🤗 Better Transformer and half-precision.</p>
+<p>You can get the best of both worlds by using fp16, 🤗 Better Transformer and CPU offload!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/safetensors-security-audit" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/optimizing-bark" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

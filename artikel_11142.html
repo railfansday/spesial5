@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releasing Swift Transformers: Run On-Device LLMs in Apple Devices</title>
+    <title>SetFitABSA: Few-Shot Aspect Based Sentiment Analysis using SetFit</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11142.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Releasing Swift Transformers: Run On-Device LLMs in Apple Devices</h1>
+        <h1>SetFitABSA: Few-Shot Aspect Based Sentiment Analysis using SetFit</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/setfit-absa/intel_hf_logo_2.png" alt="SetFitABSA: Few-Shot Aspect Based Sentiment Analysis using SetFit" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/setfit-absa/intel_hf_logo_2.png" alt="SetFitABSA: Few-Shot Aspect Based Sentiment Analysis using SetFit" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>SetFitABSA is an efficient technique to detect the sentiment towards specific aspects within the text.</p>
+<p>Aspect-Based Sentiment Analysis (ABSA) is the task of detecting the sentiment towards specific aspects within the text. For example, in the sentence, "This phone has a great screen, but its battery is too small", the aspect terms are "screen" and "battery" and the sentiment polarities towards them are Positive and Negative, respectively.</p>
+<p>ABSA is widely used by organizations for extracting valuable insights by analyzing customer feedback towards aspects of products or services in various domains. However, labeling training data for ABSA is a tedious task because of the fine-grained nature (token level) of manually identifying aspects within the training samples.</p>
+<p>Intel Labs and Hugging Face are excited to introduce SetFitABSA, a framework for few-shot training of domain-specific ABSA models;  SetFitABSA is competitive and even outperforms generative models such as Llama2 and T5 in few-shot scenarios.</p>
+<p>Compared to LLM based methods, SetFitABSA has two unique advantages:</p>
+<p>🗣 No prompts needed: few-shot in-context learning with LLMs requires handcrafted prompts which make the results brittle, sensitive to phrasing and dependent on user expertise. SetFitABSA dispenses with prompts altogether by generating rich embeddings directly from a small number of labeled text examples.</p>
+<p>🏎 Fast to train: SetFitABSA requires only a handful of labeled training samples; in addition, it uses a simple training data format, eliminating the need for specialized tagging tools. This makes the data labeling process fast and easy.</p>
+<p>In this blog post, we'll explain how SetFitABSA works and how to train your very own models using the SetFit library. Let's dive in!</p>
+<p>SetFitABSA's three-stage training process</p>
+<p>SetFitABSA is comprised of three steps. The first step extracts aspect candidates from the text, the second one yields the aspects by classifying the aspect candidates as aspects or non-aspects, and the final step associates a sentiment polarity to each extracted aspect. Steps two and three are based on SetFit models.</p>
+<p>In this work we assume that aspects, which are usually features of products and services, are mostly nouns or noun compounds (strings of consecutive nouns). We use spaCy to tokenize and extract nouns/noun compounds from the sentences in the (few-shot) training set. Since not all extracted nouns/noun compounds are aspects, we refer to them as aspect candidates.</p>
+<p>Now that we have aspect candidates, we need to train a model to be able to distinguish between nouns that are aspects and nouns that are non-aspects. For this purpose, we need training samples with aspect/no-aspect labels. This is done by considering aspects in the training set as True aspects, while other non-overlapping candidate aspects are considered non-aspects and therefore labeled as False:</p>
+<p>Now that we have all the aspect candidates labeled, how do we use it to train the candidate aspect classification model? In other words, how do we use SetFit, a sentence classification framework, to classify individual tokens? Well, this is the trick: each aspect candidate is concatenated with the entire training sentence to create a training instance using the following template:</p>
+<p>Applying the template to the example above will generate 3 training instances – two with True labels representing aspect training instances, and one with False label representing non-aspect training instance:</p>
+<p>After generating the training instances, we are ready to use the power of SetFit to train a few-shot domain-specific binary classifier to extract aspects from an input text review. This will be our first fine-tuned SetFit model.</p>
+<p>Once the system extracts the aspects from the text, it needs to associate a sentiment polarity (e.g., positive, negative or neutral) to each aspect. For this purpose, we use a 2nd SetFit model and train it in a similar fashion to the aspect extraction model as illustrated in the following example:</p>
+<p>Note that as opposed to the aspect extraction model, we don't include non-aspects in this training set because the goal is to classify the sentiment polarity towards real aspects.</p>
+<p>At inference time, the test sentence passes through the spaCy aspect candidate extraction phase, resulting in test instances using the template aspect_candidate:test_sentence. Next, non-aspects are filtered by the aspect/non-aspect classifier. Finally, the extracted aspects are fed to the sentiment polarity classifier that predicts the sentiment polarity per aspect.</p>
+<p>In practice, this means the model can receive normal text as input, and output aspects and their sentiments:</p>
+<p>SetFitABSA was benchmarked against the recent state-of-the-art work by AWS AI Labs and Salesforce AI Research that finetune T5 and GPT2 using prompts. To get a more complete picture, we also compare our model to the Llama-2-chat model using in-context learning.
+We use the popular Laptop14 and Restaurant14 ABSA datasets from the Semantic Evaluation Challenge 2014 (SemEval14).
+SetFitABSA is evaluated both on the intermediate task of aspect term extraction (SB1) and on the full ABSA task of aspect extraction along with their sentiment polarity predictions (SB1+SB2).</p>
+<p>Note that for the SB1 task, SetFitABSA is 110M parameters, for SB2 it is 110M parameters, and for SB1+SB2 SetFitABSA consists of 220M parameters.</p>
+<p>We see a clear advantage of SetFitABSA when the number of training instances is low, despite being 2x smaller than T5 and x3 smaller than GPT2-medium.  Even when compared to Llama 2, which is x64 larger, the performance is on par or better.</p>
+<p>Note that for fair comparison, we conducted comparisons with SetFitABSA against exactly the dataset splits used by the various baselines (GPT2, T5, etc.).</p>
+<p>We notice that increasing the number of in-context training samples for Llama2 did not result in improved performance. This phenomenon has been shown for ChatGPT before, and we think it should be further investigated.</p>
+<p>SetFitABSA is part of the SetFit framework. To train an ABSA model, start by installing setfit with the absa option enabled:</p>
+<p>Additionally, we must install the en_core_web_lg spaCy model:</p>
+<p>We continue by preparing the training set. The format of the training set is a Dataset with the columns text, span, label, ordinal:</p>
+<p>For example, the training text "Restaurant with wonderful food but worst service I ever seen" contains two aspects, so will add two lines to the training set table:</p>
+<p>Once we have the training dataset ready we can create an ABSA trainer and execute the training. SetFit models are fairly efficient to train, but as SetFitABSA involves two models trained sequentially, it is recommended to use a GPU for training to keep the training time low. For example, the following training script trains a full SetFitABSA model in about 10 minutes with the free Google Colab T4 GPU.</p>
+<p>That's it! We have trained a domain-specific ABSA model. We can save our trained model to disk or upload it to the Hugging Face hub. Bear in mind that the model contains two submodels, so each is given its own path:</p>
+<p>Now we can use our trained model for inference. We start by loading the model:</p>
+<p>Then, we use the predict API to run inference. The input is a list of strings, each representing a textual review:</p>
+<p>For more details on training options, saving and loading models, and inference see the SetFit docs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/swift-coreml-llm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/setfit-absa" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

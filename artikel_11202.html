@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accelerating Hugging Face Transformers with AWS Inferentia2</title>
+    <title>Fine-tuning Stable Diffusion models on Intel CPUs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11202.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Accelerating Hugging Face Transformers with AWS Inferentia2</h1>
+        <h1>Fine-tuning Stable Diffusion models on Intel CPUs</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/stable-diffusion-finetuning-intel/screen01.png" alt="Fine-tuning Stable Diffusion models on Intel CPUs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/stable-diffusion-finetuning-intel/screen01.png" alt="Fine-tuning Stable Diffusion models on Intel CPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Diffusion models helped popularize generative AI thanks to their uncanny ability to generate photorealistic images from text prompts. These models have now found their way into enterprise use cases like synthetic data generation or content creation. The Hugging Face hub includes over 5,000 pre-trained text-to-image models. Combining them with the Diffusers library, it's never been easier to start experimenting and building image generation workflows.</p>
+<p>Like Transformer models, you can fine-tune Diffusion models to help them generate content that matches your business needs. Initially, fine-tuning was only possible on GPU infrastructure, but things are changing! A few months ago, Intel launched the fourth generation of Xeon CPUs, code-named Sapphire Rapids. Sapphire Rapids introduces the Intel Advanced Matrix Extensions (AMX), a new hardware accelerator for deep learning workloads. We've already demonstrated the benefits of AMX in several blog posts: fine-tuning NLP Transformers, inference with NLP Transformers, and inference with Stable Diffusion models.</p>
+<p>This post will show you how to fine-tune a Stable Diffusion model on an Intel Sapphire Rapids CPU cluster. We will use textual inversion, a technique that only requires a small number of example images. We'll use only five!</p>
+<p>Our friends at Intel provided four servers hosted on the Intel Developer Cloud (IDC), a service platform for developing and running workloads in Intel®-optimized deployment environments with the latest Intel processors and performance-optimized software stacks.</p>
+<p>Each server is powered by two Intel Sapphire Rapids CPUs with 56 physical cores and 112 threads. Here's the output of lscpu:</p>
+<p>Let's first list the IP addresses of our servers in nodefile. The first line refers to the primary server.</p>
+<p>Distributed training requires password-less ssh between the primary and other nodes. Here's a good article on how to do this if you're unfamiliar with the process.</p>
+<p>Next, we create a new environment on each node and install the software dependencies. We notably install two Intel libraries: oneCCL, to manage distributed communication and the Intel Extension for PyTorch (IPEX) to leverage the hardware acceleration features present in Sapphire Rapids. We also add gperftools to install libtcmalloc, a high-performance memory allocation library.</p>
+<p>Next, we clone the diffusers repository on each node and install it from source.</p>
+<p>Next, we add IPEX to the fine-tuning script in diffusers/examples/textual_inversion. We import IPEX and optimize the U-Net and Variable Auto Encoder models. Please make sure this is applied to all nodes.</p>
+<p>The last step is downloading the training images. Ideally, we'd use a shared NFS folder, but for the sake of simplicity, we'll download the images on each node. Please ensure they're in the same directory on all nodes (/home/devcloud/dicoo).</p>
+<p>The system setup is now complete. Let's configure the training job.</p>
+<p>The Accelerate library makes it very easy to run distributed training. We need to run it on each node and answer simple questions.</p>
+<p>Here's a screenshot for the primary node. On the other nodes, you need to set the rank to 1, 2, and 3. All other answers are identical.</p>
+<p>Finally, we need to set the environment on the primary node. It will be propagated to other nodes as the fine-tuning job starts. The first line sets the name of the network interface connected to the local network where all nodes run. You may need to adapt this usingifconfig to get the appropriate information.</p>
+<p>We launch the fine-tuning job with mpirun, which sets up distributed communication across the nodes listed in nodefile. We'll run 16 tasks (-n) with four tasks per node (-ppn). Accelerate automatically sets up distributed training across all tasks.</p>
+<p>Here, we train for 200 steps, which should take about five minutes.</p>
+<p>Distributed training can be tricky, especially if you're new to the discipline. A minor misconfiguration on a single node is the most likely issue: missing dependency, images stored in a different location, etc.</p>
+<p>You can quickly pinpoint the troublemaker by logging in to each node and training locally. First, set the same environment as on the primary node, then run:</p>
+<p>If training starts successfully, stop it and move to the next node. If training starts successfully on all nodes, return to the primary node and double-check the node file, the environment, and the mpirun command. Don't worry; you'll find the problem :)</p>
+<p>After 5 minutes training, the model is saved locally. We could load it with a vanilla diffusers pipeline and predict. Instead, let's use Optimum Intel and OpenVINO to optimize the model. As discussed in a previous post, this lets you generate an image on a single CPU in less than 5 seconds!</p>
+<p>Here, we load the model, optimize it for a static shape, and save it:</p>
+<p>Then, we load the optimized model, generate five different images and save them:</p>
+<p>Here's a generated image. It is impressive that the model only needed five images to learn that dicoos have glasses!</p>
+<p>If you'd like, you can fine-tune the model some more. Here's a lovely example generated by a 3,000-step model (about an hour of training).</p>
+<p>Thanks to Hugging Face and Intel, you can now use Xeon CPU servers to generate high-quality images adapted to your business needs.  They are generally more affordable and widely available than specialized hardware such as GPUs. Xeon CPUs can also be easily repurposed for other production tasks, from web servers to databases, making them a versatile and flexible choice for your IT infrastructure.</p>
+<p>Here are some resources to help you get started:</p>
+<p>If you have questions or feedback, we'd love to read them on the Hugging Face forum.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/accelerate-transformers-with-inferentia2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/stable-diffusion-finetuning-intel" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

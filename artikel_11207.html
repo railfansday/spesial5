@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethics and Society Newsletter #3: Ethical Openness at Hugging Face</title>
+    <title>Accelerating Vision-Language Models: BridgeTower on Habana Gaudi2</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11207.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Ethics and Society Newsletter #3: Ethical Openness at Hugging Face</h1>
+        <h1>Accelerating Vision-Language Models: BridgeTower on Habana Gaudi2</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/bridgetower/thumbnail.png" alt="Accelerating Vision-Language Models: BridgeTower on Habana Gaudi2" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/bridgetower/thumbnail.png" alt="Accelerating Vision-Language Models: BridgeTower on Habana Gaudi2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Update (29/08/2023): A benchmark on H100 was added to this blog post. Also, all performance numbers have been updated with newer versions of software.</p>
+<p>Optimum Habana v1.7 on Habana Gaudi2 achieves x2.5 speedups compared to A100 and x1.4 compared to H100 when fine-tuning BridgeTower, a state-of-the-art vision-language model. This performance improvement relies on hardware-accelerated data loading to make the most of your devices.</p>
+<p>These techniques apply to any other workloads constrained by data loading, which is frequently the case for many types of vision models. This post will take you through the process and benchmark we used to compare BridgeTower fine-tuning on Habana Gaudi2, Nvidia H100 and Nvidia A100 80GB. It also demonstrates how easy it is to take advantage of these features in transformers-based models.</p>
+<p>In the recent past, Vision-Language (VL) models have gained tremendous importance and shown dominance in a variety of VL tasks. Most common approaches leverage uni-modal encoders to extract representations from their respective modalities. Then those representations are either fused together, or fed into a cross-modal encoder. To efficiently handle some of the performance limitations and restrictions in VL representation learning, BridgeTower introduces multiple bridge layers that build a connection between the top layers of uni-modal encoders and each layer of the cross-modal encoder. This enables effective bottom-up cross-modal alignment and fusion between visual and textual representations at different semantic levels in the cross-modal encoder.</p>
+<p>Pre-trained with only 4M images (see the detail below), BridgeTower achieves state-of-the-art performance on various downstream vision-language tasks. In particular, BridgeTower achieves an accuracy of 78.73% on the VQAv2 test-std set, outperforming the previous state-of-the-art model (METER) by 1.09% using the same pre-training data and almost negligible additional parameters and computational costs. Notably, when further scaling the model, BridgeTower achieves an accuracy of 81.15%, surpassing models that are pre-trained on orders-of-magnitude larger datasets.</p>
+<p>NVIDIA H100 Tensor Core GPU is the latest and fastest generation of Nvidia GPUs. It includes a dedicated Transformer Engine that enables to perform fp8 mixed-precision runs. One device has 80GB of memory.</p>
+<p>Nvidia A100 Tensor Core GPU includes the 3rd generation of the Tensor Core technology. This is still the fastest GPU that you will find at most cloud providers. We use here the 80GB-memory variant which also offers faster memory bandwidth than the 40GB one.</p>
+<p>Habana Gaudi2 is the second-generation AI hardware accelerator designed by Habana Labs. A single server contains 8 accelerator devices called HPUs with 96GB of memory each. Check out our previous blog post for a more in-depth introduction and a guide showing how to access it through the Intel Developer Cloud. Unlike many AI accelerators in the market, advanced features are very easy to apply to make the most of Gaudi2 with Optimum Habana, which enables users to port Transformers-compatible scripts to Gaudi with just a 2-line change.</p>
+<p>To benchmark training, we are going to fine-tune a BridgeTower Large checkpoint consisting of 866M parameters. This checkpoint was pretrained on English language using masked language modeling, image-text matching and image-text contrastive loss on Conceptual Captions, SBU Captions, MSCOCO Captions and Visual Genome.</p>
+<p>We will further fine-tune this checkpoint on the New Yorker Caption Contest dataset which consists of cartoons from The New Yorker and the most voted captions.</p>
+<p>Hyperparameters are the same for all accelerators. We used a batch size of 48 samples for each device. You can check hyperparameters out here for Gaudi2 and there for A100.</p>
+<p>When dealing with datasets involving images, data loading is frequently a bottleneck because many costly operations are computed on CPU (image decoding, image augmentations) and then full images are sent to the training devices. Ideally, we would like to send only raw bytes to devices and then perform decoding and various image transformations on device. But let's see first how to easily allocate more resources to data loading for accelerating your runs.</p>
+<p>When image loading is done on CPU, a quick way to speed it up would be to allocate more subprocesses for data loading. This is very easy to do with Transformers' TrainingArguments (or its Optimum Habana counterpart GaudiTrainingArguments): you can use the dataloader_num_workers=N argument to set the number of subprocesses (N) allocated on CPU for data loading.</p>
+<p>The default is 0, which means that data is loaded in the main process. This may not be optimal as the main process has many things to manage. We can set it to 1 to have one fully dedicated subprocess for data loading. When several subprocesses are allocated, each one of them will be responsible for preparing a batch. This means that RAM consumption will increase with the number of workers. One recommendation would be to set it to the number of CPU cores, but those cores may not be fully free so you will have to try it out to find the best configuration.</p>
+<p>Let's run the three following experiments:</p>
+<p>Here are the throughputs we got on Gaudi2, H100 and A100:</p>
+<p>We first see that Gaudi2 is x1.28 faster than H100 with dataloader_num_workers=2, x1.29 faster with dataloader_num_workers=1 and x1.79 faster with dataloader_num_workers=0. Gaudi2 is also much faster than the previous generation since it is x2.23 faster than A100 with dataloader_num_workers=2, x2.20 faster with dataloader_num_workers=1 and x2.64 faster with dataloader_num_workers=0, which is even better than the speedups we previously reported!</p>
+<p>Second, we see that allocating more resources for data loading can lead to easy speedups: x1.28 on Gaudi2, x1.79 on H100 and x1.52 on A100.</p>
+<p>We also ran experiments with several dedicated subprocesses for data loading but performance was not better than with dataloader_num_workers=2 for all accelerators.
+Thus, using dataloader_num_workers>0 is usually a good first way of accelerating your runs involving images!</p>
+<p>Tensorboard logs can be visualized here for Gaudi2 and there for A100.</p>
+<p>For even larger speedups, we are now going to move as many data loading operations as possible from the CPU to the accelerator devices (i.e. HPUs on Gaudi2 or GPUs on A100/H100). This can be done on Gaudi2 using Habana's media pipeline.</p>
+<p>Given a dataset, most dataloaders follow the following recipe:</p>
+<p>Instead of doing the whole process on CPU and send ready-to-train data to devices, a more efficient workflow would be to send encoded images to devices first and then perform image decoding and augmentations:</p>
+<p>That way we can benefit from the computing power of our devices to speed image decoding and transformations up.
+Note that there are two caveats to be aware of when doing this:</p>
+<p>To implement this on Gaudi2, we have got you covered: the contrastive image-text example in Optimum Habana now provides a ready-to-use media pipeline that you can use with COCO-like datasets that contain text and images! You will just have to add --mediapipe_dataloader to your command to use it.</p>
+<p>For interested readers, a lower-level overview is given in the documentation of Gaudi here and the list of all supported operators is available there.</p>
+<p>We are now going to re-run the previous experiments adding the mediapipe_dataloader argument since it is compatible with dataloader_num_workers:</p>
+<p>We got an additional x1.10 speedup compared to the previous run with dataloader_num_workers=2 only.
+This final run is thus x1.41 faster than our base run on Gaudi2 simply adding 2 ready-to-use training arguments. It is also x1.41 faster than H100 and x2.45 faster than A100 with dataloader_num_workers=2!</p>
+<p>To reproduce this benchmark, you first need to get access to Gaudi2 through the Intel Developer Cloud (see this guide for more information).</p>
+<p>Then, you need to install the latest version of Optimum Habana and run run_bridgetower.py which you can find here. Here is how to do it:</p>
+<p>The base command line to run the script is:</p>
+<p>which corresponds to the case --dataloader_num_workers 0. You can then add --dataloader_num_workers N and --mediapipe_dataloader to test other configurations.</p>
+<p>To push your model and Tensorboard logs to the Hugging Face Hub, you will have to log in to your account beforehand with:</p>
+<p>For A100 and H100, you can use the same run_bridgetower.py script with a few small changes:</p>
+<p>The results displayed in this benchmark were obtained with a Nvidia H100 Lambda instance and a Nvidia A100 80GB GCP instance both with 8 devices using Nvidia's Docker images.</p>
+<p>Note that --mediapipe_dataloader is compatible with Gaudi2 only and will not work with A100/H100.</p>
+<p>Regarding fp8 results on H100 using Transformer Engine, they are not available because the code crashes and would require modifying the modeling of BridgeTower in Transformers. We will revisit this comparison when fp8 is supported on Gaudi2.</p>
+<p>When dealing with images, we presented two solutions to speed up your training workflows: allocating more resources to the dataloader, and decoding and augmenting images directly on accelerator devices rather than on CPU.
+We showed that it leads to dramatic speedups when training a SOTA vision-language model like BridgeTower: Habana Gaudi2 with Optimum Habana is about x1.4 faster than Nvidia H100 and x2.5 faster than Nvidia A100 80GB with Transformers!
+And this is super easy to use as you just need to provide a few additional training arguments.</p>
+<p>To go further, we are looking forward to using HPU graphs for training models even faster and to presenting how to use DeepSpeed ZeRO-3 on Gaudi2 to accelerate the training of your LLMs. Stay tuned!</p>
+<p>If you are interested in accelerating your Machine Learning training and inference workflows using the latest AI hardware accelerators and software libraries, check out our Expert Acceleration Program. To learn more about Habana solutions, read about our partnership and contact them here. To learn more about Hugging Face efforts to make AI hardware accelerators easy to use, check out our Hardware Partner Program.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ethics-soc-3" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/bridgetower" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

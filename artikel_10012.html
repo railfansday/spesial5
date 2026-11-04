@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pulling the right strings for RCE on a Puppet</title>
+    <title>French Blood Banks Hit Alongside Cyberattack On European Supermarkets</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10012.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,92 +15,73 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Pulling the right strings for RCE on a Puppet</h1>
+        <h1>French Blood Banks Hit Alongside Cyberattack On European Supermarkets</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
         
         <div class="article-body">
-            <img src="https://neodyme.io/_astro/puppet.ah0qjxYr.png" alt="Pulling the right strings for RCE on a Puppet" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/security_64.png" alt="French Blood Banks Hit Alongside Cyberattack On European Supermarkets" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://neodyme.io/_astro/puppet.ah0qjxYr.png" alt="Pulling the right strings for RCE on a Puppet" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/security_64.png" alt="French Blood Banks Hit Alongside Cyberattack On European Supermarkets" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In preparation for a red team engagement we found two critical CVSS 9+ vulnerabilities in Puppet, dating back to 2021. They allow RCE on the puppet management server in a default configuration. Additionally, we discovered a Puppet host impersonation vulnerability in a non-default but commonly used configuration. Both vulnerabilities were responsibly disclosed to the vendors, who has since addressed them in newer versions of Puppet.</p>
-<p>Puppet is a software configuration management software widely used in big companies to provision software and patch servers.
-It uses a client- (“agent”) and server-based architecture, where the agent pulls the desired software and configuration state from the server.
-The software packages are described in a declarative language, while the software stack runs mainly on Ruby.</p>
-<p>The software was open source until mid 2025, but changed the licensing as result of the acquisition by Perforce in 2022.
-Some open-source forks like OpenVox still exist and are maintained by a community.
-Perforce is now providing “Puppet Enterprise” for companies.</p>
-<p>When preparing for a recent red team engagement, we took a look at “Puppet Enterprise”, which is included in a RedHat subscription trial.
-The goal was to compromise the Puppet Server using only a regular Puppet Client with a valid client certificate for a single Puppet Agent.
-While we used AI-based analysis to discover the bugs, strict steering of the agents and explicit prompting was necessary to unveil them.</p>
-<p>Unknowing what environment and software versions were waiting for us, we targeted the latest Puppet Enterprise 2025.11.2 primary server, which uses Puppet 8.20.0 as Puppet Core Engine.
-However, the exploits also work for the open-source version 6.24.0, which dates back to July 2021!
-After the engagement, both of the vulnerabilities below were reported to Perforce and OpenVox.
-They cooperated for the patch release dates.</p>
-<p>We applied a fairly known strategy to find bugs in the server: Take a look at data ingestion and parsers.
-Puppet agents push their state and other interactions to the puppet server API on port 8140.
-Agents interacting with the most interesting endpoints /puppet/v3/[...] must use TLS with client authentication in order to satisfy some ACL checks and let the puppet server derive the agents’ identity.
-Also, the current environment has to be specified with ?environment=production, as the Puppet Server might manage different environments for testing purposes.</p>
-<p>One API endpoint receives so-called events on the endpoint /puppet/v3/report/{agent_name}?environment={env}.
-More concretely, it receives a JSON-serialized event object that lands in the  Puppet::Pops::Serialization::FromDataConverter.convert method in transaction/event.rb:</p>
-<p>Investigating the deserialization path yields the logic in pops/serialization/from_data_converter.rb:</p>
-<p>The deserializer checks the presence of __ptype and feeds it into pcore_type_hash_to_value.
-If the result is a String, the build function is invoked with an attacker-controlled pcore_type and value in [1]:</p>
-<p>Following the build call in the Ruby sources, we can find pops/types/p_object_type.rb:</p>
-<p>The actual implementation looks up the class registry in [2].
-If the type has not been registered yet, a RubyGenerator is used to create an instance of the provided type in [3].</p>
-<p>From here, we are only one step away from direct code execution in Ruby: The RubyGenerator at types/ruby_generator.rb creates a class_body from the provided user input and eventually calls the RCE sink: cls.class_eval.</p>
-<p>However, that is just the case if class_body uses attacker-controlled input.
-Let’s see and follow up in types/ruby_generator.rb and the class_body method:</p>
-<p>Since we control the RubyMethod object, we can freely place a body in the class, which will get evaluated!</p>
-<p>One might ask: How will class_eval give code execution?
-The class is invoked nowhere.
-Can only a definition already be harmful?
-Fair question, and Ruby is tricky about this: A backtick (`) can be used to evaluate system commands, similar to the known backtick trick in modern shells like bash.
-However, we must first close the function body, insert our backticks and re-open a function body block again.
-The resulting evaluated code looks like:</p>
-<p>Let’s plug those parts together and craft a JSON event with all the required objects, ptypes and annotations:</p>
-<p>Voilà, we got remote command execution as the puppet user on the central Puppet server!
-Strictly speaking, this vulnerability is rated as “authenticated”, since it needs a valid Puppet agent client certificate.
-However, most large companies have autosign enabled, which provisioning engines like Satellite or Ansible may use to enroll the new host to the Puppet Server.
-An attacker can thus often use the enrollment endpoint to get a Puppet client certificate without authentication or manual approval.</p>
-<p>We have not yet discussed the impact of this RCE, triggered solely from Puppet agent client certificate.
-The impact highly depends on the Puppet server configuration and the orchestration protocols used, if any are enabled at all.</p>
-<p>Independent of the configuration, an attacker with RCE on a Puppet server can grab the CA signing keys and impersonate other hosts.</p>
-<p>In our lab, we wrote a proof-of-concept for the PXP route supported on Puppet Enterprise: For this, we exfiltrated the private signing keys of the CA and minted a certificate of the Puppet server, specifying serverAuth and clientAuth in the EKU (Extended Key Usage).
-This allowed us to communicate with a websocket broker on port 8142, stage a task and push it to an agent, receiving the stdout in return.</p>
-<p>In the RCE bug we briefly touched on the autosign feature of puppet: This allows agents to self-enroll if the hostname matches a configured domain format like *.lab.local.
-In enterprise deployments this is often used in initial VM provisioning scripts via Ansible or Satellite.
-The autosign and the CA explicitly checks if the host certificate was already issued for the requested host.
-This prevents attackers from simply requesting another certificate for the same host, which would allow impersonation.</p>
-<p>The bug we found allowed exactly this: Arbitrary impersonation of hosts.
-But let’s look at the impact side first, assuming impersonation was possible.
-With the client certificate of another Puppet agent, an attacker can</p>
-<p>At first glance, it either depends on the cross-node coordination feature or it just doesn’t look overly dangerous.
-However, a Puppet catalog often carries more than just software packages.
-In our engagement, we observed (and later attacked) a specific host that got served a configuration file including PostgreSQL credentials, admin API tokens and logins for this specific software.</p>
-<p>The Puppet catalog for one specific host can be obtained by sending a GET request to the catalog endpoint, authenticating via the Puppet agent client certificate:</p>
-<p>So, let’s look at the actual bug, which is part of the  trapperkeeper package written in Clojure.
-Clojure is a functional programming language, running on a JVM (Java) stack.
-The following check is used to allow or deny a host via a provided hostname and an allowed value to compare.</p>
-<p>The match-split-domain simply takes an FQDN, splits it at the dots and reverses the list before returning it:</p>
-<p>The issue is subtle: The match-domain method, which compares the two hostnames, truncates the comparison to the shorter of both lists. As example:</p>
-<p>An attacker who got a cert for evil.target.lab.local can thus authenticate as target.lab.local!</p>
-<p>As already established above, the autosign feature often allows enrollment of certs with the pattern *.lab.local.
-While enrollment of another target.lab.local certificate is not possible, an attacker can just use the non-existent host evil.target.lab.local, which will work for authentication as well.</p>
-<p>Following initial contact with OpenVox and Perforce, both projects were provided with the full technical details of the vulnerabilities.</p>
-<p>OpenVox quickly acknowledged the findings and issued fixes alongside a GHSA.
-Release coordination was handled between both projects, with OpenVox pushing for an earlier disclosure date.</p>
-<p>The fixes were eventually released on November 3, 2026, at 17:00 UTC, accompanied by public security advisories from OpenVox and Perforce:</p>
-<p>We appreciate the fast response and the transparency throughout the disclosure process!</p>
-<p>Puppet is a powerful software, often with full access to a fleet of systems in a corporate network.
-Remote Code Execution on such a central and important system can lead to worst-case scenarios: Deployment of ransomware, mass data exfiltration and potentially lateral movement to other parts of the network.
-But even with the two critical bugs highlighted in this post, an environment hardened according to the best practices will mitigate direct impact significantly.</p>
-<p>While both of the bugs above were found with AI assistance, the prompting effort and precise steering of the AI was crucial to the success.
-With AI rapidly accelerating security research, unguided AI prompting keeps bringing up the same and already covered attack surface, unless steered by experienced researchers with broad knowledge.</p>
-<p>If you are also in need of such deep technical analysis of your applications, contact us!</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>You say that like they had a Samsung smartfridge. They have industrial systems, the kind of thing that talks over network, is managed by an IT department and is behind firewall. Still risky, but a bit less stupid. The press cited the brand "Cool World" as the one under attack. They make freezer rooms and containers https://www.coolworld-rentals.... [coolworld-rentals.com]</p>
+<p>A fridge doesnt need to be managed by an IT dept. It keeps to a fixed temperature and if it deviates by X amount a very loud alarm goes off which someone on duty will hear. Job done.</p>
+<p>It's easy to say that right now but those industrial refrigerated containers were installed a decade or two ago when it was fancy to have everything managed centrally, and every industry and hospital was doing that, and the bigger security risk was thought to be worms brought on pen drives.</p>
+<p>At the time that was a bigger risk, but it was also a good reason not to do this crap</p>
+<p>A fridge doesnt need to be managed by an IT dept. It keeps to a fixed temperature and if it deviates by X amount a very loud alarm goes off which someone on duty will hear. Job done.On duty?Exactly how many grocery stores in your area, are manned by human personnel 24/7/365?  Pretty sparse?  Doubt the little stores can afford it.  Soo, how loud do you want that not-an-internet alarm to be for every fridge holding products meant for human consumption?  Like, one person on duty per 5 city blocks?  Figure 140db will do the ear-piercing trick?Still think you can't get food poisoning when "job done" happens to be days later when reality wakes up Monday to realize fridge power went out somet</p>
+<p>A fridge doesnt need to be managed by an IT dept. It keeps to a fixed temperature and if it deviates by X amount a very loud alarm goes off which someone on duty will hear. Job done.</p>
+<p>Exactly how many grocery stores in your area, are manned by human personnel 24/7/365?  Pretty sparse?  Doubt the little stores can afford it.  Soo, how loud do you want that not-an-internet alarm to be for every fridge holding products meant for human consumption?  Like, one person on duty per 5 city blocks?  Figure 140db will do the ear-piercing trick?</p>
+<p>Still think you can't get food poisoning when "job done" happens to be days later when reality wakes up Monday to realize fridge power went out somet</p>
+<p>Your argument is invalid as the reason to be connected was for someone to be alerted and done something way before the food / blood went bad. Done something, manual override, disconnect from system, something.. not look post mortem and been like, yup something made a change.</p>
+<p>They probably also did not expect to get hit. Competent attackers hit targets that make sense. This seems to be cretins with LLMs.</p>
+<p>You know that you could install an Internet-connected monitoring system. Without putting the control function on line. And include a premises, non-Internet alarm bell, should someone hack the monitor.</p>
+<p>How about an unconnected mechanical thermostat?</p>
+<p>You can't charge a subscription fee for that.</p>
+<p>Getting alerts when something goes wrong is kind of important. Mission critical equipment like what a blood bank would have often gets contracts with Service Level Agreements where a tech gets alerted to come fix it before the product goes bad.</p>
+<p>Obviously, how they set this stuff up was down right bad. But there can be sane business continuity reasons for electronic monitoring...</p>
+<p>Found the guy who hasn't heard of one-way network links or serial connections.</p>
+<p>You know that you could install an Internet-connected monitoring system.The press says that that refrigerated container had a maintenance contract with a company that used remote maintenance. A few years ago this was a selling point.Hospitals now want medical equipment that prints a small paper ticket that later someone can digitize, rather than full integration within an intranet, but this is a very recent move.</p>
+<p>You know that you could install an Internet-connected monitoring system.</p>
+<p>The press says that that refrigerated container had a maintenance contract with a company that used remote maintenance. A few years ago this was a selling point.</p>
+<p>Hospitals now want medical equipment that prints a small paper ticket that later someone can digitize, rather than full integration within an intranet, but this is a very recent move.</p>
+<p>makes my blood boil.Well, I should say.Now friend, let me tell you what I mean...</p>
+<p>Now friend, let me tell you what I mean...</p>
+<p>Missing the 90's yet?  No interconnected cars, no interconnected fridges/freezers, no interconnected anything, as far as appliances go.</p>
+<p>Sometimes progress for the sake of progress is derp, and interconnected cooling units is an example of "Jumped the Shark"</p>
+<p>Google the phrase if you're too young to know what it means and how it came about.</p>
+<p>In the 90s they'd just be wardialing for remote freezer controls. People still did the same stupid shit, but the blast zone was much smaller at least.</p>
+<p>just change to offline ones and let the Cleaner fuck them up.https://news.slashdot.org/stor... [slashdot.org]</p>
+<p>Maybe you dont always know who you are attacking when you take advantage of vulnerabilities in connected things. But it is very shitty to attack Heathcare.</p>
+<p>it is very shitty to attack Heathcare.As reminded in the summary, on October 12, a simultaneous, large-scale attack targetting national grocery chains (Intermarché, E.Leclerc, Super U) and wasted hundreds of tons of frozen food over France. At the time, a vulnerability in the temperature controller Danfoss AK-SM 800A was used. It was first reported last June by Claroty Team82 https://claroty.com/team82/res... [claroty.com]With several grocery chains and now healtchare, without even ransom asked for, it makes think that France has pissed off a State actor.</p>
+<p>As reminded in the summary, on October 12, a simultaneous, large-scale attack targetting national grocery chains (Intermarché, E.Leclerc, Super U) and wasted hundreds of tons of frozen food over France. At the time, a vulnerability in the temperature controller Danfoss AK-SM 800A was used. It was first reported last June by Claroty Team82 https://claroty.com/team82/res... [claroty.com]</p>
+<p>With several grocery chains and now healtchare, without even ransom asked for, it makes think that France has pissed off a State actor.</p>
+<p>With several grocery chains and now healtchare, without even ransom asked for, it makes think that France has pissed off a State actor...until we find out that "state" actor is named Trolly McTrollface, President and CEO of Trolling Trolls, Inc.  A subsidiary of FOMO Industries. "Sic semper tyrannis..?  Please.  We silly bitches be doin' it for the 'gram, bro.  YOLO-gang 4 lyfe."</p>
+<p>With several grocery chains and now healtchare, without even ransom asked for, it makes think that France has pissed off a State actor.</p>
+<p>..until we find out that "state" actor is named Trolly McTrollface, President and CEO of Trolling Trolls, Inc.  A subsidiary of FOMO Industries.</p>
+<p>"Sic semper tyrannis..?  Please.  We silly bitches be doin' it for the 'gram, bro.  YOLO-gang 4 lyfe."</p>
+<p>Seems every time we do something on a computer we soon figure out why the meat space version of that thing is regulated. Even war has conventions.</p>
+<p>https://www.eda.admin.ch/en/ge... [admin.ch]</p>
+<p>You can figure out on your own why you shouldn't indiscriminately harm civilians. Are you a psychopath?</p>
+<p>The damage is not significant enough to be a politically motivated attack. To me this sounds like pure vandalism, probably with LLM support.</p>
+<p>As far as I know there was no ransom note, no nothing and the attacks do not make sense at all. This seems to be some assholes with LLMs doing damage to push their egos.</p>
+<p>Insurance is the problem, or at least part of it. They should not pay out when security is inadequate.</p>
+<p>I do agree, drinkypoo.  If your house/apartment is insured, and you leave the door propped wide open, and then find the place cleaned out... that's clearly your fault.</p>
+<p>While being able to check the temps on the supermarket's freezers or the temperature critical fridges at the bloodbank would be handy (periodically check them and such), but it should be impossible to get into it from the outside to crank up temps... that kind of thing should require boots on the ground.</p>
+<p>The best way to get to an adversary is through its stomach (and medical industry, also).They can have semi trailers full of ammo of all kinds... cut off their food, and you can bring them to their knees.</p>
+<p>(and, ultra-hardening a system isn't that easy if you still need access)</p>
+<p>"It's a small leap from this to pharmaceutical plants - much smaller than you think!"</p>
+<p>Big Pharma plants do NOT have their equipment INTERNET facing. I doubt they will do anything to fix anything that might cost anything, but just requiring physical access is a step up.</p>
+<p>" Investigations are under way into how the attack was carried out, "</p>
+<p>Remotely, obviously. Get your fucking systems off the internet and quit being lazy cheap-ass humans.</p>
+<p>Why are their refrigerators connected to the internet ? That doesn't seem "SMART" HAHAHAHAHA see what I did there :)</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>OpenAI Acquires Pierre Computer to Supercharge Codex</p>
+<p>AMD Expects To Outsell Intel For the First Time</p>
+<p>It is better to never have tried anything than to have tried something and
+failed.
+- motto of jerks, weenies and losers everywhere</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://neodyme.io/en/blog/puppet_rce" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://it.slashdot.org/story/26/11/04/1834253/french-blood-banks-hit-alongside-cyberattack-on-european-supermarkets?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
