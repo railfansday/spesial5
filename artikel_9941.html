@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Planning with open variable lists in Gecode</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9941.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>Planning with open variable lists in Gecode</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://zayenz.se/_astro/workshop-planning.Q8eJeaxX.webp" alt="Planning with open variable lists in Gecode" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://zayenz.se/_astro/workshop-planning.Q8eJeaxX.webp" alt="Planning with open variable lists in Gecode" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>A robot needs to fetch a packet from the shelf and put it down on the workbench.
+Easy enough: drive over to the shelf, pick up the packet, drive back, and put it down.
+Four actions.
+Unless the battery is low.
+Then the robot has to visit the charger first, and the questions become where in the plan that visit should go, and how long the robot should stay there.</p>
+<p>This is planning in miniature: a start, some actions, a goal, and nobody telling us how long the plan should be.</p>
+<p>Planning is a research field of its own, and a common first idea is to describe the problem in PDDL and hand it to one of the many planning systems that read it.
+For a lot of problems, that is the right choice.
+Constraint programming is another natural fit, especially when the actions come with restrictions like a battery that runs down.
+The common objection is that most constraint programming solvers fix the set of variables before search starts, so we need a bound on the length of the plan before we know how long it will be.</p>
+<p>Gecode has always allowed new variables and constraints to be added during search, but before Gecode 6.5.0 there was no explicit support for it.
+Gecode 6.5.0 adds that support as open variable lists.
+An OpenIntVarList is a list of ordinary IntVars that are created when propagation or search needs another position, together with an ordinary IntVar for its length.
+When a position is added, a transition callback can create more variables and post constraints for that step, such as the next state of a plan, so any constraint in Gecode can be used in a model that grows.</p>
+<p>In addition, the release has open versions of some common constraints, such as regular, distinct, and sequence, which are posted once on the whole list and follow it as it grows.
+A list brancher decides both the next value and whether the list should grow, and most of the usual variable and value selectors work on the positions.1
+All of this is built with the propagator and brancher interfaces that Gecode already had, plus a few small additions to the kernel.2</p>
+<p>The release also includes two experimental search engines, A* and complete anytime beam search.
+This post models the robot, then the fifteen-puzzle, and ends with the new engines.</p>
+<p>The shelf, the workbench, and the charger are connected in a line, in that order, as in the picture at the top.
+The robot starts at the workbench with one unit of charge.
+Each move uses one unit, each charge action at the charger adds one, and the battery holds five.
+Picking up and putting down the packet are free.</p>
+<p>With one unit, the robot can reach the shelf, but then it is stuck there with the packet.
+The shortest working plan visits the charger first.</p>
+<p>Three charges are exactly enough, and with two the robot is stuck at the shelf.
+Charging four or five times also works, but every extra charge makes the plan longer, so the first plan a solver finds need not be the shortest.
+Try it below, and head straight for the shelf first to see what happens.</p>
+<p>Optimal plan: Right → Charge → Charge → Charge → Left → Left → Take packet → Right → Deposit packet</p>
+<p>Enable JavaScript to control the robot or play the plan.</p>
+<p>What I want is a model that just describes the actions and their effects, and lets the solver discover the detour on its own.</p>
+<p>A straightforward CP model has a variable for each action, variables for the state before and after each action, and a transition constraint relating them.
+For a plan with four actions, there are four action variables and five states, with the first state fixed to the initial situation and the last required to satisfy the goal.
+For our example, that model has no solution.
+Planning encodings have traditionally dealt with the unknown length in two ways.
+One is to solve again with five actions, then six, and so on up to nine, so that the first plan found is also a shortest one.
+The other is to choose an upper bound, say twelve actions, and allow an unused suffix, at the price of modelling which positions are active and having every position up to the bound in the model from the start.</p>
+<p>An open list gives a third option: keep the bound of twelve, but create positions only when search or propagation needs them.
+The model then grows the way a plan does when you work it out by hand: first the charging visit, then the trip to the shelf, and once the packet is delivered, we can stop.</p>
+<p>The full model is in open-robot.cpp.
+The actions are kept in an open list, and the states between them in three more: where the robot is, how much charge it has, and where the packet is.</p>
+<p>Each action is an IntVar over the six action codes, and there are at most twelve of them.
+actions.length() is the length of the finished plan, and actions.known_length() counts the positions created so far.
+Creating a position is called materialization, and it does not assign a value.</p>
+<p>When the plan grows, the new action is materialized and the callback calls step, which materializes the state after it and posts the constraints between them.</p>
+<p>The callback is shared between copies of the space, so it casts the space it is given instead of capturing this.
+It must also be deterministic, since recomputation and parallel search may repeat an extension in another space.</p>
+<p>The legal steps are a table with one tuple for each action and the states before and after it, posted as an extensional constraint for each step.</p>
+<p>The plan can only end where the packet has been delivered, and it ends as soon as it has.</p>
+<p>Propagation does some planning before search starts.
+The packet cannot be delivered in fewer than four actions, so the root already has four, the first a move to the shelf or the charger and the second picking up or charging.
+Branch-and-bound then finds the nine-action plan.</p>
+<p>We can also use the regular constraint to encode the state as a transition system, folding the values of at, charge, and packet into the states of a finite automaton instead of keeping them in variables.
+Each tuple in the table becomes a transition labelled with its action, so the accepted words are exactly the delivery plans.</p>
+<p>The model is then just the action list and one constraint, with no state lists and no callback.</p>
+<p>The interesting part is what an open regular constraint does with an unfinished plan.
+After moving to the charger and charging once, the packet is still on the shelf, but the plan can still reach the goal.
+Moving straight to the shelf is a dead end, and is rejected while the list is still open.
+So while the list is open, a prefix is kept if it can reach an accepting state within the maximum length, and once it is closed, its last state must be accepting.</p>
+<p>Regular propagation works on a layered graph, with a layer of automaton states for each position and edges labelled with the values in each domain.
+The widget uses a small automaton for the words that start with a and end with b.
+With a fixed length of two, only ab has a path.
+The open list has the same two positions but a length of up to four, so a prefix like aa can still become aab.
+Lower the maximum length to two, and the open list behaves like the fixed one.</p>
+<p>Open, so a prefix ending in q₁ can still finish with b.</p>
+<p>Gecode does not build the future layers.
+It computes the shortest distance from each automaton state to an accepting state, and keeps an end state of the prefix only if that distance fits within length().max() - known_length().</p>
+<p>Both the table and the automaton list every combination of location, charge, and packet status.
+That works for the robot, but with more packets and a second robot the combined states explode, and the transitions are better posted as ordinary constraints over the state variables, as in the fifteen-puzzle below.</p>
+<p>The list brancher assigns the materialized positions, and once they all have values, it tries closing the list, with extending it as the alternative.
+For the robot, closing fails until the packet is delivered.</p>
+<p>The usual selectors choose among the materialized positions.
+To settle the number of actions first, branch on the length before the actions, and depth-first search with minimum-value selection then tries shorter plans first.</p>
+<p>Building the plan incrementally can find a longer plan before a shorter one, so the companion minimizes the length with branch-and-bound.
+With -branching max, it tries the highest action code first, which means charging whenever it can, and finds plans of eleven, ten, and finally nine actions.</p>
+<p>Real planning models collect side rules: don’t repeat an action, don’t keep the charger busy too long, pick up before you deliver.
+The open constraints in the release express rules like these, posted once and applied to every new position.</p>
+<p>The last three assume other open lists, of jobs, loads, and battery levels.
+Side rules can change which plans exist at all.
+For the robot, forbidding immediate repeats leaves no plan, since a single charge never pays for the trip there and back, while at most three charges in every window of four removes the two longer plans and keeps the nine-action one.</p>
+<p>What makes these constraints different from their closed versions is the positions that do not exist yet.
+sequence and sliding_sum only count complete windows, so a plan shorter than the window is unrestricted.
+distinct remembers the assigned values and removes them from positions created later.
+min and max can only bound the result from one side while the list is open, since a later position can still lower the minimum or raise the maximum.</p>
+<p>The fifteen-puzzle is the classic test problem for heuristic search, with far too many boards for a table or an automaton.
+Fifteen numbered tiles and a blank occupy a four-by-four board, and a move slides a tile next to the blank into the blank.
+The goal has the tiles in order, with the blank at the bottom right.
+This board needs two moves: slide tile 14 left, and then tile 15.</p>
+<p>Click a tile beside the blank to slide it. With the board focused, arrow keys move the blank.</p>
+<p>Seen from the blank, it moves right twice, so a plan can be described by the successive positions of the blank.
+Gecode’s fifteen-puzzle.cpp uses two open lists: path[i] is the cell of the blank in board i, and the sixteen entries from tiles[16*i] are board i, with 0 for the blank.</p>
+<p>Only path has a transition callback, which creates the board for each new blank position.</p>
+<p>The constructor body ties the two lengths together, fixes the first board, and bounds the length from below.</p>
+<p>The Manhattan distance, the sum of each tile’s distance to its goal cell, is a lower bound on the number of moves, so propagation creates several boards before any move is chosen.
+Each new blank position materializes its board, connects it to the previous one, and posts the goal, just like the robot’s step.</p>
+<p>A slide moves the blank to a neighbouring cell, puts the moved tile in the old blank cell, and leaves every other cell unchanged.</p>
+<p>Every board is a permutation of the tiles, so an assigned path determines all the boards, and it is enough to branch on path.</p>
+<p>The example also has a fixed model, -model fixed, that creates every board up to the move limit and uses a branch filter so that search does not choose moves after the goal.
+For a two-move solution with a limit of eight, it has nine boards where the open model has three.</p>
+<p>This finds plans of eight, six, and finally four moves, which matches the initial Manhattan distance, and -model fixed finds the same optimum.</p>
+<p>Gecode 6.5.0 also includes two experimental search engines, AStar and CABS (complete anytime beam search), enabled with GECODE_ENABLE_EXPERIMENTAL=ON in CMake or --enable-experimental with Autoconf.
+They work with any Gecode space, with or without open lists, and their APIs may still change.</p>
+<p>Branch-and-bound explores depth-first, and has no idea which of the pending partial plans looks most promising.
+Heuristic search estimates how good the best completion of each partial plan can be, and explores the most promising ones first.
+It is also the workhorse behind many of the planning systems mentioned at the start.
+The estimate must be admissible, never above the true cost.
+For the robot, ignoring the battery gives one: after moving to the charger and charging once, two actions are used and at least five remain, a bound of seven where the true total is nine.</p>
+<p>Both engines take a Search::HeuristicGuidance, whose bound callback returns an optimistic value for the total objective, including the cost so far, and must be exact on solutions.
+For the puzzle, the bound is the number of moves made so far plus the Manhattan distance of the board they lead to.</p>
+<p>depth stops at the first undecided move, even when later boards have been created, and the length gives the bound instead when it is stronger.</p>
+<p>Both engines use the model’s constrain to require improvement after each solution, so as with branch-and-bound, the first solution need not be optimal.
+A* keeps every pending state.
+CABS keeps only a beam of candidates at each layer of the search tree, starting with a width of one and doubling it while the discarded candidates might still lead to a better solution.
+That finds a plan quickly, and spends more effort later on improving it and proving optimality.
+CABS can also use a dominance test, which discards a candidate when another one can match each of its completions with one that is no worse.</p>
+<p>Gecode’s tsptw.cpp, for the travelling salesman problem with time windows, offers all three engines on a closed model.
+I wrote an open-list variant that creates each position of the tour when the tour reaches it.
+Every tour visits all customers, so stating its length would create every position at the root.
+Instead, the variant states the goal as a condition on the visited customers.</p>
+<p>Both models find and prove the optimal travel times for the two built-in instances with branch-and-bound, A*, and CABS.
+The instances are far too small to say which combination works best on hard problems.</p>
+<p>Leaving future positions uncreated is a tradeoff.
+They take no storage, but their domains are not available for propagation either, so a fixed-horizon model may detect some failures earlier.
+My guess is that open lists pay off when a large upper bound is needed to admit all plans, while most of the search works with much shorter prefixes, but that needs measuring.
+For classical planning problems, a dedicated planner will often be the better tool.
+A constraint model becomes interesting when the plan also has to satisfy side constraints, like resource limits, time windows, or the rules above.</p>
+<p>Back in the workshop, the model is the same whatever the initial charge.
+With a full battery, the shortest plan is the direct four actions, and with a single unit, it is the nine-action detour.
+Nobody had to guess the length of the plan in advance.
+The model describes what the robot can do, and search works out how long it takes.</p>
+<p>The exceptions are the activity-based (Action) and conflict-history (CHB) variable selectors.
+They require the complete list to be materialized when the brancher is posted, so they cannot be used for positions created later. ↩</p>
+<p>For example, callbacks run inside a Space::NoGPI scope, so that propagators created and discarded during search do not accumulate global propagator information such as the accumulated failure count (AFC).
+A callback can open a Space::UseGPI scope for postings that should be tracked as usual. ↩</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://zayenz.se/blog/post/open-cp-in-gecode/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

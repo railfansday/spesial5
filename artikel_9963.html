@@ -1,0 +1,80 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Postgres 19 REPACK: Built-In Online Table Bloat Cleanup</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9963.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>Postgres 19 REPACK: Built-In Online Table Bloat Cleanup</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://www.snowflake.com/content/dam/snowflake-site/engineering-blog/featured-images/sf-eng-blog-ML-2.png" alt="Postgres 19 REPACK: Built-In Online Table Bloat Cleanup" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.snowflake.com/content/dam/snowflake-site/engineering-blog/featured-images/sf-eng-blog-ML-2.png" alt="Postgres 19 REPACK: Built-In Online Table Bloat Cleanup" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>REPACK is my favorite feature in Postgres 19. It's not the flashiest, but it is the one that’s going to matter most if you’re running a production database. Vacuum, autovacuum and bloat have always been this sore spot for Postgres users. On the one hand, Postgres MVCC design is not new. And yet, on high update systems, this churn of having dead rows that get freed up later, vacuum being tweaked to the right levels to maintain low bloat is still a bit of an inexact science.</p>
+<p>Once bloat does exist, it’s just sitting there. And you see that unclaimed space not being used.</p>
+<p>Before Postgres 19, your options for reclaiming that space were:</p>
+<p>Let’s back up. You may be familiar with bloat as a seasoned Postgres user, but just to make sure we’re all on the same page… It's one of those Postgres realities, the tradeoff for MVCC. Tables accumulate dead tuples over time: when rows are updated or deleted, the old versions stick around. Regular autovacuum typically marks that space as reusable. For most tables, that's enough. But for large, update-intensive tables, vacuum can fall behind. Dead rows accumulate as table bloat. The file grows, but since VACUUM can only mark that space as internally reusable, it doesn't shrink the table or return space to the OS. To actually reclaim disk space, you need to rebuild the table.</p>
+<p>How do you know if you have a bloat problem? You can do a quick check using pg_stat_user_tables. The tuple counts are estimates, but this is one good diagnostic signal.</p>
+<p>(Query adapted from Crunchy Data's bloat checking guide)</p>
+<p>Below 50% bloat: Generally acceptable. Monitor it and check autovacuum settings, but no urgent action needed.</p>
+<p>Above 50% bloat: You're likely wasting disk space and paying a performance cost from extra page reads. It's at least worth investigating — and possibly addressing — if you see slow queries or growing table sizes.</p>
+<p>There is no single bloat percentage that determines whether a table needs attention. Consider wasted bytes, workload, growth, and whether reclaiming space is worth the rewrite.</p>
+<p>The pg_repack extension was the option for online table rebuilds for years. Here's how it works:</p>
+<p>This worked well, and many production systems relied on it for years. But installing third-party extensions makes some teams nervous, and the external binary adds operational overhead.</p>
+<p>pg_squeeze (from CYBERTEC, the same team behind much of the Postgres 19 REPACK work) came along and took a more modern approach. It's also seen wide production use.</p>
+<p>pg_squeeze in a sense is the prototype for what became PG 19's REPACK (CONCURRENTLY). The built-in version inherits the logical decoding approach but integrates it directly into the server without an extension, shared_preload_libraries, or separate configuration tables.</p>
+<p>Postgres 19 adds REPACK as a first-class SQL command with three modes:</p>
+<p>This is what makes the feature production-ready. With CONCURRENTLY, the ACCESS EXCLUSIVE lock is only held briefly at the end. During the bulk of the operation, which for a large table could take minutes, the table remains fully readable and writable.</p>
+<p>REPACK can also physically reorder your table's rows to match an index. If your workload frequently reads ranges of related rows, clustering with USING INDEX may improve locality. Measure the effect on your own queries; later updates are not automatically clustered.</p>
+<p>This is a big deal for the REPACK feature beyond just bloat removal. It's a performance feature in its own right. For example, say you have an orders table and frequently query WHERE created_at BETWEEN '2026-01-01' AND '2026-01-31'. Without physical ordering, those rows could be scattered across hundreds of pages. With REPACK orders USING INDEX idx_orders_created_at, the rows are stored sequentially on disk in date order, so a range scan reads pages in sequence instead of random I/O across the whole table.</p>
+<p>You might know CLUSTER from older Postgres versions. It did the same thing, but took a lock.</p>
+<p>I did some testing just to verify how this works. For the 493 MB test case with 1M live rows remaining after deleting 1M of the original 2M rows, the reported timings were:</p>
+<p>In one test on a constrained system, REPACK (CONCURRENTLY) took 9.4 seconds for the stated table and test conditions. Results vary with table, indexes, workload, and hardware.</p>
+<p>REPACK CONCURRENTLY is slower in wall-clock time. It's doing more work: logical decoding and WAL replay on top of the table rebuild. The tradeoff here is more time to keep your table online.</p>
+<p>A note on MVCC safety: REPACK CONCURRENTLY is not fully MVCC-safe. During the brief final swap, a long-running transaction could theoretically miss concurrent changes. A concurrent transaction using a snapshot taken before repacking began can see the table as empty. This is the same limitation pg_repack had, and it's documented in the Postgres 19 release notes. Review this behavior against your workload’s transaction and consistency requirements.</p>
+<p>Regular VACUUM and REPACK solve different problems:</p>
+<p>The rule of thumb: autovacuum handles day-to-day maintenance. REPACK is for when you need to reclaim space back to the OS or physically reorder data, —hings that regular VACUUM fundamentally cannot do.</p>
+<p>REPACK time scales with table size, index count and available I/O. A rough model:</p>
+<p>You can estimate this before running REPACK:</p>
+<p>From my tests on a constrained system (1 CPU, 512 MB, 4 MB maintenance_work_mem):</p>
+<p>The CONCURRENTLY overhead is roughly 1.5x to 2x the basic REPACK time, because it has to set up logical decoding and replay any concurrent changes. On a real production server with fast NVMe and more CPUs, these times would be significantly lower, but the ratio holds.</p>
+<p>For very large tables (100+ GB), expect REPACK to take minutes to tens of minutes. Plan accordingly, and use pg_stat_progress_repack to monitor.</p>
+<p>While REPACK is running, query pg_stat_progress_repack from another session:</p>
+<p>You can estimate percent complete during the scan phase:</p>
+<p>REPACK CONCURRENTLY is the most significant DBA-facing feature in Postgres 19. It brings online table rebuilds into core, eliminates the need for pg_repack, in most cases, and gives you a cleaner interface than the VACUUM FULL / CLUSTER split that's existed forever. If you manage tables with significant bloat in production, this is your upgrade reason.</p>
+<p>Postgres 19 currently has a first release candidate (RC1) with an expected RC2 Nov 12 and GA expected later in November/December 2026. If you want to try REPACK today, spin up a beta instance and see how it performs on your most bloated tables.</p>
+<p>Get the best, coolest and latest delivered to your inbox each week</p>
+<p>Stay up to date on Snowflake’s latest products, expert insights and resources—right in your inbox!</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://www.snowflake.com/en/blog/engineering/postgres-19-repack-table-bloat/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

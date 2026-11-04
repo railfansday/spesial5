@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9759.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/vJT8c3O4IJed0rk4Wq67FpVtiwu1-uya3cdg.png" alt="Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/vJT8c3O4IJed0rk4Wq67FpVtiwu1-uya3cdg.png" alt="Why LLMs Struggle With Constraint-Based Scheduling and How Optimization Solvers Help" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
+<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
+<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
+<p>Imagine you are building a two-week staff schedule. The requirements look simple enough:</p>
+<p>None of these rules is hard to understand by itself. Then you look at weekend coverage.</p>
+<p>Across the four weekend days, the staffing targets ask for 35 employee shifts. But there are 14 employees, and each can work only one weekend, which means at most two weekend days each. Fourteen times two is 28.</p>
+<p>Before I assign a single person to a single shift, at least seven weekend slots are already impossible to fill.</p>
+<p>This is the part of scheduling that interests me when large language models are involved. A model can understand every requirement correctly and still hand back a schedule that breaks once those requirements start affecting each other. In this article I will show that with a public example, explain why it happens, and lay out how I would split the work between a language model and ordinary software.</p>
+<p>To keep it reproducible, I used Instance2 from the University of Nottingham nurse rostering benchmark and rebuilt it as an optimization model. [1] The examples use public benchmark data and general engineering patterns. They do not describe any employer's internal implementation.</p>
+<p>Instance2 covers 14 days with 14 employees and two shift types, Early and Late, each eight hours long.</p>
+<p>Its rules fall into two groups, and the difference between them turns out to be the whole story.</p>
+<p>If staffing coverage were a hard rule too, the weekend numbers alone would make this schedule impossible. No valid answer would exist.</p>
+<p>Because coverage is soft, the question changes. It is no longer "can I satisfy everything?" It becomes "what is the best valid schedule when not every goal can be met?"</p>
+<p>Fourteen employees, one weekend each, two days in that weekend: 28 possible shifts against 35 requested. The minimum shortage is seven, and that is before I consider days off, who is allowed to work which shift, working-time limits, or the Late-to-Early rule.</p>
+<p>The arithmetic is easy. Finding the best schedule once all of those rules start interacting is the hard part.</p>
+<p>For this experiment, I rebuilt Instance2 as a mathematical optimization model and solved it with HiGHS, an open-source solver, through the SciPy library in Python. I will skip the equations and describe the idea, because the idea is what matters.</p>
+<p>Think of every possible assignment as a yes-or-no switch. "Employee A works the Late shift on day 5" is one switch. With 14 employees, 14 days, and 2 shifts, there are 392 of them. A schedule is simply a choice of which switches are on.</p>
+<p>Each hard rule then becomes a restriction on which switches may be on together:</p>
+<p>The weekend rule needs one extra step, and it is worth spelling out because it drives the opening example. I add a second kind of switch that says "this employee works this weekend." Turning on any Saturday or Sunday shift forces that weekend switch on. Then the rule is simple: each employee may have at most one weekend switch on.</p>
+<p>With that in place, the 35 versus 28 conflict stops being an observation in my introduction. It lives inside the model, where the solver has to respect it.</p>
+<p>Coverage is soft, so it gets counters, not locks. For every shift, I track how many people are missing and how many are extra. The number assigned, plus the number missing, minus the number extra, must equal the number required.</p>
+<p>Then each kind of miss gets a price. In Instance2:</p>
+<p>The solver's job is to find the valid schedule with the lowest total penalty.</p>
+<p>This gives the system three things a paragraph of instructions never does: an exact definition of what makes a schedule invalid, a list of what may be traded away, and a price for each trade.</p>
+<p>The solver finished with a proven best score of 828.</p>
+<p>The public benchmark lists Instance2 with a best-known lower bound of 828 and a best-known solution of 828. When a real schedule reaches the lower bound, nothing better can exist, so 828 is optimal. [1] My rebuilt model landed on the same number, which told me I had reconstructed the problem correctly.</p>
+<p>The score breaks down like this: 8 missing staffing assignments at 100 points each makes 800, and employee preference penalties add 28, for a total of 828.</p>
+<p>The weekend arithmetic had already proved that at least seven assignments would be missing. Once every other rule was included, the best possible schedule needed eight.</p>
+<p>One detail is worth noting. A score of 828 does not point to one unique schedule. Different schedules can spread those eight gaps differently and still score the same. The useful result is that the schedule is valid and the score is proven, not any particular arrangement of names.</p>
+<p>Take five of these requirements: Employee D cannot work Late. Employee A must have day 3 off. Late cannot be followed by Early. Each employee can work at most one weekend. Saturday needs ten people.</p>
+<p>A language model may understand every one of those statements perfectly. The trouble starts when assignments begin to affect each other:</p>
+<p>Every assignment changes the choices that remain. Keeping track of all of that at once is a different skill from reading a rule.</p>
+<p>A recent benchmark called SCHEDBench shows the same thing at larger scale. It evaluates 13 language models across 1,132 scheduling problems whose correct answers are backed by a solver. [2] On its nurse rostering problems, the share of model-produced schedules that were valid averaged 97.0% on easy problems, 62.4% on medium ones, and 1.7% on hard ones.</p>
+<p>The study also found that models were sensitive to the order in which the rules were presented. The underlying problem stayed exactly the same, yet shuffling the rules changed how often the models broke them.</p>
+<p>Another benchmark, R-ConstraintBench, reports a related pattern: validity drops as resource limits, downtime, time windows, and either-or constraints begin to interact. [3]</p>
+<p>So the boundary that matters is not whether a model can read a rule. It is whether it can hold the entire valid state in mind while many rules push against each other.</p>
+<p>Real scheduling requirements rarely arrive as equations. A manager writes things like:</p>
+<p>"Bob can work one weekend, but not both."</p>
+<p>"Anyone finishing Late should not open the next morning."</p>
+<p>This is where a language model earns its place. It can turn Bob's sentence into a structured rule: the employee is Bob, the rule type is a maximum number of weekends, the value is one, and the window is 14 days.</p>
+<p>I would keep these out of the model's hands:</p>
+<p>Suppose the original requirement says "Alice must have Saturday off," and the interpretation step records it as a preference instead of a requirement.</p>
+<p>The solver will return a mathematically perfect answer to the wrong problem, and Alice will be on the Saturday rota.</p>
+<p>For any rule that matters, I would keep three things side by side:</p>
+<p>A solver can only guarantee what it was given. The translation into rules still needs a human or a separate check to sign it off.</p>
+<p>I would also check the finished schedule outside the solver. Useful checks include:</p>
+<p>By independent checking, I do not mean running the same model twice. Where practical, the checks should be written separately from the model, so a mistake made while building the model is less likely to appear in both places.</p>
+<p>A solver, an interpretation layer, and an independent checker all add complexity. They should earn it.</p>
+<p>If you are putting a language model anywhere near scheduling, rostering, or planning, here is what I would do:</p>
+<p>The first useful result appeared before the solver ever ran: 35 weekend shifts requested, 28 possible under the weekend rule, at least 7 gaps unavoidable. The full model needed 8 gaps and produced a proven best score of 828.</p>
+<p>Every individual requirement was easy to read. The difficult part was making them all hold at once.</p>
+<p>That is the boundary I would protect in any LLM-assisted scheduling system. Let the language model help interpret messy requirements. Once those requirements become precise rules, let deterministic software search for the schedule and verify it.</p>
+<p>A schedule can look reasonable and still break a rule somewhere you were not looking. In any system with this many interacting rules, validity has to be checked, never assumed.</p>
+<p>[1] University of Nottingham, Nurse Rostering Benchmark Instances, including the raw data for Instance2 and its published optimal score of 828.</p>
+<p>[2] Shrenil Shaun Sharma and Avi Sharma, “SCHEDBench: A Benchmark for Evaluating LLM Constraint Faithfulness in Natural-Language Combinatorial Scheduling,” arXiv:2608.00991 (2026).</p>
+<p>[3] Raj Jain and Marc Wetter, “R-ConstraintBench: Evaluating LLMs on NP-Complete Scheduling,” arXiv:2508.15204 (2025).</p>
+<p>Your Database Can Time-Travel and Still Get the Past Wrong</p>
+<p>Senior Software Engineer building large-scale financial data systems with distributed systems, AI, and LLMs.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://hackernoon.com/why-llms-struggle-with-constraint-based-scheduling-and-how-optimization-solvers-help?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

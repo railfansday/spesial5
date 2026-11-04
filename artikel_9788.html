@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Not Every Inventory Item Needs to Be a UObject</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9788.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>Not Every Inventory Item Needs to Be a UObject</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/1CM7zzusZPYxc3ZneIjEWuO60973-1j83av5.png" alt="Not Every Inventory Item Needs to Be a UObject" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/1CM7zzusZPYxc3ZneIjEWuO60973-1j83av5.png" alt="Not Every Inventory Item Needs to Be a UObject" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Unreal Engine C++ developer focused on reusable gameplay architecture, gameplay systems, and developer-facing tools. Creator of VRS and DAS, with a</p>
+<p>Unreal Engine C++ developer focused on reusable gameplay architecture, gameplay systems, and developer-facing tools. Creator of VRS and DAS, with a</p>
+<p>Unreal Engine C++ developer focused on reusable gameplay architecture, gameplay systems, and developer-facing tools. Creator of VRS and DAS, with a</p>
+<p>Separating identity, state, and behavior in a networked Unreal Engine inventory</p>
+<p>Why should a stack of stone need its own UObject? In my first inventory model, every item had one, even when it had no item-specific behavior or custom state.</p>
+<p>Even a simple stack of stone had a UItem, so every operation-adding it, removing it, saving it, replicating it, or transferring it- had to manage that object as well. But the stone had no object-specific behavior or state: all meaningful data already lived in the inventory entry. It needed an item key, not a separate UObject with its own lifecycle.</p>
+<p>The mismatch became clearest while I was designing inventory-to-inventory transfer. Consider moving a stack of stone from a chest to the player's backpack. In ISK, a runtime UItem belongs to the inventory component that created it and is replicated through that context. Reusing the chest-owned pointer would put the entry in the backpack while the object still belonged to the source context. Duplicating it would create and rebind an object with no stone-specific state. Either choice adds lifecycle work without adding capability.</p>
+<p>Making the runtime object optional removes that work for stone. A flashlight still receives a UItem for its own behavior and state, while both forms share the same common entry model. The benefit here is architectural: simple items no longer require an object lifecycle they do not use.</p>
+<p>ISK, my inventory system for Unreal Engine, now uses a hybrid model. Every item has identity and common state, while only item types that need their own behavior or custom state receive a runtime object.</p>
+<p>The word item hides four related roles. They are parts of one model, not stages of a pipeline.</p>
+<p>The item type selects shared configuration: maximum stack size, spatial shape, allowed rotations, runtime class, and module-specific settings. It describes what an item is, but it does not identify one concrete instance.</p>
+<p>FItemType itself is only a gameplay-tag identifier; it does not contain the item’s configuration. When ISK needs that configuration, UInventorySettingsManager first checks its engine-wide cache. On a cache miss, it searches the project’s item definitions-first the configured DataTable, then the inline settings - and stores an owned copy of the matching definition in the cache. Later requests for the same type reuse that cached definition, so each inventory entry stores only its type and per-instance state instead of duplicating values such as stack limits, shape, bIsPure, or the runtime class.</p>
+<p>The instance key is an FGuid-backed identifier assigned to a specific inventory entry. Two flashlights can share the same item type while having different keys and different runtime states. ISK uses the key to find an entry, so changing its position in the inventory does not change which item it is. In the transfer example below, the entire entry moves to another inventory and keeps the same key.</p>
+<p>The code fragments below are simplified architectural examples, not drop-in implementations of the public API. Reflection declarations, garbage-collection reference tracking, and replication setup are omitted.</p>
+<p>The item entry stores common mutable state while the item is inside an inventory and may reference an optional runtime object. A simplified version looks like this:</p>
+<p>Count, flags, and position live here rather than being copied into UItem as a second authoritative representation. If the entry and the object each stored an independent count, every mutation, save, and replicated update would need a rule for deciding which copy wins.</p>
+<p>In ISK, a pure item does not have a runtime UItem. Its shared configuration comes from FBaseItemSettings, while its per-instance data-key, count, flags, and position live in FItemEntry. FBaseItemSettings::bIsPure marks an item type as using this entry-only representation. A simplified version looks like this:</p>
+<p>Here, Class is the TSubclassOf<UItem> configured for a runtime-backed type. bIsPure = true means no UItem; otherwise, Class is required, and inventory validation rejects a missing class. I will call these two forms entry-only items and runtime-backed items.</p>
+<p>Wood and stone are entry-only items. They can stack when their type permits it and use the same common-entry paths for transfer, capture/restore, and replication. Runtime-backed items add object-specific branches to those paths. A flashlight adds a UItem for behavior or custom state that does not belong in the common entry.</p>
+<p>For a flashlight, count, flags, and position remain in FItemEntry, while behavior-specific state, such as whether the light is on, belongs to UItem. This separation raises the next question: how does the runtime object access the current entry without storing another copy of its state?</p>
+<p>A runtime UItem should not cache another copy of the count, type, or flags. Instead, it keeps the stable item key and uses IItemDataProvider to request those values from the system that currently stores the item.</p>
+<p>Conceptually, a getter follows this pattern:</p>
+<p>The important property is the direction of authority. UInventoryComponent resolves the key to the current entry. The runtime object asks it for count, type, and flags instead of caching another copy.</p>
+<p>For the flashlight, GetCount() reads the entry used by stacking, saving, and replication, while the on/off value remains object-owned. The object adds behavior and custom state; it does not become a second inventory database.</p>
+<p>The same provider boundary also defines the world-item handoff. AWorldItem implements IItemDataProvider and stores the current type, count, and flags. During drop and pickup, the runtime UItem must be recreated or rebound so that its provider matches the current storage context; its data-access API remains unchanged.</p>
+<p>The same separation also applies to saving. UInventoryComponent copies the common fields from each FItemEntry into FItemSaveData:</p>
+<p>The inventory captures common state as FItemSaveData. If the runtime UItem implements ISaveProvider, the inventory calls CaptureSaveData and stores the resulting FInstancedStruct separately in CustomItemsData, keyed by FItemKey. ISaveProvider is separate from IItemDataProvider: one captures object-owned save state, while the other exposes current common state at runtime. For a flashlight, the custom payload can contain its on/off value.</p>
+<p>When the inventory is restored, ISK reads the saved FItemType, resolves its FBaseItemSettings, rebuilds the FItemEntry from FItemSaveData, and creates a runtime UItem only when the item type requires one:</p>
+<p>Entry-only items are restored entirely from FItemSaveData because they have no UItem or object-specific state. For runtime-backed items, a UItem that implements ISaveProvider captures and restores its own custom state. UInventoryComponent only stores and returns that payload, so it does not need flashlight-specific save logic.</p>
+<p>The Fast Array carries each entry's common fields and, when present, a network reference to RuntimeItem. The object's replicated properties travel separately through subobject replication. Replicating the pointer alone does not replicate the object's state: the owning actor or component must also arrange subobject replication. ISK therefore replicates each runtime UItem as a subobject of its owning UInventoryComponent.</p>
+<p>A replicated flashlight property, such as its on/off state, travels with the UItem subobject. Wood has no UItem, so all of its replicated state stays in the Fast Array entry. On a client, the entry can arrive before its UItem is ready, so RuntimeItem may briefly be null and must be checked before use.</p>
+<p>Transfer exposes the distinction between item identity and UObject identity. The destination rebuilds the common entry, while a runtime-backed item also needs its object-owned state recreated in the destination context.</p>
+<p>When a source entry has a runtime object, the inventory-to-inventory path duplicates it under the target inventory:</p>
+<p>In the example with the flashlight, the target entry keeps the same stable key and receives the duplicated runtime object. If the on/off state is stored in a reflected property covered by Unreal's duplication rules, that state is copied into the new object. The object is then bound to the target provider and inventory context. The duplicated UItem is a new object owned by the target inventory, but it keeps the same FItemKey, so it still represents the same logical item.</p>
+<p>ISK stages the transfer: it re-fetches and revalidates the source after pre-transfer callbacks, creates the target entry without publishing final grant callbacks, and only then removes the source. If source removal fails, it attempts to remove the unannounced destination copy.</p>
+<p>A fully data-only design is also valid: every item remains an entry, and external systems select behavior by type and key. That removes per-item UObjects, but it also moves Blueprint extension points, custom-state handling, and callbacks out of UItem subclasses and into registries or processors.</p>
+<p>An all-UObject model is simpler when nearly every item needs independent behavior. A fully structural model is attractive when behavior is type-driven and data-oriented. ISK uses the hybrid model because some items benefit from Unreal's class and Blueprint model while resource stacks do not. The choice is not between correct and incorrect architectures; it is about where item-specific complexity should live.</p>
+<p>The architectural benefit comes from two separate decisions. Making UItem optional removes the object lifecycle from entry-only items. Keeping common state authoritative in FItemEntry prevents competing copies of that state, including for runtime-backed items. An all-UObject design can also avoid duplicated state; that benefit does not depend on making objects optional.</p>
+<p>The trade-off is explicit. Runtime items must be bound and replicated through the current owning context; their state needs deliberate duplication and save rules; detached objects and missing providers must fail safely. A project in which almost every item already needs an object may not benefit from this extra boundary.</p>
+<p>The boundary can be summarized in one sentence: the type identifies shared configuration, the entry owns common per-instance state, and UItem exists only when an item needs behavior or state of its own. Objects are not the problem; making them mandatory is.</p>
+<p>Ilia Zherlitsin is an Unreal Engine C++ developer who builds reusable gameplay systems and tools. His projects include ISK, a modular inventory framework, as well as VRS, DAS, and different gameplay and system tools.</p>
+<p>Designing Deterministic Value Resolution for Competing Gameplay Systems in Unreal Engine</p>
+<p>Unreal Engine C++ developer focused on reusable gameplay architecture, gameplay systems, and developer-facing tools. Creator of VRS and DAS, with a</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://hackernoon.com/not-every-inventory-item-needs-to-be-a-uobject?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

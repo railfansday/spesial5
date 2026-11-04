@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SSH Keys on macOS with Touch ID: Secure Enclave Setup (2026)</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9726.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>SSH Keys on macOS with Touch ID: Secure Enclave Setup (2026)</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fif5n2a017ibwjr5m0e50.png" alt="SSH Keys on macOS with Touch ID: Secure Enclave Setup (2026)" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fif5n2a017ibwjr5m0e50.png" alt="SSH Keys on macOS with Touch ID: Secure Enclave Setup (2026)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Posted on Nov 4
+•
+Originally published at termique.app</p>
+<p>A normal SSH key is a file. Anything that runs as you can read ~/.ssh/id_ed25519, and if the key has no passphrase, a copy of that file is a copy of your access. A Touch ID SSH key works differently: the private key is generated inside your Mac's Secure Enclave, it never leaves it, and every signature needs your fingerprint. Recent macOS versions can do this with two built-in tools, sc_auth and /usr/lib/ssh-keychain.dylib, without installing anything.</p>
+<p>This guide covers the setup, how to make it survive a reboot, how to use it with GitHub and your own servers, and the part most write-ups skip: what you give up when a key can't be copied.</p>
+<p>You create a non-exportable P-256 identity in the Secure Enclave with sc_auth, then tell OpenSSH to talk to it through Apple's security key provider, /usr/lib/ssh-keychain.dylib. OpenSSH treats the Secure Enclave like a FIDO security key, so the public key shows up as sk-ecdsa-sha2-nistp256@openssh.com, the same type a hardware key would give you.</p>
+<p>After that, ssh and git over SSH trigger a Touch ID prompt whenever the key signs a login. The rest of this article explains each piece and the setup that doesn't need step 2 after every reboot.</p>
+<p>A note on testing: we build termique on Linux and couldn't run the sc_auth steps on a Mac for this article. The macOS commands and outputs come from two public write-ups (linked in the sources) and Apple's man pages they cite. The OpenSSH side (flags, key type, server support) is checked against the OpenSSH manuals and tested on OpenSSH 9.6.</p>
+<p>The Secure Enclave is a separate security subsystem inside Apple's chips. It has its own processor and protected memory, isolated from the main CPU, and it can generate and use keys that the operating system never sees in plain form. Apple lists it on all Macs with Apple silicon, Intel Macs with the T2 Security Chip, and the 2016 and 2017 MacBook Pro models with the T1 chip.</p>
+<p>sc_auth is the macOS command for smart card and CryptoTokenKit identities. With the key type p-256-ne, it asks the Secure Enclave to generate a P-256 key pair where the private half is non-exportable (that's what -ne means). Signing happens inside the enclave. Your Mac asks for Touch ID, the enclave signs the login challenge, and only the signature comes out.</p>
+<p>That gives you three things a key file can't:</p>
+<p>It does not protect you from everything. If you approve a Touch ID prompt for a login you didn't start, that login goes through. And it doesn't stop someone who can get your enrolled finger onto the sensor, same as any other Touch ID action.</p>
+<p>Check that it exists, and see its SSH fingerprint:</p>
+<p>The second form prints the key hash as an SSH-style SHA256: fingerprint, which is what you'll compare against the server side later. To remove an identity, use its hash from the list:</p>
+<p>Run man sc_auth on your Mac before you start. If create-ctk-identity isn't in it, your macOS version doesn't have this feature. The original write-up describes it on macOS Tahoe, and later reports say it works on Sequoia too.</p>
+<p>In the OpenSSH manual, -K means "load resident keys from a FIDO authenticator" and -S sets the provider library to use instead of the built-in USB support. Here the provider is Apple's ssh-keychain.dylib, which answers on behalf of the Secure Enclave. ssh-add will ask for a PIN because it assumes a USB security key; press Enter. You should see Resident identity added: ECDSA-SK SHA256:....</p>
+<p>If you've used macOS for a while, ssh-add -K may look familiar for a different reason. Older Apple guides used it to store a key's passphrase in the macOS Keychain. Apple moved that behaviour to --apple-use-keychain. In this article, -K is the upstream OpenSSH flag for resident keys.</p>
+<p>ssh-add -L prints the public key. Use the line that starts with sk-ecdsa-sha2-nistp256@openssh.com. If the agent also holds other keys, ssh-add -l lists them with fingerprints so you can tell which is which (more on that in our ssh-agent forwarding post, which matters here: a forwarded agent hands remote hosts a way to ask for signatures).</p>
+<p>The agent forgets everything when it restarts, so the ssh-add step comes back after every reboot. There are two ways around that.</p>
+<p>ssh-keygen -K downloads resident keys and writes the public and private key files to the current directory, which is why you cd ~/.ssh first. You get id_ecdsa_sk_rk and id_ecdsa_sk_rk.pub. The "private" file is only a reference to the credential in the Secure Enclave, not key material, which is why -N "" (no passphrase) is fine here. Copying it to another Mac gives that Mac nothing it can sign with.</p>
+<p>SecurityKeyProvider is a standard ssh_config option: the library ssh uses for FIDO-style keys instead of its built-in USB support. If you already keep a large config, put this in a narrower Host block for the servers that should use the Touch ID key (our ssh config organization post covers splitting it up).</p>
+<p>If you created several identities with sc_auth, check that ssh-keygen -K wrote a file for each of them. One public report describes an older build that saved only one, fixed in a later macOS beta.</p>
+<p>ssh, ssh-add and ssh-keygen all read SSH_SK_PROVIDER, so after this, ssh-add -K and ssh-keygen -K work without the long path. It only applies to programs started from that shell, though. GUI apps that run ssh on their own won't see it, which is one reason to prefer the config file.</p>
+<p>To label the key so you can tell it apart in lists later, change the comment on the handle file:</p>
+<p>Yes, as long as the other end accepts security key types.</p>
+<p>To check you pasted the right key, compare fingerprints. On the server:</p>
+<p>A Secure Enclave key shows up as 256 SHA256:... (ECDSA-SK). That fingerprint should match the one from ssh-add -l or sc_auth list-ctk-identities -t ssh on your Mac.</p>
+<p>Where it can fail: servers running OpenSSH older than 8.2, network appliances with their own SSH implementation, and hardened environments with a fixed list of approved algorithms that leaves out the sk- types. Check before you make it your only key for a box.</p>
+<p>These solve the same problem in different ways, and each has a real strength.</p>
+<p>A common pattern is a hardware key as the portable or break-glass key, and a Secure Enclave key for day-to-day use on the laptop.</p>
+<p>The thing that makes this key safe is also what makes it awkward: it exists on one Mac and nowhere else.</p>
+<p>It's a different tradeoff, and you may want both.</p>
+<p>A Secure Enclave key is bound to one Mac on purpose. termique goes the other way for the keys you keep in it: you generate an ed25519 or rsa key, or import an existing OpenSSH or PEM private key, and the private key is encrypted on your device before it syncs, so the server only stores ciphertext. That's how the same key reaches your other devices, including iOS. termique's SSH keys docs list ed25519 and RSA generation and OpenSSH/PEM import; they don't mention security key (sk-) types, so treat a Touch ID key as something you use from Terminal and plain ssh, not from termique.</p>
+<p>In practice that can look like this: a Touch ID key on your laptop for the access that matters most, like pushing to production repos or a bastion, and a synced key in termique for the everyday servers you reach from more than one device. termique also shows each key's SHA-256 fingerprint in Settings, so you can line it up with ssh-keygen -lf on the server the same way. Be precise about what's encrypted: credentials and private keys are end-to-end encrypted, while host names, groups and snippets sync as plain metadata. The details are on our security page.</p>
+<p>On recent macOS versions, yes. sc_auth create-ctk-identity creates the key in the Secure Enclave and /usr/lib/ssh-keychain.dylib lets the built-in OpenSSH use it. Check man sc_auth for create-ctk-identity to confirm your version has it.</p>
+<p>Not a p-256-ne key. It's generated inside the enclave and can't leave it. Plan for that with a second key or a hardware key that can still get you in if the Mac is lost.</p>
+<p>ssh-add assumes a USB security key, which may have a PIN. The Secure Enclave uses Touch ID instead, so press Enter at the prompt.</p>
+<p>No. It's ECDSA on the P-256 curve, shown as sk-ecdsa-sha2-nistp256@openssh.com. It's widely supported, but older servers that predate OpenSSH 8.2 won't accept it.</p>
+<p>Only if you load the key through the agent. Write a key handle with ssh-keygen -K and add SecurityKeyProvider and IdentityFile to ~/.ssh/config, and ssh picks it up on its own.</p>
+<p>If you manage keys for more servers than you can keep in your head, try termique free: keys generated or imported once, encrypted before they sync, with fingerprints you can check against the server.</p>
+<p>Templates let you quickly answer FAQs or store snippets for re-use.</p>
+<p>Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's permalink.</p>
+<p>For further actions, you may consider blocking this person and/or reporting abuse</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://dev.to/masitings/ssh-keys-on-macos-with-touch-id-secure-enclave-setup-2026-1c6a" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

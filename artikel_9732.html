@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>How to Use Message Bus DLQs for Advanced Tail-Based Sampling</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9732.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>How to Use Message Bus DLQs for Advanced Tail-Based Sampling</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/ozm7BFplXkVpzbAiKzmJuZu1p7u2-2u13ot0.png" alt="How to Use Message Bus DLQs for Advanced Tail-Based Sampling" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/ozm7BFplXkVpzbAiKzmJuZu1p7u2-2u13ot0.png" alt="How to Use Message Bus DLQs for Advanced Tail-Based Sampling" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Enterprise Integration Architect. Deep diving into Event-Driven Architecture, distributed systems, and OpenTelemetry to build reliable systems.</p>
+<p>Enterprise Integration Architect. Deep diving into Event-Driven Architecture, distributed systems, and OpenTelemetry to build reliable systems.</p>
+<p>Enterprise Integration Architect. Deep diving into Event-Driven Architecture, distributed systems, and OpenTelemetry to build reliable systems.</p>
+<p>Author's Note: The EDA-based architecture introduced in this post is a proposed enterprise implementation pattern and is not part of the official OpenTelemetry Collector reference architecture.</p>
+<p>The traditional two-tier OpenTelemetry (OTel) collector architecture can effectively address end-to-end tracing sampling challenges. However, it also introduces significant complexity and is difficult to implement in practice. One of the primary hurdles is the requirement for extremely powerful infrastructure—often necessitating high-performance servers with very large memory capacity—to handle traffic at tens of thousands of spans per second.</p>
+<p>A key limitation of this traditional design lies in its point-to-point integration between the tier-1 and tier-2 collectors. This tight coupling forces the tier-2 collectors to independently manage resilience, scalability, and fault tolerance, which adds operational burden and limits flexibility.</p>
+<p>In this section, we propose a modern alternative: replacing point-to-point communication with a messaging-based Pub/Sub integration. By decoupling the two tiers through a messaging layer, this approach improves scalability, enhances resilience, and redistributes complexity from collectors to the messaging infrastructure to solve the major challenge of the traditional two-tier OpenTelemetry collector design.</p>
+<p>The concept is similar to the Kafka-based buffering approach commonly used in large-scale tracing platforms, where trace collection is decoupled from downstream processing through an intermediary messaging layer.</p>
+<p>The proposed architecture introduces an alternative approach to tail-based sampling by externalizing trace buffering and coordination functions from the collector layer to the messaging infrastructure. This design is intended to reduce collector state management requirements while providing additional flexibility for scalability, resiliency, and operational deployment. The following sections describe the architecture, implementation options, benefits, and associated trade-offs.</p>
+<p>The architecture is built around an event mesh that provides both reliable trace transport and temporary persistence.</p>
+<p>The event mesh is a virtual messaging infrastructure built on top of the underlying network. It is formed by a collection of interconnected message buses that work together as a unified event distribution layer.</p>
+<p>The message bus is responsible not only for routing data between tier-1 and tier-2 collectors but also for providing a persistent storage layer for the incoming trace. This design removes the need for tier-2 collectors to cache all spans belonging to the same trace. Instead, the message bus temporarily retains the data, allowing tier-2 collectors to consume and process it in batches before forwarding it to the APM backend.</p>
+<p>There are three major components in this architecture design</p>
+<p>Compared with traditional tail-based architecture, this solution only requires enhanced communication between the tier-1 and tier-2 collectors to support the message bus.</p>
+<p>Similar to a traditional two-tier OpenTelemetry (OTel) Collector architecture, the tier-1 collectors are distributed across application hosts or deployed on dedicated collector servers in different network segments isolated by firewalls. These collectors connect to a message bus configured in an active-standby topology to provide high availability (HA) and disaster recovery (DR) capabilities.</p>
+<p>The tier-2 collectors are deployed within the same network segment and consume data from the message bus. As a result, there is no need to deploy a dedicated load balancer in front of the tier-2 collectors, since message distribution and failover are handled by the message bus infrastructure.</p>
+<p>This solution adopts a two-tier collector design, with communication between the collector tiers facilitated through the message bus. Redis is optionally used as an in-memory cache to store global trace IDs and their associated metadata. This solution also introduces some extra optional services to decouple the function from the tier-2 collector.</p>
+<p>The solution consists of three core components and three optional components, as described below:</p>
+<p>Within the event mesh, the message bus serves as the fundamental building block. Its role extends beyond simply transporting trace data between tier-1 and tier-2 collectors. By leveraging messaging capabilities such as routing, filtering, buffering, and protocol abstraction, the message bus processes and distributes messages to the appropriate consumers. This allows the message bus to distribute trace data efficiently while reducing the complexity of the application logic required by the tier-2 collectors, thereby improving the scalability and maintainability of the overall solution.</p>
+<p>The OpenTelemetry (OTel) Collector consists of three main components: receivers, processors, and exporters.</p>
+<p>In this architecture, the tier-1 collector receives traces from application SDKs or third-party products through its receivers. The traces are then pre-processed by the processors before being published to a message bus and forwarded to the tier-2 collector.</p>
+<p>The OTLP receiver and exporter support gRPC and HTTP, and the contrib repository provides messaging-specific components — including a Kafka receiver and exporter, and a Solace receiver for broker-generated trace events. Depending on the chosen message bus, integration may therefore require configuration of existing components rather than custom implementations; a custom exporter is required only where no component exists for the target broker. In addition, the processor component must be enhanced to read and update trace metadata and global configuration parameters, such as sampling-strategy settings, from Redis or another persistent data store.</p>
+<p>In many deployments, organizations use vendor-specific agents instead of tier-1 OpenTelemetry Collectors. As a result, it is necessary either to enhance the vendor agents to publish trace data to the message bus directly or to introduce an additional collector layer that acts as the tier-1 collector and receives telemetry data from these agents before forwarding it to the message bus.</p>
+<p>This design relies on the Dead Letter Queue (DLQ) functionality of the message bus. The tier-1 collector sends trace spans to the message bus, and the message can then be retrieved from the DLQ after 30 seconds.</p>
+<p>The tier-1 collector ingests trace spans from applications and third-party products and publishes them to dedicated message-bus topics (otel_trace/[trace_id]). Each message (trace span) must include the following mandatory header fields:</p>
+<p>The data queue’s subscription rule is as follows:</p>
+<p>The tier-2 collector monitors Dead Letter Queue and uses the first expired root span as a trigger to process the corresponding trace. It retrieves all spans sharing the same trace ID from both the active queue and the dead message queue through selector-based filtering. The complete trace is then evaluated against the configured sampling rules. Qualified traces are batched and forwarded to the APM backend, while unqualified traces are discarded.</p>
+<p>This design leverages the queue Time-to-Live (TTL) and Dead Letter Queue (DLQ) to achieve the same objective as the buffer window used in traditional tail-based sampling. When a tier-2 collector consumes a message from the control queue, it can be assured that all spans generated within the preceding 30-second window have already been persisted in the data queue. The buffer duration is configurable and can be adjusted dynamically, with changes taking effect immediately.</p>
+<p>⚠️ The Hidden Risks of Event-Driven Architecture Nobody Talks About</p>
+<p>Enterprise Integration Architect. Deep diving into Event-Driven Architecture, distributed systems, and OpenTelemetry to build reliable systems.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://hackernoon.com/how-to-use-message-bus-dlqs-for-advanced-tail-based-sampling?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

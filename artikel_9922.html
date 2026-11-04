@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A Second Futamura Projection</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9922.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>A Second Futamura Projection</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            
+            
+            
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Two months ago, we
+turned compfuck
+back into an interpreter and wrote a specializer that, given a Brainfuck
+program, folded the interpreter away and left behind the operations we
+couldnât specialize. Thatâs the first Futamura projection, which is what
+I likened compfuck to historically in lazy shorthand. If you missed the
+article and this whole paragraph refuses to make sense to you, start
+there!</p>
+<p>Of course, that article was only the first step. Weâre not done with
+our Origami piece.</p>
+<p>Specifically, we ended up with a way to obtain compiled programs
+without writing instruction translations by hand. Thatâs great, but we
+still ran the specializer on every single program, walking through the
+interpreterâs source each time. The specializer and the interpreter were
+always the same, though, we just had a different Brainfuck program. This
+is wasteful and we can do better.</p>
+<p>You might also have a hunch about how to deal with this now: if part
+of the input is fixed, we can specialize. And the second Futamura
+projection does exactly that to the specializer itself:</p>
+<p>We feed the specializer to itself, with the interpreter as its known
+input. What comes out is a program that takes a Brainfuck program and
+produces the residual code directly, without ever executing the
+interpreter. Thatâs a compiler, delightfully weird.</p>
+<p>It might sound like a parlor trick, and it took me a while to believe
+it would produce anything sensible, even after the time it took for me
+to understand it. But it does work, and the compiler we get at the end
+looks a lot like the one I wrote by hand years ago. Letâs see how we get
+there.</p>
+<p>To specialize a program, the specializer has to understand it. Our
+old specializer understood exactly one program, the interpreter. For
+instance, it knew that p and i were static and
+that every if and let belonged to the source
+traversal. We decided a whole bunch of things by hand, basically making
+a mini DSL for Carp-like sources.</p>
+<p>This wonât scale to the specializer itself. It has static and dynamic
+parts mixed in a bunch of places, it calls helper functions, and its
+recursive calls donât all terminate if you naively unfold them. So the
+first step is to write a specializer that is general enough to
+specialize itself, without tricks this time.</p>
+<p>There is a second, sneakier problem I glossed over a bit last time,
+because I wasnât quite sure yet how to solve it when I wrote that piece:
+the old specializer evaluated static expressions by handing them to
+Carpâs eval. If we specialize that, the best we can do is
+leave a call to eval in the output, and our âcompilerâ
+would still interpret pieces of the interpreter at compile time. To get
+rid of that, the specializer needs to evaluate static code itself, in a
+way that can be specialized in turn. If that doesnât make sense yet, no
+worries. Itâs easier to show than to tell.</p>
+<p>Just one more thing before we continue, though, because I want to be
+honest: for the purposes of this tutorial, I opted not to make this an
+absolutely generic implementation of the second Futamura projection.
+Weâll still cut corners where itâs expedient without undermining the
+conceptual purity. Iâll also call it out when it happens.</p>
+<p>Last time, definterpreter stored the interpreterâs body
+as metadata. Now a macro called remember stores the
+parameters as well, and defmixâmix is the name
+handed down by the forebears of this techniqueâdoes the same for the
+specializerâs functions and collects them in a list. That list is the
+specializer as a program. The bracket search is stored like the
+interpreter, so the interpreter is now a program with two functions, an
+interpreter loop and a helper function.</p>
+<p>Carp expands macros before the body gets stored, so
+case, cond, and, and
+or arrive as ifs and
+lets1. Our specializer only has
+to understand if, let with a single binding,
+quote, function calls, and a handful of primitives. Itâs
+basically a small Lisp, and the specializer is written in it, too (sans
+the macroâs syntactic sugar).</p>
+<p>We keep last timeâs split into static p and
+i and dynamic t and h, but
+replace the hand-made decisions with a rule:</p>
+<p>An expression that doesnât mention any dynamic variables can
+be evaluated during specialization, and an expression that doesnât
+mention any static variables has nothing to specialize, so we
+leave it alone. Everything else gets taken apart.</p>
+<p>The rule is purely syntactic, so it has plenty of blind spots. An
+expression that only mentions static variables gets run during
+specialization even if it has side effects. Neither of our programs has
+one, so weâll leave it at that. Its semantic generalization is left as
+an exercise to the reader.</p>
+<p>Before we can fold things, we have to evaluate.</p>
+<p>Last time, known handed static expressions to
+eval. We need to get rid of that eval, though,
+so we write an evaluator in and for our small Lisp:</p>
+<p>Semantically, this is easy, but itâs a lot of caring and
+cdring, so letâs go through it in turn:</p>
+<p>Letâs check out ev-primitive for good measure.</p>
+<p>The primitives are what both programs need: a few list operations,
+comparison, a bit of arithmetic, and string access. Anything else,
+including the specializerâs own helpers, is a function in the program
+and gets evaluated from its source. We cheat a bit here, and map this
+Lispâs operations one-to-one to Carp, which is nice, because itâs
+trivial, but also a bit horrendous, because, well, look at the code.</p>
+<p>Last timeâs bindings array is now split into names and
+vals. When we specialize the specializer,
+names is known and vals is not, so a lookup
+like (index-of e names) happens ahead of time and only
+(List.nth vals 2) is left over. With names and values in
+one list, every lookup would have to search at compile time.</p>
+<p>To see this in action, here is the body of ev
+specialized to the expression (+ i 1), with i
+static:</p>
+<p>The evaluator is gone. Whatâs left is the expression itself, reading
+i from whatever slot the compiler keeps it in. The dispatch
+over primitives disappeared, because which primitive we apply is
+known.</p>
+<p>If you take only one thing away from this post, it should probably be
+Figure 5. Itâs our whole trick! But weâre not done yet.</p>
+<p>The specializer proper is called mix (a nod at those
+before us, again). It takes the program, the variables, an expression,
+and the environment (as two lists), and returns residual code:</p>
+<p>Again: quite a lot of caring and cdring, so
+letâs take it slow.</p>
+<p>The first two lines are the rule we mentioned above. Code without
+static variables is returned as-is. Code without dynamic variables gets
+evaluated, and lift turns the value back to code, quoting
+it if necessary.</p>
+<p>memo is a special case that calls mix-memo.
+Weâll defer it one more time.</p>
+<p>The rest are the same branches as last time, except that an
+if only picks a branch if its condition is static, and
+calls to functions in the program are unfolded. It looks quite odd, but
+if you squint, you might see the resemblance.</p>
+<p>unfold is the unfolding of the interpreterâs recursive
+call we had last time, but generalized for any function in the
+program:</p>
+<p>Letâs start at the bottom this time, in the catch-all call to
+list. It means that dynamic arguments get a
+let. This happens unless the caller passes a variable of
+the same name (condition just above).</p>
+<p>Last time we needed to insert fresh names here, but our interpreter
+always passes t and h on unchanged, so with
+the condition above we just skip the let
+entirely2.</p>
+<p>But thereâs that memo thingie again. What is it?</p>
+<p>When the specializer runs normally, memo is the identity
+function and does nothing.</p>
+<p>But as we saw above, when the specializer reads a call wrapped in
+memo, it calls mix-memo instead.</p>
+<p>mix-memo doesnât unfold. Instead, it generates a
+separate function specialized to the callâs static arguments, remembers
+it, and emits a call to that function.</p>
+<p>We need this because of what happens when the specializer specializes
+itself. When we unfold mix on the interpreterâs body and
+reach the interpreterâs recursive call, unfold calls
+mix on the interpreterâs body again. With the interpreterâs
+source known, that is the same specialization we started with, and
+unfolding it would go on forever. The interpreter never had this
+problem, because each of its recursive calls moved to a new, known
+position in the Brainfuck program. Here, we need an explicit base case
+marker.</p>
+<p>The same happens in ev. When we specialize the
+evaluator, it meets calls whose arguments arenât known yet, like the
+bracket search. Unfolding those wouldnât stop either, so they get their
+own functions as well.</p>
+<p>And thatâs the whole reason memo appears in the
+recursive and mutually recursive cases that are not clearly reductive.
+Once weâve seen a call before and specialized it, we just emit a call to
+the already known name, closing the loop.</p>
+<p>Deciding where to place these markers is, as far as I understand, one
+of the harder problems in partial evaluation. I put the two we need
+there by hand. Doing this automatically is, say it with me now, left as
+an exercise to the reader.</p>
+<p>We are ready to project now! The first one, with the new
+specializer:</p>
+<p>Alright, looking âgoodâ. Looks like the specializer is working. But
+thatâs the easy case, right?</p>
+<p>For the second case, we hand the specializer to itself.</p>
+<p>Two functions come out. The first is the compiler, and Iâll give it
+to you lightly abridged and re-indented, but true to its mindboggling
+form:</p>
+<p>This takes some squinting (your eyes must be tired by now), but bear
+with me. vals starts out as the program and the position.
+Each let in the interpreter conses its value
+onto the front, so after the first one, (List.nth vals 0)
+is the current character3.</p>
+<p>The first lines check for the end of the program and a closing
+bracket, and return the symbol h. Then we dispatch on the
+character, and each branch returns a quoted piece of code:
++ returns the tape update, > returns
+(set! h (+ h 1)), and so on. The loop builds a
+while around a recursive call that compiles its body.
+Finally, we compile the rest of the program, and put both into a
+do. Easy-peasy, or something like that.</p>
+<p>The second function is the bracket search:</p>
+<p>search-matching-bracket wasnât even in our list of
+required parts. During the first projection, our evaluator runs it from
+source. When we then specialized the specializer, the evaluator got
+specialized to its body, and it spit out a compiled version.</p>
+<p>The interpreter is gone, and so is the specializer. There is no
+machinery, no ev, mix or source walks. Whatâs
+left is a function from Brainfuck to Carp that dispatches on characters
+and returns quoted code.</p>
+<p>Whatâs funky to me is that here is the core of the compiler I wrote
+by hand back in 2019:</p>
+<p>Itâs the same idea! Across two blog posts, we started with that
+compiler that I got from hand-dynamicizing an interpreter, turned it
+back into an interpreter, and specialized our way back to it.</p>
+<p>It took a lot more machinery than writing it by hand, but it
+automatically determined which code to emit for each character. And
+thatâs our origami in its full glory!</p>
+<p>This was quite a bit more work than the first projection.</p>
+<p>Itâs not even completely general, some of the decisions are still
+mine: which variables are static, which primitives exist, and where to
+put memo all needed a guiding hand in our implementation
+(though as I alluded to, theyâre not insurmountable). We also make a
+bunch of assumptions about the code playing nice and coloring inside our
+lines, which we probably shouldnât in the real world.</p>
+<p>But I find it remarkable that it works at all! We wrote an
+interpreter and a specializer. Neither of them knows anything about
+compiling Brainfuck. But feed one to the other, and a compiler just
+falls out, plus a bracket search that was needed but didnât get asked
+for.</p>
+<p>There is, of course, a third projection, where we specialize the
+specializer to itself and get a program that turns interpreters into
+compilers. Iâm not going to promise anything. Our specializer would have
+to unfold its own memo machinery, and I have a feeling that would get
+ugly quick. This implementation also already took twice as long to make
+as the last one (figuring out how to make it explainable was most of the
+work), and I might not have enough time on my hands for more card
+tricks. But maybe I do.</p>
+<p>1. Last time I said that the stored source is the
+interpreter before Carp expands it, but that wasnât true. Carp expands
+the macros in the code a macro returns before running it, and that
+includes the body we hand to meta-set!. Whoops. Our old
+specializer handled that just fine, it simply never entered its
+case branch and I didnât notice.</p>
+<p>2. Strictly speaking, the unfolded code now
+shares h with its caller, and an assignment inside it
+changes the callerâs h. Thatâs fine for our interpreter,
+because every call hands its h back and the caller
+continues with that. We could also just bind it again, but
+(let [h h] ...) compiles to int h = h;, which
+C rightfully rejects. Thatâs why last timeâs version went through a
+gensym, but we can just avoid the whole let
+instead!</p>
+<p>3. The third let is the one from the
+expanded case statement, which binds the current character
+once more. Thatâs why the dispatch reads (List.nth vals 0)
+again after it.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://blog.veitheller.de/A_Second_Futamura_Projection.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        

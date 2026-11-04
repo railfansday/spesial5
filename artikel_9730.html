@@ -1,0 +1,81 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Modelling the SCHADS Award as Data: Effective Dates, Additive Casual Loading and Test Fixtures for 2026-27</title>
+    <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9730.html">
+    <style>
+        body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
+        .container { max-width: 800px; margin: 0 auto; background: #fff; padding: 25px; border-radius: 10px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); }
+        .btn-back { display: inline-block; margin-bottom: 20px; color: #0d6efd; text-decoration: none; }
+        .article-body img { max-width: 100%; height: auto; border-radius: 8px; margin-bottom: 15px; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
+        <h1>Modelling the SCHADS Award as Data: Effective Dates, Additive Casual Loading and Test Fixtures for 2026-27</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        
+        <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F2zkur5y0cwg54vryafb6.png" alt="Modelling the SCHADS Award as Data: Effective Dates, Additive Casual Loading and Test Fixtures for 2026-27" style="max-width:100%; height:auto; border-radius:8px;">
+            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F2zkur5y0cwg54vryafb6.png" alt="Modelling the SCHADS Award as Data: Effective Dates, Additive Casual Loading and Test Fixtures for 2026-27" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
+                <p>Originally based on our article How to automate SCHADS award interpretation for NDIS payroll on rostery.com.au. This version is rewritten for developers, payroll analysts and anyone maintaining the pay rules inside a disability or home care provider's systems. It also corrects two points from the original (casual overtime and the vehicle allowance), covered below.</p>
+<p>The arithmetic in SCHADS payroll is easy. A rate times hours, a percentage, an allowance. What goes wrong is everything around the arithmetic: which rate was in force, which band a shift falls in, whether the casual loading stacks or multiplies, and whether last year's allowance amount is still sitting in a config file somewhere.</p>
+<p>2026-27 is a good year to look at this, because the Social, Community, Home Care and Disability Services Industry Award (MA000100) changes twice in five months. The Annual Wage Review lifted minimum rates by 4.75% from the first full pay period starting on or after 1 July 2026. Then home care employees doing disability work (Schedule E) get an increase of up to 15% from the first full pay period starting on or after 1 December 2026, under the Fair Work Commission's decision in [2026] FWCFB 232. A rules engine that treats rates as constants will be wrong twice this year.</p>
+<p>This post walks through a small Python model that keeps the rules as dated data, splits shifts into bands, applies the casual loading the right way, and pins it all down with test fixtures you can check against the Fair Work Ombudsman pay guide.</p>
+<p>General information only, not payroll or legal advice. Figures are from the Fair Work Ombudsman's SCHADS pay guide effective from the first full pay period on or after 1 July 2026, using Social and Community Services (SACS) Level 2, pay point 1 at $36.22 an hour. Check the current award and pay guide before you rely on any number.</p>
+<p>Most hand-rolled SCHADS logic mixes three different things in the same formula. Pull them apart first.</p>
+<p>Here's the shape of it in code. Money is Decimal, never float.</p>
+<p>The original article suggested the kilometre allowance sits outside the annual review cycle. It doesn't: the vehicle allowance moved to $1.05 per kilometre from July 2026 along with everything else. If your allowance table has no effective date column, that's the first thing to add.</p>
+<p>Every lookup takes a date. The simplest version picks the latest row that started on or before that date:</p>
+<p>The catch is what date you pass in. Award increases don't start on a calendar date. They start from the first full pay period that begins on or after the operative date. So the real start date depends on the employer's pay calendar:</p>
+<p>1 December 2026 is a Tuesday. A weekly pay run that starts on Mondays picks up the new rates from Monday 7 December. A fortnightly run that started on Monday 30 November doesn't get them until 14 December, because that fortnight began before the operative date.</p>
+<p>There are two sensible ways to store this. You can write the rate row with effective_from set to the employer's actual first full period, which keeps lookups simple but means the table is employer-specific. Or you can keep the award's operative date in the table and map each shift to its pay period start before the lookup. Some systems, Rostery included, look up the rate in force on the date of the shift. Whatever your system does, put a shift from the days between the operative date and the next period start into your tests, so you know which rate it picks and can decide whether that matches how you pay.</p>
+<p>For the December change in particular, check which schedule each employee is under. The up-to-15% increase applies to Schedule E (home care employees doing disability work). SACS employees under Schedule B have no rate change on 1 December. A table keyed on level alone, without the stream, will get this wrong.</p>
+<p>A shift's band depends on when it was worked, so the input should be the approved actual start and finish, not the rostered times. Two rules matter most:</p>
+<p>The afternoon and night loadings work the other way: if a weekday shift qualifies, the loading applies to the whole shift, not just the hours after 8pm. That is an easy bug to write, because the "split by clock time" logic you need for weekends is exactly wrong for weekday shift loadings. Note too that these two loadings are defined for employees engaged as shiftworkers. For a day worker, time outside the 6am to 8pm span is treated differently, so the employee's engagement type needs to be an input.</p>
+<p>This is the error that shows up most often in spreadsheets, and it's worth a function of its own:</p>
+<p>For a casual SACS Level 2.1 worker on a Saturday, that gives 150% + 25% = 175% of $36.22, which is $63.39 an hour, or $507.12 for eight hours. The tempting version takes the casual rate ($45.28) and multiplies it by 150%, giving $67.92 an hour and $543.36 for the same shift. That's $36.24 too much on one shift, and the mirror-image mistake on other lines underpays.</p>
+<p>The same addition gives the casual Sunday rate (225%, $81.50) and the casual public holiday rate (275%, $99.61).</p>
+<p>The original article also said the casual loading doesn't simply add on top of overtime. For casuals it does: the pay guide lists casual overtime at 175% for the first two hours and 225% after that (Monday to Saturday), 225% on Sundays and 275% on public holidays, which is the full-time overtime rate plus 25%. Overtime triggers (daily hours, outside the span, weekly hours) deserve their own module and their own tests; we've left them out of this sketch to keep it short.</p>
+<p>The amounts belong in the dated ALLOWANCES table. What the code has to work out is when each one applies:</p>
+<p>Each allowance should come out as its own line with a reference to the clause behind it, so a person checking the payslip can see it. Our broken shift glossary entry and the casual loading explainer have the plain-English versions if you need to agree the rules with a payroll officer before coding them.</p>
+<p>Unit tests that compare the engine with itself prove nothing. Write the expected values by hand from the Fair Work Ombudsman pay guide and keep them in a fixture file. Here's a starting set for a casual SACS Level 2.1 employee:</p>
+<p>These numbers match the worked example on Rostery's SCHADS payroll engine page, which builds a full week for a casual Level 2.1 worker and shows each line. Add fixtures for the cases that bite: a shift crossing midnight into a public holiday, a 1.5-hour visit (minimum engagement), a shift between 1 December and your first full pay period, and a Schedule B employee in December who should see no change. When the 1 December pay guide is your source, write those expected values from it rather than calculating 15% yourself, because not every level rises by the full amount.</p>
+<p>The free SCHADS pay rates table and the SCHADS pay calculator are handy for cross-checking a fixture before you commit it.</p>
+<p>The last design rule is the one that keeps payroll staff on side: every number on the output should be explainable. One line per band and per allowance, each with hours, rate and amount. A total with no breakdown can't be checked, and a payroll officer who can't check a number will rebuild it in a spreadsheet, which brings you back where you started.</p>
+<p>In Rostery, approved timesheets come out line by line in exactly this way before they're exported to Xero Payroll, Employment Hero or QuickBooks Online, where the pay run itself happens. Allowance amounts live in an editable list rather than in code. Whether you build or buy, the pattern holds: dated rates, bands from real times, an additive casual loading, allowances as data, and fixtures written from the pay guide.</p>
+<p>If you want the plain-English background before writing any code, we covered the penalty and broken-shift rules in SCHADS Award explained: penalties, broken shifts, sleepovers and overtime, and a short list of test shifts for non-developers in Five test shifts to run before you trust your SCHADS payroll.</p>
+<p>Sources: Social, Community, Home Care and Disability Services Industry Award 2010 (MA000100), clauses 10, 25, 26, 28, 29 and 34; Fair Work Ombudsman, SCHADS pay guide from the first full pay period on or after 1 July 2026; Fair Work Commission, Annual Wage Review 2025-26 [2026] FWCFB 3500; Fair Work Commission, [2026] FWCFB 232 (Schedule E increases from 1 December 2026). Rostery feature and tool pages read 4 November 2026.</p>
+<p>Written by the Rostery team in Sydney. Rostery makes rostering, care and billing software for NDIS and aged care providers.</p>
+<p>Templates let you quickly answer FAQs or store snippets for re-use.</p>
+<p>Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's permalink.</p>
+<p>For further actions, you may consider blocking this person and/or reporting abuse</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p style="margin-top: 25px;">
+                    <a href="https://dev.to/rostery/modelling-the-schads-award-as-data-effective-dates-additive-casual-loading-and-test-fixtures-for-2756" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                        &rarr; Baca artikel asli
+                    </a>
+                </p>
+            </div>
+            
+            
+<div style="text-align:center; margin:20px 0;">
+    <script type="text/javascript">
+        atOptions = {'key' : 'f9e40eb3b3cd05f1038aac7b36b33ad2','format' : 'iframe','height' : 90,'width' : 728,'params' : {}};
+    </script>
+    <script type="text/javascript" src="https://upholdbrilliancerecast.com/f9e40eb3b3cd05f1038aac7b36b33ad2/invoke.js"></script>
+</div>
+
+        </div>
+    </div>
+</body>
+</html>
+        
