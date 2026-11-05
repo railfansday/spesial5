@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Run a vLLM Server on HF Jobs in One Command</title>
+    <title>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10059.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,44 +15,65 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Run a vLLM Server on HF Jobs in One Command</h1>
+        <h1>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/vllm-jobs/thumbnail.png" alt="Run a vLLM Server on HF Jobs in One Command" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/vllm-jobs/thumbnail.png" alt="Run a vLLM Server on HF Jobs in One Command" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>You can spin up a private, OpenAI-compatible LLM endpoint on Hugging Face infrastructure with a single command — no servers to provision, no Kubernetes, pay-per-second. Once it's up, you can query it from your laptop, a notebook, or anywhere else.</p>
-<p>It's the quickest way to stand up a model for tests, evals, or batch generation. (If you're after a managed, production-ready service instead, that's what Inference Endpoints are for — more on when to pick which at the end.)</p>
-<p>hf jobs run is docker run for HF infrastructure. We use the official vllm/vllm-openai image, ask for a GPU with --flavor, and expose vLLM's port with --expose:</p>
-<p>--expose 8000 routes the container's port through HF's public jobs proxy (see the Serve Models guide for the full reference). The command prints the URL your server is reachable at:</p>
-<p>6a381ca1953ed90bfb947332 is your job ID. Keep track of it, we'll need it. We'll use <job_id> as a placeholder for it in the rest of the post.</p>
-<p>Give it a couple of minutes to download weights and boot. When the logs show Application startup complete, you're live.</p>
-<p>vLLM speaks the OpenAI API, and every request just needs your HF token as a bearer token. The quickest way to hit it is curl:</p>
-<p>which returns the usual OpenAI-style JSON, with choices[0].message.content holding "Hello! How can I assist you today? 😊".</p>
-<p>Or, from Python, point the OpenAI client at the exposed URL and pass the token as the API key:</p>
-<p>Quick health check before you start: curl https://<job_id>--8000.hf.jobs/v1/models -H "Authorization: Bearer $(hf auth token)" should list the model.</p>
-<p>🔐 The endpoint is gated, not public. Every request must carry an HF token with read access to the job's namespace. A plain browser visit will be rejected. In effect, the jobs proxy is your API gate: access is scoped to you (and your org). That's fine for private use, but treat the URL accordingly: don't share it expecting it to be open, and don't paste your token into untrusted places. If you need finer-grained or public access, put a proper gateway in front instead. Or see HF Jobs or Inference Endpoints? below.</p>
-<p>Jobs are billed per second, so stop the server when you're done:</p>
-<p>The --timeout you set is a safety net (it'll auto-stop), but cancelling explicitly is cheaper. An a10g-large runs at $1.50/hour — check hf jobs hardware for the full price list and pick the smallest flavor that fits your model.</p>
-<p>The same command scales to much larger models — pick a beefier --flavor and tell vLLM to shard the model across the GPUs with --tensor-parallel-size. For example, the 122B Qwen3.5 mixture-of-experts model on 2× H200:</p>
-<p>--tensor-parallel-size should match the number of GPUs in the flavor (h200x2 → 2, h200x8 → 8). Run hf jobs hardware to see what's available and give bigger models a longer --timeout, since they take longer to download and load. For large models, H200 flavors are usually the best value.</p>
-<p>The --max-model-len 32768 --max-num-seqs 256 flags are specific to this model: Qwen3.5-122B is a hybrid Mamba/attention architecture with a 256K-token default context, which doesn't leave enough memory for vLLM's default batch settings. Capping the context length and concurrent-sequence count keeps it within the GPUs' memory. If a model fails to start with an out-of-memory or cache-block error, dialing these two down is the first thing to try. Everything else (the exposed URL, the OpenAI client, the token auth) stays exactly the same.</p>
-<p>Prefer a chat window over curl? A few lines of Gradio point at the same endpoint. Add --reasoning-parser deepseek_r1 to the vllm serve command so Qwen3's thinking comes back as a separate field (not necessary, but helpful), then run this code locally (you'll just need the job ID):</p>
-<p>Run it, open http://127.0.0.1:7860, and chat — reasoning streams into the collapsible panel, the answer below.</p>
-<p>Need to debug a startup failure, watch GPU memory, or tail logs interactively? You can open a shell straight into the running job. Launch it with --ssh and make sure your public key is registered at huggingface.co/settings/keys:</p>
-<p>You're now inside the container, where you can run nvidia-smi, inspect the process, or poke at the model directly — which makes debugging and monitoring much easier than reading logs from the outside. SSH support requires huggingface_hub >= 1.20.0.</p>
-<p>The same endpoint can back a terminal coding agent. Pi is a provider-agnostic agent harness. Point it at the job and you get a Read/Write/Edit/Bash agent running on your own self-hosted model.</p>
-<p>One thing to set up first: agents drive the model through tool calls, and vLLM only accepts those if the server is launched with tool calling enabled. So relaunch with --enable-auto-tool-choice and a --tool-call-parser matching the model family (hermes for Qwen3). Agents also benefit from a stronger model, so this is a good place to bring in the bigger one:</p>
-<p>Then add the job as a custom provider in ~/.pi/agent/models.json:</p>
-<p>The model you spun up a couple of commands ago, now driving an interactive coding agent in your terminal.</p>
-<p>HF Jobs isn't the only way to serve a model on Hugging Face. Inference Endpoints are our managed product for the same job, and which one fits depends on what you're after.</p>
-<p>Reach for HF Jobs when you want maximum flexibility and control: it's just docker run on HF infrastructure, so you pick the image, the exact vllm serve flags, and the hardware, and you pay per second for as long as the job runs. That makes it a great fit for experiments, one-off evals, batch generation, or kicking the tires on a model before committing to anything.</p>
-<p>Reach for Inference Endpoints when you want something more production-ready. They add the operational niceties a long-lived service needs: finer-grained access control (an endpoint can be public, protected, or private), and scale-to-zero, so you're not billed during periods of inactivity. If you're standing up a durable endpoint rather than running a job, that's the tool to grab.</p>
-<p>This post sticks to vLLM, but the same expose-a-port pattern works with any OpenAI-compatible server. To serve GGUFs with llama.cpp or run SGLang instead, see the Serve Models on Jobs guide, which walks through those backends.</p>
+                <p>Imagine ordering your weekly groceries as naturally as texting a friend:"Hey, we're out of milk and eggs. Can you also add some snacks for Friday movie night?"</p>
+<p>In our previous post, Building Conversational Commerce with Multi-Agent Swarms on GCP, we shared the architectural blueprint for conversational commerce—proposing a 3-layer decoupled design (Ingress, Memory, and Cognition) to solve messaging timeouts, state tracking, and response reliability.</p>
+<p>While blueprints establish the architecture on paper, production readiness demands working software. In this post, we take that blueprint and bring it to life with a functional prototype called HappyDelivery.</p>
+<p>Using LangGraph, Gemini, FastAPI, and Google Cloud, we'll walk through the code, the state machine, deterministic financial tools, and an automated verification suite that demonstrates how this multi-agent swarm operates in practice.</p>
+<p>To build a reliable commerce swarm, we implemented three decoupled layers that handle the journey of every customer text message:</p>
+<p>Let's examine how each layer functions in code with its own dedicated architecture.</p>
+<p>A frequent question when designing conversational commerce is: how does a message sent by a customer on their smartphone actually land in Layer 1, and can this architecture support messaging platforms beyond WhatsApp?</p>
+<p>End users do not communicate directly with your Google Cloud servers. Instead, customer messages traverse an operator ecosystem before landing on your webhook:</p>
+<p>Every major consumer messaging platform operates on the exact same fundamental contract: an asynchronous HTTPS POST webhook delivery with a strict HTTP acknowledgement timeout:</p>
+<p>While the payload schemas and cryptographic headers differ slightly between platforms, Layer 1 abstracts away all client differences:</p>
+<p>This ensures the rest of your system—Session Store (Layer 2) and Agent Swarm (Layer 3)—operates on clean, normalized data without caring whether the shopper sent their message from an iPhone, an Android RCS chat, or a WhatsApp thread.</p>
+<p>Messaging platforms are completely stateless: every text message arrives as an isolated webhook event. To provide a coherent shopping experience, the system must instantly reconstruct the customer's full context without having to re-read or re-parse days of chat logs on every turn.</p>
+<p>We use Cloud Memorystore (Redis) keyed by the customer's verified phone number (session:{phone_number}) to store active state:</p>
+<p>A common question in conversational commerce is whether state lookups will introduce latency. Here is what the baseline infrastructure supports:</p>
+<p>Key Takeaway: In practice, the Session & Cart Layer will never be the bottleneck—it easily outpaces upstream webhook inference and downstream LLM inference.</p>
+<p>Rather than relying on a single monolithic prompt to handle every task, we separate reasoning into a swarm of specialized agents:</p>
+<p>Now that we have seen the high-level design of the three layers, let's look at the actual Python prototype code that brings each layer to life.</p>
+<p>The goal of this service is simple: verify authenticity across any inbound channel, normalize the payload into a canonical schema, and get off the critical path in < 150ms.</p>
+<p>Here is our implementation showing how multiple messaging channels (WhatsApp, RCS, Apple Messages, SMS) are handled by pluggable adapters:</p>
+<p>By immediately returning an HTTP 200 OK and handing the payload off to Pub/Sub, we completely decouple message intake from downstream AI reasoning time across all messaging ecosystems.</p>
+<p>We benchmarked the live Cloud Run HTTPS webhook intake across warm invocations:</p>
+<p>This empirically proves our architectural claim: the Ingress service validates the cryptographic signature and immediately commits the event to Pub/Sub, freeing the customer chat client without waiting on agentic reasoning.</p>
+<p>We also verified security enforcement against tampered payloads:</p>
+<p>The worker pods pulling from Pub/Sub need to instantly look up who the customer is and what is in their current cart.</p>
+<p>Here is the session store implementation using Cloud Memorystore (Redis):</p>
+<p>Each record contains the customer ID (cust_9821), saved address, dietary restrictions, and current cart items. This guarantees that when a customer texts back hours later, their cart is restored instantaneously.</p>
+<p>Every session lookup executes in 0.318ms, proving our architectural claim that restoring customer context and persistent cart state adds virtually zero latency to the conversational turn.</p>
+<p>With Ingress and Redis handling incoming traffic and memory, all the decision-making lives in the LangGraph multi-agent graph.</p>
+<p>Every turn passes through a typed data structure holding the customer's profile, active cart, and the supervisor's routing decision:</p>
+<p>Next, we define the nodes and conditional edges that allow the Supervisor to dynamically route tasks to the right specialist:</p>
+<p>A core tenet of our blueprint is: delegate arithmetic to deterministic tools. Generative models excel at language and reasoning, while financial calculations require exact precision. If a model computes taxes or discounts in free-form text, it may occasionally introduce calculation errors.</p>
+<p>Instead, we bind deterministic tools to our specialist nodes. For example, the Inventory and Transaction agents use a Python calculation tool rather than computing prices in-prompt:</p>
+<p>Worker containers pull messages asynchronously from Pub/Sub and stream LangGraph node transitions in real time.</p>
+<p>Now that we have all three components—Ingress (Layer 1), Redis Memory (Layer 2), and the LangGraph Swarm (Layer 3)—how do they actually run together as a single unified system?</p>
+<p>Here is the complete end-to-end lifecycle of a customer's message:</p>
+<p>The worker loop that coordinates all three layers is concise, clean, and completely decouples the user-facing webhook from back-office AI reasoning:</p>
+<p>With the entire pipeline wired together, let's look at what happens when we run an actual customer order through it.</p>
+<p>To verify the prototype, we ran an automated simulation of an end-to-end customer order. Here is how the swarm behaves across three natural conversational turns:</p>
+<p>Behind the Scenes: The InventoryAgent mutates the in-memory cart (removing Sprite and adding Coke Zero), executes calculate_cart_totals, and confirms delivery details without losing context.</p>
+<p>We validated all core behaviors—webhook HMAC validation, catalog indexing, deterministic math, and multi-turn state transitions—with automated unit and integration tests:</p>
+<p>A critical question when evaluating multi-agent architectures is token consumption and operational inference cost. In a naive implementation where massive prompts and entire conversation histories are repeatedly re-sent on every step, LLM API bills can quickly eat into e-commerce retail margins.</p>
+<p>Our prototype is engineered specifically to prevent token waste through strict agent specialization, deterministic tools, and externalized Redis state:</p>
+<p>Here is the exact token telemetry measured across the live 3-turn HappyDelivery session:</p>
+<p>Bringing the blueprint into working code revealed several practical realities:</p>
+<p>Building this prototype proved that the decoupled architecture outlined in our blueprint isn't just theoretical—it is practical, reliable, and ready for production on Google Cloud.</p>
+<p>By combining LangGraph for multi-agent workflows, Gemini for natural language reasoning, and GCP for fast ingress and persistent memory, we can build shopping experiences that feel as simple as chatting with a friend while maintaining the enterprise rigor required for commerce.</p>
+<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
+<p>Cost per task: Using cheap classifiers to route across Gemini models and thinking levels</p>
+<p>Smaller apps and faster GPU inference with LiteRT in Google Play services</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/vllm-jobs" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/building-conversational-commerce-with-multi-agent-swarms-on-gcp-a-working-prototype/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

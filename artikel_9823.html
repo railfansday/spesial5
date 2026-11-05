@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>11 nanoseconds per word: Ridiculously Over-Optimizing Anagrams</title>
+    <title>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9823.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,165 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>11 nanoseconds per word: Ridiculously Over-Optimizing Anagrams</h1>
+        <h1>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://wiredream.com/banner.png" alt="11 nanoseconds per word: Ridiculously Over-Optimizing Anagrams" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://wiredream.com/banner.png" alt="11 nanoseconds per word: Ridiculously Over-Optimizing Anagrams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A friend recently pointed out a new Word Ladder game variant:
-Find a path of mutations from a start word to an end word,
-where mutations can be single letter changes, single letter
-deletions or additions, or anagramming the word. It annoyed me
-(the paths involving anagrams can be wickedly hard to spot),
-so, naturally, I wrote a solver for it. And when the solver
-took over a second to run, I of course had to optimize it. Along the way, I
-found a fun trick for anagram indexing—fitting a collision-free
-prime-product identifier for every word in the dictionary into a
-single 64-bit integer—that I hadn't seen before (though the history
-of computing is long and Knuth probably noticed it in 1965).</p>
-<p>For completeness, I should note that what I was interested in
-was finding all anagrams in a dictionary---if you just want
-to find anagrams of a specific word you can probably get away
-with a much simpler hash table design! We'll use all of the
-anagrams in the next post talking about solving the whole word
-ladder.</p>
-<p>The two usual tricks for finding anagrams are to use
-either a letter-sorted permutation or a letter-count vector
-as a
-unique identifier for the letters in the word in an
-order-independent way:</p>
-<p>and then run through the dictionary and insert items
-into a hash table based upon their letter count. In python-ish pseudocode:</p>
-<p>Because I'd been feeling a little, uh, rusty in my coding lately, I
-decided to implement this all myself in Rust instead of yelling at an LLM
-to do it (this is a leetcode-like problem so it would have done it trivially).
-That code looked like:</p>
-<p>Using the Scrabble(tm) dictionary pre-read into memory, this function
-produces the anagram dictionary in:</p>
-<p>That seems fine. Oh wait, just kidding, that's INSANELY SLOW. The
-dictionary has 178,690 entries in it, which means we're spending 173
-nanoseconds per word to build up this dictionary. In 173 nanoseconds
-you could execute roughly 4400 instructions on my Macbook Pro M1.
-Who has time to wait for that??</p>
-<p>When optimizing, one of the first places to be suspicious is
-allocations, and this one has them in droves. Every word results
-in either the allocation of a Vec or an append to a Vec, which
-sometimes needs an allocation. Practically, there are about
-161019 keys in the table, so that's 161k allocations (!!).
-Let's improve those by using a slightly more clever data structure,
-noting two things:</p>
-<p>So we'll do two things: We'll find a way to store singleton
-items without needing a dynamic-length data structure at all,
-and we'll implement the equivalent of a linked list for appending
-items to the lists, since they're append-only and we only scan them
-once at the end. To do this, we'll use a structure like this:</p>
-<p>Where heads is indexed by the anagram-identifying-key (e.g.,
-the character-sorted string). We'll overload that u32 by
-using the high bit (we only have 170k or so words) to let
-it represent
-either an actual data value (the index of
-an element in the list) OR an index into the next+word arrays.
-The next array is our linked list - it stores pointers to
-another entry in the next array. The word array stores the
-associated data. It looks like this:</p>
-<p>Much better, but we can do better yet. The time to sort
-that string and create a new string allocation is non-trivial
-and we're doing 178k of them. That's going to be another
-big chunk of nanoseconds.</p>
-<p>Let's try a letter count vector instead, and pack it tightly into an integer.
-With only 26 characters, if we assume that no word has more than 15
-repetitions of the same character, we could use 4 bits per character
-for 26 x 4=104 bits. That fits comfortably in a u128, and while
-that's not tiny, it's at least a nice fixed size 16 byte thing
-we can use as a fast hash table key.</p>
-<p>(Note that we've done something else here - we're only returning
-the list of anagrams, not a full dictionary containing all of the
-words that don't have anagrams.)</p>
-<p>Avoiding the string manipulation and sorting gives a big win:</p>
-<p>At this point, we might ask a question like "how much does
-the slow default Rust hash table cost us?"</p>
-<p>So we'll switch to the rustc_hash FxHashMap, which is much faster
-if you don't have to worry about adversarial inputs to your hash table.</p>
-<p>That seems much better. But are we done yet?</p>
-<p>Storing the letter count as a u128 is also a little slower
-than necessary, because it'll be split across two 64 bit
-registers and requires the compiler to carry that addition
-across them and do twice as much work for equality testing.
-But if we tried lettercounting in 64 bits, we would only be
-able to store 2 bits, and many words have more than 3 of
-the same letter ("MISSISSIPPI", for example, already has 4 S's).</p>
-<p>Instead, we'll use an approach based on
-Gödel numbering:
-we'll create a small
-table associating one distinct prime number with each letter, and identify
-each word by the product of the letter-primes. This guarantees a
-unique identifier for each mix of letters. Naively, one might
-assign "a -> 2, b -> 3, c -> 5" and so on. But this is a practical
-blog post, and we'd like to fit the result in 64 bits; if
-we use the naive assignment, we overflow at the 365th word in our
-dictionary, "ABORTIVENESSES". And that's only 14 characters long,
-we have 3157 15-character words as well!
-If we let it wrap,
-we'll have just implemented a hash function, and there's no guarantee
-that two words won't accidentally collide, so then we'd need to add
-some machinery to check that...</p>
-<p>So here's the trick: Find an optimized assignment of primes to
-letters in the alphabet such that none of the words in our
-Scrabble dictionary overflow a 64 bit number. I started out
-thinking about the standard English letter frequency
-(ETAOINSHRDLU, etc.), but that turns out to be a little
-wrong: We don't care much about words like "the", we care about
-words like "WRONGHEADEDNESS". So instead, we need to go
-based on the patterns found in the 3157 15-character words. In particular,
-while "E" remains assigned to 2, the common "T" is assigned 29,
-and we use 3 for "I". Our friend "J" is assigned 101, since
-the longest word with two or more J's in it is only 12 characters
-long: JEJUNENESSES. Looking at that, those E's and N's and S's better
-have low values, and they do: 2, 19, 17. We could handle 15 N's in
-a row in 64 bits still.</p>
-<p>To solve this, I had a small program start with the letter-frequency
-ordering (which does a lot better than alphabetical but isn't good enough),
-loop finding the first word that overflowed and switch out some of its primes
-for lower valued primes. This would have also been fun to throw at a
-solver.</p>
-<p>which doesn't overflow for any word in the Scrabble dictionary.
-We've found a collision-free canonical 64-bit identifier for the bag of letters in a
-(Scrabble) word, which looks like this in code:</p>
-<p>In this representation, the largest product word is</p>
-<p>which in log2 is 63.945; it's about 96.2% of the way through the 64 bit
-number space. Close, but it fits.</p>
-<p>Result: 4.1ms -> 2.6ms (14.7ns / word — 12x faster than baseline)</p>
-<p>And then there's a final optimization you can do: Instead of reading
-the dictionary into strings, read them into a packed u128 representation
-using 5 bits per character, and then add some instruction-level parallelism
-for our CPU (ILP) by doing the product accumulation using two independent
-accumulators. This u128 representation is useful for speeding up other
-parts of the word ladder solver later. That code looks like this:</p>
-<p>Result: 2.6ms -> 2.3ms (13 ns/word - 13x faster than baseline)</p>
-<p>This is looking pretty good. The only last optimization I have to add
-is to address some branch mispredictions in that rest != 0 loop. We
-can instead just treat all words as if they're 16 characters long and
-ignore the 0's at the end by mapping them to 1 in our primes table
-(i.e., they have no effect on the product). Using a fixed length of 16
-also permits more auto-vectorization by our friendly compiler.
-To support that, we also separate the computation of the prime product
-from the insertion into the hash table, allowing more ILP from our
-now-vectorized multiplication loop.</p>
-<p>Result: 2.3 ms -> 1.96ms (10.9ns/word, 15x faster than baseline)</p>
-<p>We're finally pretty close to what I think a single core on my machine
-can get without explicit vectorization. That 1.96ms is about 1.23ns per
-byte, which could theoretically be about 3.2 x 8 x 1.23 = 31 instructions
-(but realistically fewer), which doesn't leave a ton of
-room for optimization---though I could be wrong! There's some space
-in there for an even faster hash table implementation but I'd rather
-stick with common, off-the-shelf things there.</p>
-<p>In the next post I'll show how we solve the entire word ladder problem,
-using the anagrams we've found as a part of it.</p>
+                <p>One of our biggest goals on the WebAI team at Hugging Face is to make browser inference as fast and as user-friendly as possible. Getting there is a multi-layer effort: models need browser-friendly representations, runtimes need to build efficient execution plans, and the individual GPU operations at the bottom of the stack need to make the most of many different devices and browser implementations.</p>
+<p>Today, we are releasing the first layer of that effort: @huggingface/kernels, a minimal library for loading and running optimized WebGPU kernels from the Hugging Face Hub, together with an initial collection of 207 kernels at huggingface.co/webgpu-kernels.</p>
+<p>The collection covers operations used across a wide variety of machine learning architectures and workloads. More importantly, each kernel is published as a complete, versioned package: its interface, shader templates, correctness cases, benchmark cases, and usage instructions all live together on the Hub.</p>
+<p>We are also launching Fleet, an in-browser GPU benchmarking and testing suite that runs and scores the kernels on your hardware. Beyond the results for your own machine, Fleet gives the community a way to contribute performance and correctness evidence from devices we could never cover in a conventional test lab. With your consent, every run adds private evidence that can help us find failures (incorrect results, pathologically slow cases, etc.), improve kernel variants, and make better optimization decisions across real-world hardware.</p>
+<p>A model running in the browser eventually becomes a sequence of GPU operations: matrix multiplications, normalizations, convolutions, attention primitives, quantization operations, data-layout transformations, and many more. WebGPU makes these operations available across modern browsers through a portable API, while WGSL provides a common language for the shaders that execute them.</p>
+<p>Portability, however, does not automatically mean performance. Two shaders can implement the same operation and produce the same output while behaving completely differently across different accelerators. Workgroup sizes, memory access patterns, vectorization, data types, and fusion strategies can all affect performance. The best choice can also change with the input shape, device, browser, and available WebGPU features.</p>
+<p>This is why kernels form a foundational layer of fast browser inference. Higher-level runtimes can only be as efficient as the operations they dispatch. By making those operations individually discoverable, testable, benchmarkable, and versioned, we can improve the foundation independently while keeping a stable contract for the layers above it.</p>
+<p>Each kernel in the collection has its own repository and kernel card. The card documents the operation's semantics, inputs, outputs, attributes, supported data types, source files, and a ready-to-run @huggingface/kernels example.</p>
+<p>For example, ai.onnx.Add implements elementwise addition with multidirectional broadcasting. It is one of the simplest operations in a neural network, used everywhere from residual connections to adding a bias. Its card documents the two inputs, the broadcasted output shape, supported data types, and the variants available for different shapes and devices.</p>
+<p>Behind the card, the repository contains the artifacts needed to understand and evaluate the implementation:</p>
+<p>This structure turns a shader into a reusable software artifact. The interface is inspectable without reading WGSL, correctness and performance cases travel with the implementation, and published versions can be loaded explicitly rather than depending on an unversioned file URL. Our kernels can also serve as reference implementations for developers building custom WebGPU kernels or integrating these operations into their own runtimes.</p>
+<p>Running these kernels requires a browser with WebGPU support. WebGPU availability depends on the browser, operating system, GPU, and driver. You can check for it in JavaScript with "gpu" in navigator.</p>
+<p>@huggingface/kernels provides the bridge between a kernel repository and your application. Call getKernel with a Hub repository ID and a contract version, then invoke the returned function with typed input data and tensor shapes. Here is a small bias-add example:</p>
+<p>The second input is broadcast across the first dimension, producing an output with shape [2, 3]. The loader derives that output shape and logical data type from the manifest contract and the inputs, then allocates c automatically.</p>
+<p>Addition on six floats is deliberately the smallest possible demo. At this size, the GPU round trip costs far more than the math. The point is the call pattern: it stays exactly the same for the heavyweight operations where optimized kernels actually pay off, such as matrix multiplication (ai.onnx.MatMul). Only the repository ID and the inputs change.</p>
+<p>Even this elementary operation illustrates why kernels need variants. Equal-shape addition can use a direct vectorized path, while broadcasted inputs need different indexing logic. The published Add kernel includes variants for equal shapes, vectorized broadcasting, scalar processing, and general broadcasting. The runtime can select an implementation that fits the current call and device without changing the application-facing API.</p>
+<p>The version: 1 option selects version 1 of the published kernel contract. It is separate from an ONNX opset, an operator's since_version, or a model revision. Keeping those concepts separate lets applications depend on a stable JavaScript-facing contract while kernel implementations evolve behind it.</p>
+<p>So, how much of a difference do optimized kernels actually make? We put our collection head-to-head with ORT WebGPU on an Apple M4 GPU, using ONNX Runtime Web 1.30.0-dev.20260826-b1f76d586a. We started with 1,756 test cases across all 207 operations and kept the 809 cases where both sides produced matching outputs and reliable timings.</p>
+<p>Across those comparisons, our kernels were 2.57x faster by geometric mean and 1.90x faster at the median, with 629 wins, 176 losses, and 4 ties. Here is a closer look at four familiar operations:</p>
+<p>Some individual wins were much bigger. A particularly difficult bilinear Einsum case (i,ij,j with size 4096) ran in 0.136 ms with our kernel versus 1,396 ms with ORT WebGPU: more than 10,000x faster. A row-wise CumSum over [256, 4096] was 301x faster, at 0.016 ms versus 4.784 ms. These are unusual cases rather than the speedups you should expect everywhere, but they show how much a specialized kernel can help when a general implementation hits a slow path.</p>
+<p>We timed the work done on the GPU itself, leaving out setup such as loading kernels, creating sessions, uploading inputs, compiling shaders, and reading outputs back. Very short workloads are naturally harder to measure, and small cases can benefit from the GPU cache, so these numbers are best read as a useful comparison rather than a promise for every application.</p>
+<p>They are also results for individual operations, not complete models. Exact performance will change across GPUs and browsers, which is why Fleet is so important for building a broader picture.</p>
+<p>We are also working with the ONNX Runtime team to upstream these improvements so they can benefit the broader ONNX Runtime Web ecosystem.</p>
+<p>WebGPU performance varies across GPUs, browsers, and drivers, so results from one machine only tell part of the story. Fleet lets anyone run correctness and performance checks in the browser and see how the kernels behave on their hardware.</p>
+<p>With consent, each run privately contributes evidence that helps us spot device-specific failures, compare variants, and improve selection rules. The goal is simple: use broad, real-world coverage to make the kernels faster and more reliable for everyone.</p>
+<p>The initial 207 kernels are a starting point, not the end state. Publishing kernels independently on the Hub gives us a common place to inspect contracts, compare implementations, reproduce correctness checks, and improve performance without embedding every shader directly into every runtime.</p>
+<p>The collection is also part of the Hub's broader kernel ecosystem: on the Kernels page, the WebGPU kernels sit alongside kernels for CUDA, ROCm, Metal, and other platforms, and can be filtered, sorted, and explored like any other artifact on the Hub.</p>
+<p>This is the low-level foundation for the next steps in our browser inference stack. We are excited to connect these kernels to higher-level model tooling, continue expanding operation coverage, and make fast local inference easier to use across the WebAI ecosystem.</p>
+<p>Explore the WebGPU kernel collection, try @huggingface/kernels, and join the Fleet to contribute evidence from your device and help us make the kernels better for everyone.</p>
+<p>The Fleet part may matter as much as the kernels. The 809 comparable cases on an M4 are useful, but browser, driver and device variance is where WebGPU tends to get painful. Will Fleet eventually expose per-device distributions, or is the plan to use the runs only for aggregate selection rules?</p>
+<p>In an automated build system, I could see per device kernels, made more interesting by fusion of ops.</p>
+<p>The area that obviously needs more attention are the 947 tests that did not result in reliable output. This could be the test, it could be that the ORT WebGPU is wrong, or the new kernel is wrong, or the test harness had issues, hard to know from the outside. Perhaps the Fleet thing is meant to improve this.</p>
+<p>Very excited to see such attention at making WebGPU first class in ML!</p>
+<p>@sroussey  Agreed—the excluded 947 need a taxonomy before the 2.57× summary can travel. I'd want counts by operation and device for unsupported, ORT mismatch, new-kernel mismatch, and harness/timeout, with raw failing cases downloadable. Then Fleet can optimize only within a proven-correct compatibility envelope; fusion and per-device tuning become much safer.</p>
+<p>Excellent! This will help our WebAI community continue developing highly optimized solutions. Many thanks @Xenova  and @nico-martin  for the great work you have been doing.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://wiredream.com/anagram-fun/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/webgpu-kernels" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

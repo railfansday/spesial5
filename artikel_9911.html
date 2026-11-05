@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The State of Python Profiling in 2026</title>
+    <title>The ULC Audio Codec is a Perfect Fit for the N64</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9911.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,7 +15,7 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The State of Python Profiling in 2026</h1>
+        <h1>The ULC Audio Codec is a Perfect Fit for the N64</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
@@ -23,396 +23,164 @@
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>p403n1x87@heliopolis:~/posts/the-state-of-python-profiling-in-2026$ ▮</p>
-<p>$ cat the-state-of-python-profiling-in-2026.md</p>
-<p>Fri 30 October 2026
-26 min read
-programming/
-#python
-#profiling
-#optimisation</p>
-<p>CPython now ships its own sampling profiler, free-threading is going mainstream, and coding agents have started reading profiles. In this post I look at where Python profiling stands today, compare Tachyon, py-spy, Scalene and Austin, and go through what's new in Austin 4.1.</p>
-<p>Python profiling has changed more in the last two years than in the decade
-before. CPython 3.14 gave external tools an official way to look inside a
-running interpreter, and made asyncio task graphs inspectable from outside the
-process. CPython 3.15 ships a sampling profiler in the standard library.
-Free-threaded builds have gone from experiment to something people actually
-deploy. And a growing share of the people reading profiles aren't people at all,
-but coding agents.</p>
-<p>This post looks at where things stand: what the main sampling profilers can do
-today, where each one fits, and what changed in the latest release of Austin.</p>
-<p>As many of you know, I've been working on Austin for the best part of eight
-years now, so I have a view from the inside on how this landscape came to be,
-and, naturally, a soft spot for one of the tools in it. I've tried to be fair to
-the others: what I say about them comes from their own documentation and release
-notes as of October 2026. If I've got something wrong, let me know and I'll fix
-it.</p>
-<p>Most profilers make two basic choices, and these choices explain most of the
-differences between tools.</p>
-<p>Tracing or sampling. A tracing (deterministic) profiler like cProfile
-records every function call and return. You get exact call counts, but the
-overhead changes the program's timing, sometimes a lot. A sampling profiler
-looks at the call stack at regular intervals and builds a statistical picture
-from those snapshots. You don't get call counts, but the program runs at close
-to normal speed. I went into the differences between the two, and how they work
-under the bonnet, in an earlier post.</p>
-<p>In-process or out-of-process. An in-process profiler runs inside your
-program, usually by starting it for you or being imported. An out-of-process
-profiler is a separate program that reads the target's memory from outside.
-Out-of-process tools can attach to something that's already running, like a
-production server that started misbehaving an hour ago, without restarting it
-or changing its code.</p>
-<p>All four tools in this post are sampling profilers. Tachyon, py-spy and Austin
-work from outside the process. Scalene works from inside.</p>
-<p>There are many more Python profilers than I can cover here, so I've picked the
-ones I think are the most widely known and used, and that have a track record on
-accuracy and overhead. That track record isn't just my opinion. The most
-thorough comparison of Python profilers I know of, by the Scalene team at UMass
-Amherst (Berger, Stern and Altmayer Pizzorno, 2022), measured a
-dozen of them on the longest-running benchmarks of the pyperformance suite. Its
-conclusion was that sampling profilers are "both more efficient and often more
-accurate" than tracing ones.</p>
-<p>The two go together. A tracing profiler runs its own code on every function call
-and return, inside your program, so it slows the program down, and not evenly:
-code that makes many small calls is slowed down far more than code that makes
-few, which skews the picture of where time is spent. The study found one
-tracing profiler reporting that a function took 80% of the run time when it
-actually took 25%. A sampling profiler stays out of the way of your code, so the
-timings it reports are much closer to how the program behaves when nobody is
-watching. In the study, Austin, py-spy and Scalene were among the profilers with
-the lowest overhead in CPU mode, adding between 0% and 2% to the run time,
-compared with 73% for cProfile and more than 200% for some others.</p>
-<p>Tracing profilers still have their place: they count every call exactly, which
-sampling can't do. If you need to know that a function was called 1,204 times,
-use cProfile. If you need to know where the time goes, sample.</p>
-<p>Tachyon is too new to have been part of that study, but as the profiler that now
-ships with Python, it's the one many people will reach for first, so it belongs
-here.</p>
-<p>One notable absence is pyflame,
-Uber's profiler from 2016. It was one of the first to sample Python stacks from
-outside the process, and it deserves credit for showing that the approach works.
-But it was Linux-only, its last changes date from 2019, before Python 3.8 was
-released, and its repository is now archived and marked as no longer
-maintained. I mention a few other good tools at the end of the post.</p>
-<p>With a sampling profiler, the time attributed to a function is an estimate: the
-fraction of samples it appears in, multiplied by the duration of the run. Like
-any statistical estimate, its error shrinks as the number of samples grows,
-roughly in proportion to 1/√n. Sampling 10 times faster gives you about three
-times less noise from the same run, so short runs give stable results and
-short-lived functions are less likely to be missed entirely.</p>
-<p>So the maximum rate a profiler can sustain, without disturbing the target,
-directly limits how accurate it can be.</p>
-<p>That's why raw sampling speed has been a priority for Austin from the start, and
-it's the reason it's written in C and does nothing but sample: every
-microsecond saved per sample is another sample per second. Each release has
-pushed this further. Austin 4.0 more than doubled the maximum sampling rate of
-3.x, and 4.1 pushes it higher again (more on that below), with a default of
-10,000 samples per second.</p>
-<p>Tachyon's authors clearly think the same way: the profiler is named after the
-hypothetical particle that travels faster than light. Its sampling core is
-written in C too, and while its default rate is a more conservative 1,000 samples
-per second, it's designed to be raised well beyond that. When a profiler that's
-been around since 2018 and the one that has just joined the standard library
-both put speed first, it's a good sign that sampling rate is finally getting the
-attention it deserves.</p>
-<p>Profiling Python from outside the process used to be close to a hack. CPython
-made no promises about the layout of its internal structures, so tools like
-Austin and py-spy had to copy large parts of the interpreter's private headers
-for every Python version, and work out where the interesting fields were from
-compiler- and platform-specific details. Every new release could break them, and
-often did.</p>
-<p>Those tools showed that the approach was worth it. Being able to attach to a
-running process with no instrumentation and almost no overhead turned out to be
-winning proposition in production, and evidently it made a strong case for
-CPython to support out-of-process tools properly, rather than just tolerate
-them.</p>
-<p>Some of that work came directly from Austin. In 2021, I made three changes to
-CPython, each to solve a problem I'd run into while working on Austin:</p>
-<p>Tachyon reads both co_qualname and native_thread_id today. In 2023 I
-moved the fields that out-of-process tools rely on to the top of the
-interpreter's structures (gh-105271). That change was one of the references
-Pablo Galindo cited when he proposed the debug offsets table (gh-106597):
-a structure at the start of the runtime state that tells external tools where to
-find the data they need, without copying any headers. I later added more fields
-to it (gh-121311). The debug offsets table is the foundation that PEP 768's
-remote debugging interface is built on, and that Tachyon uses to read the
-interpreter's state.</p>
-<p>So the profiler that now ships with CPython is, in a sense, the result of years
-of external tools proving that out-of-process sampling works. CPython made it a
-supported use case, and the core developers have now built a sampling profiler
-into the interpreter itself. I find that very satisfying, and it's good news
-for every external tool too, Austin included.</p>
-<p>The biggest news of the year is that CPython 3.15 includes a sampling profiler,
-profiling.sampling, also known as Tachyon (it was proposed alongside
-reorganising cProfile into profiling.tracing, in PEP 799). It builds on the
-remote debugging support added in 3.14 by PEP 768.</p>
-<p>Tachyon covers a lot of ground for a first release:</p>
-<p>The obvious advantage is that it's already there: nothing to install, and it's
-maintained alongside the interpreter, so it stays in step with internal changes.</p>
-<p>The main limit is version coverage. Tachyon only profiles Python 3.15 and later,
-and the profiler and the target must run the same minor version (and the same
-build type: free-threaded or standard). If your services run on 3.12, Tachyon
-doesn't help you yet. Its --native option adds placeholder <native> frames
-to show where Python calls into native code, but doesn't unwind the native
-stack itself.</p>
-<p>If you've used Austin, much of Tachyon will feel familiar. The basic approach of
-reading the interpreter's memory from outside the process is shared with py-spy,
-and goes back to pyflame in 2016. But beyond that, many of
-the features Tachyon has added since its first commit in August 2025 are ones
-Austin has had for years:</p>
-<p>Some of these exist in py-spy too, and it goes the other way as well: Tachyon's
-asyncio support landed before Austin's. That's how open source should work,
-with good ideas spreading between projects. What's missing is the credit. PEP
-799 doesn't mention Austin, py-spy or any of the external profilers whose
-approach Tachyon adopts. I think that's a missed opportunity to recognise the
-years of community work that came before the standard library caught up, and
-that made it possible.</p>
-<p>py-spy, written in Rust, made out-of-process
-sampling mainstream for Python, and it's what many people mean when they say
-"Python sampling profiler".</p>
-<p>Its record, top and dump commands are a model of a simple interface. It
-writes SVG flame graphs, Speedscope and Chrome trace files, can follow
-subprocesses, filter to threads holding the GIL, and include or exclude idle
-threads. With --native it also unwinds native C, C++ and Rust frames on Linux
-(x86_64 and, since recently, aarch64) and Windows.</p>
-<p>py-spy 0.4.2, released in April 2026, added Python 3.14 support. At the time of
-writing, free-threaded builds aren't supported yet (there's an open issue
-tracking it), and there's no task-aware asyncio mode: coroutines appear as
-ordinary frames on whichever thread runs the event loop.</p>
-<p>Scalene takes a different approach.
-It runs your program for you and profiles from the inside, which lets it measure
-things external tools can't easily see.</p>
-<p>Its strengths are breadth and line-level detail:</p>
-<p>Two of these numbers come with caveats. Scalene doesn't observe native code
-directly: it uses a timer signal, and treats any delay in handling it as time
-spent in native code, during which Python can't handle signals. But CPython
-only handles signals on the main thread, so in a program with several busy
-threads the delay can simply come from waiting for its turn on the GIL. In 2022,
-Pablo Galindo showed a multi-threaded, pure-Python program that Scalene reported
-as spending most of its time in native code (scalene#428). Scalene's author
-replied that worker threads are profiled in a different way, but the issue is
-still open, and the current code still estimates the main thread's native time
-from the signal delay. So treat the Python/native split with some care in
-multi-threaded programs.</p>
-<p>For GPU time on NVIDIA, Scalene needs the GPU's per-process accounting mode,
-which has to be enabled once with root privileges. Without it, Scalene falls
-back to the utilisation of the whole GPU, including other processes, and shows
-a warning saying so.</p>
-<p>Scalene 2.4 (October 2026) supports free-threaded Python 3.13 and 3.14. By its
-own figures, the overhead is typically 10–20%. That's fine during development,
-but the trade-off of being in-process is that you can't attach Scalene to
-something already running. You have to start the program under it.</p>
-<p>Austin is the tool I maintain. It's a
-frame stack sampler written in pure C, with no dependencies beyond the C
-standard library and the operating system. It reads the interpreter's memory
-from outside the process, writes every sample to a compact binary format called
-MOJO, and leaves the analysis to other tools. Because it doesn't aggregate
-anything while it samples, it can sample very fast.</p>
-<p>Austin 4.1 supports CPython 3.10 through 3.15, including free-threaded builds,
-on Linux, macOS and Windows. On Linux it also runs on less common architectures
-like i686, armv7 and ppc64le. Each release drops the oldest Python versions, but
-older releases of Austin are still available if you need to profile something
-older: Austin 4.0 supports 3.9 through 3.14, 3.7 supports 3.8 through 3.13, and
-3.5 goes all the way back to Python 2.3.</p>
-<p>Austin 4.1 adds four things worth covering in some detail.</p>
-<p>Austin 4.0 already more than doubled the maximum sampling rate of the previous
-release, by cutting down how much memory Austin reads from the target and how
-much work it does to write each sample. 4.1 goes further: Austin now detects
-when a thread's stack hasn't changed since the previous sample. When that
-happens, it skips walking the stack again and writes a short "same as before"
-marker instead of the whole stack, which also makes the output files smaller.
-It also buffers its output instead of writing each sample separately.</p>
-<p>Every performance change to Austin is benchmarked in CI against the code it
-replaces, and the results are posted on the pull request. Here are the two that
-made the biggest difference, measured on Linux (x86_64) with Python 3.13, at
-the smallest sampling interval (1 µs), where Austin samples as fast as it can:</p>
-<p>In CPU time mode, where Austin also has to check whether each thread is on the
-CPU, the same changes took the maximum rate from 20,000 to 32,000 samples per
-second (+60%) and from 34,000 to 37,000 (+9%) respectively.</p>
-<p>Something to keep in mind is that the gain from repeated stack detection depends
-on how often stacks repeat between samples. That happens a lot when a program
-spends time in long-running loops or calls, but it varies with the workload.</p>
-<p>As explained earlier, this matters for accuracy: at the default 100 µs
-interval, Austin collects up to 10,000 samples per second per thread, ten times
-Tachyon's default rate.</p>
-<p>With -n/--native, Austin collects native call stacks and interleaves them with
-the Python frames they belong to:</p>
-<p>This shows, for example, what's actually happening inside NumPy, a Cython module
-or a Rust extension built with PyO3, not just that time was spent "somewhere in
-native code". In native mode Austin also samples threads that never run Python
-code, like worker threads started by native libraries, which are invisible to
-profilers that only look at Python threads.</p>
-<p>Austin users may remember that native stacks used to need a separate tool,
-austinp, a variant of Austin that uses libunwind to walk native stacks. It was
-a separate tool for two reasons. It only worked on Linux. And it broke one of
-Austin's founding principles, minimal impact on the program being profiled: to
-walk a thread's native stack reliably, libunwind needs the thread to stand
-still, so austinp had to stop each thread while sampling it. I wrote about
-that trade-off in Spy on Python down to the Linux kernel level.</p>
-<p>The new native mode fixes the first problem. It works on Linux (x86_64 and
-aarch64), macOS and Windows (x86_64), with no extra dependencies, because Austin
-now walks native stacks itself instead of relying on libunwind. Its design owes
-a lot to samply, Markus Stange's excellent
-native sampling profiler, which showed how fast and portable this kind of
-unwinding can be. On macOS, Austin captures native stacks the same way samply
-does. On Linux, both unwind using the compiler-generated unwind tables, though
-they capture stacks differently, and on Windows samply relies on the system's
-event tracing while Austin unwinds stacks itself. As far as I know, Austin is
-currently the only out-of-process Python profiler that unwinds native stacks
-on macOS. austinp is still available on Linux, for the architectures that
-native mode doesn't cover yet and for sampling kernel stacks.</p>
-<p>There is one other way to get Python and native frames in the same profile.
-Since 3.12, CPython can make Python function calls visible to native profilers
-like perf and samply (on macOS from Python 3.15), if you enable its perf
-support with -X perf or PYTHONPERFSUPPORT=1. You get Python
-function names in a fully native profile. But it has to be enabled inside the
-target process, it only goes down to functions, not lines, and it slows Python
-down: in 2023 Mark Shannon measured an 8% slowdown on a
-standard build, with more expected in builds that keep frame pointers. So it's a
-good option for a quick look at a local program, rather than for attaching to
-something already running.</p>
-<p>The second problem is a deliberate compromise. To get a consistent native stack,
-Austin still has to briefly suspend each thread while sampling it, so native
-mode has more impact on the program than Austin's normal mode, and the impact
-grows with the sampling rate. Use a larger interval (1 ms is a good start), and
-avoid it in production. That's why native mode is an option you turn on, not
-the default. In its normal mode, Austin still never pauses the program it's
-profiling, and I explained the reasoning behind that in an earlier
-post.</p>
-<p>On CPython 3.14 and later, Austin tracks the asyncio task graph: each event
-loop's tasks, the coroutine chain each task is executing or suspended at, and
-which tasks are awaiting which. Samples are attributed to the task running on
-the thread, and the stacks of suspended tasks are recorded together with the
-await relationships between them.</p>
-<p>That's what you need to answer the question that ordinary flame graphs get
-wrong for async code: not "which frames were on the CPU", but "which task
-was slow, and was it slow because it was working or because it was waiting on
-something else?" And austin -w prints the live task tree of a running
-application, grouped under the thread whose event loop owns it.</p>
-<p>There's a further difference that's easy to miss. Most sampling profilers only
-record what was running, so each sample is anonymous: they can tell you that
-fetch_user took 30% of the time, but not whether that was one slow task or a
-thousand quick ones. Tachyon's async-aware mode labels each stack with the name
-of its task, but still adds the samples up into a single aggregate profile.
-Austin records which task each sample belongs to, and follows each task from
-the first time it sees it to the last. That makes its asyncio support closer to
-a tracer in spirit, while keeping the low overhead of sampling.</p>
-<p>The VS Code extension makes use of this. Alongside the usual flame graph,
-which adds up time across all tasks, its Task Trace panel shows a flame chart
-for each event loop: every task drawn from when it was first seen to when it
-was last seen, nested under the task awaiting it, with how much of that time it
-spent running and how much waiting. So you can see what happened over time,
-not just where the time went in total, which is often what you need to work out
-why a request was slow.</p>
-<p>Here's an uncomfortable truth: most Python code never gets profiled. Not because
-the tools are missing, but because profiling feels hard to get into. You have to
-pick a tool, run it the right way, and then make sense of a flame graph full of
-frames you've never heard of. Many developers try it once, feel lost, and go
-back to guessing. That's a shame, because as I argued in How to bust Python
-performance issues, a single profiling run often turns up
-easy wins. A big part of what I want Austin to do is lower that barrier, and
-4.1 approaches it from two directions.</p>
-<p>Let an agent do the work. Coding agents can now profile code with Austin and
-reason about the results themselves. You ask "why is this endpoint slow?", and
-the agent runs Austin, finds the hot path, proposes a fix, and profiles again to
-check that the fix worked. There are two ways to set this up:</p>
-<p>The command line is a good place to start, but agents get more out of the
-Python API behind it. Each query returns typed objects rather than
-text, so the agent can write a short script that hands them over to other
-libraries: pandas to compare two profiles, a plotting library to chart the
-results, or the project's own code to work out which component owns each hot
-function. An analysis that would take a long chain of CLI calls, each one
-reading the profile again, becomes a few lines of Python over a profile loaded
-once. The selectors and filters are the same as on the command line, e.g.
-q.filter(thread="main").callers("db.py:execute"), so the agent can move from
-one to the other without learning anything new. For example, this is all it
-takes to see which functions got faster, or slower, after a fix:</p>
-<p>A word of caution, though: a single pair of profiles is a shaky basis for a
-verdict. Sampling, and the system itself, add noise from one run to the next,
-so part of the change above could be nothing more than that. For a rigorous
-answer, pyrometry is a small library of mine that implements the ideas of
-On the Algebraic Properties of Flame Graphs. It treats
-flame graphs as vectors that can be added, subtracted and averaged, and it
-compares two sets of profiles, say five runs before a change and five after,
-with a statistical test (Hotelling's T²), keeping only the stacks whose
-difference is significant. The result is then split into the stacks that
-appeared, disappeared, grew or shrank. That's out of reach for a chain of CLI
-calls, but it's a short script for an agent with the Python API, and pointing
-it at pyrometry gives it a sound method to follow instead of eyeballing two
-flame graphs. Nor is this just theory: Austin's own CI uses the same test to
-validate every pull request. It profiles the same scenarios ten times with the
-base branch and ten times with the changes, on every supported version of
-Python, and checks that the new build still reports the same data as the old
-one.</p>
-<p>Or let it teach you. Having an agent fix things for you is useful, but it
-doesn't make you any better at reading a profile. So the MCP server also has
-action tools that let the agent search and zoom the flame graph in the editor,
-while you watch. That turns the extension into a learning tool: instead of
-"fix this", you can ask your agent to walk you through the analysis. It can
-zoom into the hot path and explain why it's hot, point out the frame where your
-code hands over to a library, or show you what time spent waiting looks like
-compared with time spent computing. You're both looking at the same flame
-graph, so after a few sessions you start to recognise the patterns yourself,
-and the next time, you might not need to ask. Busting performance issues, AI
-edition shows both approaches on a real project, including one of
-these guided tours.</p>
-<p>The rest of the release is about meeting Python where it's going, and where it
-actually runs. Austin 4.1 supports Python 3.15 on day one, and free-threaded
-builds too. Free-threading changes a lot for a profiler: without the GIL,
-threads really do run at the same time, so a sampler has to keep up with all of
-them at once. The one thing it costs is some accuracy in memory mode, since
-without the GIL there's no reliable way to tell which thread caused a change in
-memory usage (see below).</p>
-<p>Profiles are also easier to read. Threads now show up under the names you gave
-them in the threading module, so you see MainThread and worker-3 rather
-than a list of opaque thread IDs, which makes a big difference in a busy
-multi-threaded application.</p>
-<p>Finally, a lot of Python runs in containers, and profiling it from the host used
-to be awkward. Austin 4.1 handles containerised processes better, and it now
-records the target's working directory, virtual environment and PYTHONPATH
-alongside the samples. That's the information a tool needs to map the file
-paths in a profile back to the source files on your machine, even when the code
-ran somewhere else.</p>
-<p>Whilst Austin has a memory mode, users must be aware that it isn't an allocation
-profiler. Its memory mode measures changes in resident memory (RSS) between
-samples: how much physical memory the process is actually using, not how much it
-has asked for. These can be very different numbers. If you allocate a 512 MB
-array but only write to half of it, the operating system only provides physical
-memory for the half you've used, so RSS grows by about 256 MB.</p>
-<p>That's exactly the test the Scalene study used to compare
-memory profilers: allocate 512 MB, touch between 0% and 100% of it, and check
-that the profiler reports 512 MB. Austin mostly reported less, and the study
-counted that as inaccurate. But reporting only the memory that was touched is
-the correct answer for what Austin measures. The study was asking an allocation
-question, and Austin answers a residency question. Both are useful: RSS tells
-you what your process really costs the machine, which is what matters when
-you're about to run out of memory. But if you want to know which line allocated
-what, or hunt for leaks, you want an allocation profiler like Scalene or
-memray.
-Austin also has no line-level GUI of its own. It relies on the VS Code
-extension, the TUI, Speedscope or pprof for visualisation, so out of the box it
-asks a bit more of you than Scalene or py-spy do. And attaching to a process
-needs elevated privileges on Linux and macOS, as it does for any out-of-process
-profiler.</p>
-<p>There isn't one best profiler. Here's how I'd choose:</p>
-<p>Other tools worth knowing about: pyinstrument
-for a friendly in-process call tree, memray
-for serious memory work, and cProfile (now profiling.tracing) when you need
-exact call counts.</p>
-<p>Python profiling has never been in better shape. Having a sampling profiler in
-the standard library raises the baseline for everyone, and the remote debugging
-work in 3.14 and 3.15 makes all external tools more reliable. I expect the next
-round of progress to come from two directions: better support for concurrency
-(free-threading and asyncio together), and making profiling accessible to
-everyone, whether that means an agent doing the work or an agent teaching you to
-do it yourself. The best profiler is the one people actually use.</p>
-<p>Austin 4.1 is available on PyPI,
-Homebrew, Snap, Chocolatey, Scoop, conda-forge and as standalone binaries from
-GitHub releases. The
-documentation covers everything above in
-more detail. If you try it, I'd love to hear how it goes.</p>
+                <p>Sorry for the clickbait title. I promise this post delivers: 44100 Hz stereo 
+with near-Opus bitrates using about 4% of the N64’s CPU time.</p>
+<p>But first, some history: The options for playing and storing audio data on the N64 were dire.
+The PlayStation could just stream uncompressed redbook audio straight from the 
+CD. On the N64, cartridge space was at a premium and time on the 93 MHz CPU was
+limited.</p>
+<p>Worse, access to the vector co-processor, the RSP, was guarded by Nintendo for
+the longest time. Nintendo's own platform library, Libultra, internally used
+the RSP for various graphics and sound-related tasks, but Nintendo didn't allow
+third-party developers to directly write code for it.</p>
+<p>Libultra provided some functions to transparently play back compressed audio
+using an ADPCM scheme (adaptive differential pulse code modulation). The RSP
+handled decompression on the fly, just before the audio was sent to the output
+buffer.</p>
+<p>This works well enough and cuts the space needed for a sample by a factor of 4.
+Still, a 5-minute stereo audio track at 44100 Hz will land at
+about 12MB – way too much for an N64 cartridge, even when you cut the sample rate
+in half. The whole Mario 64 ROM is just 8MB in total. The biggest N64 games 
+were 64MB.</p>
+<p>So N64 games produced music similarly to a tracker: short samples were 
+scheduled and played back with some limited effects at the right time. With
+the space constraints on the cartridge, fully “recorded” audio was pretty much
+out of the question.</p>
+<p>Later in the N64's life, some blessed developers were allowed by Nintendo
+to directly access the RSP. Most famously, Conker's Bad Fur Day used this to
+decompress MP3 audio for the myriad of speech samples in the game. Decoding MP3
+is quite expensive and the frame rate of the game suffered. It was good enough
+for cutscenes, but just too much for continuous background music or sound 
+effects during gameplay.</p>
+<p>Similar to Nintendo's
+Libultra, Libdragon, the open source
+alternative, has a real-time ADPCM decoder running on the RSP. So with ROM space
+being cheaper these days, I just compressed all music for Xibalba
+64 with ADPCM. About 31MB of the 32MB ROM
+are used for sound and music. Remember that Mario 64 just used an 8MB ROM and
+Xibalba 64 is a much simpler game with only 15 minutes of music. It worked,
+but storing music this way is a gratuitous waste of space.</p>
+<p>Now, Libdragon also has a real-time, RSP-accelerated Opus decoder. It's a marvel
+in itself. The Opus format was published 16 years after the N64 and yet
+Giovanni Bajo managed to make it work on this “obsolete” hardware. Compression
+and audio quality are excellent, but again – it's too slow to be used during
+gameplay.</p>
+<p>What's the alternative then? We could build an RSP-accelerated MP3 decoder, 
+but the performance gain over Opus would be marginal, and quality and compression
+would be worse.</p>
+<p>QOA would be a slight 
+improvement over ADPCM, but it's just a poor fit for the vector co-processor: 
+each sample relies on the previous decoded sample. Hard to vectorize.</p>
+<p>A simple transform codec, something like MP3, but without all the 
+design-by-consortium baggage, may work…</p>
+<p>During some late-night “research”, I stumbled across an old Game Boy
+Advance demo that plays recorded music at just 70kbps. That's less than a
+typical MP3, but at comparable quality. I repeat: On a GBA. With a 16 MHz ARM CPU. With no
+vector instructions and, according to the GitHub page, some
+headroom to spare.</p>
+<p>Time-domain codecs (such as ADPCM) need significantly higher bitrates for this
+quality. Subband codecs, such as MP2, have much worse quality at comparable
+bitrates, and more “modern” transform codecs, such as MP3, usually
+need at least an 80–100 MHz CPU. For
+this GBA demo, no existing codec would fit the bill.</p>
+<p>So Aikku93 not only wrote a decoder in ARM assembly, 
+but also created a whole new codec: The 
+Ultra Low Complexity Codec (ULC).</p>
+<p>ULC is a transform codec and somewhat similar to MP3. ULC transforms slices of 
+PCM data into the frequency domain. Like MP3, it uses the Modified Discrete Cosine
+Transform (MDCT) to do so. But unlike MP3, it does not split the signal
+into multiple bands (ULC's MDCT is “full-band”). Where MP3 uses classic
+entropy encoding (Huffman specifically), ULC does… not. Instead, transformed
+coefficients are stored with a very simple nibble-based syntax.</p>
+<p>In short: ULC is what MP3 could have been. The same core idea, but without the 
+cruft around it. The “ultra low complexity” does not come from a different 
+algorithm, but by carefully applying and packaging it.</p>
+<p>The nibble-based packaging is maybe the most elegant idea of ULC. Each 
+coefficient is stored in just 4 bits, interpreted as a signed integer. Some 
+values are reserved to indicate zero fill, noise fill, or a quantizer change:</p>
+<p>Everything is nibble aligned. This means the whole codec works without any
+arbitrary bit reads or entropy decoding. Reading and
+unpacking a block of coefficients takes just ~150 lines of C.</p>
+<p>Also note that noise fill is a valuable addition. Cymbals, hi-hats and snare
+drums greatly benefit from that. MP3 does not have anything similar and 
+needs to encode quasi-random coefficients as is.</p>
+<p>ULC can produce usable results even at 16kbps. Quality of course suffers, but
+it might still be good enough for some applications.</p>
+<p>Aikku93 has been working on ULC since 2019 and has steadily improved the encoding
+quality. All code is permissively licensed. Time to try this on the N64 then!</p>
+<p>I spent an evening in pre-LLM days compiling the ULC reference decoder for the
+N64 and producing a small demo. It worked without a hitch.</p>
+<p>The only problem: it was keeping the CPU very busy. Nothing was offloaded to the 
+RSP. As a proof of concept, it wasn't doing much: we already knew the 93 MHz CPU
+was enough to decode a transform-based codec, but we don't need a “music player”
+that does nothing else. We need this for background music and spoken dialog
+during gameplay. It cannot hog the CPU.</p>
+<p>Obviously the IMDCT needs to be moved to the RSP coprocessor instead. We
+could just DMA one block of decoded coefficients to the RSP's memory, do the
+transform and DMA the completed samples back to RDRAM into the output buffer.</p>
+<p>That's easier said than done, though. The RSP has only 4096 bytes of data memory (DMEM) 
+and another 4096 bytes for instructions (IMEM). The vector instructions work in
+16-bit or 32-bit fixed point, with no floats. The IMDCT will only be efficient
+if all the data for a transform fits into the RSP's DMEM at once. We also need some of the
+DMEM for temporary values and – if possible – the lapping buffer: half of the 
+previously decoded block. So with the default 2048-sample block size of ULC,
+we're out of luck, even with 16-bit fixed point.</p>
+<p>While ULC can work with smaller MDCT block sizes, it was optimized for 2048, so
+we should keep it as large as possible. On top of that, the ULC reference 
+encoder/decoder uses floats, so the obvious choice would be 32-bit fixed point to
+maintain quality, but 16-bit may work. So we have two options, both arriving
+at 3072 bytes:</p>
+<p>Using 16-bit fixed point would not only reduce the DMA traffic, but also speed up
+computation on the RSP. The trade-off would be a higher noise floor. How high?
+No idea. So I carefully refactored the reference decoder, still running on the
+N64 CPU, to work in 16-bit fixed point (Q1.14).</p>
+<p>After almost blowing my ears off a bunch of times, I got it working and could 
+only hear (or imagine?) the faintest white noise when cranking it up. Case 
+settled: 16-bit it is.</p>
+<p>Now I just needed to port this C code to the RSP. My knowledge of MIPS
+assembly is very basic, and writing an RSP decoder would be a serious endeavor.</p>
+<p>This is where I took a hiatus from this project – I had a 
+game to finish. When I returned earlier this 
+year LLMs have improved quite a bit. Still, I didn't
+exactly trust GPT-5 with it. In some previous experiments it did a very
+bad job, often ignoring delay slots and other intricacies of the RSP, never
+finishing the job.</p>
+<p>(Aside: GPT-6 or Opus-5 would probably one-shot this now)</p>
+<p>So instead I opted for a more iterative approach. Max Bebök created a small
+C-like language to write code for the RSP, aptly named 
+RSPL. Armed with the language 
+documentation, I asked Codex to translate the C code to RSPL piece by piece,
+always verifying the result. It took a few days to port and land on an API 
+design that made sense. Then in subsequent steps Codex further optimized the 
+RSPL assembly output by first rewriting some parts (directly in assembly this time),
+then minimizing pipeline stalls by adapting
+the RSPL's optimizer.</p>
+<p>The end result is ~1400 lines of MIPS assembly
+handling the IMDCT, lapping, stereo interleaving and output scaling. It barely
+fits into the 4096 byte IMEM of the RSP.</p>
+<p>The C side of the decoder 
+is still handwritten, but only because LLMs have no taste. The whole process
+took me a few weeks, but I'm still amazed that it worked at all.</p>
+<p>To make ULC easily seekable, I added a sparse table at the end of the
+file that contains the byte offset of every eighth frame. The decoder quickly skips
+ahead from the nearest frame to the desired one. This adds about 20 bytes per
+second – manageable even for 16kbps audio.</p>
+<p>ULC proved to be a very viable alternative to ADPCM and Opus on the N64. 
+Quality and bitrate are close to those of Opus, but complexity is only 4x that of ADPCM. A
+single 44100 Hz stereo track costs about 4% of CPU time and 5% of RSP time.
+Perfectly usable for background music, speech, ambience and longer sound effects.</p>
+<p>The decoder works transparently in Libdragon, just like all other audio codecs. 
+It has been merged into the preview branch a while ago.</p>
+<p>A few days ago an excellent port of Half-Life for the N64 was published. 
+The README states:</p>
+<p>[...] libdragon's ULC audio codec for the 2,500 sounds and 27 music tracks, 
+is what makes everything fit in one 64 MB cartridge image.</p>
+<p>~ github.com/ToxyCola/Half-Life-Nintendo-64-Port</p>
+<p>Many thanks to Aikku93 for creating ULC. It's a 
+wonderful codec. I merely found and adapted it. I seek simplicity and elegance
+in everything I do and ULC is something I can truly adore. Kudos!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://p403n1x87.github.io/the-state-of-python-profiling-in-2026.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://phoboslab.org/log/2026/11/n64-ulc-codec" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome FLUX.3 Image Klein in Diffusers</title>
+    <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9800.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,74 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome FLUX.3 Image Klein in Diffusers</h1>
+        <h1>Rebuilding AUTOMATIC1111 with Gradio Workflow</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/flux3/thumbnail.png" alt="Welcome FLUX.3 Image Klein in Diffusers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/flux3/thumbnail.png" alt="Welcome FLUX.3 Image Klein in Diffusers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Black Forest Labs FLUX.3 Image Klein is here, and it runs in Diffusers from day one. One model does text-to-image and multi-reference image-to-image, and it adds something new, the layout control. You write bounding boxes into the prompt to say where each part of the image should go, or which parts of a reference image to move.</p>
-<p>Both open checkpoints are in the FLUX.3 Image Klein collection:</p>
-<p>You can head on to the Hugging Face space and generate some images right now!</p>
-<p>Install the latest diffusers and transformers (for the Qwen3-VL text encoder):</p>
-<p>Load the distilled checkpoint and generate an image:</p>
-<p>FLUX.3 responds best to a full scene description with the subject, the setting, the light, the composition, and the style. The official prompting guide from Black Forest Labs has more tips. The distilled checkpoint generates a 1024 × 1024 image in 16 steps by default. Pass height, width, or num_inference_steps to change them.</p>
-<p>Pass a reference image (or more) with the image argument. Write the prompt as a caption of the image you want, with the change included.</p>
-<p>With several references, refer to them in the prompt as <ref_image_0>, <ref_image_1>, ... in the order they are passed to image:</p>
-<p>Add a JSON list of regions after the caption. Each region has an id, a bbox, and a desc, and the caption mentions it as <id>.</p>
-<p>Boxes are written as [y_min, x_min, y_max, x_max], y first, on a 0–1000 scale. Because the scale is normalized, the same box works at any image size.</p>
-<p>For edits, each region says where its content comes from (src_bbox in the reference) and where it goes (tgt_bbox in the output). A region with the same two boxes stays where it is.</p>
-<p>This example moves the knitted knight up and to the left, and pins the backdrop, the cliff, the needle, the dragon, and the fire:</p>
-<p>Everything above uses the distilled checkpoint. The base checkpoint runs 50 steps with classifier-free guidance, and it's the one to fine-tune (see LoRA finetuning).</p>
-<p>Black Forest Labs also ships the transformer as a single file, in bf16 and in two quantized formats: fp8r (rowwise FP8) and nvfp4. Load any of them with from_single_file, then load the other components by name so the bf16 transformer isn't downloaded too.</p>
-<p>For the unquantized single file, use https://huggingface.co/{model_id}/blob/main/model.safetensors and drop quantization_config.</p>
-<p>FLUX.3 works for both text-to-image and image-to-image, which makes it a great base for custom LoRAs. diffusers ships DreamBooth LoRA training scripts for both tasks (you can also train with Ostris' AI Toolkit).</p>
-<p>Here is a text-to-image example that learns a tarot-card style from the multimodalart/1920-raider-waite-tarot-public-domain dataset, triggered with trtcrd:</p>
-<p>To reduce memory usage, add a few optimization flags:</p>
-<p>--gradient_checkpointing recomputes activations in the backward pass (lower VRAM, slightly slower), --cache_latents pre-encodes the images and frees the VAE, and --use_8bit_adam keeps the optimizer states in 8-bit.</p>
-<p>A couple of knobs are worth experimenting with. The grid below trains the same tarot style with different LoRA ranks and optimizers; the adapters are on the Hub at diffusers-modular/flux3-tarot-lora. More training features and configurations are documented in the DreamBooth FLUX.3 README.</p>
-<p>For instruction-based editing, the image-to-image script (train_dreambooth_lora_flux3_klein_img2img.py) trains on (reference image, target image, instruction) triplets, where the reference is addressed in the prompt as <ref_image_0>.</p>
-<p>See the DreamBooth FLUX.3 README for all options and the full image-to-image example.</p>
-<p>In this section, we will talk about the memory consumption and the speed of generation of the models.</p>
-<p>End-to-end timings for the distilled checkpoint (16 steps), averaged over three runs after a warmup:</p>
-<p>Single NVIDIA H100 80GB, no offloading, default attention backend.</p>
-<p>A reference image roughly doubles the time. Reference tokens join the same sequence as the text and the image being generated, so a 1024 × 1024 reference adds 4,096 tokens to every transformer call</p>
-<p>Let's open the model up, one piece at a time. The model takes three kinds of tokens:</p>
-<p>FLUX.3 is a latent-space flow model for image generation. This means that the denoiser takes latents as inputs and produces latents as outputs. We use a VAE to decode the latents back to pixels. FLUX.3 uses the same VAE architecture as Flux.2.</p>
-<p>The FLUX.2 VAE compresses an image 8× in each direction into 32 channels, and then every 2 × 2 patch of that latent is packed into a single token with 128 channels.</p>
-<p>So one token covers a 16 × 16 pixel patch, and a 1024 × 1024 image becomes a 64 × 64 grid of 4,096 tokens. The noisy image starts as random noise of exactly that shape. A reference image goes through the same VAE encoder and packing, and keeps its own size.</p>
-<p>The text encoder is Qwen3-VL, a vision-language model. FLUX.3 doesn't just take its last layer. It reads the hidden states of eight of its 36 layers (layers 4, 8, …, 32) and stacks them, so each text token becomes a 8 × 2560 = 20,480-dimensional vector before a linear layer projects it to the transformer's width of 3072.</p>
-<p>This gives the transformer features from several depths of the language model, not just its final layer. The prompt is padded to a multiple of 80 tokens, and the transformer attends to the padding too, which is why the pipeline takes one prompt per call.</p>
-<p>The transformer processes the tokens in two stages:</p>
-<p>The two stages differ in who can attend to whom.</p>
-<p>In stage 1, each stream only attends to itself, so each kind of token gets refined on its own terms first. In stage 2, everything attends to everything, where the image learns from the text and from the references. For comparison, FLUX.2's double-stream blocks also give text and image separate weights, but let them attend to each other from the start. FLUX.3 keeps the streams fully apart first, then merges them.</p>
-<p>At the end, the text and reference tokens are simply dropped. Only the image tokens go through the output layers, which predict how to move them one step toward a clean image.</p>
-<p>Every block, in either stage, has the same shape. Attention and the MLP run in parallel on the same normalized input, and their sum is added back to the residual stream.</p>
-<p>Each block starts with a LayerNorm that has no learned scale or shift of its own. The scale, shift, and gate come from a timestep embedding instead (this is called modulation). Inside the attention, the queries and keys are RMS-normalized and get rotary position embeddings (RoPE), which we look at below.</p>
-<p>In a joint block, all tokens share the same weights, but text, image, and reference tokens each get their own scale, shift, and gate.</p>
-<p>In FLUX.1 and FLUX.2, one timestep embedding modulates every token. In FLUX.3, the modulation depends on the kind of token.</p>
-<p>The noisy image tokens are modulated by the current timestep t. The text and reference tokens are always modulated by timestep 0, which means "clean, nothing to denoise here". So even a reference that looks almost the same as the output is marked as given context, not as something to generate.</p>
-<p>The distilled checkpoint is a flow map. It is also told the timestep each step jumps to. That second timestep gets its own embedding, which is added to every token's modulation, so each of its 16 steps can make a larger jump.</p>
-<p>Attention on its own doesn't know where a token is (this phenomenon is called permutation equivariance). RoPE fixes that by rotating each query and key by an amount that depends on the token's position. FLUX.3 uses four position axes, (t, h, w, l) (timestep, height, width, length of sequence), and gives each one a quarter (32 dimensions) of every 128-dimensional attention head:</p>
-<p>Text tokens line up along l, like words in a sentence. The image and the references are 2D grids in (h, w), separated from each other along l. Because a reference uses the same (h, w) coordinates as the output, "the same spot in the reference" has a precise meaning to the model, which is what the src_bbox / tgt_bbox editing relies on.</p>
-<p>FLUX.3 is a flow-matching model. Generation starts from pure noise, and at each of the 50 steps the transformer predicts a velocity. This is the direction from noise toward a clean image. The scheduler takes one step along it.</p>
-<p>At every step you can also read off the model's current guess of the final image. Decoding that guess at a few steps shows how the image takes shape:</p>
-<p>The fox, its pose, and the light are already in place by step 10, while the noise level is still 0.97. The snow-laden branches and the texture of the fur only appear in the last few steps. FLUX.3's scheduler uses a large time shift (6.93), which keeps the noise level high for most of the run: 44 of the 50 steps happen above σ = 0.5. We built this figure by adding one small block to the pipeline, which brings us to Modular Diffusers.</p>
-<p>If you are new to flow matching, we have a beginner friendly tutorial and a video for you to understand how it works.</p>
-<p>FLUX.3 ships as a Modular Diffusers pipeline.</p>
-<p>You can list the workflows and print the exact blocks of each one, without loading any weights.</p>
-<p>get_workflow() resolves the auto branches and gives you the plain sequence of steps that will run. print(blocks.get_workflow("image_conditioned").doc) prints the components, inputs, defaults, and outputs of that workflow.</p>
-<p>Pop the text encoder out, encode the prompt once, free it, and generate from the cached embeddings.</p>
-<p>The denoising figure above came from one extra block that records the model's guess of the clean image at every step:</p>
-<p>Built something with FLUX.3? Share your LoRAs and pipelines on the Hub. We'd love to see them! 😎</p>
-<p>Visualize how noise transforms into images in your browser</p>
-<p>Open weights for image editing, generation and layouts</p>
-<p>Visualize how noise transforms into images in your browser</p>
-<p>Open weights for image editing, generation and layouts</p>
+                <p>In our last post, we built five small gr.Workflow graphs and hinted at what it would take to build something as complex as AUTOMATIC1111's stable-diffusion-webui. In this post we walk you through Workflow1111, where we have rebuilt most of AUTOMATIC1111's feature set as a single workflow canvas.</p>
+<p>Workflow1111 is a graph of eleven media pipelines built using seventy-three nodes. It brings together SOTA models for text-to-image, hi-resolution fix, image-to-image, prompt-matrix grids, VLM interrogate, detection-to-inpaint masks, ControlNet-style annotators, background removal, PNG Info storing, and image-to-video.</p>
+<p>You can run any of these pipelines by signing in with your Hugging Face account or providing an access token. Once you sign in, the model calls use your own quota.</p>
+<p>👉 Try Workflow1111, or duplicate the Space and start rewiring it for your own use case.</p>
+<p>All the media pipelines are built from the same four operator kinds covered in our last post and the official guide. Each node on the canvas wraps one operator, and the operator's inputs and outputs become the ports you connect edges to. As a quick reference on our four operator kinds: fn is a Python function, model is a model called through InferenceClient, space is another Gradio Space, and dataset is a row from a Hub dataset.</p>
+<p>Let's go through the pipelines one by one.</p>
+<p>This is the core pipeline. It has the controls you'd expect from A1111's txt2img tab: negative prompt, steps, CFG, seed, width and height, plus a model_id field for choosing the checkpoint. The prompt goes through a prompt-builder fn node first, which appends the selected style preset and cleans up the text, then into a model node that calls the checkpoint through Inference Providers. A post-process fn node writes the generation parameters into the PNG's metadata on the way out, which is what the PNG Info pipeline reads back later.</p>
+<p>In Automatic1111, hi-resolution fix first upscales the txt2img output and then runs a second denoising pass. Here it's a two-node detour instead. The text-to-image result goes into a FLUX.1-Kontext model node with a refine instruction ("enhance fine detail and micro-texture, keep the composition identical") and comes back sharper and larger.</p>
+<p>That same Kontext node doubles as the image-to-image tab. Upload an image, describe the change you want, and it returns the edited image.</p>
+<p>Start with a rough prompt like "A lighthouse in a storm." This pipeline sends it to a Qwen3-4B model node, and a small fn node turns the reply into a clean list of tags, capped at forty: "stormy sea, wet rocks, dramatic composition, low angle shot, volumetric lighting, ominous tone." You can connect any diffusion model node to this output to render the image.</p>
+<p>There's no custom node involved, unlike in ComfyUI. In a Gradio workflow the LLM and the diffusion model are both ordinary model operators on the same canvas.</p>
+<p>This is like AUTOMATIC1111's Interrogate button, with a VLM doing the interrogating instead of CLIP. Qwen2.5-VL looks at a night-market photo and writes a prompt that could have produced it. A ViT classifier node reads the same image and returns labels: restaurant 51.9%, tobacco shop 15.6%, toyshop 9.1%.</p>
+<p>Both nodes use the same image input, so gr.Workflow runs them in parallel and you get both answers in roughly the time it takes to run one.</p>
+<p>AUTOMATIC1111 makes you paint an inpaint mask by hand. This pipeline generates one from a detector instead. DETR finds six objects in a street photo (three people, a dog, a bicycle, and a car), and from there the workflow splits into two branches: one draws the detected boxes on the original image, the other turns them into a mask you can feed into an inpaint pipeline downstream.</p>
+<p>The drawing and the mask creation both happen locally with Pillow and NumPy. Only the detection call leaves the machine.</p>
+<p>This is like AUTOMATIC1111's prompt matrix. A base prompt, "a lone oak tree," gets combined with four suffixes (at sunrise, in a thunderstorm, under the Milky Way, in autumn fog) by a fn node, and each variant goes to its own text-to-image node. A final node stitches the four results into one contact sheet.</p>
+<p>gr.Workflow has no loop operator, so the four text-to-image nodes sit side by side on the canvas. Since they're at the same dependency depth they run in parallel, and all four images start generating at once.</p>
+<p>This is like the Extras tab in Automatic1111. There are two upscaler nodes, and they take different routes. The first is a local Lanczos resample in an fn node, which needs no network call and finishes as fast as Pillow can resize. The second is AuraSR ×4, and it's the first space node on the canvas: it calls a Space on the Hub and treats the result like any other node output.</p>
+<p>Background removal works the same way. BRIA RMBG-2.0 is another space node, so the whole model lives in its own Space and this canvas just calls it in.</p>
+<p>Canny, line art, sketch, luma-depth, and posterize are the preprocessors you'd normally get from the ControlNet extension in Automatic1111. Here, each one is a fn node written in plain NumPy, with no model behind it. On a pre-loaded example photo of a building facade, each annotator takes about half a second on CPU.</p>
+<p>There are 36 operator nodes in the app, 32 are fn nodes, and 22 of those run entirely in-process without a network call. Roughly two-thirds of the canvas keeps working if you lose your connection. Since these are regular Python functions, you can also test them directly, with no canvas, server, or GPU involved.</p>
+<p>AUTOMATIC1111 stores generation details in the PNG's parameters text chunk, and the PNG Info tab reads them back. Workflow1111 does the same. The post-process node on the text-to-image pipeline writes the metadata, and this pipeline reads it back out, including the prompt, negative prompt, steps, CFG, seed, image size, and model.</p>
+<p>The image node that PNG Info reads from also feeds a Wan 2.2 I2V A14B node, which animates it; in the demo example a sleeping fox wakes up and starts moving. There's no second upload box because one reference node can feed as many downstream pipelines as you need, so a single upload gets its metadata read and gets animated on the same canvas.</p>
+<p>So far every model call has gone to someone else's hardware, through Inference Providers or a Space. That's why you can build and run something like Workflow1111 without a GPU of your own.</p>
+<p>A fn node is just Python, though, so it can equally load a model locally and run it on your own GPU. FastVideo/fastvideo-fasth3-preview is a gr.Workflow app that does exactly that. It runs FastH3, a four-step distillation of MiniMax-H3, and generates video with a soundtrack on ZeroGPU.</p>
+<p>The whole app comes down to one bound function:</p>
+<p>ZeroGPU gives the function a GPU when it needs one, then releases it when the call is done. gr.Workflow doesn't need to know about any of that. It just calls the fn node.</p>
+<p>This isn't specific to Spaces either. Point bind= to a function that loads a local checkpoint, run .launch() on your own machine, and the Workflow1111 canvas can drive your own GPU.</p>
+<p>Every output node on the canvas becomes a REST endpoint, with no routes written by hand. Workflow1111 exposes nine of them: /image, /edited_image, /generated_prompt, /recovered_prompt, /detected_objects, /x_y_grid, /upscaled_local, /annotator_map, and /png_info.</p>
+<p>The same endpoints are also MCP tools. Launch with mcp_server=True (guide) and every output node shows up as a tool an AI assistant can call. Point Claude Code, Cursor, or any MCP client at the server URL:</p>
+<p>Now an agent can generate an image, read a prompt back out, or run detection as steps in a larger task, with no glue code. Each caller sends their own token in the X-HF-Token header, so the Space holds none of its own.</p>
+<p>AUTOMATIC1111 gave us the feature list, but the tool Gradio Workflow really gets compared to is ComfyUI, since both are node graphs. For a lot of what people want to build and ship, gr.Workflow covers the same ground.</p>
+<p>The result is a multi-model pipeline that people can open in a browser, sign into, use right away, and call from code.</p>
+<p>Workflow1111 has 73 nodes, but it started with just this:</p>
+<p>bind= turns your functions into nodes, edges= connects them, and .launch() opens the canvas in your browser so you can keep editing there. When it's ready, gradio deploy puts the whole thing on a Space. The gr.Workflow guide has the full details, including the JSON schema and every operator type.</p>
+<p>If you'd rather start from something that already works, open Workflow1111, hit Duplicate, and pick one of the eleven pipelines to change: delete nodes, swap models, rewire the flow. If you'd rather start smaller, the previous post has five workflows you can get running in about a minute each.</p>
+<p>Whatever you build, post it on X and tag @gradio. We'd be happy to amplify your workflows.</p>
+<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
+<p>Automatic1111-style studio on one gr.Workflow canvas</p>
+<p>Really impressive breakdown the part that stands out most is how the graph structure gives you free parallelism (the prompt-matrix and interrogate examples) without any extra orchestration code. The mix of fn, model, and space node types on one canvas also makes the ComfyUI comparison land well: you get custom-node flexibility from plain Python, but zero-code REST/MCP endpoints for free. Curious how complex a canvas can get before performance or maintainability becomes a concern has anyone pushed past 73 nodes</p>
+<p>Analisis yang sangat mengesankan, bagian yang paling menonjol adalah bagaimana struktur graf memberikan paralelisme gratis (contoh prompt-matrix dan interrogate) tanpa kode orkestrasi tambahan. Perpaduan tipe node fn, model, dan space pada satu kanvas juga membuat perbandingan dengan ComfyUI tepat: Anda mendapatkan fleksibilitas node kustom dari Python biasa, tetapi endpoint REST/MCP tanpa kode secara gratis. Saya penasaran seberapa kompleks sebuah kanvas dapat dibuat sebelum kinerja atau pemeliharaan menjadi masalah, apakah ada yang pernah melampaui 73 node?</p>
+<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
+<p>Automatic1111-style studio on one gr.Workflow canvas</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/flux-3" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/gradio-workflow-1111" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
