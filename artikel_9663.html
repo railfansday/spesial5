@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A Familiar Smell That Reduces Hunger And Boosts Exercise (M)</title>
+    <title>Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9663.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>A Familiar Smell That Reduces Hunger And Boosts Exercise (M)</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        <h1>Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://www.spring.org.uk/images/nose-1-1.jpg" alt="A Familiar Smell That Reduces Hunger And Boosts Exercise (M)" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fimages.unsplash.com%2Fphoto-1551288049-bebda4e38f71%3Fw%3D1000%26q%3D80" alt="Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.spring.org.uk/images/nose-1-1.jpg" alt="A Familiar Smell That Reduces Hunger And Boosts Exercise (M)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fimages.unsplash.com%2Fphoto-1551288049-bebda4e38f71%3Fw%3D1000%26q%3D80" alt="Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The scent may fool the brain into feeling satisfied — and unlock better workout performance.</p>
-<p>The scent may fool the brain into feeling satisfied -- and unlock better workout performance.</p>
-<p>• Read members-only articles
-• Adverts removed
-• Cancel at any time
-• 14 day money-back guarantee for new members</p>
-<p>Psychologist, Jeremy Dean, PhD is the founder and author of PsyBlog. He holds a doctorate in psychology from University College London and two other advanced degrees in psychology. He has been writing about scientific research on PsyBlog since 2004.			
-				View all posts by Dr Jeremy Dean</p>
+                <p>The backup window opens at 01:00. By 01:05 the database's p99 query latency has gone from 4 ms to 90 ms, and the on-call alert fires. The backup is not corrupt, not slow, and not even using much CPU. It is simply writing 400 MB/s to the same NVMe device the database lives on, and the database is now waiting in the block layer.</p>
+<p>The usual first response is ionice -c3. It doesn't work, and it hasn't worked for years on most systems. The second response is a cgroup v2 io.max limit, which does work, but only if you understand what it does and does not throttle.</p>
+<p>This is a practical tour of the io controller: what the three knobs actually do, how to wire them to systemd, how to prove the limit is being enforced, and the traps that make people conclude "cgroups don't work" when they do.</p>
+<p>ionice sets an I/O priority on a process with ioprio_set(2). Whether that priority means anything depends entirely on the block scheduler:</p>
+<p>CFQ, the scheduler that made ionice famous, was removed in Linux 5.0. If your disk is running mq-deadline or none, passing -c3 records a value and nothing reads it.</p>
+<p>Even where BFQ is in use, ioprio is proportional, not a ceiling. A backup at idle priority will still consume every spare IOPS the database isn't using, and on a fast device "spare IOPS" is enough to ruin tail latency.</p>
+<p>The cgroup v2 io controller is not one mechanism. It is several, with different guarantees:</p>
+<p>Two design details explain most surprises:</p>
+<p>So io.max is a ceiling on sustained device traffic, not a per-syscall speed limiter. That is fine for a backup job, as long as you measure the right thing.</p>
+<p>If io is missing from cgroup.controllers, the kernel was built without CONFIG_BLK_CGROUP and none of this applies. If it is present but not in cgroup.subtree_control, the controller is not delegated to children yet.</p>
+<p>Also check the device, not the partition. systemd.resource-control(5) is explicit that these settings should reference "the originating, physical device", not a partition or loop device.</p>
+<p>Resource control needs a boundary. Putting the limit on the backup service works, but a slice is better: everything the job spawns (restic, rclone, a shell pipeline) inherits the same budget, and you can raise the limit later without editing the service.</p>
+<p>/etc/systemd/system/restic-backup.service:</p>
+<p>The IOScheduling* lines are advisory on most modern schedulers. They cost nothing and help on BFQ systems, but do not rely on them.</p>
+<p>/etc/systemd/system/backup.slice.d/io.conf:</p>
+<p>Three things worth knowing before you copy that:</p>
+<p>That line is the ground truth. If it is missing, the controller is not active for the slice, and no amount of restarting the service will help.</p>
+<p>io.stat is a live per-device counter for the cgroup:</p>
+<p>Read it before and after a run. wbytes divided by wall-clock seconds should land near your cap, not far above it. On a fast NVMe without a limit, a restic run will show write throughput in the hundreds of MB/s; with the cap it should flatten out.</p>
+<p>For a controlled test, use fio with direct I/O inside the same slice:</p>
+<p>Expect roughly 100 MB/s. If you see 2 GB/s, the limit is not attached: check io.max again, and confirm the unit really is in backup.slice with systemctl status fiotest.</p>
+<p>A one-liner also works for a quick sanity check outside systemd:</p>
+<p>Buffered writes lie to you. dd without oflag=direct or conv=fsync reports the speed of copying into page cache, which is memory speed, not disk speed. It will happily report 3 GB/s while the cgroup is capped at 100 MB/s, because the bytes have not reached the device yet. Always test with direct=1 or force writeback.</p>
+<p>Cgroup writeback needs filesystem support. The kernel attributes writeback to a cgroup only on ext2, ext4, btrfs, f2fs, and xfs. On other filesystems, writeback I/O is charged to the root cgroup, so a limit on your backup slice will not catch data the page cache flushes later. Check findmnt -no FSTYPE /srv before trusting the numbers.</p>
+<p>io.weight is inert more often than people think. It defaults to 100 and ranges from 1 to 10,000, but proportional control is provided by iocost or BFQ. On a stock system running none or mq-deadline, weights can be set and read back while changing nothing. Confirm the mechanism is live:</p>
+<p>io.latency only compares siblings. It is work-conserving: when everyone meets their target, nothing is throttled. When one group misses, its peers with higher targets get queue-depth throttling and artificial delays. Set it on the groups that compete at the same level, not on a single child three levels down.</p>
+<p>io.latency is blind without debug stats. The missed and total fields only appear when blkcg_debug_stats is enabled, and they are off by default. Without them, you are tuning a controller you cannot observe.</p>
+<p>Network filesystems are out of scope. There is no block device to throttle. io.max on an NFS-backed backup directory does nothing.</p>
+<p>%util on NVMe is not a saturation signal. It pins at 100% while the device still has headroom. Watch await and r_await from iostat -x 1, or io.pressure, which reports actual stall time.</p>
+<p>A hard cap is the right answer when you know the budget. When you don't, invert the problem: tell the kernel what latency the database needs, and let it throttle whoever gets in the way.</p>
+<p>And on the competing slice, a looser target:</p>
+<p>Now when db.slice misses 25 ms, backup.slice is throttled until it recovers. When the database is idle, the backup runs at full speed. No static budget, no wasted capacity.</p>
+<p>Two caveats: this needs CONFIG_BLK_CGROUP_IOLATENCY, and the target must be achievable. Setting 1 ms on a device that cannot deliver it means permanent throttling of everything else and no benefit to anyone. Measure first, then set the target slightly above the latency you see under normal load.</p>
+<p>Most hosts want io.max on the known offenders (backups, container image pulls, log shipping) and io.latency on the workload that must stay responsive. Weights are the nicest model and the easiest to misconfigure.</p>
+<p>max in every field means the limit is gone. That is the check to run after every change, in both directions: the file is the configuration, and it never lies about what the kernel is enforcing.</p>
+<p>If a backup job is degrading your database, the fix is a budget, not a priority. Give the job a slice, give the slice a ceiling, and verify the ceiling in io.max — the rest is tuning.</p>
+<p>Templates let you quickly answer FAQs or store snippets for re-use.</p>
+<p>Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's permalink.</p>
+<p>For further actions, you may consider blocking this person and/or reporting abuse</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.spring.org.uk/2026/10/chocolate-hunger.php" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/lyraalishaikh/stop-letting-a-backup-job-starve-your-database-practical-cgroup-v2-io-control-on-linux-4c32" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Ukraine&#x27;s Drone Strikes Spur Hasty Russian Plans For Underground Data Centers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9959.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        <h1>Ukraine&#x27;s Drone Strikes Spur Hasty Russian Plans For Underground Data Centers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/military_64.png" alt="Ukraine&#x27;s Drone Strikes Spur Hasty Russian Plans For Underground Data Centers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/military_64.png" alt="Ukraine's Drone Strikes Spur Hasty Russian Plans For Underground Data Centers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>Russia started it. Now they reap what they sow. Impossible to feel sorry for Putin.</p>
+<p>Putin is way behind the curve on this one: Ukraine has reverted to destroying distillation towers, pumping stations and oil depots.  So the data centers are probably safe for the time being.  The real issue they'll have is surviving in many kilometers long fuel lines during the Russian winter.</p>
+<p>Jay in Kyiv says it best: These are the sort of problems you face when you invade a peaceful and much smarter neighboring country.</p>
+<p>Jay in Kyiv says it best: These are the sort of problems you face when you invade a peaceful and much smarter neighboring country.The Russian system doesn't allow for success.  Russians know only corruption in a system structurally incapable of correction.  They don't value their own lives routinely treating each other other like cattle. Leadership is constantly pushing lies about their progress up the chain that get their own people killed.  The Russian system fundamentally reinforces everyone acting for themselves for personal advantage rather than for the effort.Meanwhile Ukraine is gaining ground due to successful attrition in dep</p>
+<p>Jay in Kyiv says it best: These are the sort of problems you face when you invade a peaceful and much smarter neighboring country.</p>
+<p>The Russian system doesn't allow for success.  Russians know only corruption in a system structurally incapable of correction.  They don't value their own lives routinely treating each other other like cattle. Leadership is constantly pushing lies about their progress up the chain that get their own people killed.  The Russian system fundamentally reinforces everyone acting for themselves for personal advantage rather than for the effort.</p>
+<p>Meanwhile Ukraine is gaining ground due to successful attrition in dep</p>
+<p>The next US federal budget will have 10's of billions in weapons for Ukraine.  And during the shutdown that will inevitably happen, Congress will override Trump's veto and Ukraine will get the weapons and money they need.</p>
+<p>Just so you know how next year looks for Russia and Putin.</p>
+<p>Meanwhile, there is no corruption in Ukraine,Nobody is saying this.  By all accounts Ukraine still has huge corruption issues.  The difference between Ukraine and Russia is Ukraine is actively improving their governance actively fighting corruption while Russia remains systemically incapable of doing so.the Ukrainian military conscription office is not treating Ukrainian citizens as cattleThis has for years been an area of intense scrutiny and massive changes have been made to address all manner of conscription issues., and Zelensky isn't making fake statements about "future" victories and an imminent collapse of Russia.What happened with the Flamingo cruise missile?Zelensky isn't being fed loads of bullshit he wants to hear from his commanders and his statements about recent victorie</p>
+<p>Meanwhile, there is no corruption in Ukraine,</p>
+<p>Nobody is saying this.  By all accounts Ukraine still has huge corruption issues.  The difference between Ukraine and Russia is Ukraine is actively improving their governance actively fighting corruption while Russia remains systemically incapable of doing so.</p>
+<p>the Ukrainian military conscription office is not treating Ukrainian citizens as cattleThis has for years been an area of intense scrutiny and massive changes have been made to address all manner of conscription issues., and Zelensky isn't making fake statements about "future" victories and an imminent collapse of Russia.What happened with the Flamingo cruise missile?Zelensky isn't being fed loads of bullshit he wants to hear from his commanders and his statements about recent victorie</p>
+<p>the Ukrainian military conscription office is not treating Ukrainian citizens as cattle</p>
+<p>This has for years been an area of intense scrutiny and massive changes have been made to address all manner of conscription issues.</p>
+<p>, and Zelensky isn't making fake statements about "future" victories and an imminent collapse of Russia.What happened with the Flamingo cruise missile?Zelensky isn't being fed loads of bullshit he wants to hear from his commanders and his statements about recent victorie</p>
+<p>, and Zelensky isn't making fake statements about "future" victories and an imminent collapse of Russia.What happened with the Flamingo cruise missile?</p>
+<p>Zelensky isn't being fed loads of bullshit he wants to hear from his commanders and his statements about recent victorie</p>
+<p>I'll stipulate every one of your Russian talking points.</p>
+<p>Now, I'll explain why they aren't operative: Ukraine isn't trying to conquer pieces of Europe.  Ukraine can be as corrupt as it wants, draft whomever they wish, predict whatever fantastic victories they please, and fail at weapons development as much as they like.  As long as they don't go kinetic and start European land wars, its all good.</p>
+<p>Suddenly, there is a legit reason to buy a Chinese electric car.</p>
+<p>It still makes sense for Ukraine to bomb russian data centers - the far right is on the rise thanks to putinbots and these arseholes want to stop support of Ukraine.</p>
+<p>> Putin also signed a decree ordering Russian data center operators to set aside 10 percent of available space and capacity in case the Russian government requires it ...making all datacenters potential military targets. Really, Putin's lost his edge.</p>
+<p>How to they plan on getting fat connection pipes to bumfuck Siberia?</p>
+<p>At least cooling will be easier in Siberia.</p>
+<p>Old mines is a good one though.  Iran just dug fresh tunnels for their defences I think.  And it has worked really well  for them.  As long as they've still got the machinery to dig out and repair the openings after each round of bombing, they're ready for more.</p>
+<p>That would be insane.  But yeah, I'd fully expect Trump to continue being the biggest idiot this planet has ever seen.</p>
+<p>Depends on what was mined. A few sparks in an abandoned coal mine could result in a Centralia-style mine fire.</p>
+<p>In other words, this is a great idea and Putin should search for abandoned coal mines near Moscow, preferably under valuable land, to house the new data centers.</p>
+<p>I've been computin' in a coal mineGoin' down down downComputin' in a coal mineWHOOPS here comes a drone now</p>
+<p>"Russia's push for a sovereign and increasingly closed Internet has resulted in a highly centralized system under a few Russian tech companies like Yandex"</p>
+<p>If a country with 11 timezones ends up with virtually all of their datacenters concentrated around two very close cities, the problem lies with the 1D10T planners of the companies involved, not with the  sovereign internet concept</p>
+<p>the problem lies with the 1D10T planners of the companies involved, not with the  sovereign internet conceptIf they had planned with proper redundancy and safety, their competitors would have got ahead of them and they would have lot the market. Their companies would likely not exist. As it is, now, they control the Russian market and their downtime is more a problem for their customers than themselves. This was the correct engineering decision.This is the reason that such services cannot be left to private industry alone and you need some regulation.</p>
+<p>the problem lies with the 1D10T planners of the companies involved, not with the  sovereign internet concept</p>
+<p>If they had planned with proper redundancy and safety, their competitors would have got ahead of them and they would have lot the market. Their companies would likely not exist. As it is, now, they control the Russian market and their downtime is more a problem for their customers than themselves. This was the correct engineering decision.</p>
+<p>This is the reason that such services cannot be left to private industry alone and you need some regulation.</p>
+<p>Exactly.  Private industry doesn't plan for war unless they're regulated to do so.</p>
+<p>Except the planning is idiotic precisely because russia is so unbelievably centralised.</p>
+<p>Before Ukraine proved the effectiveness of drone swarms, concentrating your critical infrastructure into a small number of highly defended locations made some kind of sense against conventional attacks.</p>
+<p>I happen to believe the drone swarms were a highly predictable  evolution of warfare, but most people weren't thinking about it until relatively recently.</p>
+<p>It didn't, though. Bombs and ballistic missiles are each individually good reasons to spread out infrastructure.</p>
+<p>Going underground was actually pitched to Putin by Musk.  He needs a big contract for The Boring Company</p>
+<p>Soon there will be no difference from housing above the ground.</p>
+<p>Coal mines burn well.  In the US, we have some underground coal fires that have been burning for generations.  Once a seam of coal ignites there is no way to put it out.</p>
+<p>So, yeah, absolutely build a datacenter in one.  It will make a great target.</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Democrats Take Control of US Congress As Voters Reject Trump's Republicans</p>
+<p>iOS 27.3 Adds Vertical Tabs, Adaptive Dark Mode to Safari</p>
+<p>All the evidence concerning the universe has not yet been collected,
+so there's still hope.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://tech.slashdot.org/story/26/11/03/2354228/ukraines-drone-strikes-spur-hasty-russian-plans-for-underground-data-centers?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Agent Aced the Task. Will It Do It Again?</title>
+    <title>Arrows to Arrows, Categories to Queries</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9961.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,75 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Your Agent Aced the Task. Will It Do It Again?</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        <h1>Arrows to Arrows, Categories to Queries</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Your agent works in rehearsal, but during the live demo, it takes a different path and fails the same task.</p>
-<p>That is embarrassing onstage. In production, it is a reliability problem: a workflow that succeeded once may fail the next time a user makes the same request. For mission-critical work, such as reconciling a financial transaction or checking a contract for an obligation, that can be a showstopper.</p>
-<p>Most benchmarks hide this variability behind an average. On AppWorld, a ReAct agent using GPT-4.1 succeeded on 77.4% of runs across five repetitions. But it succeeded in all five runs for only 53.0% of tasks — a 24.4-point consistency gap.</p>
-<p>Most benchmarks report the first number. We built a way to measure the second — and improve it.</p>
-<p>In an earlier post, we introduced ALTK-Evolve — a system that turns an agent's own past trajectories into reusable guidelines, distilled automatically and injected back at inference time. It measurably improves task success, but those results only asked the average-case question too.  This post introduces consistency guidelines, a new guideline type in altk-evolve built on top of a diagnostic tool we call the Consistency Analyzer, that targets this gap directly.</p>
-<p>Standard agent evaluation reports Mean@k: run a benchmark k times, average the pass rate. Often k=3, sometimes just 1. It's the number on every leaderboard, and it's what "77% accurate" means in practice.</p>
-<p>Mean@k answers "how good is this agent, on average?" It does not answer the question a real user cares about: will it still be good if I ask this exact question again? For that you need Pass^k: the fraction of tasks where the agent succeeds on all k runs.</p>
-<p>⚠️ Pass^k is not Pass@k. The familiar Pass@k is optimistic — it asks whether at least one of k attempts succeeded, the right question when you can verify and retry. Pass^k is its pessimistic mirror image: every attempt must succeed. Same letters, opposite question. Pass^k ≤ Mean@k ≤ Pass@k, always.</p>
-<p>A ReAct agent backed by GPT-4.1 posts a Mean@5 of 77.4% — genuinely strong. But Pass^5 is only 53.0%. Nearly a quarter of the benchmark consists of tasks the agent can sometimes solve and sometimes can't, with nothing about the task changing between runs. We call this gap — Mean@k minus Pass^k — the consistency gap.</p>
-<p>This isn't a capability problem you fix with a bigger model. It's an orthogonal axis: an agent can be capable and inconsistent at the same time.</p>
-<p>Every time an LLM agent decides something — which API to call, what argument to pass, whether to retry — that decision comes out of a probability distribution over next tokens. What matters is the shape of that distribution. A sharp one puts most of its mass on a single token: the runners-up are far behind, and the same choice comes out run after run. A flat one spreads comparable mass across several near-tied tokens, and which one wins is close to a coin flip.</p>
-<p>The shape decides how much noise it takes to change the outcome. Sharp distributions are resilient — GPU floating-point non-associativity, request batching, and other platform-side effects nudge the numbers slightly, but nowhere near enough to reorder a clear winner. Flat distributions are vulnerable to exactly that nudge: near-ties may reorder under small perturbations. And because a trajectory chains dozens of decisions, a small per-step chance of flipping compounds into a large chance that some run goes differently. That's where a 24-point gap comes from.</p>
-<p>This is also why the problem survives your decoding settings. Greedy decoding and a fixed seed both govern how a distribution gets turned into a token — they say nothing about the distribution itself. On a hosted endpoint the probabilities shift slightly from run to run, so the same prompt to the same model at temperature zero can still resolve a near-tie one way today and the other way tomorrow.</p>
-<p>Our setup: the ReAct agent runs at temperature 0.0, so none of the variance above is ordinary sampling.</p>
-<p>Which turns the problem into a search: which steps in a given trajectory were the flat ones — and what do you do about them once you know?</p>
-<p>Consistency guidelines come out of a two-stage pipeline that plugs into ALTK-Evolve's existing machinery — with a new source signal driving what gets written.</p>
-<p>1. Detect — the Consistency Analyzer. 
-Given one recorded trajectory, the analyzer replays each decision step through controlled resampling, measuring how much the model's output actually varies at that point. Concretely, that's one additional model call per decision step, done once offline — issued with the sampling parameter set to draw k completions at once (k=5 by default) — replayed against the already-recorded context, not new tool calls, not new environment interactions, and not a second end-to-end rollout of the task. This yields a consistency score per decision step that is written into a scorecard to pinpoint exactly which decisions are at risk of flipping on the next run. Detection is fully black-box — no logits, no model internals, no instrumentation beyond the trace you already have.</p>
-<p>2. Generate — targeted guidelines.  Every flagged step becomes a candidate consistency guideline in the standard ALTK-Evolve format, so it slots into the existing storage and retrieval pipeline. Here's a real example, generated by GPT-4.1 from a trajectory of the AppWorld task "How many activities are done in my bucket list as per my SimpleNote note?":</p>
-<p>[Guideline 1] When counting checkbox-style markers in note content, use a line-anchored regex match rather than a plain substring count — note titles often repeat the marker symbol in a legend line.</p>
-<p>[Guideline 2] Always verify search results for note queries by checking for multiple matches and confirming the correct note before proceeding.</p>
-<p>Nothing here is task-specific trivia. String-counting bugs and unverified search results are decision points that show up with high uncertainty across many AppWorld tasks. That's the point: the analyzer targets instability, not failure — so it catches steps the agent happened to get right this time but could easily get wrong next time.</p>
-<p>Watch the 2-minute demo — five parallel runs of the agent split 3-2 on this task because of agent uncertainty about the counting strategy, then run again after these guidelines in context: all five agree.</p>
-<p>We evaluated on AppWorld test_normal (168 tasks) with a ReAct agent on GPT-4.1, generating consistency guidelines from a single baseline trajectory per task and testing them on 5 fresh runs.</p>
-<p>Mean@5 (%), aggregate — same scale as Pass^5 above.</p>
-<p>The consistency gap is cut roughly in half. Aggregate Pass^5 rises 53.0% → 69.0% while Mean@5 rises 77.4% → 81.0%, narrowing the gap between "looks capable" and "can be counted on" from 24.4pp to 12.0pp. Nearly a third of previously-inconsistent tasks become tasks the agent passes on every single run.</p>
-<p>The middle and hard tiers gain most. Medium +22.9pp (+44% relative), Hard +14.3pp (+45% relative) — effectively tied in relative terms, with Medium ahead absolutely. Easy gains +12.2pp, having had the least room. This is consistency guidelines doing what they're designed to do: finding and stabilizing the specific decision points where an agent's own uncertainty was leaking into the outcome.</p>
-<p>Mean@5 never drops. Preserving average accuracy was a hard requirement, not a nice-to-have: a system that boosts Pass^5 by trading away Mean@5 would just be shifting unreliability around, not fixing it. Mean accuracy holds or improves at every difficulty level.</p>
-<p>Applied to a different but related task in the same AppWorld scenario — another variant of the scenario the guidelines were mined from — consistency guidelines still lift Pass^5 by +13.0pp, only 3 points below the same-task number. A guideline derived from one run isn't just patching that run; it's capturing something that transfers.</p>
-<p>The sharper evidence comes from a weaker model, gpt-oss-120b. Same-task Pass^5 rose +6.0pp from a much lower baseline (10.1% → 16.1%) — and, interestingly, the similar-task generalization number (+8.7 pp) actually exceeded the same-task gain, suggesting the guidelines were capturing genuinely reusable failure patterns rather than memorizing one trajectory's specifics.</p>
-<p>Try the ALTK-Evolve — the open-source repo now includes the Consistency Analyzer and consistency-guideline generation used in these experiments — or read the technical report on arXiv for the complete methodology.</p>
-<p>If accuracy numbers you can't reproduce on your own tasks sound familiar, we'd like to hear about it — concrete examples of flip-prone behavior in your own agents are exactly the kind of feedback that shapes what we build next. Open an issue or a discussion.</p>
-<p>Great perspective on agent reliability. Measuring consistency alongside accuracy seems especially important as AI agents move into workflows where reproducibility matters. The Consistency Analyzer approach is a fascinating way to identify unstable decisions without requiring full task replays.</p>
-<p>The useful split is the one most dashboards still refuse to print: Mean@k answers “how good is this agent on average?” Pass^k answers “will the same request still succeed if I ask again?”</p>
-<p>Once you’ve watched a trajectory chain dozens of near-tied tool choices, a strong average with a wide consistency gap is exactly the demo that fails live. Capability and consistency are orthogonal — buying a bigger model can lift Mean without closing the gap.</p>
-<p>What I want teams to take from the Consistency Analyzer framing is operational, not the guideline machinery itself: treat flip-prone decision steps as first-class eval targets. One offline resample pass over a recorded trace is a cheaper reliability signal than another end-to-end leaderboard screenshot.</p>
-<p>Practical ask for anyone shipping agents from this: do you report Pass^k (even k=3) next to Mean@k in the release gate, and do you refuse the “stable” label when the consistency gap is still large on your hard tier?</p>
-<p>Reproducible reliability will not remove disagreement about which guidelines to inject. It will make the disagreement about the right metric.</p>
-<p>Thanks, and you've landed on exactly the operational takeaway we hoped for: flip-prone decision steps should be eval targets in their own right. Beyond that, knowing where they are also turns the eval into a diagnostic: a consistency gap tells you that an agent is unreliable, while the flip-prone steps tell you where and why.</p>
-<p>On your release-gate question: we'd strongly encourage it, and k=3 is a sensible default. A few things we'd suggest to anyone adopting Pass^k as a gate:</p>
-<p>I'd like to understand your closing point better. In our experiments, we didn't choose among individual guidelines: for each new task, we injected the guidelines derived from the most similar task. I'm curious where you see the disagreement about which guidelines to inject arising.</p>
-<p>https://huggingface.co/spaces/observantdistressed/minimax-h3</p>
-<p>Loved your space, any plan to set it up again in near future?</p>
+                <p>←
+
+
+→
+
+October 14, 2025
+
+haskell, category theory, programming, catlang</p>
+<p>I’ve had a little time off of work as of late, and been spending it in characteristically unwise ways. In particular, I’ve written a little programming language that compiles to SQL. I call it catlang. That’s not to say that I’ve written a new query language. It’s a programming language, whose compiler spits out one giant SELECT statement. When you run that query in postgres, you get the output of your program.</p>
+<p>Why have I done this? Because I needed a funny compilation target to test out the actual features of the language, which is that its intermediary language is a bunch of abstract category theory nonsense. Which I’ll get to. But I’m sure you first want to see this bad boy in action.</p>
+<p>Behold, the function that returns 100 regardless of what input you give it. But it does it with the equivalent of a while loop:</p>
+<p>If you’re familiar with arrow notation, you’ll notice the above looks kinda like one big proc block. This is not a coincidence (because nothing is a coincidence). I figured if I were to go through all of this work, we might as well get a working arrow desugarer out of the mix. But I digress; that’s a story for another time.</p>
+<p>Anyway, what’s going on here is we have an arrow count, which takes a single argument x. We then loop, starting from the value of x. Inside the loop, we now have a new variable i, which we do some voodoo on to compute n—the current value of the loop variable. Then we subtract 100 from n, and take the absolute value. The abs function here is a bit odd; it returns Left (abs x) if the input was negative, and Right x otherwise. Then we branch on the output of abs, where Left and Right have been renamed inl and inr respectively. If n - 100 was less than zero, we find ourselves in the inl case, where we add 1 to n and wrap the whole thing in inr—which the loop interprets as “loop again with this new value.” Otherwise, n - 100 was non-negative, and so we can return n directly.</p>
+<p>Is it roundabout? You bet! The obtuseness here is not directly a feature, I was just looking for conceptually simple things I could do which would be easy to desugar into category-theoretical stuff. Which brings us to the intermediary language. After desugaring the source syntax for count above, we’re left with this IL representation:</p>
+<p>We’ll discuss all of this momentarily, but for now, just let your eyes glaze over the pretty unicode.</p>
+<p>The underlying idea here is that each of these remaining symbols has very simple and specific algebraic semantics. For example, A ⨟ B means “do A and pipe the result into B.” By giving a transformation from this categorical IL into other domains, it becomes trivial to compile catlang to all sorts of weird compilation targets. Like SQL.</p>
+<p>You’re probably wondering what the generated SQL looks like. Take a peek if you dare.</p>
+<p>It’s not pretty, rather amazingly, running the above query in postgres 17 will in fact return a single row with a single column whose value is 100. And you’d better believe it does it by actually looping its way up to 100. If you don’t believe me, make the following change:</p>
+<p>which will instead return a row for each step of the iteration.</p>
+<p>There are some obvious optimizations I could make to the generated SQL, but it didn’t seem worth my time, since that’s not the interesting part of the project.</p>
+<p>Let’s take some time to discuss the underlying category theory here. I am by no means an expert, but what I have learned after a decade of bashing my head against this stuff is that a little goes a long way.</p>
+<p>For our intents and purposes, we have types, and arrows (functions) between types. We always have the identity “do nothing arrow” id:</p>
+<p>and we can compose arrows by lining up one end to another:1</p>
+<p>Unlike Haskell (or really any programming language, for that matter), we DO NOT have the notion of function application. That is, there is no arrow:</p>
+<p>You can only compose arrows, you can’t apply them. That’s why we call these things “arrows” rather than “functions.”</p>
+<p>There are a bundle of arrows for working with product types. The two projection functions correspond to fst and snd, taking individual components out of pairs:</p>
+<p>How do we get things into pairs in the first place? We can use the “fork” operation, which takes two arrows computing b and c, and generates a new arrow which generates a pair of (b, c):</p>
+<p>If you’re coming from a Haskell background, it’s tempting to think of this operation merely as the (,) pair constructor. But you’ll notice from the type of the computation that there can be no data dependency between b and c, thus we are free to parallelize each side of the pair.</p>
+<p>In category theory, the distinction between left and right sides of an arrow is rather arbitrary. This gives rise to a notion called duality where we can flip the arrows around, and get cool new behavior. If we dualize all of our product machinery, we get the coproduct machinery, where a coproduct of a and b is “either a or b, but definitely not both nor neither.”</p>
+<p>Swapping the arrow direction of prj₁ and prj₂, and replacing (,) with Either gives us the following injections:</p>
+<p>and the following “join” operation for eliminating coproducts:</p>
+<p>Again, coming from Haskell this is just the standard either function. It corresponds to a branch between one of two cases.</p>
+<p>As you can see, with just these eight operations, we already have a tremendous amount of expressivity. We can express data dependencies via ⨟ and branching via ▽. With △ we automatically encode opportunities for parallelism, and gain the ability to build complicated data structures, with prj₁ and prj₂ allowing us to get the information back out of the data structures.</p>
+<p>You’ll notice in the IL that there are no variable names anywhere to be found. The desugaring of the source language builds a stack (via the something to allocate △ id pattern), and replaces subsequent variable lookups with a series of projections on the stack to find the value again. On one hand, this makes the categorical IL rather hard to read, but it makes it very easy to re-target! Many domains do have a notion of grouping, but don’t have a native notion of naming.</p>
+<p>For example, in an electronic circuit, I can have a ribbon of 32 wires which represents an Int32. If I have another ribbon of 32 wires, I can trivially route both wires into a 64-wire ribbon corresponding to a pair of (Int32, Int32).</p>
+<p>By eliminating names before we get to the IL, it means no compiler backend ever needs to deal with names. They can just work on a stack representation, and are free to special-case optimize series of projections if they are able to.</p>
+<p>Of particular interest to this discussion is how we desugar loops in catlang. The underlying primitive is cochoice:</p>
+<p>which magically turns an arrow on Eithers into an arrow without the eithers. We obviously must run that arrow on eithers. If that function returns inl, then we’re happy and we can just output that. But if the function returns inr, we have no choice but to pass it back in to the eithered arrow. In Haskell, cochoice is implemented as:</p>
+<p>which as you can see, will loop until f finally returns a Left. What’s neat about this formulation of a loop is that we can statically differentiate between our first and subsequent passes through the loop body. The first time through eac is Left, while for all other times it is Right. We don’t take advantage of it in the original count program, but how many times have you written loop code that needs to initialize something its first time through?</p>
+<p>So that’s the underlying theory behind the IL. How can we compile this to SQL now?</p>
+<p>As alluded to before, we simply need to give SQL implementations for each of the operations in the intermediary language. As a simple example, id compiles to SELECT * FROM {}, where {} is the input of the arrow.</p>
+<p>The hardest part here was working out a data representation. It seems obvious to encode each element of a product as a new column, but what do we do about coproducts? After much work thought, I decided to flatten out the coproducts. So, for example, the type:</p>
+<p>with the constraint that exactly one of f2 or f3 would be IS NOT NULL at any given point in time.</p>
+<p>With this hammered out, almost everything else is pretty trivial. Composition corresponds to a nested query. Forks are CROSS JOINs which concatenate the columns of each sub-query. Joins are UNIONs, where we add a WHERE field IS NOT NULL clause to enforce we’re looking at the correct coproduct constructor.</p>
+<p>Cochoice is the only really tricky thing, but it corresponds to a recursive CTE. Generating a recursive CTE table for the computation isn’t too hard, but getting the final value out of it was surprisingly tricky. The semantics of SQL tables is that they are multisets and come with an arbitrary greatest element. Which is to say, you need an column structured in a relevant way in order to query the final result. Due to some quirks in what postgres accepts, and in how I structured my queries, it was prohibitively hard to insert a “how many times have I looped” column and order by that. So instead I cheated and added a clock_timestamp() as step column which looks at the processor clock and ordered by that.</p>
+<p>This is clearly a hack, and presumably will cause problems if I ever add some primitives which generate more than one row, but again, this is just for fun and who cares. Send me a pull request if you’re offended by my chicanery!</p>
+<p>I’ve run out of vacation time to work on this project, so I’m probably not going to get around to the meta-circular stupidity I was planning.</p>
+<p>The compiler still needs a few string-crunching primitives (which are easy to add), but then it would be simple to write a little brainfuck interpreter in catlang. Which I could then compile to SQL. Now we’ve got a brainfuck interpreter running in postgres. Of course, this has been done by hand before, but to my knowledge, never via compilation.</p>
+<p>There exist C to brainfuck compilers. And postgres is written in C. So in a move that would make Xzibit proud, we could run postgres in postgres. And of course, it would be fun to run brainfuck in brainfuck. That’d be a cool catlang backend if someone wanted to contribute such a thing.</p>
+<p>I am not the first person to do anything like this. The source language of catlang is heavily inspired by Haskell’s arrow syntax, which in turn is essentially a desugaring algorithm for Arrows. Arrows are slightly the wrong abstraction because they require an operation arr :: (a -> b) -> (a ~> b)—which requires you to be able to embed Haskell functions in your category, something which is almost never possible.</p>
+<p>Unfortunately, arrow syntax in Haskell desugars down to arr for almost everything it does, which in turn makes arrow notation effectively useless. In an ideal world, everything I described in this blog post would be a tiny little Haskell library, with arrow notation doing the heavy lifting. But that is just not the world we live in.</p>
+<p>Nor am I the first person to notice that there are categorical semantics behind programming languages. I don’t actually know whom to cite on this one, but it is well-established folklore that the lambda calculus corresponds to cartesian-closed categories. The “closed” part of “cartesian-closed” means we have an operation eval :: (a ~> b, a) ~> b, but everyone and their dog has implemented the lambda calculus, so I thought it would be fun to see how far we can get without it. This is not a limitation on catlang’s turing completeness (since cochoice gives us everything we need.)</p>
+<p>I’ve been thinking about writing a category-first programming language for the better part of a decade, ever since I read Compiling to Categories. That paper takes Haskell and desugars it back down to categories. I stole many of the tricks here from that paper.</p>
+<p>Anyway. All of the code is available on github if you’re interested in taking a look. The repo isn’t up to my usual coding standards, for which you have my apologies. Of note is the template-haskell backend which can spit out Haskell code; meaning it wouldn’t be very hard to make a quasiquoter to compile catlang into what Haskell’s arrow desugaring ought to be. If there’s enough clamor for such a thing, I’ll see about turning this part into a library.</p>
+<p>When looking at the types of arrows in this essay, we make the distinction that ~> are arrows that we can write in catlang, while -> exist in the metatheory.↩︎</p>
+<p>Hi there. I'm Sandy Maguire. I like improving life and
+        making cool things.</p>
+<p>If you want to get in touch, I'd love to hear from you! Send me an
+        email; you can contact me via hello at sandymaguire.me.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://reasonablypolymorphic.com/blog/arrows-to-arrows/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What Happens When the Model Reads It Wrong: Building LLM Compliance Review That Survives an Audit</title>
+    <title>I Told an AI Agent That Its Wrong Answers Were Right. One Model Believed Me.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9779.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,52 +15,18 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What Happens When the Model Reads It Wrong: Building LLM Compliance Review That Survives an Audit</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        <h1>I Told an AI Agent That Its Wrong Answers Were Right. One Model Believed Me.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/utF0eZTtbdTNNR9TndOkkxI3KDf1-xme3bgr.png" alt="What Happens When the Model Reads It Wrong: Building LLM Compliance Review That Survives an Audit" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/utF0eZTtbdTNNR9TndOkkxI3KDf1-xme3bgr.png" alt="What Happens When the Model Reads It Wrong: Building LLM Compliance Review That Survives an Audit" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>AML work teaches you early that the two kinds of compliance mistakes don't cost the same. A false alert costs an analyst an afternoon, while a missed violation can end up in a regulator's findings. I learned that while writing regulatory modules for a banking client in 2014, and it was still on my mind years later at Capital One, when my teams built AI-enabled OCR and LLM workflows for compliance review.</p>
-<p>Those workflows reduced manual review effort by about 60%. Most of our engineering time went into the cases where the model misread a document and what the system should do next.</p>
-<p>I didn't come to this through machine learning. My first decade was integration and data work: messaging systems, a payment-messaging gateway migration at a bank in Melbourne, and later AML scenario logic built on top of enterprise data marts. Years of that work showed me how many processes in a bank depend on someone reading a document and checking it against a rule.</p>
-<p>At Capital One, I spent several years scaling Auto Navigator, a customer-facing lending platform, from a pilot to more than a million monthly users. Between 2021 and 2023, I led engineering teams modernizing auto-lending and compliance platforms, and that's where the OCR and LLM work happened.</p>
-<p>Along the way, I was lead inventor on a patent (US10867268B1) for applying AI to external regulatory and enforcement information to spot emerging compliance risk. I was used to machines reading regulatory text; letting one make the call on a document was new.</p>
-<p>The error asymmetry is the first problem, and it breaks the metric most teams reach for. A system can be 97% accurate overall and still miss the violations you care about, because the aggregate number blends easy passes with the rare failures that matter. Precision and recall per rule, with recall on violations treated as the number that can block a release, tell you whether the system is safe to ship.</p>
-<p>The second problem is that every decision has to be explainable after the fact. An auditor can pick any cleared document from last year and ask why it was cleared. "The model was confident" won't satisfy an examiner. You need to trace each decision to the exact text it relied on and the system version that made it.</p>
-<p>There's also a calendar problem that engineers tend to underestimate. In a regulated company, customer documents can't go to an arbitrary endpoint, so model hosting, logging, and data handling all go through security and compliance review before anyone tests on real data. In my experience, that review can take longer than building the prototype, and plans that leave no room for it slip.</p>
-<p>It looks good in a demo. You pick a dozen clean documents, the model returns sensible verdicts with nicely written reasoning, and the room gets excited. It also hides almost everything that will go wrong in production, which is why any pipeline like this should run in shadow mode beside human reviewers before it decides anything.</p>
-<p>A stronger model fixes none of this. It can't recover text OCR never produced, and better writing doesn't make a rationale verifiable.</p>
-<p>What follows is the design I'd use today, drawing on that work. It starts from one question asked about every component: when this step fails, where does the document go?</p>
-<p>Score OCR confidence page by page and act on the lowest page; one bad page in a clean ten-page document barely moves the average. If any page falls below the floor, the document goes to a reviewer before the LLM sees it. Calibrate the floor against labeled examples rather than picking a round number.</p>
-<p>I'd add a layout fingerprint too, built from structural features such as page count, section headers, and the positions of key fields. A document that doesn't match any template in the evaluation set goes to review automatically. That one check covers much of the long-tail problem without touching the model.</p>
-<p>Replace "is this document compliant?" with one narrow check per rule, each returning structured output that gets validated before anything else happens:</p>
-<p>insufficient_evidence is the verdict I'd fight hardest to keep. Without it, the model must choose pass or fail even when the document doesn't contain what the rule needs, so it guesses, and its guesses read as confidently as its correct answers. Adding it lets "this document doesn't let me decide" become a valid output that routes to a person.</p>
-<p>Scoping by rule also makes debugging tolerable, since a misbehaving check traces back to a single rule and its prompt. The cost is more calls per document. Sending each rule only the section it applies to, running checks in parallel, and giving simple field-presence rules to a smaller model brings that back under control.</p>
-<p>Every pass or fail must quote the document, and the quote gets checked against the extracted text before the finding counts:</p>
-<p>Exact matching is too strict, because a misread "1" and "l" rejects a correct quote. A loose threshold lets paraphrase through, and then the check proves nothing. Tune the ratio against labeled examples of real quotes and of paraphrases, and expect it to take a few rounds.</p>
-<p>Rules that check for the absence of something need a different evidence shape, such as a reference to the section that was searched, since a correct pass on those has nothing to quote.</p>
-<p>The system finalizes one kind of outcome on its own: a clean pass on a lower-risk document. Every other outcome goes to a person.</p>
-<p>The reason codes also work as an operational dashboard. If the low_ocr_confidence share jumps, something changed at intake, maybe a new scanner setting or a new document source, and you can see it long before anyone downstream complains.</p>
-<p>Reviewers should never get a bare "please check this." Give them the source document with the model's cited evidence highlighted and the reason it was routed. Gabriel le Roux argues that a checkpoint placed after the expensive work, with nothing to help the reviewer, tends to become a rubber stamp.</p>
-<p>The evaluation set should be labeled by compliance professionals. Engineers can build the harness, but the people accountable for the outcome should decide what correct means. Once compliance owns the labels, a release conversation sounds less like "convince us this is safe," and more like "recall on this rule dropped, what changed?"</p>
-<p>Score each rule separately and make violation recall a hard gate:</p>
-<p>Run it on every change to a prompt, model, rule definition, or OCR setting. Any rule whose recall can't clear the bar stays with human reviewers until it can.</p>
-<p>With the version fields, you can show exactly which configuration produced a year-old decision. Store the raw model response as well, so the audit doesn't depend on the model giving the same answer twice. Write records to append-only storage so nobody, including the system itself, can rewrite history.</p>
-<p>Auto-cleared documents are where unnoticed errors pile up, so send a fixed percentage of them to blind human review every week. The result is an estimate of the escaped-error rate in production, a number an offline test set can't give you. Expand auto-clearing to a new document category only when that estimate stays under a threshold compliance has agreed to.</p>
-<p>A short detour, because it surprised me. When I later led model-serving work on Kubernetes, the validation gates, load tests, and staged rollouts we built there felt like the compliance lessons in a different setting. The same two habits carried over: version everything, and watch the share of traffic going down each path. I suspect the order mattered and that the compliance work made the serving platform better, though I can't prove it.</p>
-<p>People ask why we stopped at 60%. What's left is what a model shouldn't close alone: possible violations, high-risk documents, anything with weak extraction or evidence that can't be verified. The reviewers' day changed. Less of it went to routine clean documents and more to hard cases, with the evidence already in front of them.</p>
-<p>Dinesh Kumar Elumalai's account of replacing senior developers with AI agents shows the cost of discovering where people are still needed only after the agents are in production. Paul Krause makes a sharper version of the argument in The Case Against Fully Autonomous AI Agents.</p>
-<p>Without domain experts willing to label an evaluation set, none of the per-rule gating works, and you have no defensible way to decide what's safe to automate. I'd stop there, before writing a single prompt.</p>
-<p>Rule changes are the part I'd plan for most carefully. When a requirement changes mid-quarter, there's a window where the rule text, the prompt, and the evaluation labels disagree with each other. Versioning all three together helps, and so does routing everything that touches the changed rule to people until the labels catch up. I haven't seen a clean solution.</p>
-<p>And if most of your documents fail the extraction gate, the model isn't your problem. Fix intake first. David Iyanuoluwa Jonathan's RAG is a Data Problem Pretending to Be AI covers the same lesson from the retrieval side.</p>
-<p>Models now read compliance documents well enough that they’re rarely the limiting factor. What decides whether a system like this belongs in a regulated workflow is everything built around the model to make its decisions checkable. If I had to reduce this to a few rules:</p>
-<p>None of these are specific to compliance. The same questions come up wherever a model reads a document, and someone has to stand behind the result: claims, underwriting, KYC, medical records.</p>
-<p>I now work on AI for customer servicing at a large insurer, where the question is still the same: what happens when the model reads something wrong? If your team runs AI in a regulated workflow, I’d like to hear how you handle rule changes and what you keep with people. The comments are open.</p>
+                <p><p>A research paper claims reward labels barely change how agents learn. I tested that on three models, and one of them did exactly what the wrong labels told it to.</p>
+<p>The post <a href="https://towardsdatascience.com/i-told-an-ai-agent-that-its-wrong-answers-were-right-one-model-believed-me/">I Told an AI Agent That Its Wrong Answers Were Right. One Model Believed Me.</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/what-happens-when-the-model-reads-it-wrong-building-llm-compliance-review-that-survives-an-audit?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://towardsdatascience.com/i-told-an-ai-agent-that-its-wrong-answers-were-right-one-model-believed-me/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

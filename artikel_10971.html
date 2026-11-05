@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Releasing Outlines-core 0.1.0: structured generation in Rust and Python</title>
+    <title>Next.js ISR Transient Errors: Prevent notFound from Caching 404s</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10971.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,57 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Releasing Outlines-core 0.1.0: structured generation in Rust and Python</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-04</p>
+        <h1>Next.js ISR Transient Errors: Prevent notFound from Caching 404s</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_data_07d27c3db2.png" alt="Next.js ISR Transient Errors: Prevent notFound from Caching 404s" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_data_07d27c3db2.png" alt="Next.js ISR Transient Errors: Prevent notFound from Caching 404s" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Prerequisites: This article targets Next.js 14 (App Router). For Next.js 15+, see the params awaiting note in each code snippet. Requires Node.js 18.18+. Fetch caching defaults changed in Next.js 15; the ISR throw-to-preserve behavior described here is consistent across 13.4 through 14.x. Run the local simulation test described in the Testing section to confirm behavior on your target version.</p>
+<p>A single transient database or CMS outage during Next.js ISR background revalidation can silently replace a perfectly valid cached page with a persistent 404. This is not a theoretical risk. Developers using Next.js ISR with notFound() have reported this exact failure mode, where a temporary infrastructure hiccup causes SEO damage and user-facing downtime that persists long after the underlying service recovers. The root cause is a common error-handling pattern that conflates "the data source is unreachable" with "this record does not exist." This article presents a concrete architectural fix that separates those two states, prevents Next.js from ever caching an error-driven 404, and provides an on-demand revalidation recovery strategy.</p>
+<p>In the Next.js App Router, Incremental Static Regeneration operates on a stale-while-revalidate lifecycle. When you set a revalidate interval on a page, the first request generates and caches it. Subsequent requests within that window serve the cached version. Once the interval expires, the next request still receives the stale page, but Next.js triggers a background revalidation. This background render re-executes the page's data-fetching logic and, if successful, replaces the cached output with the fresh render.</p>
+<p>The critical detail: the background revalidation replaces whatever is in the cache. If that render produces a 404 response, Next.js caches the 404 and overwrites the previously valid page.</p>
+<p>The scenario, reported on Stack Overflow, follows a pattern that exists in countless Next.js codebases. A data-fetching helper wraps a CMS or database call in a try-catch block that returns null on any error, whether that error is a network timeout, a 500 from the upstream API, or a genuine "record not found" response. The page component then checks for null and calls notFound().</p>
+<p>During a transient outage, the ISR background render hits the data-fetching error path, receives null, triggers notFound(), and the resulting 404 response is cached. The previously valid, fully rendered page is gone. When the infrastructure recovers seconds or minutes later, the damage is already done. The 404 persists until the next revalidation cycle, and if the timing is unlucky, users and search engine crawlers see a 404 for up to one full revalidation interval (60 seconds in this example, but potentially hours in production configs).</p>
+<p>A single transient database or CMS outage during Next.js ISR background revalidation can silently replace a perfectly valid cached page with a persistent 404.</p>
+<p>Here is the flawed pattern as it typically appears:</p>
+<p>The getPost function treats a CMS outage identically to a missing blog post. Both return null. Both trigger notFound(). Both get cached as 404s.</p>
+<p>When a Server Component calls notFound(), it returns a response with a 404 HTTP status code. Under ISR with a configured revalidate interval, Next.js treats this 404 as a valid cacheable response. From the framework's perspective, the page rendered successfully and produced a definitive answer: this resource does not exist. Next.js has no mechanism to distinguish between "this record genuinely doesn't exist in the database" and "an infrastructure error prevented the application from fetching it."</p>
+<p>A successful background revalidation, including one that results in a 404, overwrites the existing cached page entirely. Next.js provides no built-in rollback mechanism when the page component returns a valid response (including a 404) without throwing an unhandled exception. If the revalidation completes without throwing, Next.js considers it successful and replaces the cache entry. An unhandled exception is the mechanism that prevents this overwrite -- the distinction the refactored code exploits. This is by design for the happy path but destructive when error handling collapses infrastructure failures into the same code path as legitimate missing records.</p>
+<p>This fix hinges on a single architectural insight: when a data helper throws an unhandled exception, Next.js treats the background revalidation as failed and retains the previously cached page. This behavior is consistent with reported Next.js ISR behavior (see the Next.js ISR documentation and related community reports); run the local simulation test described in the Testing section to confirm on your deployment version. The distinction between throwing and returning null directly controls whether ISR preserves or destroys the cache.</p>
+<p>The third and fourth rows are the critical behavioral change. By throwing on infrastructure errors, the revalidation is treated as a failure, and the stale cache survives.</p>
+<p>The refactored data helper introduces a custom error class for infrastructure failures and only returns null when the upstream API explicitly confirms the record does not exist (a 404 response status). Network errors, timeouts, 500-level responses, and connection failures all throw, preventing ISR from caching the failure state.</p>
+<p>Both files reside in the lib/ directory at the project root (i.e., lib/errors.ts and lib/data.ts).</p>
+<p>Note on fetch caching: In some Next.js versions, fetch in Server Components defaults to force-cache, meaning the fetch itself may serve a cached response during ISR revalidation -- masking infrastructure failures. The refactored helper above uses { cache: 'no-store' } to ensure data is fetched live during each revalidation. If your data must be fetched live during each revalidation, add { cache: 'no-store' } or { next: { revalidate: 0 } } to your fetch call.</p>
+<p>Only the fetch call itself sits inside the try-catch, handling network-level failures. HTTP error responses (non-404) are handled by explicit status checking after the response arrives. Only a 404 from the CMS returns null, signaling a genuinely missing record. A content-type check before JSON parsing prevents silent SyntaxError exceptions when the CMS returns an HTML error page.</p>
+<p>The page component stays simple. It calls notFound() only when getPost returns null, meaning the CMS confirmed the record does not exist. Infrastructure errors thrown by the helper are not caught here. They propagate upward, causing the ISR background revalidation to fail gracefully and preserving the existing cache.</p>
+<p>By throwing on infrastructure errors, the revalidation is treated as a failure, and the stale cache survives.</p>
+<p>Path alias note: The @/lib/data import requires a paths alias configured in your tsconfig.json (e.g., "@/*": ["./*"]). This is set up automatically by create-next-app but must be added manually if not already present in existing projects.</p>
+<p>For direct visits (not background revalidation), an uncaught error would show the default Next.js error page. Adding an error.tsx boundary in the route segment catches errors from Server Components in the same route segment during direct page renders. It does not intercept errors during ISR background revalidation -- those are handled server-side and the user continues to see the stale cached page.</p>
+<p>If a 404 was cached before implementing this fix, or due to an edge case where the fix was not yet deployed, on-demand revalidation provides a manual or automated recovery mechanism. Next.js exposes revalidatePath() and revalidateTag() for this purpose. revalidatePath() purges and regenerates the cache for a specific URL path. revalidateTag() invalidates all cache entries associated with a given fetch tag, useful for bulk invalidation across related pages.</p>
+<p>A route handler that accepts a path or slug, validates an authentication secret, and calls revalidatePath() gives teams a deployable recovery tool.</p>
+<p>Environment variable: Set REVALIDATION_SECRET in your .env.local file. Use a long, random string (e.g., 32+ characters generated with openssl rand -base64 32).</p>
+<p>Wire this route to a CMS publish webhook so every content update purges the affected path. It also works as an admin dashboard button for manual recovery after an outage. For post-outage scenarios, teams can iterate over a list of affected slugs and trigger revalidation for each, effectively warming the cache with fresh, valid data once the infrastructure has recovered.</p>
+<p>Cost consideration: Calling revalidatePath() for many slugs simultaneously triggers a full server-side render for each one. Revalidating 10,000 paths at once means 10,000 concurrent renders -- batch in groups of 50-100 with a delay between batches to avoid spiking compute and CDN costs.</p>
+<p>ISR only operates in production mode. Do not use next dev -- ISR is inactive in development mode and all pages are rendered on every request without caching. Tests will not reflect production caching behavior.</p>
+<p>To test locally, run next build followed by next start. With the application running, visit a blog post page to populate the cache. Then temporarily modify the data helper to force a throw simulating an infrastructure failure by adding the following line at the top of the try block in getPost, guarded to prevent accidental production deployment:</p>
+<p>Set FORCE_FETCH_ERROR=true in your .env.local file before rebuilding. After adding the simulated throw, you must rebuild (next build && next start) since code changes require a rebuild to take effect.</p>
+<p>Wait for the revalidation interval to expire (60 seconds with the example configuration), trigger a request, and verify that the cached page survives. The previously rendered content should still be served.</p>
+<p>To confirm the legitimate 404 path works, modify the data helper to return null for a specific slug and verify that notFound() produces the expected 404 page.</p>
+<p>Check the terminal logs where next start is running. A failed background revalidation will produce error output indicating the thrown exception. Refresh the page in the browser. The stale cached version should still be served, confirming that the cache was not replaced with a 404.</p>
+<p>Throw on transient failures so ISR retains the previously valid cached page. This is the single most important behavioral distinction in the entire pattern.</p>
+<p>Yes. In the Pages Router, getStaticProps returning notFound: true during ISR revalidation has the same effect: the 404 is cached, replacing the previous page. The same principle applies. Throwing an error from getStaticProps causes the revalidation to fail and preserves the stale cache. Run the local simulation test described in the Testing section against your target version to confirm; see the Next.js Pages Router ISR documentation for authoritative behavior.</p>
+<p>No stale cache exists to fall back on. The user sees an error page (or the error.tsx boundary). The page remains uncached until a successful render completes. This is an inherent limitation: the "preserve stale cache" strategy only works when a valid cache entry already exists.</p>
+<p>No. Next.js does not support conditional revalidation intervals based on response type. The revalidate value applies uniformly. To retry sooner after a failure, use on-demand revalidation via revalidatePath() or revalidateTag(), triggered either manually or through automated health checks that detect recovery.</p>
+<p>Sharing our passion for building incredible internet things.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/outlines-core" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/nextjs-isr-transient-error-notfound/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
