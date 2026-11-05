@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Burnt TOAST</title>
+    <title>tokenizers v1: encode, decode and scaling, measured</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9869.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,67 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Burnt TOAST</h1>
+        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://a.storyblok.com/f/187930/1080x566/c14d2d8fc4/burnt-toast-post.png" alt="Burnt TOAST" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.storyblok.com/f/187930/1080x566/c14d2d8fc4/burnt-toast-post.png" alt="Burnt TOAST" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Postgres at AI speed — deploy anywhere. Explore pgEdge Starfleet →</p>
-<p>A financial firm hired me in 2010 to revise their Postgres cluster architecture. During my stint there, I learned a healthy respect for their event_log table. But perhaps “respect” is the wrong word here, as it was more of a deep loathing. This table, you see, was the canonical ledger of system events and consisted of several million rows.</p>
-<p>The high row count wasn’t a problem by itself. We kept a tight visibility window and archived frequently. Unfortunately for us, one of the columns was an unconstrained TEXT type that commonly held a large blob of XML. Thus any fetch from this table was inordinately slow. Writing was equally painful. We went through great pains to shape the application itself to avoid touching it except when absolutely necessary. It was evil incarnate.</p>
-<p>The performance of this table initially confused and enraged me—until I remembered about TOAST. Postgres likes to innocuously dub this backronym “The Oversized-Attribute Storage Technique” but DBAs in the field maintain a love/hate relationship with the system. Whether that’s justified is a different question.</p>
-<p>On the surface, it’s a way to store huge blocks of data elsewhere to keep tuples small and avoid exceeding the relatively petite 8KB data page size. Postgres creates a shadow table for the bulky content, splits it up into chunks, and stores a pointer in the original row. It’s an elegant solution to a pressing issue, but there are deep performance implications.</p>
-<p>So let’s dig into precisely why DBAs secretly dread large text-based columns, shall we?</p>
-<p>To really understand what happened in my event_log case, it’s good to reconstruct some semblance of it.</p>
-<p>And then we can bootstrap the table with 100k rows. Just enough to make it annoying! The data column needs to be big, but not absolutely gigantic. Let’s start with up to 1000 data points:</p>
-<p>Great! Now where did all of that data go? If you thought, “Into the event_log table of course!” you’re wrong. Instead, Postgres helpfully created a TOAST table for most of it. Let’s check the pg_class catalog for the other objects:</p>
-<p>That’s three objects for the price of one: the original table, a toast table, and a toast table index. This doesn’t always happen, but if your table has a text-like column without a maximum length, it probably did. In this case, it’s because an unbounded JSON column can contain anything, so Postgres preemptively initialized a TOAST table to store the “anything”.</p>
-<p>What goes in is a bit more subtle, and is where the trouble starts brewing.</p>
-<p>There’s a kind of inherent hierarchy that determines how data gets managed. The typstorage column in the pg_type catalog explains how this works for each type Postgres understands. There are four valid storage methods:</p>
-<p>PLAIN (p): The value stays inline and uncompressed. This is the default for fixed-width types like INT and TIMESTAMPTZ.</p>
-<p>MAIN (m): Compression is allowed, with TOAST only as the last resort. The default for NUMERIC.</p>
-<p>EXTERNAL (e): TOAST is allowed, but compression is not.</p>
-<p>EXTENDED (x): Anything is fair game. This is the default for TEXT, BYTEA, JSONB, and most other variable-length types.</p>
-<p>Postgres imposes a loop on all text-based column types in a tuple that it applies until the entire row is under the standard 8KB page threshold (minus overhead). It looks something like this:</p>
-<p>Being the default for JSON, all of our data follows the rules for EXTENDED. We can see it in action by checking a few rows:</p>
-<p>The toast_tuple_target storage setting tells Postgres when to toast column contents. The default is around 2KB of compressed data, and anything after that is moved into TOAST automatically. The example above has a row that compresses right under that limit, and as a result, never gets moved.</p>
-<p>If we examine page 57 specifically, this becomes even more clear:</p>
-<p>The tuple size of the rows that didn’t get toasted is much larger than those that did. That’s thanks to a pointer replacing the toasted values. And that’s not all. Toasted data is also broken into chunks. Every toasted value gets broken into 1996-byte blocks and stored in sequential order as rows in the toast table.</p>
-<p>Any toasted value implies at least one fetch from the toast table. That’s a read on the toast index and a read on the toast table itself per chunk.</p>
-<p>Chunks must be re-assembled. That’s extra memory usage and can be significant depending on chunk count.</p>
-<p>Compressed data must also be decompressed. That’s both memory and CPU overhead.</p>
-<p>The intuitive read of this is that TOAST is always worse. But is it?</p>
-<p>Let’s run an experiment! We already have a table where some of the data is toasted. What happens if we force Postgres to select all of it?</p>
-<p>This requires some setup. To begin, we create a non-toasted table by setting the event_data column to use MAIN storage. That allows it to be compressed, but not toasted unless the full tuple exceeds a Postgres page size. Like so:</p>
-<p>Then we can directly compare the costs of pulling out field 999 from the data:</p>
-<p>Take a look at that! Shared buffers really saved our bacon on this one. Total buffer reads on the toasted column required 288127 total reads versus 40754 for the non-toasted version. Conversely, the toasted table is much smaller:</p>
-<p>While Postgres can read through the heap faster, it then has to spend a lot of time seeking through the toast table. This size difference translates to some non-intuitive behavior. For instance, most interactions with the toasted table are actually much faster. Consider counting all rows:</p>
-<p>That’s 26ms vs 91ms. Or jumping through offsets:</p>
-<p>Any time Postgres has to deal directly with the heap, performance suffers immensely. Toast pointers can act as an optimization, particularly when not interacting with the toasted column because they make each row on the heap much smaller.</p>
-<p>This one kind of blew my mind. It turns out that the problem with the event_log table wasn’t necessarily the TOAST system, but the event_data column itself. It turns out there’s a way to fix that.</p>
-<p>Back then, “fixing that” meant to split the table. Our toy example is a mere 100k rows, but the real one was several million and the heap alone was over 1GB. Including TOAST on those huge XML blobs brought the total table size to over 20GB.</p>
-<p>When an application is full of SELECT * and is repeatedly looking up and decoding toasted data, it can eventually take a toll. Even if we ignore the disk IO, that’s a lot of extra network bandwidth. “Just specify the column names!” you might say, and I agree. If only it were that easy to modify ORM-generated queries and five years of accumulated hand-written ones.</p>
-<p>What do we gain from this? For one, we no longer need to carry around the TOAST pointers in the main application table. Secondly, since this column was a mix of toasted and non-toasted values due to the toast_tuple_target cutoff, even non-toasted values have been relocated. We can see this in the new table heap sizes:</p>
-<p>All operations will now be substantially faster simply because page density is now guaranteed to be higher. More rows fit on each page, and there are fewer pages required to represent the primary core of the table. The entire heap is now 5MB rather than 47MB, a saving of over 9x. If it’s at all possible to relocate large columns to an optional JOIN in a high-performance system, it may be worth taking a second look.</p>
-<p>If you think we could have achieved a similar effect by setting toast_tuple_target arbitrarily low, think again. The TOAST system won’t even activate if a row value is shorter than TOAST_TUPLE_THRESHOLD, a compiled value that acts as a hard minimum. Values below this won’t even be considered for toasting. What can I say? Postgres is a picky eater.</p>
-<p>The obvious objection is that applications now need a join. Well, the Postgres planner has you covered:</p>
-<p>The trick is the LEFT JOIN, making the event data optional even though we know every row has a value there. Queries that don’t specify the column will prune the JOIN and everyone is happy.</p>
-<p>As of Postgres 14, it’s even possible to choose the compression type. Stick with the venerable built-in pglz, or use lz4 if it’s been compiled into your binaries. The default for the entire server comes from default_toast_compression:</p>
-<p>Or it can be set using the COMPRESSION decorator during CREATE TABLE or ALTER TABLE.</p>
-<p>One interesting note about the compression types is that pglz is somewhat quirky. It skips values under 32 bytes, demands at least 25% savings, and gives up entirely if it finds nothing to compress in the first 1KB. The last rule is kind of odd to see in action:</p>
-<p>There are also some associated performance implications. Consider:</p>
-<p>When dealing with 100k rows of 10k compressed values, lz4 is a bit slower decompressing by about 20% in this case, but is over 30 times faster at compression. That’s absolutely staggering.</p>
-<p>Look, we all want to play the blame game. I always blamed the TOAST system for how badly our application’s event_log table performed. Every time someone complained. Any occasion when a badly written query made it through the application and touched the table in a way that apparently enraged it and caused every page load to quadruple or time out entirely. In my head, TOAST was at fault.</p>
-<p>Ironically, it was TOAST’s fault in a way, because it’s not aggressive enough. Think about it. Postgres needs TOAST_TUPLE_THRESHOLD to avoid activating the expensive machinery that deconstructs, compresses, and moves data to an external table. But imagine how things could look if anything could be offloaded arbitrarily. Unfortunately there’s no option for that. Out of PLAIN, MAIN, EXTENDED, and EXTERNAL, none cover the case for “move anything over 100 bytes and also compress it if it’s over 2k.” Though there’s an argument for using EXTERNAL on medium-sized but “large-ish” columns: we gain the benefit of a smaller heap, and data less than 1kb doesn’t tend to compress well anyway.</p>
-<p>Instead, we have to compromise our schema design and introduce an extra join for parts of the application that actually interact with the bulky column. Views sidestep this to an extent, but it’s something of an ugly hack compared to leaving the table intact. We also can’t leverage this maneuver every single time a big column shows up, or our schema would end up a horrifying mess. Not all columns are “optional” enough to banish.</p>
-<p>What TOAST provides is a suitable middle-ground. For the cost of a pointer, we get to essentially forget a huge block of text exists in the table at all. The heap is happier and we’re none the wiser. Compression speeds are also dramatically faster for those who switch to lz4.</p>
-<p>So don’t be afraid of Postgres TOAST; it’s the best kind there is.</p>
-<p>Experience the magic of pgEdge for non-distributed and distributed Postgres deployments.</p>
+                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
+<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
+<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
+<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
+<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
+<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
+<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
+<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
+<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
+<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
+<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
+<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
+<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
+<p>Each stage was worked on. These are the changes that mattered:</p>
+<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
+<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
+<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
+<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
+<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
+<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
+<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
+<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
+<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
+<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
+<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
+<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
+<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
+<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
+<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
+<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
+<p>This post is generated from tokbench results and will be updated as support expands.</p>
+<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
+<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
+<p>Encoding is unchanged: same call, same ids.</p>
+<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
+<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
+<p>This work is in the Rust pre-release on crates.io:</p>
+<p>Will have to try it out. Data seems real good.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.pgedge.com/blog/burnt-toast" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

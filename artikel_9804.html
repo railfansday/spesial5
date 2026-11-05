@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower</title>
+    <title>Declarative Dragging</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9804.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,42 +15,50 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower</h1>
+        <h1>Declarative Dragging</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://dennisforbes.ca/include/images/og_dennis_forbes.jpg" alt="Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://declarative-dragging.github.io/link-preview.png" alt="Declarative Dragging" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://dennisforbes.ca/include/images/og_dennis_forbes.jpg" alt="Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://declarative-dragging.github.io/link-preview.png" alt="Declarative Dragging" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Back in 2001, Joel Spolsky â whose writings had a big influence my career â wrote a great piece titled Back to Basics. The premise of the piece is that practitioners should understand the basics: However abstract and remote we may seem from the basic algorithms that drive computing, they can unexpectedly have enormous consequences on our projects.</p>
-<p>One of his examples is the âShlemiel the Painterâ trap, where a seemingly simple choice leads to quadratic runtime complexity. In that parable, a street line painter never moves his can of paint. As he gets further and further along in the line, increasingly more of his time is spent walking to and from his can of paint.</p>
-<p>It is astonishing how often this Shlemiel the Painter pattern recurs1, including now in 2026.</p>
-<p>A few days ago I posted about a chess analysis service I put online â2. This is primarily a Rust service backed by sqlite that dishes out analysis tasks to runners. Each runner processes upwards of hundreds of chess games and return a large set of JSON bundles back to the main service, where they are processed and then stuffed into sqlite.</p>
-<p>While the analysis pegs two dozen cores on a runner for minutes on end, the process of storing the data should take milliseconds. Sub-milliseconds.</p>
-<p>Imagine my surprise when on the first really large set of games, the simple process of inserting the JSON data â maybe about 40,000 records â into the data store took minutes. During all of my testing this never really appeared as a critical path, but with a large set of records it suddenly was a breaking problem.</p>
-<p>What made this more perplexing was that it completely saturated a core, being a CPU-bound operation. How could inserting simple JSON into SQLite yield minutes of CPU time?</p>
-<p>Shlemiel the painter has made an appearance. To drop a spoiler, he was introduced to the project via Zigâs cc compiler and its replacement for standard library functions.</p>
-<p>The project isnât built in Zig, but instead uses Rust. The sqlx sqlite crate needs to be compiled for the target environment â sqlite is of course a C project â so to facilitate cross-platform building, generating both Mac ARM64 and Linux ARM64 / x86-64 binaries from this machine in a convenient build and deploy workflow, zig cc is used to compile sqlite when targeting Linux, generously offering up cross-platform targeting via cargo-zigbuild.</p>
-<p>From one build and deploy script on my Mac I can target all of my platforms without containers or build machines. Zigâs elegant libzigc re-implements the standard library so you can static link the necessary functionality.</p>
-<p>Zig uses musl (the standard library rewrite), but they have been rewriting it piece by piece in pure Zig (via libzigc), removing the C dependencies one at a time.</p>
-<p>And thatâs where the performance issue was introduced.</p>
-<p>In the rewrite of strspn, replacing the musl version with the pure zig variant), the first step measures the entire length of the string. This is also seen in the rewrites of strcspn, strpbrk and strstr.</p>
-<p>This is a problem for tokenizers. A tokenizer takes a giant string and a common iterating step is to skip whitespace, getting the new string location and then repeating this pattern repeatedly. With this shlemiel the painter pattern introduced with these rewrites, as it steps through the text it is tokenizing it is remeasuring the entire length of the string endlessly.</p>
-<p>This is what caused my performance issue, and itâs why it appeared on Linux but was never seen on my Mac (where zig wasnât used for compiling sqlite).</p>
-<p>Tokenizing a 1.2MB file, which was seen passing json to sqlite, is approximately 12,000x slower with this pattern. As the file gets larger, the slowdown is quadratic.</p>
-<p>I mean no malice or disrespect to anyone involved with these great tools that enable so much. But itâs interesting that in the year 2026, these same old issues can recur, and we all need to be vigilant for them. Something so trivial was grinding a process to a halt, in the most unexpectedly trivial of places.</p>
-<p>My original fix for this issue, at least in my own code, was to pre-prune whitespace from JSON, which greatly reduced the cost when tokenizing in sqlite3, but not knowing where else it might bite I moved my Linux builds over to Linux containers.</p>
-<p>Years and years ago, back when Sunspider was the go-to benchmark and browsers would herald their supremacy, the same pattern could be seen in the way Firefox handled string concatenations, causing it to be a laggard in that benchmark. Sunspiderâs benchmark run somehow entailed an enormous number of string concatenations â even the tests having little to do with strings â and a simple profile3 of a benchmark run showed that a significant amount of the runtime was consumed constantly allocating slightly larger string memory, copying to the new location, and then repeating this pattern. It was Shlemiel the Painter.</p>
-<p>I corrected this (overallocate strings with a size-dependent buffer such that subsequent concatenations could reuse the buffer until it actually need to be resized again, which again would overallocate), blogged about it, Brendon Eich took note, and voila Firefox took the lead in the benchmark4. Such a trivial thing turned it from slowpoke to benchmark. â©</p>
-<p>Iâm under no delusions Iâm going to support my family with a niche chess analysis service, and at most Iâm looking to break even with the costs of running it. I put it online because I found my work to these ends useful to my own game, and hope that occasionally it will find the right user without burdening me with the costs of doing so. â©</p>
-<p>Profilers are awesome. They are the most powerful tool we have available to us, so itâs strange to me how seldom they are utilized. â©</p>
-<p>And for what itâs worth, string concatenation was extremely common in almost all web projects, so the benefit was substantial in the real world as well. There was a best practice of using string builders, but so often people just slammed strings together in a loop. â©</p>
-<p>Sharing what I built to get better at the game</p>
-<p>Thoughts, ideas, and stories from my journey. 100% of the text content of this blog is human authored, though genAI is used for supplemental images.</p>
-<p>© 2026 Dennis Forbes. Built with â¤ï¸ and Astro.</p>
+                <p>Joshua Horowitz,
+      Andrew Blinn,
+      Jeffrey Heer</p>
+<p>What if making a diagram draggable was as simple as specifying what it can become?</p>
+<p>Drag-and-drop makes the digital graspable. But designing bespoke drag interactions involves a lot of fiddly code to
+        handle geometry, feedback, and animations. As a result, many people, from educators to game designers,
+        mathematicians to creative tool builders, often don't bother.</p>
+<p>Declarative dragging inverts the problem. Rather than programming all that visual behavior directly, you
+        simply say, for each element you want to make draggable, which future states of your application dragging it
+        should lead to. Our system speculatively renders those states to work
+        out where things can go, then combines these possible worlds into a smooth, responsive drag-and-drop
+        interaction.</p>
+<p>Our goal with this project is to let people keep working within the semantic
+        worlds they inhabit, while helping them turn the rules of their worlds into rich tactile interactions in ours.</p>
+<p>A five-minute video introducing declarative dragging.</p>
+<p>D2 is model-driven: An interface author makes an element draggable by specifying which future model
+      states should be accessible by dragging it. An engine speculatively renders these states to view trees,
+      extracts the position of the dragged element in each of these renderings, and uses these to synthesize a
+      drag-and-drop interaction, all without detailed work required by the interface author.</p>
+<p>To provide greater expressive range and customizability, D2 is composable: simple model-driven
+      drag-and-drop behaviors can be combined to create more complex ones, and modifiers can layer features like
+      floating, snapping, and transitions. For more details, see
+      the paper.</p>
+<p>We implemented D2 in a library called Dragology, built
+      for SVG interfaces on the web.</p>
+<p>See our demo gallery for many more interactives built with
+      Dragology.</p>
+<p>Josh has been working on a variety of new, more intricate mathematical explorables. We've found Dragology
+        particularly suited to interfaces that combine parallel representations, where you see the same system from
+        different perspectives. In the permutation lab below, interacting with any one representation fluidly updates
+        the others, even halfway through a drag, showing their relationships in real time.</p>
+<p>Andrew has been working to bring declarative dragging to existing applications, including his research on user
+        interfaces for programming languages, as well as restarting work on the math game concept that
+        kicked it all off.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dennisforbes.ca/blog/microblog/2026/10/the_accidental_12000x_sqlite_slowdown/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://declarative-dragging.github.io/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

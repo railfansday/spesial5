@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux</title>
+    <title>The FDE Mindset Shift: From Code Craftsmanship to Organizational Rewiring</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9663.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,50 +15,35 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux</h1>
+        <h1>The FDE Mindset Shift: From Code Craftsmanship to Organizational Rewiring</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fimages.unsplash.com%2Fphoto-1551288049-bebda4e38f71%3Fw%3D1000%26q%3D80" alt="Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fqn9rs9i49v9y8gd4hf1k.png" alt="The FDE Mindset Shift: From Code Craftsmanship to Organizational Rewiring" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fimages.unsplash.com%2Fphoto-1551288049-bebda4e38f71%3Fw%3D1000%26q%3D80" alt="Stop Letting a Backup Job Starve Your Database: Practical cgroup v2 I/O Control on Linux" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fqn9rs9i49v9y8gd4hf1k.png" alt="The FDE Mindset Shift: From Code Craftsmanship to Organizational Rewiring" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The backup window opens at 01:00. By 01:05 the database's p99 query latency has gone from 4 ms to 90 ms, and the on-call alert fires. The backup is not corrupt, not slow, and not even using much CPU. It is simply writing 400 MB/s to the same NVMe device the database lives on, and the database is now waiting in the block layer.</p>
-<p>The usual first response is ionice -c3. It doesn't work, and it hasn't worked for years on most systems. The second response is a cgroup v2 io.max limit, which does work, but only if you understand what it does and does not throttle.</p>
-<p>This is a practical tour of the io controller: what the three knobs actually do, how to wire them to systemd, how to prove the limit is being enforced, and the traps that make people conclude "cgroups don't work" when they do.</p>
-<p>ionice sets an I/O priority on a process with ioprio_set(2). Whether that priority means anything depends entirely on the block scheduler:</p>
-<p>CFQ, the scheduler that made ionice famous, was removed in Linux 5.0. If your disk is running mq-deadline or none, passing -c3 records a value and nothing reads it.</p>
-<p>Even where BFQ is in use, ioprio is proportional, not a ceiling. A backup at idle priority will still consume every spare IOPS the database isn't using, and on a fast device "spare IOPS" is enough to ruin tail latency.</p>
-<p>The cgroup v2 io controller is not one mechanism. It is several, with different guarantees:</p>
-<p>Two design details explain most surprises:</p>
-<p>So io.max is a ceiling on sustained device traffic, not a per-syscall speed limiter. That is fine for a backup job, as long as you measure the right thing.</p>
-<p>If io is missing from cgroup.controllers, the kernel was built without CONFIG_BLK_CGROUP and none of this applies. If it is present but not in cgroup.subtree_control, the controller is not delegated to children yet.</p>
-<p>Also check the device, not the partition. systemd.resource-control(5) is explicit that these settings should reference "the originating, physical device", not a partition or loop device.</p>
-<p>Resource control needs a boundary. Putting the limit on the backup service works, but a slice is better: everything the job spawns (restic, rclone, a shell pipeline) inherits the same budget, and you can raise the limit later without editing the service.</p>
-<p>/etc/systemd/system/restic-backup.service:</p>
-<p>The IOScheduling* lines are advisory on most modern schedulers. They cost nothing and help on BFQ systems, but do not rely on them.</p>
-<p>/etc/systemd/system/backup.slice.d/io.conf:</p>
-<p>Three things worth knowing before you copy that:</p>
-<p>That line is the ground truth. If it is missing, the controller is not active for the slice, and no amount of restarting the service will help.</p>
-<p>io.stat is a live per-device counter for the cgroup:</p>
-<p>Read it before and after a run. wbytes divided by wall-clock seconds should land near your cap, not far above it. On a fast NVMe without a limit, a restic run will show write throughput in the hundreds of MB/s; with the cap it should flatten out.</p>
-<p>For a controlled test, use fio with direct I/O inside the same slice:</p>
-<p>Expect roughly 100 MB/s. If you see 2 GB/s, the limit is not attached: check io.max again, and confirm the unit really is in backup.slice with systemctl status fiotest.</p>
-<p>A one-liner also works for a quick sanity check outside systemd:</p>
-<p>Buffered writes lie to you. dd without oflag=direct or conv=fsync reports the speed of copying into page cache, which is memory speed, not disk speed. It will happily report 3 GB/s while the cgroup is capped at 100 MB/s, because the bytes have not reached the device yet. Always test with direct=1 or force writeback.</p>
-<p>Cgroup writeback needs filesystem support. The kernel attributes writeback to a cgroup only on ext2, ext4, btrfs, f2fs, and xfs. On other filesystems, writeback I/O is charged to the root cgroup, so a limit on your backup slice will not catch data the page cache flushes later. Check findmnt -no FSTYPE /srv before trusting the numbers.</p>
-<p>io.weight is inert more often than people think. It defaults to 100 and ranges from 1 to 10,000, but proportional control is provided by iocost or BFQ. On a stock system running none or mq-deadline, weights can be set and read back while changing nothing. Confirm the mechanism is live:</p>
-<p>io.latency only compares siblings. It is work-conserving: when everyone meets their target, nothing is throttled. When one group misses, its peers with higher targets get queue-depth throttling and artificial delays. Set it on the groups that compete at the same level, not on a single child three levels down.</p>
-<p>io.latency is blind without debug stats. The missed and total fields only appear when blkcg_debug_stats is enabled, and they are off by default. Without them, you are tuning a controller you cannot observe.</p>
-<p>Network filesystems are out of scope. There is no block device to throttle. io.max on an NFS-backed backup directory does nothing.</p>
-<p>%util on NVMe is not a saturation signal. It pins at 100% while the device still has headroom. Watch await and r_await from iostat -x 1, or io.pressure, which reports actual stall time.</p>
-<p>A hard cap is the right answer when you know the budget. When you don't, invert the problem: tell the kernel what latency the database needs, and let it throttle whoever gets in the way.</p>
-<p>And on the competing slice, a looser target:</p>
-<p>Now when db.slice misses 25 ms, backup.slice is throttled until it recovers. When the database is idle, the backup runs at full speed. No static budget, no wasted capacity.</p>
-<p>Two caveats: this needs CONFIG_BLK_CGROUP_IOLATENCY, and the target must be achievable. Setting 1 ms on a device that cannot deliver it means permanent throttling of everything else and no benefit to anyone. Measure first, then set the target slightly above the latency you see under normal load.</p>
-<p>Most hosts want io.max on the known offenders (backups, container image pulls, log shipping) and io.latency on the workload that must stay responsive. Weights are the nicest model and the easiest to misconfigure.</p>
-<p>max in every field means the limit is gone. That is the check to run after every change, in both directions: the file is the configuration, and it never lies about what the kernel is enforcing.</p>
-<p>If a backup job is degrading your database, the fix is a budget, not a priority. Give the job a slice, give the slice a ceiling, and verify the ceiling in io.max — the rest is tuning.</p>
+                <p>TLDR: The strongest senior engineers often have the hardest first quarter as Forward Deployed Engineers. The role is not mostly writing code — it's integration archaeology and organizational negotiation with some code attached. The ones who thrive stop optimizing the artifact and start optimizing the adoption.</p>
+<p>Here's the pattern that keeps repeating, and if you've made this transition yourself, you felt it in roughly week two.</p>
+<p>A senior backend engineer — the kind who's genuinely good, the kind teams fight to keep — takes an FDE rotation. They arrive at the host tribe with a strong instinct for craft: understand the domain, design the thing properly, build it clean. They ask for tickets. They ask for specs. They ask, politely, where the acceptance criteria live.</p>
+<p>And the tribe, slowly, starts to avoid them.</p>
+<p>Not because the engineer isn't skilled. Because the questions themselves are wrong for the environment. There is no ticket. There is a mess — a tribe with legacy debt, unclear ownership, manual bottlenecks that don't appear in any process doc, and a stack of informal power relationships nobody drew on the org chart. The engineer is trying to practice disciplined software development inside a system that runs on undocumented history and personal trust. The craft that made them strong on a platform team reads as friction here — another outsider demanding that the tribe stop working and start explaining themselves.</p>
+<p>If you map what the FDE role actually is, by hours across a typical rotation, it lands something like this: about a third is software architecture. About 40% is system integration — the archaeology of how this tribe's actual estate hangs together, which no doc describes. And roughly another third is organizational negotiation — understanding who decides what, which workflow is load-bearing for someone's job security, and why the "obvious" fix nobody did is obvious to everyone and done by no one.</p>
+<p>Craft-minded engineers hear that split and read it as a demotion. Code is down to a third. That's the mindset shift, in one sentence: the code was never the product. The adoption is. The code is just the most visible artifact of a system change that's 60% social.</p>
+<p>The crash mode for strong engineers is almost always a variant of one story.</p>
+<p>The engineer spots a real inefficiency. They design a beautiful fix — sometimes genuinely brilliant; an elegant multi-agent pipeline, a clever orchestration, something that would get applause at a platform offsite. They demo it to the tribe.</p>
+<p>And the tribe says, more or less, thanks, but no — politely, then less politely. The engineer goes home frustrated: the tribe is mired, irrational, resistant to change. Clearly a change-management problem.</p>
+<p>Usually, no. Look closer at what actually happened, and the pattern is consistent: the thing the engineer built is fine, but it sits on top of a workflow the tribe can't abandon — it bypasses their compliance sign-offs, replaces a tool someone's measured on, or requires trusting an automated step that previously had a human's name on it. The engineer optimized the artifact. The tribe's rejection is the system telling them where the real constraints were. It was always going to reject it — the engineer just didn't spend enough time inside the system to know that yet.</p>
+<p>The versions that work look almost insultingly modest by comparison. An engineer embeds for a week or two, shadows the lead operator, learns where the hours actually burn — the hand-offs, the re-keying, the manual checks nobody trusts the tooling to get right. Then they automate one of those, with a human kept in the loop on the exact step where trust is thinnest — hours back in the tribe's week, visible in the first month, on a thing the tribe itself asked for.</p>
+<p>That thing gets adopted. That thing gets defended in the tribe's own planning meetings, by the tribe's own people. And the engineer who built the modest thing has a paved road to build the next thing on — while the brilliant one is still waiting for the org to "come around."</p>
+<p>The internal scoreboard changes. On a platform team, craft is legible: clean code reviews, sound architecture, hard problems handled well. Inside a tribe, none of that is legible to the people who matter. What's legible: did the hours go down, did the pages go down, did the hand-offs stop hurting? The FDE who thrives tracks adoption the way they used to track test coverage.</p>
+<p>FDE work runs on short loops — a week or two, not a quarter. Prototype against real data from the tribe's actual estate. Validate live with the people who'll run it. Iterate on where the friction shows up — which is almost never where it appeared on paper. The craft instinct says this is sloppy; the role says this is the point. In a rotation, a beautiful system shipped too late has a precise value of zero.</p>
+<p>Stop talking tokens, embeddings, context windows. Start talking cycle-time reduction, defect prevention, manual steps eliminated. The vocabulary gap sounds trivial and is not: the tribe decides whether to trust the engineer's work in the tribe's language, and every untranslated sentence reads as "this person is building for their own portfolio, not our problem."</p>
+<p>If you're considering this transition, or hiring for it, there's one interview question that does more work than any architecture exercise: can you debug an organizational process with the same rigor you'd bring to a stack trace?</p>
+<p>Same method, either way: form a hypothesis about where the failure occurs, instrument the path, watch where the thing actually breaks, resist the satisfying story. The engineers who thrive in this role answer it, unpromptedly, with a war story about a process they mapped and a fix that stuck. The ones who struggle answer with a shrug — and their first rotation usually ends in the failure mode above.</p>
+<p>Part two of a series on Forward Deployed Engineers — this one about the human in the role.</p>
+<p>The comment sections on FDE posts have been quieter than the job-market hype suggests — and honestly, that gap is the interesting data. If you're doing this role, tell us what it's actually like.</p>
+<p>Next in the series: Why FDE Initiatives Crash: The "Custom Code Trap" — what happens when the embedded engineers are too autonomous, and the 80/20 rule that keeps them from burying the org in snowflakes.</p>
 <p>Templates let you quickly answer FAQs or store snippets for re-use.</p>
 <p>Are you sure you want to hide this comment? It will become hidden in your post, but will still be visible via the comment's permalink.</p>
 <p>For further actions, you may consider blocking this person and/or reporting abuse</p>
@@ -67,7 +52,7 @@
 <p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
 <p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/lyraalishaikh/stop-letting-a-backup-job-starve-your-database-practical-cgroup-v2-io-control-on-linux-4c32" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/debashish_ghosal/the-fde-mindset-shift-from-code-craftsmanship-to-organizational-rewiring-2mg" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

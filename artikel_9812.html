@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fine-tuning a 350M Model for Better Structured Outputs in 100 GRPO Steps</title>
+    <title>Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9812.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,44 +15,42 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fine-tuning a 350M Model for Better Structured Outputs in 100 GRPO Steps</h1>
+        <h1>Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/grpo-with-trl-ifstruct/thumbnail.png" alt="Fine-tuning a 350M Model for Better Structured Outputs in 100 GRPO Steps" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://dennisforbes.ca/include/images/og_dennis_forbes.jpg" alt="Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/grpo-with-trl-ifstruct/thumbnail.png" alt="Fine-tuning a 350M Model for Better Structured Outputs in 100 GRPO Steps" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://dennisforbes.ca/include/images/og_dennis_forbes.jpg" alt="Shlemiel the Painter Is Back: How Zig’s libc Rewrite Made SQLite Slower" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>This guide is a fully public, inexpensive recipe for making a small model substantially better at structured-output compliance. We fine-tune LFM2.5-350M with Group Relative Policy Optimization (GRPO) using the TRL library and evaluate it on the IFStruct benchmark. The full run takes around 500 samples and 100 training steps, small enough for a free-tier Colab or Kaggle GPU, and is available on GitHub. The results show that even a light fine-tuning procedure improves performance from 22.6% to 29.7% on the IFStruct benchmark.</p>
-<p>Structured output is one of the most common real-world tasks for LLMs, yet most benchmarks fold it into broader reasoning or extraction scores rather than measuring it on its own. Whether a model reliably returns valid, parseable output in the requested format and shape — schema compliance — is often what decides whether it can be wired into a downstream system at all.</p>
-<p>Note that the training pipeline described here is not the one used to train the RL model described in the IFStruct blog. This notebook doesn't aim to recreate the IFStruct benchmark score, but to show how task-specific fine-tuning of smaller models can improve performance and match that of far larger models.</p>
-<p>This guide has two halves that run in different places:</p>
-<p>We will need uv for the Python tooling and llama.cpp for serving. Following the Liquid AI llama.cpp deployment docs, install llama.cpp with Homebrew and verify that llama-server is available:</p>
-<p>Before we begin, let's evaluate LFM2.5-350M on the IFStruct benchmark and see whether we can reproduce the reported score of 21.1%.</p>
-<p>IFStruct is a benchmark for testing the validity of LLM outputs and schema adherence. The benchmark is open-source in Liquid4All/ifstruct, with the public benchmark dataset available on Hugging Face at LiquidAI/ifstruct-v1.0.</p>
-<p>For the eval comparison, we serve the model locally on the MacBook with llama.cpp. We will use the BF16 GGUF (LiquidAI/LFM2.5-350M-GGUF).</p>
-<p>Then we start the base-model server with the following command:</p>
-<p>Once the server is running, we can run the full benchmark with 2000 samples:</p>
-<p>The IFStruct release blog reports 21.1% for LFM2.5-350M. Our local llama.cpp/BF16 setup measures 22.6%, close to the 21.1% reported in the IFStruct blog. We use this local result as the baseline for the same serving stack comparison.</p>
-<p>The full, runnable pipeline lives in the accompanying notebook. We will cover only the relevant pieces in this section.</p>
-<p>We use nvidia/Nemotron-RL-instruction_following-structured_outputs, which pairs each prompt with a target JSON Schema and an expected field count. We use about 500 samples for training.</p>
-<p>Because the Nemotron data distribution differs from the IFStruct evaluation, we augment the prompts to close two gaps between them:</p>
-<p>We load LiquidAI/LFM2.5-350M and attach a LoRA adapter. Because LFM2.5 uses a hybrid attention/convolution architecture, we target the LFM-specific module names:</p>
-<p>This trains ~6M parameters, about 1.66% of the model.</p>
-<p>Then we define three reward functions, each on a [0, 1] scale, which score every completion on whether the extracted structure is correct:</p>
-<p>We combine the three as a weighted sum with reward_weights=[1.0, 0.5, 2.0].</p>
-<p>We train for 100 steps with 8 generations per prompt group, sized for a free-tier 16 GB GPU:</p>
-<p>As you can see in the notebook, over the run, all three reward components climb, the KL from the reference model lifts off zero after warmup, and the truncated-completion fraction stays near zero.</p>
-<p>Finally, we merge the LoRA adapter back into the base weights and save it as a single self-contained checkpoint, ready to convert to GGUF for serving:</p>
-<p>After GRPO fine-tuning, we rerun the IFStruct evaluation. For this, we need to convert the merged model checkpoint into a BF16 GGUF. The converter script ships with the llama.cpp source, so we clone the repo once and install the converter's gguf package.</p>
-<p>Then we serve the merged model with the following command:</p>
-<p>Then, we will run the full IFStruct evaluation again with the fine-tuned model:</p>
-<p>Comparing the two runs on the identical serving stack:</p>
-<p>The gains land exactly where the training aimed: the JSON pass rate rises by nearly 14 points (18.0% → 31.9%), while YAML stays mostly the same. While this is still below the Qwen3.5-2B score of 33.15%, it shows that even light task-specific fine-tuning can bring a small model close to a larger one.</p>
-<p>A short GRPO run with about 500 samples and 100 steps can lift a small 350M parameter model from 22.6% to 29.7% on IFStruct. The takeaway is that a cheap, task-specific reward signal can make a small model substantially more reliable about form, closing much of the gap to models several times its size.</p>
-<p>To reproduce or extend this work, see the original IFStruct v1.0 blog post, the Liquid4All/ifstruct benchmark repo, and the LiquidAI/ifstruct-v1.0 dataset.</p>
+                <p>Back in 2001, Joel Spolsky â whose writings had a big influence my career â wrote a great piece titled Back to Basics. The premise of the piece is that practitioners should understand the basics: However abstract and remote we may seem from the basic algorithms that drive computing, they can unexpectedly have enormous consequences on our projects.</p>
+<p>One of his examples is the âShlemiel the Painterâ trap, where a seemingly simple choice leads to quadratic runtime complexity. In that parable, a street line painter never moves his can of paint. As he gets further and further along in the line, increasingly more of his time is spent walking to and from his can of paint.</p>
+<p>It is astonishing how often this Shlemiel the Painter pattern recurs1, including now in 2026.</p>
+<p>A few days ago I posted about a chess analysis service I put online â2. This is primarily a Rust service backed by sqlite that dishes out analysis tasks to runners. Each runner processes upwards of hundreds of chess games and return a large set of JSON bundles back to the main service, where they are processed and then stuffed into sqlite.</p>
+<p>While the analysis pegs two dozen cores on a runner for minutes on end, the process of storing the data should take milliseconds. Sub-milliseconds.</p>
+<p>Imagine my surprise when on the first really large set of games, the simple process of inserting the JSON data â maybe about 40,000 records â into the data store took minutes. During all of my testing this never really appeared as a critical path, but with a large set of records it suddenly was a breaking problem.</p>
+<p>What made this more perplexing was that it completely saturated a core, being a CPU-bound operation. How could inserting simple JSON into SQLite yield minutes of CPU time?</p>
+<p>Shlemiel the painter has made an appearance. To drop a spoiler, he was introduced to the project via Zigâs cc compiler and its replacement for standard library functions.</p>
+<p>The project isnât built in Zig, but instead uses Rust. The sqlx sqlite crate needs to be compiled for the target environment â sqlite is of course a C project â so to facilitate cross-platform building, generating both Mac ARM64 and Linux ARM64 / x86-64 binaries from this machine in a convenient build and deploy workflow, zig cc is used to compile sqlite when targeting Linux, generously offering up cross-platform targeting via cargo-zigbuild.</p>
+<p>From one build and deploy script on my Mac I can target all of my platforms without containers or build machines. Zigâs elegant libzigc re-implements the standard library so you can static link the necessary functionality.</p>
+<p>Zig uses musl (the standard library rewrite), but they have been rewriting it piece by piece in pure Zig (via libzigc), removing the C dependencies one at a time.</p>
+<p>And thatâs where the performance issue was introduced.</p>
+<p>In the rewrite of strspn, replacing the musl version with the pure zig variant), the first step measures the entire length of the string. This is also seen in the rewrites of strcspn, strpbrk and strstr.</p>
+<p>This is a problem for tokenizers. A tokenizer takes a giant string and a common iterating step is to skip whitespace, getting the new string location and then repeating this pattern repeatedly. With this shlemiel the painter pattern introduced with these rewrites, as it steps through the text it is tokenizing it is remeasuring the entire length of the string endlessly.</p>
+<p>This is what caused my performance issue, and itâs why it appeared on Linux but was never seen on my Mac (where zig wasnât used for compiling sqlite).</p>
+<p>Tokenizing a 1.2MB file, which was seen passing json to sqlite, is approximately 12,000x slower with this pattern. As the file gets larger, the slowdown is quadratic.</p>
+<p>I mean no malice or disrespect to anyone involved with these great tools that enable so much. But itâs interesting that in the year 2026, these same old issues can recur, and we all need to be vigilant for them. Something so trivial was grinding a process to a halt, in the most unexpectedly trivial of places.</p>
+<p>My original fix for this issue, at least in my own code, was to pre-prune whitespace from JSON, which greatly reduced the cost when tokenizing in sqlite3, but not knowing where else it might bite I moved my Linux builds over to Linux containers.</p>
+<p>Years and years ago, back when Sunspider was the go-to benchmark and browsers would herald their supremacy, the same pattern could be seen in the way Firefox handled string concatenations, causing it to be a laggard in that benchmark. Sunspiderâs benchmark run somehow entailed an enormous number of string concatenations â even the tests having little to do with strings â and a simple profile3 of a benchmark run showed that a significant amount of the runtime was consumed constantly allocating slightly larger string memory, copying to the new location, and then repeating this pattern. It was Shlemiel the Painter.</p>
+<p>I corrected this (overallocate strings with a size-dependent buffer such that subsequent concatenations could reuse the buffer until it actually need to be resized again, which again would overallocate), blogged about it, Brendon Eich took note, and voila Firefox took the lead in the benchmark4. Such a trivial thing turned it from slowpoke to benchmark. â©</p>
+<p>Iâm under no delusions Iâm going to support my family with a niche chess analysis service, and at most Iâm looking to break even with the costs of running it. I put it online because I found my work to these ends useful to my own game, and hope that occasionally it will find the right user without burdening me with the costs of doing so. â©</p>
+<p>Profilers are awesome. They are the most powerful tool we have available to us, so itâs strange to me how seldom they are utilized. â©</p>
+<p>And for what itâs worth, string concatenation was extremely common in almost all web projects, so the benefit was substantial in the real world as well. There was a best practice of using string builders, but so often people just slammed strings together in a loop. â©</p>
+<p>Sharing what I built to get better at the game</p>
+<p>Thoughts, ideas, and stories from my journey. 100% of the text content of this blog is human authored, though genAI is used for supplemental images.</p>
+<p>© 2026 Dennis Forbes. Built with â¤ï¸ and Astro.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/grpo-with-trl-ifstruct" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dennisforbes.ca/blog/microblog/2026/10/the_accidental_12000x_sqlite_slowdown/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
