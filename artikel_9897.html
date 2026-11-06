@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPS in PyTorch 2.15</title>
+    <title>FBI Arrests Executive at Ransomware Negotiation Firm</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,87 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>MPS in PyTorch 2.15</h1>
+        <h1>FBI Arrests Executive at Ransomware Negotiation Firm</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
-<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
-<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
-<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
-<p>To try the release candidate in a separate environment:</p>
-<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
-<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
-<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
-<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
-<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
-<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
-<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
-<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
-<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
-<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
-<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
-<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
-<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
-<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
-<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
-<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
-<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
-<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
-<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
-<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
-<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
-<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
-<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
-<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
-<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
-<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
+                <p>Agents with the Federal Bureau of Investigation (FBI) on Thursday arrested an executive at a Canadian cybersecurity firm in connection with an investigation into the ShinyHunters hacking group that recently relieved the FBI of sensitive data on thousands of agents, multiple sources tell KrebsOnSecurity.</p>
+<p>The New York Times reported today that the FBI has arrested a Canadian man in Pennsylvania on suspicion of assisting ShinyHunters. The Times story did not identify the man, nor did a statement on Twitter/X about the arrest from FBI Director Kash Patel.</p>
+<p>One source close to the investigation told KrebsOnSecurity the Canadian person arrested this week was visiting Pennsylvania for a cyber insurance conference, and that the suspect’s company specialized in handling ransomware negotiations with cybercrime groups. Another shared that control over the ShinyHunters investigation has been centralized at an FBI field office in Texas.</p>
+<p>An online search reveals the Cyber Risk Summit was held at the Loews Philadelphia Hotel between Oct. 5 and Oct. 7. The conference had several sponsors, but according to the summit’s website its biggest sponsor was a Canadian security company called Cypfer.</p>
+<p>According to LinkedIn, one of Cypfer’s “ex-founders” was Edward Dubrovsky, who is now associated with another Canadian security firm and sponsor called CyberSteward. In a post to LinkedIn approximately one month ago, Dubrovsky said he had plans to attend the Cyber Risk Summit with the rest of the CyberSteward team.</p>
+<p>[Update: Oct. 10, 9:58 a.m. ET: A spokesperson for Cypfer said Dubrovsky was not a founder or co-founder as his LinkedIn profile claims, but instead served as a managing director before resigning in December 2025].</p>
+<p>“Looking forward to continuing conversations around strategy & compliant driven coercive (ransomware, extortion) advisory, negotiations and settlement services that are global and truly agnostic,” Dubrovsky wrote.</p>
+<p>Federal court records show that on October 8, an Edward Dobrovsky (note the slight misspelling of the last name) was arrested in Pennsylvania on cyber extortion and conspiracy charges. Several of those documents — including the core complaint — are now sealed. But a handful of them were indexed at Courtlistener.com, including a summary of the complaint, which charges the defendant with “conspiracy to threaten to impair the confidentiality of information with the intent to extort money,” and “interference with commerce by threats.”</p>
+<p>The inmate locator at the U.S. Bureau of Prisons website reports that a 54-year-old Edward Dubrovsky is currently being held at a federal facility in Philadelphia. But the court records indexed by CourtListener include a notice filed on October 9 that moved the case to the Eastern District of Texas, which sources say is now the epicenter of the FBI’s ShinyHunters investigation. The FBI declined to comment for this story.</p>
+<p>Dubrovsky’s LinkedIn profile states he is the author of Cyber Extortion Strategic Response, a 252-page book that promises to “take readers beyond the ransom note and into the decisions that determine how an organization responds, recovers, and protects what matters.”</p>
+<p>Edward Dubrovsky’s book, which centers on the intricacies of ransomware negotiations.</p>
+<p>“At the heart of the book is a critical distinction: communicating with a criminal is not the same as negotiating a payment, and negotiating is not a commitment to pay,” reads an excerpt from the book’s listing on Amazon. “Engagement can serve other objectives, including testing claims, gathering information, creating time, and preserving options while the organization evaluates its next move.”</p>
+<p>Mr. Dubrovsky could not be immediately reached for comment. KrebsOnSecurity also sought comment from other executives at CyberSteward, and will update this post in the event they respond. The available court records in Dubrovsky’s case show that he does not currently have an attorney and has yet to be appointed a public defender by the courts.</p>
+<p>ShinyHunters typically uses phishing and stolen credentials to siphon data from corporate accounts at software-as-a-service companies, and then threatens to publish the stolen data online unless a ransom demand is paid. According to the FBI, the group has extorted more than $70 million from victims so far this year.</p>
+<p>Sources tell KrebsOnSecurity the FBI has been poring over devices that were seized last month when the Dutch police arrested the convicted cybercriminal Pepijn van der Stap in connection with the ShinyHunters investigation, and that charges against principals at other companies that specialize in ransomware negotiation may be forthcoming.</p>
+<p>Immediately after Van der Stap’s arrest, another member of ShinyHunters named “Rey” assumed control over the group and began taunting the FBI over data the group stole from the agency’s online recruitment portal, which included each’s person’s unit and specialization, as well as medical and psychiatric records.</p>
+<p>Last week, Reuters reported that Rey — identified as a teenager named Saif Al-din Khader — had been detained and was cooperating with FBI investigators. On October 7, we detailed how Rey was apprehended as the cybercrime group allegedly sought to extort a navigation and digital aviation unit that was divested by Boeing in late 2025.</p>
+<p>This is likely to be a fast-moving story. Updates will be noted along with timestamps.</p>
+<p>This entry was posted on Friday 9th of October 2026 08:17 PM</p>
+<p>The irony here is hard to miss. The industry sells “communicating with a criminal isn’t the same as paying” as a clean distinction, but the line between negotiator and middleman gets blurry fast when the same people sit between victims and extortionists. Charges are only allegations at this point, but if the other firms Brian mentions get charged too, expect a lot more scrutiny of how ransomware negotiators operate and who they’re really accountable to.</p>
+<p>It’s worse than ironic, it’s sadly common these days in most fields.  Once the commercial motive is introduced, there’s a *huge* incentive for the people involved to perpetuate the problem rather than solve it.  I think I first ran into it in the early days of the anti-spam efforts, where working solutions were sidelined in favor of poorly functioning technologies that mostly served to give monopoly players control of deliverability.  The email phishing that leads to ransomware gangs like Shiny Hunters simply *would not happen* if people just wised up to the fact that these trillion dollar companies aren’t giving you technology advice that works in *your* best interest.</p>
+<p>So the FBI got another low-level “dealer”.  Great.  Now let’s see how long it takes them to round up *anyone* from the Epstein-class “supplier” organizations.</p>
+<p>The very least the FBI could do would be to post these filth hackass addresses, bank information, family records, social securities, phone numbers and what not, so they end up eaten alive by the same annoyance they created.
+Die by the sword bastards.</p>
+<p>Somehow I doubt this government is providing any finders-fees for your work, keep up the good work Krebs.</p>
+<p>Also I can’t find the direct contact for you anymore, but the comment interface is pretty wonky on my phone, in that the submit button has some odd coloring on my phone, making it hard to see in light mode and almost impossible to see in dark mode.  If you’d like some screenshots and further info on my device just email me.</p>
+<p>Any clue which companies the accused helped with negotiations for?</p>
+<p>investors.boeing.com/investors/news/press-release-details/2025/Boeing-to-Sell-Portions-of-Digital-Aviation-Solutions-to-Thoma-Bravo-for-10-55-Billion/default.aspx</p>
+<p>Am wondering what ransomware negotiations he was involved in. For example, was he involved in the United Healthcare/ChangeHealth ransomware incident?</p>
+<p>There was an old hacker named “Cyper” from Hell Forums. He was the admin of KickAss (NSA).
+Interesting coincidence that Dubrovsky is close with Shiny and has a company named “Cypfer”.</p>
+<p>I think Dark Lion or whatever it was went feet up</p>
+<p>Arresting the *founder* rather than the negotiation firm itself is the detail that should worry operators the most. Individual accountability for running a negotiation service is essentially untested — the practice is legal in most jurisdictions as long as the customer is the victim of the incident rather than the perpetrator, and there’s no licensing or registration regime for it.</p>
+<p>That gap means an arrest is a signal, not a fix. Expect more of these services to move offshore or rebrand under new ownership, and expect the tooling that makes them profitable (leak-site monitoring, initial-access-broker contact lists, automated follow-up) to keep scaling regardless of who gets charged.</p>
+<p>The part I don’t see covered: how much of the value in this business is the *list* rather than the negotiation. If the negotiation contact itself is worth little to a criminal group — the customer already knows they’re breached — then arresting the negotiator mostly removes a service fee, not a capability. The durable asset is the broker/leak-site relationship feeding targets in.</p>
+<p>We’ve been writing about the ransomware-as-a-service supply chain here, including recent coverage of negotiation-related arrests and the FBI’s warnings to other groups.</p>
+<p>https://cyber.murati.net/posts/shinyhunters-leader-arrested-fbi-warns-others</p>
+<p>The irony Stalyn noted is real, but the line Dubrovsky drew in his book is genuinely important for incident response work. Communicating with the threat actor to de-escalate or buy time during containment is a different thing from facilitating a payment, and IR teams live on that distinction every day. What this arrest will do regardless is chill the negotiation industry: firms will start asking counsel to review every engagement letter, and some will quietly exit the business. One practical takeaway for defenders: this is another reminder to treat your IR retainer and negotiation playbooks as legal-adjacent documents. Get your outside counsel involved in the ransomware response plan before you need it, not after the FBI shows up with questions about who said what on your behalf.</p>
+<p>Well, Van der Stap also worked in the industry, doing offensive security while volunteering at the Dutch Institute for Vulnerable Disclosure, and it’s well-established that ShinyHunters actively sought to recruit insiders employed at key targets, particularly telecom providers (…while making it very clear they don’t target companies in Russia, Belarus, North Korea, and China… but sure, they are “purely financially motivated”).</p>
+<p>Fully expecting that as the FBI and European authorities dig deeper, quite a few more people will be found actively playing both sides of the fence.</p>
+<p>The line between ‘mediating’ an extortion attempt and actively facilitating a federal crime has always been razor-thin in this industry. If negotiators are taking a cut of the payout or coordinating directly with groups like ShinyHunters beyond strict incident response, it’s no longer advisory—it’s collusion. Expect cyber insurance carriers to drastically overhaul their IR vendor requirements after this.</p>
+<p>There is an additional important question about the whole FBI leak affair that needs to be answered: Who in the FBI moved these sensitive personnel files to a server that could be penetrated by outsiders? My guess is that somebody in DOGE did it, in preparation for downloading the files to the DOGE network outside the FBI. This might also mean that private parties in the U.S. have had these files for a long time.</p>
+<p>Perhaps the next administration will want to get to the bottom of this and punish the perpetrators, if any. The Trump administration most certainly will not.</p>
+<p>The breached application is Oracle PeopleSoft — specifically, an unpatched vulnerability in its Environment Management Hub platform tracked as CVE-2026-35273. According to reports last week, the FBI removed an Accenture contractor that was responsible for keeping it updated.</p>
+<p>Worth adding to the discussion of the FBI negotiation-company arrests: the
+practical gap most defenders have is not awareness of ShinyHunters, it is
+visibility into what the group actually does to get in.</p>
+<p>Across the intrusions we have analyzed, the initial-access and exfiltration
+chain is unusually consistent and entirely built on commodity tooling:</p>
+<p>– Remote access and support tools installed as a foothold (ScreenConnect,
+  Screenovate, AnyDesk, Rclone) rather than exploiting a novel vulnerability.
+– Multi-week dwell times, so presence-based detection rarely triggers early.
+– Data staged out in chunks sized to stay under typical DLP alerting
+  thresholds — a full customer or employee dataset rarely needs to leave in one
+  transfer to be useful to the extortion side.</p>
+<p>The practical consequence is that alerting on named malware is largely beside
+the point for this group; alerting on the *tools* and on small
+repetitive outbound flows is what actually catches the chain.</p>
+<p>We covered the detection angle in more depth here:
+https://cyber.murati.net/posts/fbi-tells-shinyhunters-members-to-turn-themselves-in-after-recent-arrest</p>
+<p>The detail about the arrest happening while he was in town for the Cyber Risk Summit at the Loews is wild, feels like it was ripped from a thriller. I get that ransomware response is high stakes, but a negotiation firm being linked to the group it’s supposed to be fighting is a huge trust problem. For stuff like cleaning up product images at scale I just use a bulk background remover and move on, but clearly cybercrime is a whole different mess.</p>
+<p>This is the normal ‘orange’ RaaS business.
+And it’s a now legitimate SaaS.
+**Securiry Lab LLC** should trip to tax havens.
+ A sycophantic chatbot investigates the Epstein files.
+What a terrible joke.</p>
+<p>Not sure why this is being mentioned like something abnormal: “Engagement can serve other objectives, including testing claims, gathering information, creating time, and preserving options while the organization evaluates its next move.”.</p>
+<p>Any reputable IR firm does exactly that. It is so valuable, that threat actors start denying access to some information. I lost the count of cases where clients felt more relief after we start comms and decided not to pay because of that communication.</p>
+<p>Threat actors are intentionally applying pressure to force exactly the scenario you describe. Your security recommendation is to essentially play into their hands.</p>
+<p>No reporting in this? https://www.theglobeandmail.com/business/article-canadian-cybersecurity-executive-arrested-by-fbi-was-in-legal-battle/</p>
+<p>Your email address will not be published. Required fields are marked *</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://krebsonsecurity.com/2026/10/fbi-arrests-founder-of-ransomware-negotiation-firm/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

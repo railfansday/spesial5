@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Introducing Falcon ASR</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9964.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,58 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
+        <h1>Introducing Falcon ASR</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/671a3e44cf97dc64441e170a/bJ2aGPIX6WLWagE10j5y3.png" alt="Introducing Falcon ASR" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/671a3e44cf97dc64441e170a/bJ2aGPIX6WLWagE10j5y3.png" alt="Introducing Falcon ASR" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>Arabic WER: 20.92% · Parameters: 1.6B · Emirati WER (TII evaluation): 22.73%</p>
+<p>We’re introducing Falcon-ASR, our 1.6 billion parameter speech recognition model for Arabic, with a particular focus on the Emirati dialect. Developed at the Technology Innovation Institute (TII) in Abu Dhabi, it also supports English, French, Spanish and Portuguese.</p>
+<p>In our evaluation, Falcon-ASR achieved an average word error rate of 20.92% across six Arabic test sets, compared with the best published result of 23.17% in the leaderboard snapshot we used. On our internal Emirati evaluation, it recorded the lowest word and character error rates among the systems we compared.</p>
+<p>We also support word-level timestamps for transcriptions, linking each transcribed word to its position in the audio.</p>
+<p>Arabic speech varies by region, speaker and setting. A model that handles a formal news broadcast may still struggle with a conversation in Emirati or with speech recorded over a phone line. Dialectal Arabic also has fewer transcribed resources than Modern Standard Arabic (MSA), which makes training and evaluation harder.</p>
+<p>We trained Falcon-ASR on Emirati, MSA, other Gulf and Arabic dialects, and English. Our aim is to transcribe the words people use in everyday speech, including dialectal forms and changes between languages.</p>
+<p>The Open Universal Arabic ASR Leaderboard, maintained by the ELM Research Center, ranks systems by the equal-weight average WER across six test sets. It also reports character error rate (CER). Lower values are better for both metrics. Our Falcon-ASR evaluation follows this protocol.</p>
+<p>WER = Word Error Rate; CER = Character Error Rate. A lower value indicates better performance.</p>
+<p>We evaluated Falcon-ASR on the same six benchmarks using the leaderboard’s pinned manifests. Competitor figures are the published leaderboard averages checked on 30 September 2026. Falcon-ASR’s average WER is 2.25 percentage points better than the best published result in that snapshot.</p>
+<p>Public evaluation data already includes Emirati: Casablanca has a UAE subset. We complement that coverage with an internal evaluation of additional Emirati and Gulf speech, using held-out recordings and human-validated transcripts to assess transcription accuracy beyond the public UAE subset.</p>
+<p>In our internal Emirati evaluation, Falcon-ASR achieved 22.73% WER and 10.19% CER:</p>
+<p>Falcon-ASR has the lowest WER and CER among the systems compared here. Its WER is 4.07 percentage points below Qwen3-Omni, the next best result. The results show improved transcription accuracy at both the word and character level on this evaluation.</p>
+<p>We included background noise, overlapping speech, music, room reverberation and telephony effects, as well as variations in speed and pitch. We applied the same treatment to Emirati recordings, exposing the model to a range of conditions it may encounter in meetings, calls and other everyday recordings.</p>
+<p>Falcon-ASR also transcribes English with the same model weights. In our evaluation on the seven public English test sets used by the Hugging Face Open ASR Leaderboard, it achieved a mean WER of 5.74%.</p>
+<p>The model also supports French, Spanish and Portuguese. All five languages use the same weights, without requiring a language flag. The output is a transcript in the language spoken.</p>
+<p>Falcon-ASR builds on our Falcon3-Audio work. The architecture and training approach for Falcon3-Audio are described in Competitive Audio-Language Models with Data-Efficient Single-Stage Training on Public Data.</p>
+<p>Our Hugging Face Demo Space lets you try Falcon-ASR and explore its transcription capabilities. API access and native applications are planned. We invite you to try the Demo with your own recordings.</p>
+<p>We thank the team behind the Falcon-Emirati model for their support with Arabic foundation models. Read about their latest work in the Falcon-Emirati blog post.</p>
+<p>We also extend our sincere thanks to Mikhail Lubinets for continued support with the compute infrastructure.</p>
+<p>نقدّم Falcon-ASR، نموذجنا للتعرف على الكلام العربي بحجم 1.6 مليار معلمة، مع اهتمام خاص باللهجة الإماراتية. طوّرنا النموذج في معهد الابتكار التكنولوجي (TII) في أبوظبي، وهو يدعم أيضًا اللغات الإنجليزية والفرنسية والإسبانية والبرتغالية.</p>
+<p>في تقييمنا، حقق Falcon-ASR متوسط معدل خطأ في الكلمات بلغ 20.92% عبر ست مجموعات اختبار باللغة العربية، مقارنةً بأفضل نتيجة منشورة بلغت 23.17% في نسخة لوحة المتصدرين التي استخدمناها. وفي تقييمنا الداخلي للهجة الإماراتية، سجّل النموذج أدنى معدلات خطأ في الكلمات والأحرف بين الأنظمة التي قارناها.</p>
+<p>ندعم أيضاً الطوابع الزمنية على مستوى الكلمات في عمليات التفريغ النصي، بحيث ترتبط كل كلمة بموضعها في التسجيل الصوتي.</p>
+<p>يختلف الكلام العربي باختلاف المنطقة والمتحدث وظروف التسجيل. فقد ينجح نموذج في تفريغ نشرة إخبارية رسمية، ثم يجد صعوبة في تفريغ محادثة باللهجة الإماراتية أو تسجيل عبر الهاتف. كما أن الموارد الصوتية المفرّغة نصيًا للهجات العربية أقل من تلك المتاحة للعربية الفصحى، مما يزيد صعوبة التدريب والتقييم.</p>
+<p>درّبنا Falcon-ASR على اللهجة الإماراتية والعربية الفصحى ولهجات خليجية وعربية أخرى، إلى جانب الإنجليزية. وهدفنا هو تفريغ الكلمات التي يستخدمها الناس في حديثهم اليومي، بما في ذلك الصيغ اللهجية والانتقال بين اللغات.</p>
+<p>ترتّب لوحة المتصدرين المفتوحة الشاملة للتعرف على الكلام العربي، التي يديرها مركز ELM للأبحاث، الأنظمة وفق متوسط معدل خطأ الكلمات عبر ست مجموعات اختبار، بوزن متساوٍ لكل مجموعة. وتعرض أيضًا معدل خطأ الأحرف (CER). وكلما انخفضت قيمة أي من المقياسين، كان الأداء أفضل. ويتبع تقييمنا للنموذج هذا البروتوكول.</p>
+<p>WER هو معدل خطأ الكلمات؛ وCER هو معدل خطأ الأحرف. تشير القيمة الأقل إلى أداء أفضل.</p>
+<p>قيّمنا Falcon-ASR على مجموعات الاختبار الست نفسها، باستخدام قوائم العينات المثبّتة في لوحة المتصدرين. وأرقام النماذج المنافسة هي المتوسطات المنشورة في اللوحة، والتي جرى التحقق منها في 30 سبتمبر 2026. وكان متوسط خطأ الكلمات للنموذج أفضل بمقدار 2.25 نقطة مئوية من أفضل نتيجة منشورة في تلك النسخة.</p>
+<p>تتوافر بالفعل بيانات عامة لتقييم اللهجة الإماراتية، إذ تضم مجموعة Casablanca قسمًا خاصًا بالإمارات. ونكمّل هذه التغطية بتقييم داخلي لتسجيلات إضافية من الكلام الإماراتي والخليجي، باستخدام تسجيلات مخصّصة للاختبار ونصوص مرجعية خضعت لمراجعة بشرية، لتقييم دقة التفريغ على مواد إضافية إلى جانب البيانات الإماراتية العامة.</p>
+<p>حقق Falcon-ASR في تقييمنا الإماراتي الداخلي معدل خطأ كلمات قدره 22.73٪ ومعدل خطأ أحرف قدره 10.19٪:</p>
+<p>سجّل Falcon-ASR أقل معدل لخطأ الكلمات والأحرف بين الأنظمة المقارَنة هنا. وكان معدل خطأ الكلمات أقل بمقدار 4.07 نقطة مئوية من Qwen3-Omni، صاحب النتيجة التالية. وتُظهر النتائج تحسنًا في دقة التفريغ على مستوى الكلمات والأحرف في هذا التقييم.</p>
+<p>ضمّنا بيانات التدريب ضوضاء خلفية وكلامًا متداخلًا وموسيقى وصدى الصوت وتأثيرات الاتصالات الهاتفية، إلى جانب تغيّرات في سرعة الكلام وحدّة الصوت. وطبّقنا المعالجة نفسها على التسجيلات الإماراتية، لتهيئة النموذج للتعامل مع ظروف مختلفة قد يواجهها في الاجتماعات والمكالمات والتسجيلات اليومية الأخرى.</p>
+<p>يفرّغ Falcon-ASR الكلام الإنجليزي باستخدام أوزان النموذج نفسها. وفي تقييمنا على مجموعات الاختبار الإنجليزية العامة السبع المستخدمة في لوحة Hugging Face المفتوحة للتعرف على الكلام، بلغ متوسط معدل خطأ الكلمات 5.74٪.</p>
+<p>يدعم النموذج أيضًا الفرنسية والإسبانية والبرتغالية. وتستخدم اللغات الخمس أوزانًا واحدة، دون الحاجة إلى تحديد اللغة مسبقًا. ويكون الناتج تفريغًا نصيًا باللغة المنطوقة.</p>
+<p>يستند Falcon-ASR إلى أعمالنا في Falcon3-Audio. وتعرض ورقة Competitive Audio-Language Models with Data-Efficient Single-Stage Training on Public Data بنية Falcon3-Audio ونهج تدريبه.</p>
+<p>يتيح عرضنا التجريبي على Hugging Face تجربة Falcon-ASR واستكشاف قدراته في تفريغ الكلام. أما الوصول عبر واجهة API والتطبيقات الأصلية فهو مخطّط له. ندعوكم إلى تجربة النموذج باستخدام تسجيلاتكم.</p>
+<p>نتوجّه بجزيل الشكر إلى الفريق القائم على تطوير نموذج Falcon-Emirati على دعمهم في مجال النماذج التأسيسية للغة العربية. ويمكن الاطّلاع على أحدث أعمال الفريق من خلال المقال المنشور حول Falcon-Emirati.</p>
+<p>كما نتقدّم بخالص الشكر والتقدير إلى Mikhail Lubinets على دعمه المستمر للبنية التحتية الحاسوبية.</p>
+<p>A benchmark for open-source multi-dialect Arabic ASR models</p>
+<p>Transcribe up to 60‑second audio clips into text</p>
+<p>يعكيكم العافية علي المجهود الطيب... بس بغينا نشوف موديلات صوتية STSو TTS بالللهجة الإماراتية لو أمكن</p>
+<p>A benchmark for open-source multi-dialect Arabic ASR models</p>
+<p>Transcribe up to 60‑second audio clips into text</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tiiuae/falcon-asr" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

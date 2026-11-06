@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Test Location-Aware APIs with FastAPI and PostGIS</title>
+    <title>Browser Fingerprinting Explained: How Websites Identify You and How Developers Can Reduce It</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10846.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,46 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How to Test Location-Aware APIs with FastAPI and PostGIS</h1>
+        <h1>Browser Fingerprinting Explained: How Websites Identify You and How Developers Can Reduce It</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_sitepoint_location_aware_api_cover_realistic_102ecb9804.png" alt="How to Test Location-Aware APIs with FastAPI and PostGIS" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_fp_cover_b1150ab78d.png" alt="Browser Fingerprinting Explained: How Websites Identify You and How Developers Can Reduce It" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_sitepoint_location_aware_api_cover_realistic_102ecb9804.png" alt="How to Test Location-Aware APIs with FastAPI and PostGIS" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_fp_cover_b1150ab78d.png" alt="Browser Fingerprinting Explained: How Websites Identify You and How Developers Can Reduce It" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
                 <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
 <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
 <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Catch coordinate-order bugs, distance mistakes, boundary cases, and bad spatial assumptions before they reach production.</p>
-<p>A location endpoint can return HTTP 200 and still be wrong by kilometers. That is the uncomfortable part of testing geospatial APIs: ordinary API checks tell you whether the request worked, not whether the geography is correct.</p>
-<p>Spatial bugs can look harmless in code review. Latitude and longitude get reversed. A radius value is treated as degrees instead of meters. A query works near one city but behaves differently elsewhere because the geometry column uses the wrong type. The JSON is valid, the tests are green, and the map is still wrong.</p>
-<p>In this tutorial, you will build a small FastAPI endpoint backed by PostGIS and then test the spatial behavior directly. The examples use deterministic fixtures positioned at known distances, so the tests verify geography rather than only response structure.</p>
-<p>The API exposes one endpoint: GET /places/nearby. A client sends longitude, latitude, and a radius in meters. The service returns nearby places as GeoJSON features, ordered by distance.</p>
-<p>The useful part is not the endpoint itself. The useful part is the test strategy. We will check coordinate validation, exact distance boundaries, GeoJSON coordinate order, and the database query that turns a radius into a spatial filter.</p>
-<p>Use a geography column when the API is answering human-scale distance questions in meters. PostGIS can then calculate on the ellipsoid instead of treating longitude and latitude as flat Cartesian coordinates.</p>
-<p>The endpoint below validates longitude, latitude, and radius with Pydantic, then sends a parameterized query to PostgreSQL. The SQL uses ST_DWithin to filter candidates and ST_Distance to return the measured distance.</p>
-<p>The API accepts lon and lat as separate named parameters. That removes ambiguity at the HTTP boundary. GeoJSON still uses [longitude, latitude] when the response is created.</p>
-<p>Hard-coding two real businesses and hoping their distance is approximately right makes a fragile test. A better approach is to create test points at exact distances from a fixed origin.</p>
-<p>PostGIS can generate those fixtures with ST_Project. In the test database, create one point 500 meters away, one 950 meters away, and one 1,500 meters away. Now a 1,000-meter query has an unambiguous expected result: the first two belong in the response and the third does not.</p>
-<p>This is the first test that actually proves something spatial. It is not checking that the endpoint returns a list. It is checking that the 1-kilometer contract means what the API says it means.</p>
-<p>GeoJSON coordinates are longitude first, latitude second. Many developers naturally think latitude first because that is how coordinates are commonly spoken. A validation layer can catch the most obvious reversal before the database ever sees it.</p>
-<p>Longitude must be between -180 and 180. Latitude must be between -90 and 90. That will not catch every reversal, because both numbers may sometimes fall inside both ranges, but it catches a large class of failures and gives clients a useful error instead of a misleading map.</p>
-<p>A response can be syntactically valid JSON and still violate the GeoJSON contract. Assert the geometry type and the coordinate order. For a known query point, longitude should appear in element zero and latitude in element one.</p>
-<p>Spatial boundaries deserve their own tests. A place at 999 meters should be included in a 1,000-meter search. A place at 1,001 meters should not. A place exactly at the boundary should behave consistently with the predicate you chose.</p>
-<p>ST_DWithin includes features whose distance is less than or equal to the supplied threshold, so document that behavior and test it explicitly.</p>
-<p>Unit tests are useful for request validation, but mocking the repository layer removes the most important part of this API: PostGIS itself. Keep a small integration-test database and run at least a few tests against the real extension.</p>
-<p>That catches mistakes that mocks cannot: geography versus geometry behavior, SRID mismatches, spatial indexes, units, and changes to SQL functions. A location API is one of the cases where a cheap database integration test buys a lot of confidence.</p>
-<p>Correctness is only half the story. A radius endpoint that scans every feature will work in development and become painful at production scale. Add a GiST index and inspect the query plan.</p>
-<p>The exact plan depends on your data and PostgreSQL version, but you should see the spatial index participating in candidate filtering. Treat an accidental sequential scan on a large production table as a regression worth investigating.</p>
-<p>For a real project, I would split the tests into two groups. Fast validation tests run on every commit. PostGIS integration tests run in CI with a temporary PostgreSQL/PostGIS service.</p>
-<p>The CI gate should cover invalid coordinates, zero or negative radius values, known-distance fixtures, boundary behavior, GeoJSON output, and at least one query-plan or performance sanity check for larger datasets.</p>
-<p>This is more work than asserting status_code == 200, but it tests the thing users actually care about: whether the API's answer is geographically true.</p>
-<p>Location APIs fail in ways ordinary web tests are not designed to notice. The response can have the right schema, the database call can succeed, and every field can look reasonable while the location itself is wrong.</p>
-<p>The fix is not a giant testing framework. Start with a few spatial invariants you can prove: known distances, valid coordinate ranges, correct GeoJSON order, deterministic boundary behavior, and real PostGIS integration tests. Those checks turn geography from an assumption into something your CI pipeline can verify.</p>
+<p>Most articles on this topic stop at the scary part. This one is written for people who build websites, so we’ll go a bit further: what goes into a fingerprint, what the collection code actually looks like, and what you can change in your own projects.</p>
+<p>Think of a fingerprint as a stack of clues rather than a single value. Your time zone is shared by millions of people. So is your screen resolution. Put twenty clues like that together, though, and the crowd shrinks fast.</p>
+<p>Here’s roughly where the clues come from.</p>
+<p>HTTP headers. Before any JavaScript runs, every request already tells the server a lot. The User-Agent string and the Accept-Language header give away your browser, its version, your OS, and your languages. Chromium browsers also send Client Hints.</p>
+<p>JavaScript APIs. Plenty of everyday APIs leak device details. screen.width and screen.height, navigator.hardwareConcurrency (your CPU core count), navigator.deviceMemory (Chromium only), navigator.platform, and your time zone all add something. Plugin lists used to be a goldmine, but modern browsers now return a fixed, generic list, so that one’s mostly dead.</p>
+<p>Rendering. This is the clever bit. Ask two computers to draw the exact same text, and the pixels won’t match perfectly. Fonts, graphics drivers, and the GPU itself all nudge the output slightly. Same browser, same version, different hardware, different result.</p>
+<p>Network details. Your IP address, connection type, and even the way your browser sets up a TLS connection can help. IPs change, so these clues are less reliable. Trackers mostly use them to back up a match they already suspect.</p>
+<p>How unique does this make you? Back in 2010, the EFF’s Panopticlick study tested around 470,000 browsers and found that about 84% of them had a unique fingerprint. (The project still exists, now called Cover Your Tracks.) Later studies with bigger samples found lower numbers, especially on phones, since a lot of phones share near-identical hardware. The percentages move around, but the basic idea hasn’t changed.</p>
+<p>Canvas fingerprinting gets talked about the most. Here’s a basic version:</p>
+<p>Read through it and you’d never guess it was tracking code. It draws an orange box, writes some text, and exports the image. The catch is that anti-aliasing and subpixel rendering vary from device to device, so that exported string varies too.</p>
+<p>The data URL is long and clunky, so trackers usually hash it into something shorter. With the Web Crypto API, that’s a few extra lines:</p>
+<p>WebGL fingerprinting follows the same idea with 3D graphics. A script draws a hidden scene and also reads the WEBGL_debug_renderer_info extension, which can reveal your GPU’s make and model. Audio fingerprinting is sneakier. The script generates a sound, runs it through an AudioContext, and hashes the result. Different audio stacks produce slightly different numbers.</p>
+<p>It’s worth remembering that the Canvas API, WebGL, and the Web Audio API were built for charts, games, and music apps. Tracking is a side effect of how much they expose. The W3C’s guidance on mitigating fingerprinting in web specifications covers how standards authors try to avoid adding new signals.</p>
+<p>You might not write a single line of fingerprinting code yourself and still end up involved. There are three common ways that happens.</p>
+<p>Your third-party scripts can do it without asking you. Analytics tags, ad scripts, chat widgets, social buttons. Each of them can call the same APIs your own code can. If your page loads fifteen of them, that’s fifteen possible fingerprinters. Checking what each script does has quietly become part of the job.</p>
+<p>Browsers are closing the door. Chrome froze most of the User-Agent string and moved detailed info into Client Hints. Safari has Advanced Fingerprinting Protection. Firefox blocks known fingerprinting scripts, and Brave randomizes values returned by fingerprintable APIs. If your site depends on the old, wide-open APIs, you’re building on ground that’s shrinking every release.</p>
+<p>Most of this comes down to one rule: collect less, and know why you’re collecting what’s left.</p>
+<p>Search your codebase for the high-entropy stuff: canvas exports, WebGL renderer lookups, font detection, and calls to navigator.userAgentData.getHighEntropyValues(). If a feature still works without them, take them out.</p>
+<p>In many teams, the biggest win is boring. Someone added a fingerprinting library years ago for one fraud check, nobody reviewed it since, and it’s still loading on every page. Deleting it helps more than any clever fix.</p>
+<p>The classic User-Agent string packs browser, exact version, OS, and CPU architecture into one header. Client Hints break that apart so you only get what you ask for.</p>
+<p>By default, Chromium browsers already send three basic hints: Sec-CH-UA, Sec-CH-UA-Mobile, and Sec-CH-UA-Platform. For most sites, that’s plenty, and you don’t need to request anything extra. If a feature really does need more detail, ask for that one hint with Accept-CH:</p>
+<p>Skip full version numbers, architecture, and device model unless you have a real reason. Each extra hint makes your visitors a little easier to tell apart.</p>
+<p>Keep in mind that only Chromium-based browsers support User-Agent Client Hints. Firefox and Safari won’t send them, so you’ll need a fallback. Where you can, feature detection beats browser detection anyway.</p>
+<p>Here’s an uncomfortable truth: once a script runs on your page, it can call canvas, WebGL, and audio APIs, and there’s no header that switches those off. What you can control is which scripts run and how close they get to your page.</p>
+<p>None of these is a silver bullet. Together, they cut down how much code gets the chance to fingerprint your users at all.</p>
+<p>If your app draws on canvas (dashboards, editors, browser games), that output can be fingerprinted too. Try not to hand raw canvas data to third-party scripts.</p>
+<p>Fonts count as well. Load fifteen unusual web fonts and you’ve given every script on the page an easy font fingerprint. A system font stack blends in better, and for interface text, most users won’t notice the difference.</p>
+<p>Sometimes you’ll want to keep a fingerprint, for example to flag logins from a device you haven’t seen before. That’s fine, as long as you treat it with care:</p>
+<p>Before you ship, open your site in Firefox with Enhanced Tracking Protection set to Strict, and in Brave with fingerprinting protection turned on. If something breaks, it was relying on a signal browsers are trying to get rid of.</p>
+<p>Fix the feature. Don’t ask users to turn their protection down. Browsers are only going to get stricter from here.</p>
+<p>What works better is a browser with fingerprinting protection built in, such as Brave, Firefox on strict settings, Safari, or Tor Browser. These either add noise to the signals or make everyone look the same. Extensions that block canvas and font reads can help too. So can simply updating your browser, since each release tends to remove a few more leaky details.</p>
+<p>No single tool will stop fingerprinting completely. The good news is that it doesn’t have to. Fingerprinting works on probabilities, so making the signals noisier is often enough to break the match.</p>
 <p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/how-to-test-location-aware-apis-with-fastapi-and-postgis/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/browser-fingerprinting-explained-how-websites-identify-you-and-how-developers-can-reduce-it/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

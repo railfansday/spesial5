@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Making musl and proprietary NVIDIA drivers work together</title>
+    <title>One Compromised Laptop, Billions Lost: The Binance Attack-Path Warning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9962.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,190 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Making musl and proprietary NVIDIA drivers work together</h1>
+        <h1>One Compromised Laptop, Billions Lost: The Binance Attack-Path Warning</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt5a6c898e92d21e63/6ae8ffda91cb5739c41bd1e1/binance_creativetan_shutterstock.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="One Compromised Laptop, Billions Lost: The Binance Attack-Path Warning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt5a6c898e92d21e63/6ae8ffda91cb5739c41bd1e1/binance_creativetan_shutterstock.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="One Compromised Laptop, Billions Lost: The Binance Attack-Path Warning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>As you may be aware, one of the limitations of musl-based distributions is that
-they will not function to their proper extent when used in computers with
-various NVIDIA graphics cards.</p>
-<p>This is due to the proprietary nature of the driver, being built for glibc.
-I have been experimenting with trying to make this work, and this post is
-the summary of that effort.</p>
-<p>The NVIDIA graphics cards are tricky on Linux. While most other GPU vendors by
-default use free software graphics drivers (with kernel drivers in-tree in
-Linux, and userspace supplied by the Mesa project), NVIDIA in general does
-not, relying on an out of tree kernel driver and proprietary userland libraries
-that are supplied by the vendor.</p>
-<p>A free software driver does exist, called Nouveau (kernel and OpenGL Mesa
-driver) and NVK (Vulkan driver). This allows the cards to work, but usually
-with significantly reduced performance, due to various reasons.</p>
-<p>Currently the state depends significantly on what generation of NVIDIA card
-you have.</p>
-<p>In even shorter, if you have RTX 2000 and above you are mostly okay with
-FOSS but lose performance, if you have newer than GTX 600 but older than
-GTX 1600 you are screwed and need the proprietary driver, if your card is
-really old it may or may not work well and you may not be able to use it at all.</p>
-<p>We now have a pull request
-open for both the 580 and 620 branch. It is not yet entirely ready but works,
-and is available for x86_64 and aarch64 architectures as NVIDIA supplies
-it.</p>
-<p>To get there, there were multiple things to take care of. Particularly, using
-stock musl is out of the question and will likely never work. I will elaborate
-on each thing.</p>
-<p>The GLVND library was created by NVIDIA to allow for vendor-neutral OpenGL
-dispatch. It provides the libraries that applications link and exposes the
-OpenGL (and other) API. It then dispatches the calls to the implementations,
-which may be e.g. Mesa or the proprietary driver.</p>
-<p>Most distributions nowadays use GLVND. Mesa comes with its own builtin dispatch
-code and does not necessarily require GLVND if you don’t build it with it.
-Musl distributions in general use this. Chimera at this point does not, and
-Void Linux on musl does not as it shares packaging with the glibc branch.</p>
-<p>Chimera switched to GLVND on November 5 2026.
-Switching is rather straightforward and does not need much documentation.
-One just has to package GLVND, rebuild Mesa with it (to avoid using its
-builtin dispatch libraries) and take care of packages that have dependencies
-on mesa-devel.</p>
-<p>GLVND is not only useful for NVIDIA drivers, but in general it is the primary
-thing users will find useful. There are also some vendor drivers on ARM and
-elsewhere but those are niche. The proprietary drivers mandate GLVND since
-many years back (this is also very useful on laptops with hybrid graphics,
-because then you may still want to keep Mesa for the iGPU).</p>
-<p>The gcompat project provides
-a compatibility shim to allow for limited usage of programs linked with glibc.</p>
-<p>Unfortunately for us, the latest tagged release of gcompat does not provide
-all the symbols the proprietary drivers require to resolve. Fortunately for us,
-the latest Git branch does. The development nowadays is very slow so we just
-bumped it up to the latest revision.</p>
-<p>You can see how the packaging works in the pull request, and that part is
-rather unimportant for now, and does not require elaboration. It works in
-a similar way to other distros, downloading the .run archive from NVIDIA
-and installing everything to the correct places.</p>
-<p>Of course, in our case, we cannot install it directly, because it depends
-on glibc and other stuff. We also can’t just pull in gcompat as is, because
-most of the driver is libraries that have no interpreter.</p>
-<p>Let’s see what happens if we run ldd on libnvidia-glcore.so.580.196.07,
-which is the core OpenGL library.</p>
-<p>There is a bunch of stuff here. So the libm.so.6, libc.so.6, libdl.so.2
-etc resolve to ldd as they are reserved in the musl ldso:</p>
-<p>The dynamic linker will ignore the suffixes.</p>
-<p>For some reason, some of the libraries also have DT_NEEDED on ld-linux-x86-64.so.2
-which is the glibc dynamic linker. There are also some relocation failures
-that we’ll get to later, for now we take out patchelf.</p>
-<p>So, patchelf is a tool that lets you dynamically patch ELF files for things
-like library dependencies (DT_NEEDED), dynamic linker (DT_INTERP), RPATH,
-and even some funky dynamic symbol remapping.</p>
-<p>We use this to sanitize every library and executable being installed. Let’s
-begin with something like the following:</p>
-<p>What this does is drop all the dependencies we don’t need (this is optional
-as musl ignores them, but why not? And even on glibc since recent versions
-they are just compatibility symlinks that point to the libc itself) as well
-as add a new dependency on libgcompat.so.0 to supply the symbols.</p>
-<p>This clears up the list a lot, and now only one error remains:</p>
-<p>We will get to this below. You now have a rough idea about patchelf.</p>
-<p>Googling for this tells us that it’s a relocation type for GNU indirect
-function (ifunc). Ifunc is a mechanism for dispatching to different versions
-of a function based on a runtime condition. It is done by having a resolver
-function which does the decision logic, and returns the implementation, which
-is then called. A good writeup is here.</p>
-<p>This is intentionally not implemented in musl. In glibc it is used to
-pick different implementations of functions like memcpy based on CPU
-microarchitecture levels for performance reasons. However, indirect functions
-are also a major attack vector,
-bypassing RELRO among other things, and in general there are other ways to
-do runtime dispatch anyway.</p>
-<p>I remembered that there was a project called Alpaquita Linux which is basically
-Alpine with performance patches. It has the musl-perf package which provides
-a patched musl with string functions (and other things) from glibc and for
-this it also has patches for ifunc. We don’t need all of them, particularly
-the one for static linking is useless for us, so we take the one we need
-and its aarch64 counterpart
-for a good measure.</p>
-<p>This just adds handling of the relocation. We then package the patched libc
-as musl-nvidia and poof, unsupported relocation is gone.</p>
-<p>There are now no errors in ldd. That means we’re done, right? Nope :)</p>
-<p>So, about TLS. Normally, when you use OpenGL in an application, the implementation
-is dynamically loaded at runtime, not linked to the application. The OpenGL
-functions you use are then dynamically requested, usually through a portable
-wrapper (e.g. SDL_GL_GetProcAddress).</p>
-<p>There are various TLS models. You can read up on them here.
-Look at the DT_FLAGS for the glcore and tls libraries. See the STATIC_TLS?</p>
-<p>We have initial-exec, and our TLS needs to exist at a fixed offset from the
-thread pointer. This in general precludes dynamic allocation of the TLS memory.
-A quick test:</p>
-<p>When trying to use the driver, we would get the exact same error when trying
-to open the GL implementation. On glibc it works because it reserves some
-extra space in its static TLS at the beginning and gives them out for as long
-as there is space. It is limited, but enough for the driver.</p>
-<p>The correct thing here would be to use TLSDESC (-mtls-dialect=gnu2) which
-is efficient enough and allows for dynamic TLS allocation, but NVIDIA apparently
-uses some rather old toolchains.</p>
-<p>Since we don’t want to globally preload libnvidia-glcore into each process,
-I ended up patching the dynamic linker to handle this scenario with the same
-approach. I will not elaborate on the details of the patch as you can see it
-in the linked pull request and it is commented. It boils down to checking if
-the library has DF_STATIC_TLS in DT_FLAGS during dlopen and if so,
-checking if we have enough space for its whole TLS image in the spare memory,
-and if yes, avoiding allocating dynamic TLS for it.</p>
-<p>That allows the above example to work without LD_PRELOAD.</p>
-<p>(Another approach could be placing the TLS symbol definitions in something
-that is not runtime-loaded, e.g. placed into libGL or something else, and
-interposing the definitions; this could theoretically avoid patching the
-libc for this specific thing, but we have the ifunc thing too).</p>
-<p>I do not have any NVIDIA hardware. Before I could test, I would need to put
-a computer together.</p>
-<p>Fortunately, my girlfriend still had her old computer’s GTX 980 Ti laying
-around. It is only supported by the legacy driver, but good enough for now.
-I then obtained some random old computer hardware (i3-7100, some RAM and a
-board, etc.)</p>
-<p>After this, the packaging was seemingly complete and I went to do some testing
-on the hardware above.</p>
-<p>Well, it turns out trying to start anything graphical would just hang.
-I ran ls with libnvidia-glcore preloaded and saw:</p>
-<p>Hm, pthread_mutex_timedlock in libnvidia-gpucomp?</p>
-<p>Inspecting the assembly revealed that it’s re-entering a lock. That suggested
-that this mutex should be recursive, and for some reason it is not. Then a
-friend remembered that glibc has static initializers for these, particularly
-PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP, while musl does not support static
-initialization, only via pthread_mutex_init, for this case.</p>
-<p>How to deal with this? On glibc, the mutex structure is publicly visible,
-and has roughly this layout:</p>
-<p>That means it’s initializing the structure with the kind field.</p>
-<p>The mutex type is encoded in the first integer:</p>
-<p>In this layout, the kind would look like this, mirroring the glibc structure:</p>
-<p>I found that musl does not use this in any way, however.</p>
-<p>We can use this. The strategy I took was creating a new shim library containing
-the following:</p>
-<p>The patch_mutex_kind fetches the (on musl, unused) kind field and writes
-it into the type field`, atomically, if it’s unset. On statically initialized
-mutexes, it is always unset, as it’s only written once, and the static initializer
-for the default mutex just zeroes everything.</p>
-<p>The actual encoding of the type is the same between both libcs (with the caveat
-that glibc also supports adaptive mutexes, which we map to regular ones), so
-there is not much remapping to be done. You can see the code in the pull request.</p>
-<p>How do we use these symbols? Via patchelf again. It supports --rename-dynamic-symbols,
-which takes a mapping file where each line looks like oldsym newsym. We just
-provide ours like this:</p>
-<p>Then we patch our libnvcompat into NEEDED of all the libraries.</p>
-<p>There are various bits and pieces NVIDIA has released over time as actual
-FOSS code. This includes nvidia-xconfig, nvidia-settings, nvidia-modprobe,
-nvidia-persistenced, and the egl-gbm and egl-wayland external platform
-libraries.</p>
-<p>These come bundled in the driver archive. Since they can be built from source,
-we package them separately, to minimize the amount of stuff that needs to be
-shimmed, and then depend on the from the driver package.</p>
-<p>For the 620 driver, we also had to replace libstdc++.so.6 in a couple places,
-where it was being used for the new operator. This is provided in an way that
-is ABI-compatible by libc++abi.so.1 so we just replace it.</p>
-<p>The packaging will need some more refinement, and more testing will be needed.
-It was reported to me that the 620 driver works with RTX 3070 Ti. It was also
-reported to me that it works at least partially on AArch64.</p>
+                <p>The record theft shows how weak system separation, inadequate controls, and untested attack possibilities can turn one breach into systemic loss.</p>
+<p>Last week's $6.3 billion breach at Binance underscores why effective security often depends not just on what an organization's controls are designed to block, but also on what they are configured to allow.</p>
+<p>Details from Binance's disclosures thus far show that a threat actor, whom the FBI has identified as North Korea's TraderTraitor group, compromised a developer's laptop to access an internal service container with the permissions to initiate withdrawal requests.</p>
+<p>Using that access as a starting point, the attackers exploited additional points of compromise and an Ethereum account-delegation mechanism to gain transaction approval authority over a hot wallet. And in around 20 minutes, the threat actors drained billions of dollars in assets.</p>
+<p>In the process, the attackers appear to have bypassed Binance's normal approval controls. The company itself has said there's no evidence the attackers used any leaked wallet keys to carry out the massive theft.</p>
+<p>Related:Operação de influência russa tem como alvo generalizado a América Latina</p>
+<p>"Binance's initial findings pointed to a compromised laptop belonging to an employee as the starting point. Its subsequent investigation has identified additional points of breach, showing the incident went beyond one device," the cryptocurrency exchange noted.</p>
+<p>The incident, at least based on available details so far, has raised questions about whether Binance had sufficient independent safeguards to prevent a compromised system from approving and executing unauthorized withdrawals.</p>
+<p>"At a minimum, a platform holding digital assets should have multiple layers of security so no single compromise, such as a hacked employee laptop, can authorize a transfer," says Tim Rawlins, senior adviser and director of security at NCC Group. "Those layers need to be independent of one another."</p>
+<p>Funds, for instance, should be separated across hot and cold wallets to limit the impact of a compromise. Developers and administrators should have privileged access workstations to ensure systems they used for critical operations are separate from those they use for other activities such as email and Web browsing, he says. Also critical is 24/7 monitoring for anomalous behavior to help detect compromised endpoints and suspicious activity before attackers can exploit privileged access.</p>
+<p>The focus should be on identifying single points of compromise, such as components or privileged roles whose compromise could give an attacker control over funds. "Protecting private keys is only part of the challenge. The systems that request and approve their use must also be secured. A properly secured system has layered, independent controls, hot/cold separation, and has been through threat modelling and end-to-end security testing," Rawlins says.</p>
+<p>Related:Philippine Migrant Worker Data Likely Leaked in 69GB Government Breach</p>
+<p>For now, much remains unclear about exactly how the unauthorized transactions occurred and what safeguards Binance had in place to protect against them. Following the attack, the cryptocurrency exchange moved quickly to freeze some $3 billion. It has also claimed to have replenished — though not recovered — approximately 95% of the affected assets, meaning it has used its own funds to replace the stolen assets.</p>
+<p>Cryptocurrency exchanges face many of the same threats as traditional financial institutions. But unlike banks and other financial institutions, which have long been subject to regulations governing operational risk and security, crypto exchanges have not yet faced the same level of oversight, making them a popular target for attackers.</p>
+<p>John Bruggeman, vCISO at IT services firm CBTS, says large cryptocurrenct exchanges like Binance have to know that they are constantly being targeted by threat actors. In addition to controls that protect the perimeter or authenticate users, these companies also need to know what trusted identities and systems can do, verify high-impact actions, and prevent one compromised component from becoming a path to valuable assets.</p>
+<p>Related:Microsoft's AI Risk Report Misses This Key Detail</p>
+<p>That means segregation of duties, management of private keys that authorize transfers, limits on the size of a transfer, MFA on the use of the private key monitoring, alerting for large transfers, and endpoint detection on all employee devices, Bruggeman says.</p>
+<p>Also key is user behavior analysis for all users. Architecturally, organizations like Binance should have custody mechanisms for protecting the cryptocurrency and wallets themselves, transaction controls on how to move the cryptocurrency, some kind of rate limits on withdrawals, identity and access controls, and segregation of duties so no one user can initiate and also finalize a transfer, Bruggeman says.</p>
+<p>The Binance breach is an important reminder of why all organizations need to test the path that attackers can potentially take after gaining initial access to an environment and not assume that individual controls, each working as they should, are sufficient protection, analysts said. "The entry point and the damage can sit very far apart, so stop grading your security by how well the front door holds," says Waseem Ahmed, head of engineering at Secure.com.</p>
+<p>The traditional approach to security is to check whether a request is valid. It almost never checks whether the action behind it should happen, he says. Available information suggests the attackers used Binance's own signing system to sign the transfers, so they looked valid on the way out. It was the "correct math, wrong decision," Ahmed says.</p>
+<p>Security has to move from proving identity to governing consequences, he says. That means putting a human approval gate in front of any action that moves money or data, with limits that count across every system at once. "And test the whole route from laptop to payout, not each box on its own," Ahmed advises.</p>
+<p>The Binance attack scenario can play out in any enterprise, too. "Swap out the withdrawal service for a payment system, a customer database, or a deployment pipeline, and this is an ordinary enterprise breach," he says. "A clean report from every tool you own tells you nothing about whether someone can walk from a laptop to the money, because no single tool is asked that question."</p>
+<p>Robert Coles, senior manager of threat intelligence security at Black Duck, says the broader takeaway for organizations isn't really about cryptocurrency or the attack on Binance itself. Rather, it's about the blast radius, or what happens after initial break-in. It's one thing, he says, for an attacker to gain initial access. But turning that into a theft of billions of dollars is another entirely.</p>
+<p>"Every organization has critical systems and privileged accounts where a compromise can have a much bigger impact," Coles says. "We spend a lot of time asking how we keep attackers out. We should spend just as much time asking, ‘If they do get in, what stops them next?'"</p>
+<p>Security teams must assume something eventually will get compromised and make sure that one compromise doesn't become a catastrophic business event, Coles noted.</p>
+<p>The Binance breach, the biggest ever by magnitude, is by no means the first to affect a major cryptocurrency exchange. In February 2025, Bybit lost approximately $1.5 billion in cryptocurrency after attackers manipulated a transaction approval process involving an Ethereum cold wallet. In May 2019, Binance itself lost 7,000 bitcoin after attackers obtained user API keys and two-factor authentication codes to bypass existing security checks. In October this year, attackers compromised a third-party script on Polymarket's website and used it to move funds from some user wallets.</p>
+<p>North Korean threat actors have been especially aggressive in targeting crypto exchanges and wallets in general and account for 76% of all the money that traders have reported as stolen so far in 2026. In six of the past nine years, groups from the cash-strapped nation have accounted for at least one-third of all reported cryptocurrency theft.</p>
+<p>Illinois-based Jai Vijayan is a veteran, award-winning technology journalist with more than 25 years of experience covering cybersecurity. His information security reporting has explored everything from ransomware, nation-state threats, and identity security to AI risk, critical infrastructure protection, software supply chain security, cloud security and emerging enterprise technologies.</p>
+<p>Over the course of his career, Jai has written news stories, feature articles, survey reports, white papers, and e-books for enterprise and technology audiences. He has also moderated panel discussions and executive roundtables featuring CISOs, security researchers, and industry leaders.</p>
+<p>His work has earned multiple industry honors, including a Joint ASBPE Excellence Award for Best Coverage of Government IT, and a Joint Jesse H. Neal Award for wireless LAN security coverage. Jai holds a Master’s degree in statistics from Bangalore University, and studied broadcasting and electronic communication at Marquette University in Milwaukee.</p>
+<p>2026 State of Cybersecurity Report: Bridging the Divide</p>
+<p>The Autonomous Endpoint Management Advantage</p>
+<p>The State of Cloud Security: The Latest Challenges</p>
+<p>How Organizations Are Managing Incident Response</p>
+<p>How Enterprises Are Developing Secure Applications</p>
+<p>LLM Security Architecture: Building Secure AI Systems from the Ground Up</p>
+<p>Resilient Architecture: Designing Systems That Survive Compromise</p>
+<p>Prompt Injection 101: What It Is and How to Stay Ahead</p>
+<p>The Long Tail Is Now the Front Line: Reducing Frontier-AI & Third-Party App Risk</p>
+<p>How to Harness your Security Operations Data for Enterprise Defense</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://chimera-linux.org/news/2026/11/musl-nvidia.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/cyberattacks-data-breaches/binance-hack-test-attack-paths" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

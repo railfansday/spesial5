@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeRobot v0.6.0: Imagine, Evaluate, Improve</title>
+    <title>GNU Mes and the 0.28 release</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10105.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,283 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>LeRobot v0.6.0: Imagine, Evaluate, Improve</h1>
+        <h1>GNU Mes and the 0.28 release</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/lerobot-release-v060/thumbnail.png" alt="LeRobot v0.6.0: Imagine, Evaluate, Improve" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/lerobot-release-v060/thumbnail.png" alt="LeRobot v0.6.0: Imagine, Evaluate, Improve" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>This new release is about closing the robot learning loop: policies that imagine the future before acting, reward models that tell you when your robot succeeds, a deployment CLI that turns failures into training data, and six new simulation benchmarks to measure it all. It also brings depth sensing, VLM-powered dataset annotation, custom video encoding, cloud training on HF Jobs, and a much leaner install.</p>
-<p>LeRobot v0.6.0 introduces world model policies (VLA-JEPA, FastWAM, LingBot-VA) that learn to imagine the future, a wave of new VLAs (GR00T N1.7, MolmoAct2, EO-1, EVO1, Multitask DiT), and a new reward models API (Robometer, TOPReward). It ships six new simulation benchmarks unified under lerobot-eval, the lerobot-rollout CLI with DAgger-style human-in-the-loop corrections, FSDP training, and cloud training on HF Jobs. Datasets get depth support, an automatic language annotation pipeline, custom video encoding, and up to 2x faster data loading, all on top of a leaner installation.</p>
-<p>The robotics world is asking a big question: do world models actually help robot policies? v0.6.0 brings three policies to LeRobot to help answer that question. Each one learns to imagine the future as part of its training, and each takes a different path to keep that imagination affordable.</p>
-<p>VLA-JEPA teaches a compact VLA (built on Qwen3-VL-2B) to predict the future in latent space while it learns to act: during training, a JEPA world model has to anticipate upcoming frames from the model's own actions. The trick is that the world model then disappears at inference, so you get world-model supervision at zero extra inference cost. Three ready-to-use checkpoints are on the Hub, including a DROID-pretrained base for fine-tuning:</p>
-<p>Check out the VLA-JEPA documentation and the paper to learn more.</p>
-<p>LingBot-VA goes one step further: an autoregressive video-action model that predicts future video and actions together, chunk by chunk, and feeds real observations back in to keep its imagination grounded. You can even save what the robot imagined (--policy.save_predicted_video=true) and compare it with what actually happened. Inference runs on a single 24–32 GB GPU. Check out the documentation and the paper for the technical details.</p>
-<p>FastWAM asks the question in its paper title: do world action models need test-time future imagination? It pairs a ~5B video-generation expert with a compact action expert in a single network, so the model literally learns to dream its own rollouts. At inference it skips the dreaming entirely and directly denoises action chunks. Fine-tune it from lerobot/fastwam_base, and read more in the documentation.</p>
-<p>We upgraded our NVIDIA GR00T integration to GR00T N1.7, the newest open generation of NVIDIA's cross-embodiment foundation model. N1.7 swaps the previous VLM for Cosmos-Reason2-2B (built on Qwen3-VL) feeding a flow-matching action head, and our integration is parity-tested against NVIDIA's original Isaac-GR00T implementation: same inputs, same outputs. Flash-attention is now optional, so pip install 'lerobot[groot]' just works, and you can load NVIDIA's published checkpoints directly.</p>
-<p>GR00T N1.7 replaces N1.5 in LeRobot. If you need N1.5, pin lerobot==0.5.1.</p>
-<p>MolmoAct2, the Allen Institute for AI's vision-language-action model, is now ported into LeRobot with the full lifecycle covered: fine-tuning (full or LoRA), evaluation, and real-robot deployment. Ready-made checkpoints with calibration correction baked in mean you can run it zero-shot on an SO-100/101:</p>
-<p>Inference fits in ~12 GB at bf16, and LoRA fine-tuning fits on a single 24 GB GPU. See the MolmoAct2 documentation for the full deployment guide.</p>
-<p>EO-1, a VLA pretrained upstream on interleaved vision-text-action data, joins LeRobot: a Qwen2.5-VL-3B backbone with a flow-matching action head, contributed by one of the paper's own authors. Train it with the standard lerobot-train workflow using --policy.type=eo1. Details in the documentation and the paper.</p>
-<p>The Multitask Diffusion Transformer policy brings the TRI Large Behavior Models recipe to LeRobot: a ~450M-parameter diffusion transformer conditioned on CLIP vision and language embeddings, so one model learns many tasks selected via natural language. It supports both diffusion and flow-matching objectives, and it is small enough to train yourself. See the documentation.</p>
-<p>VLAs don't have to be huge. EVO1 packs its policy into 0.77B parameters, an InternVL3-1B backbone with a flow-matching action head, small enough to fine-tune and run in real time on modest GPUs. It ships with two-stage fine-tuning and Real-Time Chunking support out of the box. See the EVO1 documentation and the paper.</p>
-<p>Success detection and progress estimation are missing pieces in the robot learning loop, and v0.6.0 gives them a home. LeRobot now has a unified reward models API (lerobot.rewards), mirroring the policies API, with four reward models behind one interface - the HIL-SERL reward classifier, SARM, and two new additions:</p>
-<p>Robometer is a pretrained, general-purpose reward model: point lerobot/Robometer-4B at any LeRobot dataset and it scores task progress and success from raw video plus a language instruction, with no task-specific training required. It is built on Qwen3-VL-4B and trained via trajectory comparisons over a dataset of more than one million robot trajectories (RSS 2026 paper).</p>
-<p>TOPReward goes fully zero-shot: no reward weights at all. It wraps an off-the-shelf VLM (Qwen3-VL) and reads the log-probability of the token "True" given the trajectory video and the task instruction. Any capable VLM becomes a reward function.</p>
-<p>Both ship with labeling scripts that write per-frame progress curves into your dataset, ready for reward-aware behavior cloning (RA-BC), dataset quality inspection, and progress-overlay videos. Check the Robometer and TOPReward docs.</p>
-<p>Recording is no longer stuck with one hard-coded codec. The new --dataset.rgb_encoder.* options expose the full encoding surface (codec, quality, pixel format, GOP, presets), and vcodec=auto probes for hardware encoders like NVENC, VideoToolbox, VAAPI, and QSV before falling back to the default software AV1 encoder. For existing datasets, one command re-encodes everything:</p>
-<p>Full details in the video encoding documentation.</p>
-<p>Plug in an Intel RealSense, set use_depth: true, and LeRobot records depth maps end to end: captured in millimeters, compressed as compact 12-bit depth video streams alongside your RGB cameras, and decoded back to physical units at training time. Depth renders live during recording and in lerobot-dataset-viz, and it works across SO-100/101, Koch, OpenArm, reBot, Unitree G1 and more.</p>
-<p>Your dataset stops being one task string per episode. LeRobot datasets now natively store rich language annotations (timestamped subtasks, plans, memory, corrections, speech, and per-camera VQA pairs), and the new lerobot-annotate CLI fills them in automatically using a VLM that watches your episodes:</p>
-<p>A YAML recipe layer then renders these annotations into chat-style training messages at sample time: exactly the data tomorrow's long-horizon, talking robot policies will train on. Scale it up with HF Jobs, and read the annotation pipeline docs to learn more.</p>
-<p>Training on video datasets is now up to ~2x faster out of the box: multi-camera frames decode in parallel, dataloader workers ship compact uint8 frames (4x less memory between processes), and persistent workers keep decoder caches alive across epochs. Loading a subset of a large dataset (episodes=[...]) went from minutes to milliseconds (275 s down to 0.06 s in our benchmark). Sampling is also deterministic and resumable now, so interrupted trainings restart sample-exact.</p>
-<p>v0.5.0 planted the flag on LeRobot as an evaluation hub for VLAs; v0.6.0 makes it the real deal with six new simulation benchmarks, all runnable through the same lerobot-eval CLI, each with a docs page, a Docker image, and a SmolVLA baseline checkpoint smoke-tested in CI:</p>
-<p>Simulator backends require specific system dependencies with their own install steps; each docs page has the exact recipe, and every benchmark ships a ready-made Docker image if you'd rather skip the setup.</p>
-<p>Together with LIBERO, Meta-World, and NVIDIA IsaacLab-Arena, that makes nine benchmark families under one roof, and a new Adding a New Benchmark guide documents exactly how to plug in yours. Evaluation also got faster: parallel eval now defaults to async vectorized environments, benchmarked at up to 2x faster.</p>
-<p>Deploying a policy used to be a hack on top of lerobot-record. The new lerobot-rollout CLI makes deployment its own workflow, with pluggable strategies and inference backends (including Real-Time Chunking for slow compatible VLAs). The base strategy just runs the policy. sentry records continuously, rotating episodes and uploading to the Hub as it goes. highlight keeps a ring buffer and saves the last N seconds when you hit a key, so an interesting moment is never lost. episodic mirrors the classic episode/reset recording workflow. And dagger turns deployment into data collection.</p>
-<p>With the DAgger strategy, you watch your policy run, hit a key (or a USB foot pedal) the moment it goes wrong, take over with your leader arm to record the correction, and hand control back. Actuated leaders are driven to the follower's pose before you take over, so the handover is jerk-free. Every correction frame is tagged with an intervention flag, and the resulting dataset is ready for the next fine-tune:</p>
-<p>Deploy, collect corrections, fine-tune, repeat: the robot learning flywheel is now a CLI flag. Read the deployment docs.</p>
-<p>Robot foundation models are outgrowing single GPUs. LeRobot training now supports FSDP (fully sharded data parallel) through Accelerate: parameters, gradients, and optimizer state are sharded across GPUs, and checkpoints are gathered back into a plain single-file model.safetensors that loads like any other policy. You can even resume an FSDP run on a different number of GPUs. See the multi-GPU training docs.</p>
-<p>No GPU? No problem. The exact same lerobot-train command now runs in the cloud by adding one flag:</p>
-<p>LeRobot pushes your local dataset to a private Hub repo if needed, submits the job, streams logs to your terminal, and pushes the trained policy to the Hub at the end. Pick anything from a T4 to 8x H200 with --job.target (compute is billed pay-as-you-go). Check out the documentation</p>
-<p>Check the release notes for the full list and migration pointers for the breaking changes.</p>
-<p>Beyond these headline features, v0.6.0 includes hundreds of bug fixes, documentation improvements, and quality-of-life upgrades across the codebase, from smarter defaults to more reliable CI.</p>
-<p>We want to extend a huge thank you to everyone in the community. This release includes work from academia, industry and hobbyists teams who chose LeRobot as the home for their models and benchmarks. Every PR and bug report pushes open-source robotics forward.</p>
-<p>Stay tuned for more to come 🤗 Get started here!
-– The LeRobot team ❤️</p>
+                <p>From the series:
+        GNU Mes interpreter speedup</p>
+<p>It’s been a while since the latest blog post in the series but we have been
+working very hard behind the scenes 1. This means I’ll probably forget a
+few things from all we did, but there’s a good reason for that: we were making
+a release.</p>
+<p>This is the first official and serious release I make as a (co-)maintainer, and
+the whole thing makes me uncomfortable. Even though people treat me as an
+expert programmer sometimes, there are many things in programming that I
+struggle a lot with. The first one, that I think I improved on in the last few
+years, is writing software from scratch. The second is delivering things to people.</p>
+<p>This is normal, as all my career has been focused on R&D and that’s the way
+I’ve been trained to work. In the case of this specific release, something
+inside me still thinks my most valuable contribution was that: the idea and
+demonstration that this attempt could work.</p>
+<p>Most of my career has been based on learning in a short time period the right
+amount of information so I can achieve a reasonable result. Then I normally
+move on to the next project.</p>
+<p>Thinking about that, trying to read through my feelings, I started to realize
+more and more that whatever that drives me is pushing me to somewhere else,
+maybe to those parts I struggle more with…</p>
+<p>Releasing code is important. It’s the only way to make people actually enjoy
+the result of your work. I have no problem to admit I struggle with this.</p>
+<p>As an R&D guy I’ve always considered myself an “enabler”. I do something, I
+show how it is done and let people learn from it and actually implement it.
+That’s fine in some contexts but it has been driving me to some level of
+frustration recently, as the size of the projects I take part in grow.</p>
+<p>An example of this is the RISC-V bootstrap on Guix. I spent a couple of years
+of my life working on it. We made a working bootstrap for live-bootstrap. But
+it’s not yet included in Guix because I delegated the final step. Now, even
+after the years I spent on that, all the sleepless nights and everything, it’s
+something I cannot enjoy fully2, and you cannot enjoy at all.</p>
+<p>This “my job here is done” mentality is not enough for me anymore.</p>
+<p>The kind of projects I do now deserve something else. I deserve better.</p>
+<p>In Mes I had like 300 commits in a branch, pretty ugly, doing, undoing and
+redoing some stuff over and over again. The whole codebase was upside down, the
+commit messages were sometimes good and sometimes lacking, I had fixup commits
+that fixed things that were changed so much the amount of conflicts the
+reordering produced was overwhelming… It was a mess. It was me trying new
+things, learning and cleaning things up as I went. My arborescent thought
+process at its fullest.</p>
+<p>In my usual way of doing things, I decided to promise NlNet a release,
+something I’ve never done before 3.</p>
+<p>Once the bytecode adventure was done, showing some good performance improvement
+was possible and that Janneke made me a co-maintainer, it was the only
+acceptable thing to do.4</p>
+<p>But, if I wanted to do it, I would need to slow down.</p>
+<p>In the last part of the bytecode adventures, you remember how we included
+Popsyntax, and we reworked the whole macro expansion game. That wasn’t me, but
+Tim Sample.</p>
+<p>I don’t remember very well how he joined my efforts here but I guess I bothered
+him with questions because he’s a long term Mes contributor and he’s also the
+author of Popsyntax, the Germ scheme implementation and many interesting things more.</p>
+<p>He decided to start over. Chose a Mes release and walked through my steps.
+Removed the macro expander from the internals and wrote one in Scheme. From
+there, the direction was set.</p>
+<p>I worked through the huge branch that I had, removing the stuff that turned out
+to be unnecessary, and he took over the git history, and made sure that every
+single commit was working.</p>
+<p>I cannot imagine how many conflicts the guy has been resolving. But damn this
+looks good now.</p>
+<p>This week, I released GNU Mes 0.28. The first release that I do as a GNU maintainer.</p>
+<p>Janneke has been guiding me through the whole process — including the part of
+publishing the website to GNU using CVS5. I’m sure I would’ve never
+been able to figure out everything on my own. What a ride it has been!</p>
+<p>But after more than a year of work, I’m very happy that most of the comments on
+the release have been positive, specially the ones from people that I worked
+with and I have a huge respect for.6</p>
+<p>But, what will you find in GNU Mes 0.28 that we didn’t mention in the blog yet?</p>
+<p>First of all, the main difference from the earlier blogpost is now Mes can be
+compiled with both M2-Planet and MesCC, and also with GCC as before.</p>
+<p>It’s a tricky process, because the error reporting is very limited (I’m being
+benevolent here), and I was being a very nasty boy with some gotos inside
+switch statements. After some wrestling with allowed C syntax, I figured it out.</p>
+<p>M2-Planet is limited, and we had to leave some things out. When Mes is compiled
+with M2-Planet it doesn’t have support for errors (aka exceptions) and those
+abort the interpreter, this is because M2-Planet’s C library doesn’t include
+setjmp. The stack operations had also to be rewritten as functions for
+M2-Planet, as the macros with array access were too complex for it. With that,
+Mes is a little bit slower when compiled with M2-Planet.</p>
+<p>None of those are a big deal because that’s only the starting point of the
+bootstrap process and Mes is rebuilt with MesCC right after it.</p>
+<p>The 0.28 release has been tested on real RISC-V hardware that I have access
+to,7 uncovering a few issues here and there in the Mes C Library.</p>
+<p>First, the assembly parts that take care of program initialization in RISC-V
+(written by myself a few years ago, when I was working on the bootstrap) were broken.</p>
+<p>setjmp and longjmp that we use for error handling in Mes, and were not used
+before, are also faulty. Because of this, the RISC-V version of Mes in the
+bootstrap, when built with MesCC that is, does not support errors until the
+issue is fixed.</p>
+<p>I also found some extra stuff because GCC 14 decided that implicit function
+declaration warnings should become errors, breaking the bootstrap
+that we didn’t test in a very long time in RISC-V, first, because hardware
+unavailability and, second, because Qemu is also faulty for RISC-V.</p>
+<p>There is still a known issue with M2-Planet-built Mes that explodes when it calls strcpy, this can be triggered running (procedure-disassemble map) in
+the REPL. We didn’t manage to fix this yet.</p>
+<p>Tim reworked the macro expansion and made a simple and understandable initial
+macro expander in Scheme.</p>
+<p>With that ready, many things started to fall off naturally.</p>
+<p>Most of our driving issues simply disappeared. The macro expander takes the
+steering wheel from the start, giving us zero garbage collection issues during boot.</p>
+<p>The earlier macro expander I wrote in C had to also drive execution, which
+could possibly call the garbage collector, killing all the C pointers that we
+had. The new macro expander does everything from Scheme, so no pointers are lost: gc_preserve and gc_release are gone. The boot-done! mark is gone, too.</p>
+<p>As Tim started from scratch, all the API is way cleaner, and our initial driver
+is as simple as:</p>
+<p>We can now use the stack for preservation, as it doesn’t happen that often, and
+the initial driver is a minimal loop that iterates through the few top-level
+expressions the initial boot file has (the macro expander). The rest of the
+program is run from Scheme.</p>
+<p>Continuing with macro expansion, even if in previous posts we talked about
+Popsyntax integration, we decided to leave that out the release for now. We
+focused on having a faster interpreter with a new VM.</p>
+<p>Keeping macro expansion simple, we are faster than ever.</p>
+<p>These are the updated numbers from the 0.28 release comparing with the previous
+0.27.2 bugfix release, released a week before.</p>
+<p>This is running in my Tuxedo laptop from 2020:</p>
+<p>You can see the times are similar to the nosyntax (it’s basically the same)
+branch we described in the previous post.</p>
+<p>Take in account the numbers are tricky because mescc-mes means Mes building
+itself running MesCC. From one version to the other Mes changed, making it a
+little bit larger (+200 LoC), which means it should take longer to compile. The
+new version overcomes that, and even achieves a 40% reduction on execution time.</p>
+<p>The fib benchmark is the most savage to me. There you can easily see how
+running has become way cheaper. On the other hand, mescc-hello shows how
+building a small hello-world program is more expensive, as Mes now needs to
+compile the whole MesCC to bytecode. When running MesCC for longer, like in a
+real program (mescc-mes), shows the startup time is compensated by far by the
+execution speed.</p>
+<p>In summary, we got exactly what we were aiming for: a change so big the
+benchmarks don’t need to be precise. An improvement you can just feel by
+running Mes.</p>
+<p>When I wrote the bytecode compiler I added a very annoying warning that
+complained about possibly unbound variables when you did something like:</p>
+<p>This was later removed because the amount of warnings it was producing was
+really overwhelming and they didn’t really give us any useful information.</p>
+<p>But! When I tested the bootstrapping process during development I realized they
+appeared twice. This led me to find the build scripts were compiling each file
+twice by accident.</p>
+<p>So now, we are not just x2 faster in Mes. The bootstrapping is also x2 faster
+thanks to the annoying warnings!</p>
+<p>Comparing to the code in the earlier post in the series, the released code has
+proper support for values and call-with-values that I thought I did right
+but I didn’t, really.</p>
+<p>According to R7RS standard, the values procedure returns its arguments as
+values to the current continuation. If the continuation only accepts one value,
+only the first value is sent to the continuation. That’s what a regular
+continuation would do. With call-with-values the producer is called in a
+continuation that accepts multiple values that go directly to the consumer procedure.</p>
+<p>If you take a look to the Guile case, that’s exactly how it works. Chibi takes
+the pragmatic approach not implementing the value discard and uses values
+just as a container. That’s what I implemented in the previous blogpost, but in
+the release I managed to do the standards compliant case, and make a REPL that
+now supports multiple return values, like Guile does:</p>
+<p>The tricky part of values is solved with a very primitive support for
+continuation marks.</p>
+<p>When call-with-values is called, the current frame is labeled with a mark,
+saying it accepts multiple values. When values is called, it checks the
+current mark in order to decide if it should keep or discard its arguments. It
+looks like this:</p>
+<p>This whole thing works very well thanks to proper tail-calls, which reuse the
+frames so the marks are right in the current frame all the time. It’s clean and simple.</p>
+<p>It also uses the simplest approach possible. The %values builtin wraps values
+in a list, adding an special car to it. core:cdr can be used to extract the
+list of values back from the wrapper.</p>
+<p>Of course, we could do this “better” just putting the values raw in the stack,
+but this is good enough for now. If Chibi can get away with doing less, we
+should be fine with this.</p>
+<p>I would never solve this issue if it wasn’t because some random research I did,
+encouraged by Tim and all the knowledge he has about Scheme implementations.</p>
+<p>I was looking at a few papers on delimited continuations, like “Final Shift for
+Call/cc: Direct Implementation of Shift and Reset” by Martin Gasbichler and
+Michael Sperber, when Tim told me about his approach in Germ using continuation marks.</p>
+<p>With that in mind, I made a very fast sketch on how would continuation marks
+look like and I realized that was more than enough for the values
+implementation I was struggling with when I saw the Mes tests (which I didn’t
+bother to run during the research time) started to fail for the value discard case.</p>
+<p>I ended up using only the most minimal thing for it, but I hope to take it a
+little bit further in the future and make a proper continuation marks based
+Delimited Continuation support for Mes.</p>
+<p>There are many things happening in this release. The diff is huge. But mostly
+you have been following the effort during the latest blogposts so there’s no
+need to go deeply in detail.</p>
+<p>You saw me re-write the garbage collector, the macro expander, the driver, the
+builtin implementation, vectors and structs, values, continuations … Some of
+the code is gone (gc, macro expander and driver, the first implementation of
+continuations) but the knowledge stays. I basically visited every single corner
+in this interpreter.</p>
+<p>I’m used to hop from one thing to the next. That’s the R&D me again. Now that I
+know this software the best, I don’t want to just go do anything else. Now I’m
+the best position to improve it further.</p>
+<p>My goal for the future is to improve Mes in all those areas that I found it
+could be improved but I couldn’t focus on.</p>
+<p>Delimited continuations are the best way to represent continuations in an
+stack based VM like the one I added to Mes. They are more lightweight, better
+for the GC, and they are composable, allowing for more sophisticated control.
+Guile supports them, so it would also help us get a step closer to Guile.</p>
+<p>Pointer tagging could be a huge deal for speed and reduced memory usage in
+contrast to the tagged union approach Mes has. To give you an example, in a 64
+bit machine each value is at least 24 bytes, including characters. This means
+if you (string->list "Hello") the result takes 24 bytes per cons cell, i.e
+per element, plus 24 bytes per character. Pointer tagging would put the bytes
+for the characters inside the pointers the cons cells have, reducing the total
+memory to just what the list needs (half of the previous case) and removing the
+need to access memory again to get the value of the characters.</p>
+<p>With some type punning we could also revisit a few data structures we had
+some trouble with (mostly frames and templates) and make them flat and easy for
+the CPU to cache and access with no indirection.</p>
+<p>In the case of the Scheme to bytecode compiler, just making it slightly
+better than the dumbest thing possible can make Scheme code fly: builtin
+inlining, avoiding boxing of non-mutated values… There are many things we can
+do while keeping complexity under control.</p>
+<p>Some GC improvement is also needed, maybe with a simple generational-style
+garbage collector (does that exist?), at least for a few things like symbols
+and globals that are never collected it could improve the performance. Even if
+it doesn’t, we could always use some cleanup in the GC, which is very error
+prone now.</p>
+<p>Those are low-hanging fruits that the new architecture made more accessible. If
+I just stop here they could be lost.</p>
+<p>On the mid term, with all this together and all the improvements Janneke is
+doing, we could bring MesCC to the next level as a C99 compiler written in
+Guile that can be incidentally run in Mes.</p>
+<p>On the long term, the GNU Mes project would become a very powerful
+bootstrapping toolchain for languages of any kind.</p>
+<p>The GNU Mes development repository is now hosted in Codeberg, under the
+Mes organization8:</p>
+<p>And we have opened an IRC channel at libera.chat: #mes</p>
+<p>I tend to listen to my heart, my curiosity, gut feeling, or whatever you want
+to call it. That has pushed me to do uncomfortable things.</p>
+<p>It is daunting, but it has been really rewarding.</p>
+<p>The same way Free Software has made me learn how to program, GNU Mes has been
+an amazing training camp for the skills I was lacking: reading CS papers,
+preparing a release, writing code from scratch…</p>
+<p>The project made me understand slowing down is sometimes the best way to go
+forward, and that I have to be more comfortable switching gears.</p>
+<p>This is not just programming advice, but a general approach to life that I’m
+starting to understand as I get older —and hopefully wiser.9</p>
+<p>Thankfully I’m surrounded by people I can learn from, and they bring the best
+version of me. All the crazy things that I attempt would have been impossible
+without the people I find in the process.</p>
+<p>In this specific case of Mes, I’m very happy with the team we have. They
+supported me throughout the whole process, but specially during the release,
+when I was more insecure. I’m sure the next time I’ll be more comfortable
+slowing down and doing things right.</p>
+<p>Thanks to them for the help, inspiration and support.</p>
+<p>Thanks to NlNet and NGI for the trust and the chance to work in important but
+not-very-popular projects. Without funding, none of this is possible.</p>
+<p>I hope we can continue to work all together for some time more.</p>
+<p>We closed this one well. There’s no reason to stop here, though.</p>
+<p>The “GNU Mes speedup effort” project
+has been funded through NGI Zero Core, a fund
+established by NLnet with financial support from the
+European Commission’s Next Generation Internet program.</p>
+<p>I have mixed feelings with it, really. From time to time I come back
+to it and I cannot figure out how to do it. Then something else comes and I
+have to leave it. It’s a shame. ↩</p>
+<p>Of something I’ve never did before (an optimization work) in
+something that I never worked before (a scheme interpreter). ↩</p>
+<p>The other possibility was to chicken out, give Janneke the branch and
+disappear. ↩</p>
+<p>Also, getting an email by RMS himself congratulating me for the release
+has made me a little bit emotional. Not gonna lie. I’m sure he does that
+for every release, but I’m a weak man. ↩</p>
+<p>Thanks to my friend Iban for the SSH access. Siuuuh! ↩</p>
+<p>My repository has been transferred to Mes. ↩</p>
+<p>I can’t wait to hear people say this post is written by AI because of
+the em-dashes. I’m putting them here and there just to mess with them. ↩</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/lerobot-release-v060" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://ekaitz.elenq.tech/fasterMes10.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
