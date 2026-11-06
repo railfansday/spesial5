@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧨 Stable Diffusion  in JAX / Flax !</title>
+    <title>The Falcon has landed in the Hugging Face ecosystem</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11168.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,66 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>🧨 Stable Diffusion  in JAX / Flax !</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>The Falcon has landed in the Hugging Face ecosystem</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/147_falcon/falcon_thumbnail.jpg" alt="The Falcon has landed in the Hugging Face ecosystem" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/147_falcon/falcon_thumbnail.jpg" alt="The Falcon has landed in the Hugging Face ecosystem" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Falcon is a new family of state-of-the-art language models created by the Technology Innovation Institute in Abu Dhabi, and released under the Apache 2.0 license. Notably, Falcon-40B is the first “truly open” model with capabilities rivaling many current closed-source models. This is fantastic news for practitioners, enthusiasts, and industry, as it opens the door for many exciting use cases.</p>
+<p>Note: Few months after this release, the Falcon team released a larger model of 180 billion parameters.</p>
+<p>In this blog, we will be taking a deep dive into the Falcon models: first discussing what makes them unique and then showcasing how easy it is to build on top of them (inference, quantization, finetuning, and more) with tools from the Hugging Face ecosystem.</p>
+<p>The Falcon family is composed of two base models: Falcon-40B and its little brother Falcon-7B. The 40B parameter model was at the top of the Open LLM Leaderboard at the time of its release, while the 7B model was the best in its weight class.</p>
+<p>Note: the performance scores shown in the table below have been updated to account for the new methodology introduced in November 2023, which added new benchmarks. More details in this post.</p>
+<p>Falcon-40B requires ~90GB of GPU memory — that’s a lot, but still less than LLaMA-65B, which Falcon outperforms. On the other hand, Falcon-7B only needs ~15GB, making inference and finetuning accessible even on consumer hardware. (Later in this blog, we will discuss how we can leverage quantization to make Falcon-40B accessible even on cheaper GPUs!)</p>
+<p>TII has also made available instruct versions of the models, Falcon-7B-Instruct and Falcon-40B-Instruct. These experimental variants have been finetuned on instructions and conversational data; they thus lend better to popular assistant-style tasks. If you are just looking to quickly play with the models they are your best shot. It’s also possible to build your own custom instruct version, based on the plethora of datasets built by the community—keep reading for a step-by-step tutorial!</p>
+<p>Falcon-7B and Falcon-40B have been trained on 1.5 trillion and 1 trillion tokens respectively, in line with modern models optimising for inference. The key ingredient for the high quality of the Falcon models is their training data, predominantly based (>80%) on RefinedWeb — a novel massive web dataset based on CommonCrawl. Instead of gathering scattered curated sources, TII has focused on scaling and improving the quality of web data, leveraging large-scale deduplication and strict filtering to match the quality of other corpora. The Falcon models still include some curated sources in their training (such as conversational data from Reddit), but significantly less so than has been common for state-of-the-art LLMs like GPT-3 or PaLM. The best part? TII has publicly released a 600 billion tokens extract of RefinedWeb for the community to use in their own LLMs!</p>
+<p>Another interesting feature of the Falcon models is their use of multiquery attention. The vanilla multihead attention scheme has one query, key, and value per head; multiquery instead shares one key and value across all heads.</p>
+<p>This trick doesn’t significantly influence pretraining, but it greatly improves the scalability of inference: indeed, the K,V-cache kept during autoregressive decoding is now significantly smaller (10-100 times depending on the specific of the architecture), reducing memory costs and enabling novel optimizations such as statefulness.</p>
+<p>You can easily try the Big Falcon Model (40 billion parameters!) in this Space or in the playground embedded below:</p>
+<p>Under the hood, this playground uses Hugging Face's Text Generation Inference, a scalable Rust, Python, and gRPC server for fast & efficient text generation. It's the same technology that powers HuggingChat.</p>
+<p>We've also built a Core ML version of the 7B instruct model, and this is how it runs on an M1 MacBook Pro:</p>
+<p>The video shows a lightweight app that leverages a Swift library for the heavy lifting: model loading, tokenization, input preparation, generation, and decoding. We are busy building this library to empower developers to integrate powerful LLMs in all types of applications without having to reinvent the wheel. It's still a bit rough, but we can't wait to share it with you. Meanwhile, you can download the Core ML weights from the repo and explore them yourself!</p>
+<p>You can use the familiar transformers APIs to run the models on your own hardware, but you need to pay attention to a couple of details:</p>
+<p>With these considerations, you can use the transformers pipeline API to load the 7B instruction model like this:</p>
+<p>And then, you'd run text generation using code like the following:</p>
+<p>And you may get something like the following:</p>
+<p>Running the 40B model is challenging because of its size: it doesn't fit in a single A100 with 80 GB of RAM. Loading in 8-bit mode, it is possible to run in about 45 GB of RAM, which fits in an A6000 (48 GB) but not in the 40 GB version of the A100. This is how you'd do it:</p>
+<p>Note, however, that mixed 8-bit inference will use torch.float16 instead of torch.bfloat16, so make sure you test the results thoroughly.</p>
+<p>If you have multiple cards and accelerate installed, you can take advantage of device_map="auto" to automatically distribute the model layers across various cards. It can even offload some layers to the CPU if necessary, but this will impact inference speed.</p>
+<p>There's also the possibility to use 4-bit loading using the latest version of bitsandbytes, transformers and accelerate. In this case, the 40B model takes ~27 GB of RAM to run. Unfortunately, this is slightly more than the memory available in cards such as 3090 or 4090, but it's enough to run on 30 or 40 GB cards.</p>
+<p>Text Generation Inference is a production ready inference 
+container developed by Hugging Face to enable easy deployment of large language models.</p>
+<p>Since v0.8.2, Text Generation Inference supports Falcon 7b and 40b models natively without relying on the Transformers
+"trust remote code" feature, allowing for airtight deployments and security audits. In addition, the Falcon 
+implementation includes custom CUDA kernels to significantly decrease end-to-end latency.</p>
+<p>Text Generation Inference is now integrated inside Hugging Face's Inference Endpoints. To deploy a Falcon model, go to 
+the model page and click on the 
+Deploy -> Inference Endpoints widget.</p>
+<p>For 7B models, we advise you to select "GPU [medium] - 1x Nvidia A10G".</p>
+<p>For 40B models, you will need to deploy on "GPU [xlarge] - 1x Nvidia A100" and activate quantization: 
+Advanced configuration -> Serving Container -> Int-8 Quantization. Note: You might need to request a quota upgrade via email to api-enterprise@huggingface.co</p>
+<p>So how good are the Falcon models? An in-depth evaluation from the Falcon authors will be released soon, so in the meantime we ran both the base and instruct models through our open LLM benchmark. This benchmark measures both the reasoning capabilities of LLMs and their ability to provide truthful answers across the following domains:</p>
+<p>The results show that the 40B base and instruct models are very strong, and currently rank 1st and 2nd on the LLM leaderboard 🏆!</p>
+<p>As noted by Thomas Wolf, one surprisingly insight here is that the 40B models were pretrained on around half the compute needed for LLaMa 65B (2800 vs 6300 petaflop days), which suggests we haven't quite hit the limits of what's "optimal" for LLM pretraining.</p>
+<p>For the 7B models, we see that the base model is better than llama-7b and edges out MosaicML's mpt-7b to become the current best pretrained LLM at this scale. A shortlist of popular models from the leaderboard is reproduced below for comparison:</p>
+<p>Although the open LLM leaderboard doesn't measure chat capabilities (where human evaluation is the gold standard), these preliminary results for the Falcon models are very encouraging!</p>
+<p>Let's now take a look at how you can fine-tune your very own Falcon models - perhaps one of yours will end up on top of the leaderboard 🤗.</p>
+<p>Training 10B+ sized models can be technically and computationally challenging. In this section we look at the tools available in the Hugging Face ecosystem to efficiently train extremely large models on simple hardware and show how to fine-tune the Falcon-7b on a single NVIDIA T4 (16GB - Google Colab).</p>
+<p>Let's see how we can train Falcon on the Guanaco dataset a high-quality subset of the Open Assistant dataset consisting of around 10,000 dialogues. With the PEFT library we can use the recent QLoRA approach to fine-tune adapters that are placed on top of the frozen 4-bit model. You can learn more about the integration of 4-bit quantized models in this blog post.</p>
+<p>Because just a tiny fraction of the model is trainable when using Low Rank Adapters (LoRA), both the number of learned parameters and the size of the trained artifact are dramatically reduced. As shown in the screenshot below, the saved model has only 65MB for the 7B parameters model (15GB in float16).</p>
+<p>More specifically, after selecting the target modules to adapt (in practice the query / key layers of the attention module), small trainable linear layers are attached close to these modules as illustrated below). The hidden states produced by the adapters are then added to the original states to get the final hidden state.</p>
+<p>Once trained, there is no need to save the entire model as the base model was kept frozen. In addition, it is possible to keep the model in any arbitrary dtype (int8, fp4, fp16, etc.) as long as the output hidden states from these modules are casted to the same dtype as the ones from the adapters - this is the case for bitsandbytes modules (Linear8bitLt and Linear4bit ) that return hidden states with the same dtype as the original unquantized module.</p>
+<p>We fine-tuned the two variants of the Falcon models (7B and 40B) on the Guanaco dataset. We fine-tuned the 7B model on a single NVIDIA-T4 16GB, and the 40B model on a single NVIDIA A100 80GB. We used 4bit quantized base models and the QLoRA method, as well as the recent SFTTrainer from the TRL library.</p>
+<p>The full script to reproduce our experiments using PEFT is available here, but only a few lines of code are required to quickly run the SFTTrainer (without PEFT for simplicity):</p>
+<p>Check out the original qlora repository for additional details about evaluating the trained models.</p>
+<p>Falcon is an exciting new large language model which can be used for commercial applications. In this blog post we showed its capabilities, how to run it in your own environment and how easy to fine-tune on custom data within in the Hugging Face ecosystem. We are excited to see what the community will build with it!</p>
+<p>Interact with Falcon-Chat for personalized conversations</p>
+<p>Interact with Falcon-Chat for personalized conversations</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/stable_diffusion_jax" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/falcon" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</title>
+    <title>Introducing Adaptive Dark Mode</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10059.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,65 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Introducing Adaptive Dark Mode</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://webkit.org/wp-content/uploads/Demo-of-Adaptive-Dark-Mode_light-1024x654.png" alt="Introducing Adaptive Dark Mode" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://webkit.org/wp-content/uploads/Demo-of-Adaptive-Dark-Mode_light-1024x654.png" alt="Introducing Adaptive Dark Mode" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Imagine ordering your weekly groceries as naturally as texting a friend:"Hey, we're out of milk and eggs. Can you also add some snacks for Friday movie night?"</p>
-<p>In our previous post, Building Conversational Commerce with Multi-Agent Swarms on GCP, we shared the architectural blueprint for conversational commerce—proposing a 3-layer decoupled design (Ingress, Memory, and Cognition) to solve messaging timeouts, state tracking, and response reliability.</p>
-<p>While blueprints establish the architecture on paper, production readiness demands working software. In this post, we take that blueprint and bring it to life with a functional prototype called HappyDelivery.</p>
-<p>Using LangGraph, Gemini, FastAPI, and Google Cloud, we'll walk through the code, the state machine, deterministic financial tools, and an automated verification suite that demonstrates how this multi-agent swarm operates in practice.</p>
-<p>To build a reliable commerce swarm, we implemented three decoupled layers that handle the journey of every customer text message:</p>
-<p>Let's examine how each layer functions in code with its own dedicated architecture.</p>
-<p>A frequent question when designing conversational commerce is: how does a message sent by a customer on their smartphone actually land in Layer 1, and can this architecture support messaging platforms beyond WhatsApp?</p>
-<p>End users do not communicate directly with your Google Cloud servers. Instead, customer messages traverse an operator ecosystem before landing on your webhook:</p>
-<p>Every major consumer messaging platform operates on the exact same fundamental contract: an asynchronous HTTPS POST webhook delivery with a strict HTTP acknowledgement timeout:</p>
-<p>While the payload schemas and cryptographic headers differ slightly between platforms, Layer 1 abstracts away all client differences:</p>
-<p>This ensures the rest of your system—Session Store (Layer 2) and Agent Swarm (Layer 3)—operates on clean, normalized data without caring whether the shopper sent their message from an iPhone, an Android RCS chat, or a WhatsApp thread.</p>
-<p>Messaging platforms are completely stateless: every text message arrives as an isolated webhook event. To provide a coherent shopping experience, the system must instantly reconstruct the customer's full context without having to re-read or re-parse days of chat logs on every turn.</p>
-<p>We use Cloud Memorystore (Redis) keyed by the customer's verified phone number (session:{phone_number}) to store active state:</p>
-<p>A common question in conversational commerce is whether state lookups will introduce latency. Here is what the baseline infrastructure supports:</p>
-<p>Key Takeaway: In practice, the Session & Cart Layer will never be the bottleneck—it easily outpaces upstream webhook inference and downstream LLM inference.</p>
-<p>Rather than relying on a single monolithic prompt to handle every task, we separate reasoning into a swarm of specialized agents:</p>
-<p>Now that we have seen the high-level design of the three layers, let's look at the actual Python prototype code that brings each layer to life.</p>
-<p>The goal of this service is simple: verify authenticity across any inbound channel, normalize the payload into a canonical schema, and get off the critical path in < 150ms.</p>
-<p>Here is our implementation showing how multiple messaging channels (WhatsApp, RCS, Apple Messages, SMS) are handled by pluggable adapters:</p>
-<p>By immediately returning an HTTP 200 OK and handing the payload off to Pub/Sub, we completely decouple message intake from downstream AI reasoning time across all messaging ecosystems.</p>
-<p>We benchmarked the live Cloud Run HTTPS webhook intake across warm invocations:</p>
-<p>This empirically proves our architectural claim: the Ingress service validates the cryptographic signature and immediately commits the event to Pub/Sub, freeing the customer chat client without waiting on agentic reasoning.</p>
-<p>We also verified security enforcement against tampered payloads:</p>
-<p>The worker pods pulling from Pub/Sub need to instantly look up who the customer is and what is in their current cart.</p>
-<p>Here is the session store implementation using Cloud Memorystore (Redis):</p>
-<p>Each record contains the customer ID (cust_9821), saved address, dietary restrictions, and current cart items. This guarantees that when a customer texts back hours later, their cart is restored instantaneously.</p>
-<p>Every session lookup executes in 0.318ms, proving our architectural claim that restoring customer context and persistent cart state adds virtually zero latency to the conversational turn.</p>
-<p>With Ingress and Redis handling incoming traffic and memory, all the decision-making lives in the LangGraph multi-agent graph.</p>
-<p>Every turn passes through a typed data structure holding the customer's profile, active cart, and the supervisor's routing decision:</p>
-<p>Next, we define the nodes and conditional edges that allow the Supervisor to dynamically route tasks to the right specialist:</p>
-<p>A core tenet of our blueprint is: delegate arithmetic to deterministic tools. Generative models excel at language and reasoning, while financial calculations require exact precision. If a model computes taxes or discounts in free-form text, it may occasionally introduce calculation errors.</p>
-<p>Instead, we bind deterministic tools to our specialist nodes. For example, the Inventory and Transaction agents use a Python calculation tool rather than computing prices in-prompt:</p>
-<p>Worker containers pull messages asynchronously from Pub/Sub and stream LangGraph node transitions in real time.</p>
-<p>Now that we have all three components—Ingress (Layer 1), Redis Memory (Layer 2), and the LangGraph Swarm (Layer 3)—how do they actually run together as a single unified system?</p>
-<p>Here is the complete end-to-end lifecycle of a customer's message:</p>
-<p>The worker loop that coordinates all three layers is concise, clean, and completely decouples the user-facing webhook from back-office AI reasoning:</p>
-<p>With the entire pipeline wired together, let's look at what happens when we run an actual customer order through it.</p>
-<p>To verify the prototype, we ran an automated simulation of an end-to-end customer order. Here is how the swarm behaves across three natural conversational turns:</p>
-<p>Behind the Scenes: The InventoryAgent mutates the in-memory cart (removing Sprite and adding Coke Zero), executes calculate_cart_totals, and confirms delivery details without losing context.</p>
-<p>We validated all core behaviors—webhook HMAC validation, catalog indexing, deterministic math, and multi-turn state transitions—with automated unit and integration tests:</p>
-<p>A critical question when evaluating multi-agent architectures is token consumption and operational inference cost. In a naive implementation where massive prompts and entire conversation histories are repeatedly re-sent on every step, LLM API bills can quickly eat into e-commerce retail margins.</p>
-<p>Our prototype is engineered specifically to prevent token waste through strict agent specialization, deterministic tools, and externalized Redis state:</p>
-<p>Here is the exact token telemetry measured across the live 3-turn HappyDelivery session:</p>
-<p>Bringing the blueprint into working code revealed several practical realities:</p>
-<p>Building this prototype proved that the decoupled architecture outlined in our blueprint isn't just theoretical—it is practical, reliable, and ready for production on Google Cloud.</p>
-<p>By combining LangGraph for multi-agent workflows, Gemini for natural language reasoning, and GCP for fast ingress and persistent memory, we can build shopping experiences that feel as simple as chatting with a friend while maintaining the enterprise rigor required for commerce.</p>
-<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
-<p>Cost per task: Using cheap classifiers to route across Gemini models and thinking levels</p>
-<p>Smaller apps and faster GPU inference with LiteRT in Google Play services</p>
+                <p>by Simon Fraser, Luming Yin, Lily Spiniolas, Joanne Pan, Veda Periwal and Jen Simmons</p>
+<p>We’re excited to announce Adaptive Dark Mode in Safari 27.3 beta. When enabled by a user, Safari adapts light websites and presents them as dark.</p>
+<p>In the spring of 2019, Safari 12.1 became the first browser to support dark mode on the web. A lot of people love using dark mode, but not every website has a dark version. Almost 40% of web page loads are from users in dark mode, and yet only 10% of page loads support it. If you love dark mode, you’ve probably hit a site that felt particularly bright. Adaptive Dark Mode is designed to close that gap, providing a consistent dark experience across the web.</p>
+<p>You can try it today in Safari 27.3 beta. To enable, first make sure your system appearance is set to dark. Then browse to a website with a bright background. Safari will offer a preview of Adaptive Dark Mode. Tap ‘Try’.</p>
+<p>For websites that signal support of dark mode with <meta name="color-scheme" content="light dark"> in HTML or color-scheme: light dark in CSS, Adaptive Dark Mode does not change a thing. For the rest of the web, it quickly analyzes the page, looking at colors and estimating whether it’s predominantly light or dark. If the page generally has a dark background with light text, nothing is changed. When a page has a light appearance, Adaptive Dark Mode adapts the page to be dark.</p>
+<p>At the core of Adaptive Dark Mode is the transformation of color. Sometimes colors are simply decorative, while other times they have semantic meaning. Adaptive Dark Mode determines when to invert colors so elements remain visible or when to leave colors unchanged.</p>
+<p>While creating Adaptive Dark Mode, we developed a color matrix to invert the luminosity of colors while preserving hue. It’s used to make light backgrounds dark, and dark text light. When transforming text color, Adaptive Dark Mode aims for sufficient contrast as defined by the WCAG 4.5:1 contrast ratio. Light CSS gradients are also transformed to dark.</p>
+<p>Adaptive Dark Mode makes careful judgments so transformed content looks good and stays usable: buttons have contrast against backgrounds, text is visible over images, and hover menus look clear.</p>
+<p>It takes the same care with images. Most are left unchanged, preserving their integrity. But many icons and logos can lose contrast when the background color behind them is inverted. So Adaptive Dark Mode inspects SVG images and transforms colors when needed. For bitmap images, it analyzes the pixel histograms and inverts simple black-and-white logos.</p>
+<p>Effects like masks and mix-blend-mode can create undesirable results on an element whose colors have been transformed, so in some cases Adaptive Dark Mode turns such effects off. Also, <canvas> content is left unchanged, since canvases contain a wide range of content that’s hard to predict.</p>
+<p>In general, a web page will work well with Adaptive Dark Mode if it follows good modern web development practices.</p>
+<p>If your site still uses older techniques, small updates can help. For logos and icons, swap bitmap images for SVG. Use solid or gradient colors in CSS instead of tiled background images. Replace image sprites with modern CSS for rounded corners, shadows, and button states. Create content images with transparent backgrounds instead of baking the page background color into the image. Add padding to containers to prevent crowding.</p>
+<p>Perhaps you want a specific dark mode experience for a certain portion of the page. Apply color-scheme: light dark to the relevant element and add your own dark styles.</p>
+<p>For complete control over how your site looks in dark mode, add full support. It’s a terrific time to do so. It’s never been easier.</p>
+<p>All the web technology needed to fully support dark mode is widely available today, including:</p>
+<p>Newer CSS functions like color-mix() and contrast-color(), plus popular techniques for organizing design systems with CSS variables provide additional options and flexibility.</p>
+<p>Be sure to declare dark mode support using the color-scheme meta tag in your HTML head and/or by setting the color-scheme property on :root or body in your CSS. Don’t wait to inject this information later via JavaScript. This best practice helps ensure your site is rendered correctly as fast as possible.</p>
+<p>If you would like your web app or website to not be transformed by Adaptive Dark Mode, you can communicate this using color-scheme. The HTML <meta name="color-scheme" content="light only"> tag lets browsers know that 1) this page supports light mode and 2) should only be displayed in light mode. The color-scheme: light only rule does the same thing, but with the flexibility of CSS, allowing you to just target specific elements on the page — or of course, you can target the whole page with :root { }. (Note: the ‘only’ keyword is not supported in Safari 27.3 beta 1. Check back as Adaptive Dark Mode evolves through the beta process.)</p>
+<p>As a result, Safari prevents websites from detecting when Adaptive Dark Mode has been applied. JavaScript that queries CSS colors will get the original authored colors, not the transformed ones. Any images drawn into canvas render in their original form.</p>
+<p>If you manage a website or web app, and would like to discuss how Adaptive Dark Mode is adapting your project, feel free to reach out at web-evangelist@apple.com.</p>
+<p>If you try out Adaptive Dark Mode as a user, and find a site that does not work well, we’d love for you to file a report with Feedback Assistant. (Learn more about filing Feedback).</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/building-conversational-commerce-with-multi-agent-swarms-on-gcp-a-working-prototype/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://webkit.org/blog/18541/introducing-adaptive-dark-mode/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

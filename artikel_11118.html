@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fetch Consolidates AI Tools and Saves 30% Development Time with Hugging Face on AWS</title>
+    <title>Fine-tuning Llama 2 70B using PyTorch FSDP</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11118.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fetch Consolidates AI Tools and Saves 30% Development Time with Hugging Face on AWS</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Fine-tuning Llama 2 70B using PyTorch FSDP</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/160_fsdp_llama/thumbnail.jpg" alt="Fine-tuning Llama 2 70B using PyTorch FSDP" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/160_fsdp_llama/thumbnail.jpg" alt="Fine-tuning Llama 2 70B using PyTorch FSDP" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>In this blog post, we will look at how to fine-tune Llama 2 70B using PyTorch FSDP and related best practices. We will be leveraging Hugging Face Transformers, Accelerate and TRL. We will also learn how to use Accelerate with SLURM.</p>
+<p>Fully Sharded Data Parallelism (FSDP) is a paradigm in which the optimizer states, gradients and parameters are sharded across devices. During the forward pass, each FSDP unit performs an all-gather operation to get the complete weights, computation is performed followed by discarding the shards from other devices. After the forward pass, the loss is computed followed by the backward pass. In the backward pass, each FSDP unit performs an all-gather operation to get the complete weights, with computation performed to get the local gradients. These local gradients are averaged and sharded across the devices via a reduce-scatter operation so that each device can update the parameters of its shard. For more information on what PyTorch FSDP is, please refer to this blog post: Accelerate Large Model Training using PyTorch Fully Sharded Data Parallel.</p>
+<p>Number of nodes: 2. Minimum required is 1.Number of GPUs per node: 8GPU type: A100GPU memory: 80GBintra-node connection: NVLinkRAM per node: 1TBCPU cores per node: 96inter-node connection: Elastic Fabric Adapter</p>
+<p>We encountered three main challenges when trying to fine-tune LLaMa 70B with FSDP:</p>
+<p>FSDP wraps the model after loading the pre-trained model. If each process/rank within a node loads the Llama-70B model, it would require 70*4*8 GB ~ 2TB of CPU RAM, where 4 is the number of bytes per parameter and 8 is the number of GPUs on each node. This would result in the CPU RAM getting out of memory leading to processes being terminated.</p>
+<p>Saving entire intermediate checkpoints using FULL_STATE_DICT with CPU offloading on rank 0 takes a lot of time and often results in NCCL Timeout errors due to indefinite hanging during broadcasting. However, at the end of training, we want the whole model state dict instead of the sharded state dict which is only compatible with FSDP.</p>
+<p>We need to improve the speed and reduce the VRAM usage to train faster and save compute costs.</p>
+<p>Let’s look at how to solve the above challenges and fine-tune a 70B model!</p>
+<p>Before we get started, here's all the required resources to reproduce our results:</p>
+<p>Codebase:
+https://github.com/pacman100/DHS-LLM-Workshop/tree/main/chat_assistant/sft/training with flash-attn V2</p>
+<p>FSDP config: https://github.com/pacman100/DHS-LLM-Workshop/blob/main/chat_assistant/training/configs/fsdp_config.yaml</p>
+<p>SLURM script launch.slurm: https://gist.github.com/pacman100/1cb1f17b2f1b3139a63b764263e70b25</p>
+<p>Dataset: smangrul/code-chat-assistant-v1 (mix of LIMA+GUANACO with proper formatting in a ready-to-train format)</p>
+<p>First follow these steps to install Flash Attention V2:  Dao-AILab/flash-attention: Fast and memory-efficient exact attention (github.com). Install the latest nightlies of PyTorch with CUDA ≥11.8. Install the remaining requirements as per DHS-LLM-Workshop/code_assistant/training/requirements.txt. Here, we will be installing 🤗 Accelerate and 🤗 Transformers from the main branch.</p>
+<p>PRs huggingface/transformers#25107 and huggingface/accelerate#1777 solve the first challenge and requires no code changes from user side.  It does the following:</p>
+<p>Below is the output snippet on a 7B model on 2 GPUs measuring the memory consumed and model parameters at various stages. We can observe that during loading the pre-trained model rank 0 & rank 1 have CPU total peak memory of 32744 MB and 1506 MB , respectively. Therefore, only rank 0 is loading the pre-trained model leading to efficient usage of CPU RAM. The whole logs at be found here</p>
+<p>It is addressed via choosing SHARDED_STATE_DICT state dict type when creating FSDP config. SHARDED_STATE_DICT saves shard per GPU separately which makes it quick to save or resume training from intermediate checkpoint. When FULL_STATE_DICT is used, first process (rank 0) gathers the whole model on CPU and then saving it in a standard format.</p>
+<p>Let’s create the accelerate config via below command:</p>
+<p>The resulting config is available here: fsdp_config.yaml. Here, the sharding strategy is FULL_SHARD. We are using TRANSFORMER_BASED_WRAP for auto wrap policy and it uses _no_split_module  to find the Transformer block name for nested FSDP auto wrap. We use  SHARDED_STATE_DICT to save the intermediate checkpoints and optimizer states in this format recommended by the PyTorch team. Make sure to enable broadcasting module parameters from rank 0 at the start as mentioned in the above paragraph on addressing Challenge 1. We are enabling bf16 mixed precision training.</p>
+<p>For final checkpoint being the whole model state dict, below code snippet is used:</p>
+<p>Flash Attention and enabling gradient checkpointing are required for faster training and reducing VRAM usage to enable fine-tuning and save compute costs. The codebase currently uses monkey patching and the implementation is at chat_assistant/training/llama_flash_attn_monkey_patch.py.</p>
+<p>FlashAttention: Fast and Memory-Efficient Exact Attention with IO-Awareness introduces a way to compute exact attention while being faster and memory-efficient by leveraging the knowledge of the memory hierarchy of the underlying hardware/GPUs - The higher the bandwidth/speed of the memory, the smaller its capacity as it becomes more expensive.</p>
+<p>If we follow the blog Making Deep Learning Go Brrrr From First Principles, we can figure out that Attention module on current hardware is memory-bound/bandwidth-bound. The reason being that Attention mostly consists of elementwise operations as shown below on the left hand side. We can observe that masking, softmax and dropout operations take up the bulk of the time instead of matrix multiplications which consists of the bulk of FLOPs.</p>
+<p>This is precisely the problem that Flash Attention addresses. The idea is to remove redundant HBM reads/writes. It does so by keeping everything in SRAM, perform all the intermediate steps and only then write the final result back to HBM, also known as Kernel Fusion. Below is an illustration of how this overcomes the memory-bound bottleneck.</p>
+<p>Tiling is used during forward and backward passes to chunk the NxN softmax/scores computation into blocks to overcome the limitation of SRAM memory size. To enable tiling, online softmax algorithm is used. Recomputation is used during backward pass in order to avoid storing the entire NxN softmax/score matrix during forward pass. This greatly reduces the memory consumption.</p>
+<p>For a simplified and in depth understanding of Flash Attention, please refer the blog posts ELI5: FlashAttention and Making Deep Learning Go Brrrr From First Principles along with the original paper FlashAttention: Fast and Memory-Efficient Exact Attention
+with IO-Awareness.</p>
+<p>To run the training using Accelerate launcher with SLURM, refer this gist launch.slurm. Below is an equivalent command showcasing how to use Accelerate launcher to run the training. Notice that we are overriding main_process_ip , main_process_port , machine_rank , num_processes  and num_machines values of the fsdp_config.yaml. Here, another important point to note is that the storage is stored between all the nodes.</p>
+<p>Fine-tuning completed in ~13.5 hours and below is the training loss plot.</p>
+<p>Important Note:
+Here, if you are using only a single node with 8 A100 80GB GPUs, then paged_adamw_32bit optimizer from bitsandbytes is required. For more information about paged optimizers, please refer https://huggingface.co/docs/bitsandbytes/main/en/optimizers#paged-optimizers.</p>
+<p>Below is an example conversation using the above model:</p>
+<p>The whole conversation is formatted as below:</p>
+<p>We successfully fine-tuned 70B Llama model using PyTorch FSDP in a multi-node multi-gpu setting while addressing various challenges. We saw how 🤗 Transformers and 🤗 Accelerates now supports efficient way of initializing large models when using FSDP to overcome CPU RAM getting out of memory. This was followed by recommended practices for saving/loading intermediate checkpoints and how to save the final model in a way to readily use it. To enable faster training and reducing GPU memory usage, we outlined the importance of Flash Attention and Gradient Checkpointing. Overall, we can see how a simple config using 🤗 Accelerate enables finetuning of such large models in a multi-node multi-gpu setting.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/fetch-eap-case-study" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ram-efficient-pytorch-fsdp" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

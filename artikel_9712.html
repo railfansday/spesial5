@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hardening Production Multi-Container Topologies with Docker Compose v2</title>
+    <title>Rerun</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9712.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,49 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Hardening Production Multi-Container Topologies with Docker Compose v2</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Rerun</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/Q5tOwkulFYeQOZHgLwpoxPqZK0O2-ux83a90.jpeg" alt="Hardening Production Multi-Container Topologies with Docker Compose v2" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/Q5tOwkulFYeQOZHgLwpoxPqZK0O2-ux83a90.jpeg" alt="Hardening Production Multi-Container Topologies with Docker Compose v2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>restart: always is not a resilience strategy. It is a retry loop that hides an ordering bug until the night it doesn't. A Compose stack that survives production treats startup order, network reachability, credentials, and resource ceilings as explicit, testable contracts. This piece takes a typical four-service stack (Nginx, a FastAPI app, PostgreSQL 16, Redis 7) and hardens each of those contracts in turn.</p>
-<p>It works on a laptop and fails in four predictable ways elsewhere:</p>
-<p>Compose v2 implements the Compose Specification's long-form depends_on, where each dependency carries a condition:</p>
-<p>The dependency's container has started (the default)</p>
-<p>Dependencies with their own connection retry logic</p>
-<p>The dependency's healthcheck reports healthy</p>
-<p>The dependency ran to completion and exited 0</p>
-<p>Migrations, seed jobs, one-shot init tasks</p>
-<p>The distinction that matters is process versus readiness. service_started tells you PID 1 exists. It says nothing about whether port 5432 accepts connections. service_healthy gates on a probe you define:</p>
-<p>Note the -h 127.0.0.1. During first-boot initialization, the official Postgres entrypoint runs its temporary server with listen_addresses='': Unix socket only. A socket-based pg_isready can report ready during init, just before that server is stopped. Probing over TCP only succeeds once the real server is listening.</p>
-<p>Migrations become their own service. It runs once, after the database is healthy, and the application gates on its exit code:</p>
-<p>If a migration fails, the app never starts, which is exactly what you want. And because only one container applies the schema, scaling app no longer causes races.</p>
-<p>Split the topology into two user-defined bridge networks:</p>
-<p>The app is the only service on both networks. Nginx cannot resolve the name postgres, because it shares no network with it.</p>
-<p>For credentials, move passwords out of environment: into top-level secrets:. Compose mounts each secret at /run/secrets/<name>, and the value never appears in docker inspect or the process environment. The official Postgres image reads *_FILE variants natively:</p>
-<p>Your own code reads the file the same way:</p>
-<p>One caveat: outside Swarm, Compose implements file-sourced secrets as bind mounts, and silently ignores the long-syntax uid, gid, and mode options for them. They only apply to secrets sourced from environment. With file secrets, the host file's permissions decide who inside the container can read it. Lock down the directory on the host (chmod 700 secrets/) and make the files readable by the service UIDs (chmod 444). A container reads a bind-mounted file without traversing the host directory.</p>
-<p>Without limits, one leaking worker can trigger the kernel OOM killer for the whole host, taking down the database with it. Compose v2 applies deploy.resources outside Swarm:</p>
-<p>cpus is a ceiling. The separate cpu_shares key is only a relative weight that applies when CPUs are contended. Use limits for isolation, and shares only to prioritize.</p>
-<p>Use image-native non-root UIDs where they exist: 70 for postgres:16-alpine, 999:1000 for redis:7-alpine, and 101 for nginxinc/nginx-unprivileged. Running the images as those users from the start means the entrypoints never need root to drop privileges.</p>
-<p>Volume ownership is the trap here. A named volume is safe: Docker seeds it from the image's /var/lib/postgresql/data, which the Postgres image creates with permissions that accept a fixed user:. A bind mount of a host directory is not. The directory is typically owned by root, initdb running as UID 70 cannot write to it, and the container exits on first boot. If you must bind-mount, chown -R 70:70 the host path first. Never reuse a data directory initialized by the Debian-based image, whose postgres user is UID 999.</p>
-<p>Redis runs as a pure cache: persistence is off, and maxmemory sits at 75% of the container's memory limit. That headroom covers connection buffers and fragmentation, so Redis evicts keys before the cgroup kills it.</p>
-<p>Nginx rate-limits per client IP before traffic reaches the app:</p>
-<p>If Nginx sits behind a cloud load balancer, configure set_real_ip_from with the load balancer's range. Otherwise $binary_remote_addr is the load balancer's IP, and every client shares a single rate-limit bucket. TLS terminates either at that load balancer or in an additional listen 8443 ssl server block. On rootless Docker, publishing host port 80 or 443 fails unless net.ipv4.ip_unprivileged_port_start is lowered, so map to unprivileged host ports there and front them with the load balancer.</p>
-<p>Hardening that isn't verified is a guess. After docker compose up -d --wait, which blocks until services are running and healthy:</p>
-<p>Wire the first three checks into CI, so a regression in startup ordering fails the pipeline instead of a deploy.</p>
-<p>The complete, runnable topology lives in the production-compose/ directory of devops-infra-toolkit. It contains this exact docker-compose.yml, the Nginx configuration, and a minimal FastAPI service with an Alembic migration. Generate the two secret files, run docker compose up --build --wait, and every check above should pass. The repository's top-level docker-compose.yml is the naive shape from section 1, so diffing the two files shows every control in this piece side by side.</p>
-<p>Compose hardening contains what runs inside the stack. It does not govern who may drive the Docker daemon itself. That boundary matters most when the client is an autonomous AI agent. The security architecture specification of docker-mcp-guardian lays out that container isolation model. It covers why socket access is root-equivalent, how a read-only-by-default MCP layer narrows what an agent can ask of the daemon, and where a filtering socket proxy fits. Issues and pull requests are welcome on both repositories.</p>
-<p>Don't Hand Claude Your Docker Socket — Build It a Guarded One</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
+                <p><p>
+            Turn your AI subscriptions into a team of coworkers
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/rerun-2?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1302947?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/hardening-production-multi-container-topologies-with-docker-compose-v2?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/rerun-2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

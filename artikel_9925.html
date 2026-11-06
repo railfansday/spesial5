@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Flink&#x27;s Kafka connector commits offsets to Kafka</title>
+    <title>[$] Plasma X11 session removal surprises some Fedora users</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9925.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,106 +15,29 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Flink&#x27;s Kafka connector commits offsets to Kafka</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>[$] Plasma X11 session removal surprises some Fedora users</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
             
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>An unnecessarily deep dive into how Flink commits Kafka consumer offsets.</p>
-<p>A pull request of mine was merged into flink-connector-kafka this week. A ridiculous number of sketches and diagrams went into the commits to get the idea straight in my head, so in this post I tidied them up a bit to share.</p>
-<p>If you run a Flink job that reads from Kafka, you’ve probably seen its consumer group in your Kafka tooling like any other Kafka consumer: committed offsets for each partition, and a lag figure showing how far behind the log end the job is.</p>
-<p>Flink doesn’t need to depend on those committed offsets for its own work. The unit of work for a Flink source is a “split”. For Kafka, a split is a partition and the offset to read from (and for a bounded split, the offset to stop reading at). This is stored in Flink state. Each source reader holds a split for every partition it reads, and each split records the next Kafka offset to read.</p>
-<p>When Flink takes a checkpoint, each split is saved in the checkpoint, and contains those offsets. If the job fails, or you restart it from a savepoint, the source picks up from the offsets in the checkpoint. That’s how Flink can offer exactly-once processing: the offsets and the rest of the job’s state are captured together, in the same consistent snapshot.</p>
-<p>Typically, the Kafka source reader commits the checkpointed offsets to Kafka once a checkpoint has completed. Although that is not necessary for the Flink job, it’s useful for lag dashboards and alerting, in the same way as any other Kafka consumer, and helps to understand how the job is doing.</p>
-<p>FLINK-33484 reported a problem with a Flink job consuming a transactional topic with isolation.level=read_committed. The job had read everything on the topic, but the reported lag according to Kafka was stuck at 1, not 0.</p>
-<p>A plain Kafka Java consumer reading the same data from the same topic reported no lag. Flink wasn’t committing the right offset.</p>
-<p>Every time a record is handed on to the rest of the job, the split’s position was updated:</p>
-<p>The next offset to read is the one after the last record.</p>
-<p>That’s the right thing to do for a non-transactional, uncompacted topic, where every offset holds a record.</p>
-<p>When a Kafka producer commits or aborts a transaction, the broker writes a transaction marker into each partition the transaction touched. That marker takes up an offset in the log like any other entry.</p>
-<p>This is handled by the Kafka consumer. Transaction markers aren’t given to the application.</p>
-<p>And if the application only asks for committed records (read_committed), records from aborted transactions are skipped in the same way. The consumer reads past them, and its position moves forward, but no record comes out for them.</p>
-<p>Imagine a Kafka producer writes a single record in a transaction and commits it:</p>
-<p>The topic partition’s log end offset (and last stable offset) is 2 because that’s where the next entry will be written.</p>
-<p>Flink emitted the record at offset 0, and set the split’s current offset to 1 (because it added 1 to the offset it’s emitted).</p>
-<p>The Kafka consumer has actually read past the transaction marker, so its position is 2.</p>
-<p>But at the next checkpoint, Flink committed an offset of 1.</p>
-<p>Any Kafka tooling set up to monitor Kafka consumer progress compared that with a log end of 2, and reported a lag of 1.</p>
-<p>On a busy topic, you’d barely notice. The next record arrives, gets emitted, and the committed offset jumps over the marker. The committed offset was always slightly behind, but only until new data arrives.</p>
-<p>On a quiet or bursty topic, “until new data arrives” can be a long time. The job was fully caught up, but every checkpoint committed the same stale offset, and Kafka monitoring reported a lag that didn’t exist.</p>
-<p>That was FLINK-33484 that I picked up a little while ago.</p>
-<p>How many “invisible” entries are there after a record, that Flink doesn’t see?</p>
-<p>For a plain topic with no transactions, maybe none.</p>
-<p>For a topic with a single transaction, maybe one.</p>
-<p>For a topic where a producer has aborted its most recent transaction, maybe four.</p>
-<p>For a topic where multiple transactional producers are sending events at the same time, maybe two.</p>
-<p>The point is, Flink’s KafkaRecordEmitter that was adding 1 can’t actually know how many invisible entries follow a record. Only the Kafka consumer knows that.</p>
-<p>A Kafka consumer does know where it is, though.</p>
-<p>consumer.position(tp) returns the offset of the next entry it will read, and that accounts for any markers and aborted records it skipped.</p>
-<p>But I couldn’t just commit the consumer’s position. The consumer fetches batches of records from Kafka, ahead of what Flink has processed so far. Records can be sitting in the fetcher’s queue, waiting to be emitted. When Flink takes a checkpoint, the checkpoint doesn’t include the records that Flink hasn’t processed yet. The offset committed to Kafka shouldn’t either.</p>
-<p>For my first fix attempt I only used the consumer’s position when I thought it was safe. My changes were in KafkaPartitionSplitReader, the class that owns the KafkaConsumer and runs on the split fetcher thread:</p>
-<p>That lastFetchedOffset + 1 check was the main idea, to stop the committed offset skipping over records that have been fetched but not yet checkpointed.</p>
-<p>if checkpoint offset == last fetched offset + 1
-then commit the consumer position</p>
-<p>Nothing is waiting in the queue, so commit the consumer position: 2</p>
-<p>If there are still fetched records in the queue…</p>
-<p>Record 2 isn’t in the checkpoint, so commit the checkpoint’s offset: 2</p>
-<p>It also skips partitions no longer assigned to the consumer, and bounded splits that are still running.</p>
-<p>This fix worked for a variety of scenarios that I came up with, such as single-record transactions, multi-record transactions, committed transactions followed by aborted transactions, several transactions in a row, and interleaved transactions from two producers.</p>
-<p>Part of the motivation for this approach was in deciding what to commit as late as possible, at the time of committing the offset. At first, I did this by asking the consumer for its position at commit time. But recording it during the fetch avoided an extra call to the consumer that could block. Following a review discussion on my approach, I added another test scenario showing what would happen on an idle topic where no more records come after a transaction marker.</p>
-<p>If you decide what to commit as records are emitted, then because poll 3 has no records, the emitter is never called and the offset stays at 2. The commit will lag until more data arrives.</p>
-<p>By deciding when the commit happens, it can use the position from the most recent poll, whether or not it returned any records. The committed offset can be 3, with no lag.</p>
-<p>At that point, I thought I’d fixed it. But reviews showed that I’d missed a few related bugs.</p>
-<p>Flink has its own metrics, including metrics from the Kafka connector. That has a committedOffset metric with the last successfully committed offset to Kafka for each partition.</p>
-<p>A reviewer pointed out that my fix made Flink contradict itself. The commit callback ignored the offsets passed to it, and recorded the offsets that had been requested instead. That had always been fine, because the two were always the same. Once my split reader started changing the offsets on their way to Kafka, they weren’t the same. Kafka would say the committed offset was 2 while Flink’s own metric said 1.</p>
-<p>I had another go, and updated the fix so the callback records the offsets that were actually committed, so Flink’s metrics and Kafka committed offsets now agree.</p>
-<p>A reviewer pointed out another gap. My reconcile check depended on a last-fetched offset. But what about partitions where nothing has ever been delivered?</p>
-<p>For example, a partition holding only an aborted transaction (aborted records at offsets 0 to 5, the abort marker at 6), read by a split whose starting offset is 0, such as a job started with OffsetsInitializer.latest() before anything was written to the partition:</p>
-<p>In this case, the Kafka source reader is fully caught up on the topic, but in every checkpoint Flink commits offset 0, so from Kafka’s perspective the consumer has a lag of 7 until a Kafka producer writes a committed record to move it on.</p>
-<p>That wasn’t one of the scenarios I’d come up with, but it was a worse version of the original bug than FLINK-33484 reported.</p>
-<p>The reader is fully caught up, but every checkpoint commits 0, and monitoring would report a lag of 7 until someone writes a committed record.</p>
-<p>I tweaked my check so that a partition with no fetched records can still be advanced to the consumer position. If nothing has been fetched, nothing can be waiting un-checkpointed in the queue.</p>
-<p>That last example assumed the split started at a real offset. A split using the default OffsetsInitializer.earliest() doesn’t have a real offset.</p>
-<p>EARLIEST_OFFSET is a constant representing a split starting from the earliest offset on a partition. It’s a placeholder, represented by -2.</p>
-<p>A review pointed out that I hadn’t thought of that. The split keeps that placeholder until the first record is emitted. This meant Flink wouldn’t commit any offset for this partition until a record is emitted. It was another type of “no record delivered” scenario.</p>
-<p>My next attempt recognised these negative offset placeholders so that I could track those partitions-without-offsets alongside the offsets. The split reader could then safely commit the consumer position for them, because it couldn’t have fetched any records that the checkpoint didn’t include.</p>
-<p>Another review comment and another problem scenario spotted.</p>
-<p>Consider a topic with a transactional record at offset 0 with a commit marker at offset 1.</p>
-<p>The consumer moves to position 2, past the transaction marker.</p>
-<p>The partition was idle, but before the checkpoint completes…</p>
-<p>The raw checkpointed offset, 1, would be committed to Kafka</p>
-<p>The offset committed to Kafka went backwards, from 2 to 1. This is the sort of thing that if it happened for real you’d hope would trigger some alert somewhere because that’s a weird sign.</p>
-<p>The split reader now stores the offset it last committed for each assigned partition, so it can leave a partition out of a commit rather than commit a lower offset.</p>
-<p>Those are the kinds of things that I changed along the way – there were others, but let me skip to the end and describe where I ended up.</p>
-<p>This is what happens to a committed offset now, from fetch to Kafka.</p>
-<p>On the split fetcher thread, KafkaPartitionSplitReader.fetch() polls the consumer.</p>
-<p>KafkaRecordEmitter sets each split’s current offset to the offset after the record it emits.</p>
-<p>KafkaSourceReader.snapshotState collects each split’s current offset to commit.</p>
-<p>Splits that are still at a starting placeholder such as EARLIEST_OFFSET have no real offset yet, so their partitions are now recorded separately for that checkpoint.</p>
-<p>The reader enqueues a commit task on the split fetcher, with the checkpoint’s offsets and its partitions with no offset.</p>
-<p>The commit task runs on the fetcher thread (the only thread that touches the consumer) and reconciles them before committing:</p>
-<p>If nothing is left to commit, the callback is called without a round trip to Kafka.</p>
-<p>It’s committed with the next checkpoint. I changed this to use its stopping offset (when that’s a concrete offset) instead of the offset after its last emitted record, unless the split never left its starting placeholder.</p>
-<p>The callback records Flink’s committedOffset metric from the offsets Kafka actually received, so Flink’s metrics and Kafka’s tooling agree.</p>
-<p>None of my changes altered Flink’s processing guarantees. I didn’t change what goes into a checkpoint. This has all been about the offsets committed to Kafka (and Flink’s committedOffset metric so they are consistent).</p>
-<p>When the checkpoint covers everything the consumer has delivered, the committed offsets for unbounded splits now match the consumer’s position as of its most recent poll.</p>
-<p>I thought I was just picking up a simple off-by-one fix for Flink jobs on transactional topics. I think I even described this as “a quick fix” when I started.</p>
-<p>A series of reviews raised questions that were each a variation on the same theme: what if the partition has delivered nothing at all? What if the split hasn’t got a real offset yet? What if a record arrives between the checkpoint and the commit? What if the split is bounded?</p>
-<p>The idea at the core of the fix didn’t change much from my first commit, but pretty much everything around it did. 🙂</p>
-<p>I’m not claiming that committed offsets are now right in every case. My pull request was about which offset gets committed when a commit happens. It doesn’t change what triggers a commit, or what happens if a commit is never triggered.</p>
-<p>There are other aspects to consider. For example, FLINK-36532 is looking at stopping a job with a savepoint. The savepoint holds the source’s offsets, but they never reach Kafka. The pull request opened for it explains that the cause is the asynchronous design described above. When a checkpoint completes, the commit is queued as a task on the split fetcher. Stop-with-savepoint closes the reader straight after the savepoint completes, and the fetcher shuts down without running the queued task. The consumer group is left at an earlier checkpoint’s offsets, or with no committed offsets at all if no earlier commit ran.</p>
-<p>The committed offset is a side channel. It’s best effort, it’s never allowed to fail the job, and Flink’s processing guarantees don’t cover it. This means no single piece of code is responsible for getting it right. Each step in a reader’s life (a checkpoint completing, a split finishing, a reader closing, a job restarting) decides for itself what reaches Kafka. I’ve described a few of those steps here. And I’ve shown how easy it was for me to miss steps!</p>
-<p>Huge thanks to Aleksandr, Martijn, Efrat, Arvid for their kind patience with me on this pull request – it was their reviews that found most of what I’ve written about here, and I learned a lot about the internals of Flink’s Kafka connector from the process.</p>
-<p>Tags: apacheflink, apachekafka, flink, kafka</p>
-<p>This entry was posted on Saturday, October 24th, 2026 at 4:33 pm and is filed under code.						You can follow any responses to this entry through the RSS 2.0 feed. 
-
-													You can skip to the end and leave a response. Pinging is currently not allowed.</p>
-<p>dale lane is proudly powered by WordPress Entries (RSS) and Comments (RSS).</p>
+                <p><p>The KDE Project announced, in&#160;2025, that <a href="https://kde.org/announcements/plasma/6/6.7.0/">Plasma&#160;6.7</a> would
+be the last version of the desktop environment that would support X11
+sessions. Those who keep up with KDE's announcements no doubt expected it when
+<a href="https://kde.org/announcements/plasma/6/6.8.0/">Plasma&#160;6.8</a>
+dropped X11 support as promised. What seems to have come as a surprise, at
+least to a number of <a href="https://fedoraproject.org/kde/">Fedora KDE Plasma
+Desktop</a> users, is that the Fedora&#160;44 release&mdash;which shipped in
+April with <a href="https://kde.org/announcements/plasma/6/6.6.0/">Plasma&#160;6.6</a>&mdash;received
+an update to Plasma&#160;6.8 that swept away the X11 session without much warning.
+Despite the surprise, it is gone for good: the <a href="https://docs.fedoraproject.org/en-US/fesco/">Fedora Engineering Steering
+Committee</a> (FESCo) has <a href="https://forge.fedoraproject.org/fesco/tickets/issues/3707#issuecomment-1371370">voted
+against</a> a request to revert the update for Fedora 44 and the just-released
+Fedora 45.</p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dalelane.co.uk/blog/?p=6161" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lwn.net/Articles/1105130/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

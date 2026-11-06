@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Technology Behind BLOOM Training</title>
+    <title>Accelerating Stable Diffusion Inference on Intel CPUs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11201.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The Technology Behind BLOOM Training</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Accelerating Stable Diffusion Inference on Intel CPUs</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/136_stable_diffusion_inference_intel/01.png" alt="Accelerating Stable Diffusion Inference on Intel CPUs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/136_stable_diffusion_inference_intel/01.png" alt="Accelerating Stable Diffusion Inference on Intel CPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Recently, we introduced the latest generation of Intel Xeon CPUs (code name Sapphire Rapids), its new hardware features for deep learning acceleration, and how to use them to accelerate distributed fine-tuning and inference for natural language processing Transformers.</p>
+<p>In this post, we're going to show you different techniques to accelerate Stable Diffusion models on Sapphire Rapids CPUs. A follow-up post will do the same for distributed fine-tuning.</p>
+<p>At the time of writing, the simplest way to get your hands on a Sapphire Rapids server is to use the Amazon EC2 R7iz instance family. As it's still in preview, you have to sign up to get access. Like in previous posts, I'm using an r7iz.metal-16xl instance (64 vCPU, 512GB RAM) with an Ubuntu 20.04 AMI (ami-07cd3e6c4915b2d18).</p>
+<p>Let's get started! Code samples are available on Gitlab.</p>
+<p>The Diffusers library makes it extremely simple to generate images with Stable Diffusion models. If you're not familiar with these models, here's a great illustrated introduction.</p>
+<p>First, let's create a virtual environment with the required libraries: Transformers, Diffusers, Accelerate, and PyTorch.</p>
+<p>Then, we write a simple benchmarking function that repeatedly runs inference, and returns the average latency for a single-image generation.</p>
+<p>Now, let's build a StableDiffusionPipeline with the default float32 data type, and measure its inference latency.</p>
+<p>The average latency is 32.3 seconds. As demonstrated by this Intel Space, the same code runs on a previous generation Intel Xeon (code name Ice Lake) in about 45 seconds.</p>
+<p>Out of the box, we can see that Sapphire Rapids CPUs are quite faster without any code change!</p>
+<p>Optimum Intel accelerates end-to-end pipelines on Intel architectures. Its API is extremely similar to the vanilla Diffusers API, making it trivial to adapt existing code.</p>
+<p>Optimum Intel supports OpenVINO, an Intel open-source toolkit for high-performance inference.</p>
+<p>Optimum Intel and OpenVINO can be installed as follows:</p>
+<p>Starting from the code above, we only need to replace StableDiffusionPipeline with OVStableDiffusionPipeline. To load a PyTorch model and convert it to the OpenVINO format on-the-fly, you can set export=True when loading your model.</p>
+<p>OpenVINO automatically optimizes the model for the bfloat16 format. Thanks to this, the average latency is now 16.7 seconds, a sweet 2x speedup.</p>
+<p>The pipeline above support dynamic input shapes, with no restriction on the number of images or their resolution. With Stable Diffusion, your application is usually restricted to one (or a few) different output resolutions, such as 512x512, or 256x256. Thus, it makes a lot of sense to unlock significant acceleration by reshaping the pipeline to a fixed resolution. If you need more than one output resolution, you can simply maintain a few pipeline instances, one for each resolution.</p>
+<p>With a static shape, average latency is slashed to 4.7 seconds, an additional 3.5x speedup.</p>
+<p>As you can see, OpenVINO is a simple and efficient way to accelerate Stable Diffusion inference. When combined with a Sapphire Rapids CPU, it delivers almost 10x speedup compared to vanilla inference on Ice Lake Xeons.</p>
+<p>If you can't or don't want to use OpenVINO, the rest of this post will show you a series of other optimization techniques. Fasten your seatbelt!</p>
+<p>Diffuser models are large multi-gigabyte models, and image generation is a memory-intensive operation. By installing a high-performance memory allocation library, we should be able to speed up memory operations and parallelize them across the Xeon cores.    Please note that this will change the default memory allocation library on your system. Of course, you can go back to the default library by uninstalling the new one.</p>
+<p>jemalloc and tcmalloc are equally interesting. Here, I'm installing jemalloc as my tests give it a slight performance edge. It can also be tweaked for a particular workload, for example to maximize CPU utilization. You can refer to the tuning guide for details.</p>
+<p>Next, we install the libiomp library to optimize parallel processing. It's part of Intel OpenMP* Runtime.</p>
+<p>Finally, we install the numactl command line tool. This lets us pin our Python process to specific cores, and avoid some of the overhead related to context switching.</p>
+<p>Thanks to these optimizations, our original Diffusers code now predicts in 11.8 seconds. That's almost 3x faster, without any code change. These tools are certainly working great on our 32-core Xeon.</p>
+<p>We're far from done. Let's add the Intel Extension for PyTorch to the mix.</p>
+<p>The Intel Extension for Pytorch (IPEX) extends PyTorch and takes advantage of hardware acceleration features present on Intel CPUs, such as AVX-512 Vector Neural Network Instructions (AVX512 VNNI) and Advanced Matrix Extensions (AMX).</p>
+<p>We then update our code to optimize each pipeline element with IPEX (you can list them by printing the pipe object). This requires converting them to the channels-last format.</p>
+<p>We also enable the bloat16 data format to leverage the AMX tile matrix multiply unit (TMMU) accelerator present on Sapphire Rapids CPUs.</p>
+<p>With this updated version, inference latency is further reduced from 11.9 seconds to 5.4 seconds. That's more than 2x acceleration thanks to IPEX and AMX.</p>
+<p>Can we extract a bit more performance? Yes, with schedulers!</p>
+<p>The Diffusers library lets us attach a scheduler to a Stable Diffusion pipeline. Schedulers try to find the best trade-off between denoising speed and denoising quality.</p>
+<p>According to the documentation: "At the time of writing this doc DPMSolverMultistepScheduler gives arguably the best speed/quality trade-off and can be run with as little as 20 steps."</p>
+<p>With this final version, inference latency is now down to 5.05 seconds. Compared to our initial Sapphire Rapids baseline (32.3 seconds), this is almost 6.5x faster!</p>
+<p>The ability to generate high-quality images in seconds should work well for a lot of use cases, such as customer apps, content generation for marketing and media, or synthetic data for dataset augmentation.</p>
+<p>Here are some resources to help you get started:</p>
+<p>If you have questions or feedback, we'd love to read them on the Hugging Face forum.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/bloom-megatron-deepspeed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/stable-diffusion-inference-intel" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Getting Started With Embeddings</title>
+    <title>ControlNet in 🧨 Diffusers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11209.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,85 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Getting Started With Embeddings</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>ControlNet in 🧨 Diffusers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/controlnet/thumbnail.png" alt="ControlNet in 🧨 Diffusers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/controlnet/thumbnail.png" alt="ControlNet in 🧨 Diffusers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Ever since Stable Diffusion took the world by storm, people have been looking for ways to have more control over the results of the generation process. ControlNet provides a minimal interface allowing users to customize the generation process up to a great extent. With ControlNet, users can easily condition the generation with different spatial contexts such as a depth map, a segmentation map, a scribble, keypoints, and so on!</p>
+<p>We can turn a cartoon drawing into a realistic photo with incredible coherence.</p>
+<p>Or even  use it as your interior designer.</p>
+<p>You can turn your sketch scribble into an artistic drawing.</p>
+<p>Also, make some of the famous logos coming to life.</p>
+<p>In this blog post, we first introduce the StableDiffusionControlNetPipeline and then show how it can be applied for various control conditionings. Let’s get controlling!</p>
+<p>ControlNet was introduced in Adding Conditional Control to Text-to-Image Diffusion Models by Lvmin Zhang and Maneesh Agrawala.
+It introduces a framework that allows for supporting various spatial contexts that can serve as additional conditionings to Diffusion models such as Stable Diffusion.
+The diffusers implementation is adapted from the original source code.</p>
+<p>Training ControlNet is comprised of the following steps:</p>
+<p>Pictorially, training a ControlNet looks like so:</p>
+<p>A sample from the training set for ControlNet-like training looks like this (additional conditioning is via edge maps):</p>
+<p>Similarly, if we were to condition ControlNet with semantic segmentation maps, a training sample would be like so:</p>
+<p>Every new type of conditioning requires training a new copy of ControlNet weights. 
+The paper proposed 8 different conditioning models that are all supported in Diffusers!</p>
+<p>For inference, both the pre-trained diffusion models weights as well as the trained ControlNet weights are needed. For example, using Stable Diffusion v1-5 
+with a ControlNet checkpoint require roughly 700 million more parameters compared to just using the original Stable Diffusion model, which makes ControlNet a bit more memory-expensive for inference.</p>
+<p>Because the pre-trained diffusion models are locked during training, one only needs to switch out the ControlNet parameters when using a different conditioning. This makes it fairly simple 
+to deploy multiple ControlNet weights in one application as we will see below.</p>
+<p>Before we begin, we want to give a huge shout-out to the community contributor Takuma Mori for having led the integration of ControlNet into Diffusers ❤️ .</p>
+<p>To experiment with ControlNet, Diffusers exposes the StableDiffusionControlNetPipeline similar to
+the other Diffusers pipelines. Central to the StableDiffusionControlNetPipeline is the controlnet argument which lets us provide a particular trained ControlNetModel instance while keeping the pre-trained diffusion model weights the same.</p>
+<p>We will explore different use cases with the StableDiffusionControlNetPipeline in this blog post. The first ControlNet model we are going to walk through is the Canny model - this is one of the most popular models that generated some of the amazing images you are libely seeing on the internet.</p>
+<p>We welcome you to run the code snippets shown in the sections below with this Colab Notebook.</p>
+<p>Before we begin, let's make sure we have all the necessary libraries installed:</p>
+<p>To process different conditionings depending on the chosen ControlNet, we also need to install some 
+additional dependencies:</p>
+<p>We will use the famous painting "Girl With A Pearl" for this example. So, let's download the image and take a look:</p>
+<p>Next, we will put the image through the canny pre-processor:</p>
+<p>As we can see, it is essentially edge detection:</p>
+<p>Now, we load runwaylml/stable-diffusion-v1-5 as well as the ControlNet model for canny edges.
+The models are loaded in half-precision (torch.dtype) to allow for fast and memory-efficient inference.</p>
+<p>Instead of using Stable Diffusion's default PNDMScheduler, we use one of the currently fastest 
+diffusion model schedulers, called UniPCMultistepScheduler.
+Choosing an improved scheduler can drastically reduce inference time - in our case we are able to reduce the number of inference steps from 50 to 20 while more or less 
+keeping the same image generation quality. More information regarding schedulers can be found here.</p>
+<p>Instead of loading our pipeline directly to GPU, we instead enable smart CPU offloading which 
+can be achieved with the enable_model_cpu_offload function.</p>
+<p>Remember that during inference diffusion models, such as Stable Diffusion require not just one but multiple model components that are run sequentially.
+In the case of Stable Diffusion with ControlNet, we first use the CLIP text encoder, then the diffusion model unet and control net, then the VAE decoder and finally run a safety checker.
+Most components are only run once during the diffusion process and are thus not required to occupy GPU memory all the time. By enabling smart model offloading, we make sure 
+that each component is only loaded into GPU when it's needed so that we can significantly save memory consumption without significantly slowing down infenence.</p>
+<p>Note: When running enable_model_cpu_offload, do not manually move the pipeline to GPU with .to("cuda") - once CPU offloading is enabled, the pipeline automatically takes care of GPU memory management.</p>
+<p>Finally, we want to take full advantage of the amazing FlashAttention/xformers attention layer acceleration, so let's enable this! If this command does not work for you, you might not have xformers correctly installed.
+In this case, you can just skip the following line of code.</p>
+<p>Now we are ready to run the ControlNet pipeline!</p>
+<p>We still provide a prompt to guide the image generation process, just like what we would normally do with a Stable Diffusion image-to-image pipeline. However, ControlNet will allow a lot more control over the generated image because we will be able to control the exact composition in generated image with the canny edge image we just created.</p>
+<p>It will be fun to see some images where contemporary celebrities posing for this exact same painting from the 17th century. And it's really easy to do that with ControlNet, all we have to do is to include the names of these celebrities in the prompt!</p>
+<p>Let's first create a simple helper function to display images as a grid.</p>
+<p>Next, we define the input prompts and set a seed for reproducibility.</p>
+<p>Finally, we can run the pipeline and display the image!</p>
+<p>We can effortlessly combine ControlNet with fine-tuning too! For example, we can fine-tune a model with DreamBooth, and use it to render ourselves into different scenes.</p>
+<p>In this post, we are going to use our beloved Mr Potato Head as an example to show how to use ControlNet with DreamBooth.</p>
+<p>We can use the same ControlNet. However, instead of using the Stable Diffusion 1.5, we are going to load the Mr Potato Head model into our pipeline - Mr Potato Head is a Stable Diffusion model fine-tuned with Mr Potato Head concept using Dreambooth 🥔</p>
+<p>Let's run the above commands again, keeping the same controlnet though!</p>
+<p>Now let's make Mr Potato posing for Johannes Vermeer!</p>
+<p>It is noticeable that Mr Potato Head is not the best candidate but he tried his best and did a pretty good job in capturing some of the essence 🍟</p>
+<p>Another exclusive application of ControlNet is that we can take a pose from one image and reuse it to generate a different image with the exact same pose. So in this next example, we are going to teach superheroes  how to do yoga using Open Pose ControlNet!</p>
+<p>First, we will need to get some images of people doing yoga:</p>
+<p>Now let's extract yoga poses using the OpenPose pre-processors that are handily available via controlnet_aux.</p>
+<p>To use these yoga poses to generate new images, let's create a Open Pose ControlNet. We will generate some super-hero images but in the yoga poses shown above. Let's go 🚀</p>
+<p>Multiple ControlNet conditionings can be combined for a single image generation. Pass a list of ControlNets to the pipeline's constructor and a corresponding list of conditionings to __call__.</p>
+<p>When combining conditionings, it is helpful to mask conditionings such that they do not overlap. In the example, we mask the middle of the canny map where the pose conditioning is located.</p>
+<p>It can also be helpful to vary the controlnet_conditioning_scales to emphasize one conditioning over the other.</p>
+<p>Throughout the examples, we explored multiple facets of the StableDiffusionControlNetPipeline to show how easy and intuitive it is play around with ControlNet via Diffusers. However, we didn't cover all types of conditionings supported by ControlNet. To know more about those, we encourage you to check out the respective model documentation pages:</p>
+<p>We welcome you to combine these different elements and share your results with @diffuserslib. Be sure to check out the Colab Notebook to take some of the above examples for a spin!</p>
+<p>We also showed some techniques to make the generation process faster and memory-friendly by using a fast scheduler, smart model offloading and xformers. With these techniques combined the generation process takes only ~3 seconds on a V100 GPU and consumes just ~4 GBs of VRAM for a single image ⚡️ On free services like Google Colab, generation takes about 5s on the default GPU (T4), whereas the original implementation requires 17s to create the same result! Combining all the pieces in the diffusers toolbox is a real superpower 💪</p>
+<p>We have been playing a lot with StableDiffusionControlNetPipeline, and our experience has been fun so far! We’re excited to see what the community builds on top of this pipeline. If you want to check out other pipelines and techniques supported in Diffusers that allow for controlled generation, check out our official documentation.</p>
+<p>If you cannot wait to try out ControlNet directly, we got you covered as well! Simply click on one of the following spaces to play around with ControlNet:</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/getting-started-with-embeddings" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/controlnet" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Credit Risk: What Are We Actually Measuring?</title>
+    <title>How Others Test Cross-Zone Locally</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9778.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Credit Risk: What Are We Actually Measuring?</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>How Others Test Cross-Zone Locally</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fr9nfdha6xxdd83a6514p.png" alt="How Others Test Cross-Zone Locally" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fr9nfdha6xxdd83a6514p.png" alt="How Others Test Cross-Zone Locally" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>Let’s start with a loan and work out what PD, LGD, and EAD tell us about losses and bank capital.</p>
-<p>The post <a href="https://towardsdatascience.com/credit-risk-what-are-we-actually-measuring/">Credit Risk: What Are We Actually Measuring?</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>tc netem, Toxiproxy, Pumba, Chaos Mesh, LitmusChaos, zone labels in kind and k3d, Jepsen and Testcontainers: what each gives, a short config form for each, and an honest comparison with what we built.</p>
+<p>👋 Hi, I'm Anton - a software engineer. These days I work on a platform: contracts, generated code, data paths and the tooling around them. Running notes live on my GitHub: github.com/brilliant-almazov.</p>
+<p>Every claim about a tool below links to its own documentation, read for this article. Our side of the comparison is what part 3 built; our failure-scenario runs are still planned.</p>
+<p>This is part 5 of the series on testing cross-zone, cross-datacenter and cross-provider behaviour on a laptop. Maybe you already do it better, maybe you'd do it another way - this is how it is going, and where it stops.</p>
+<p>Part 4, Placement In Every Trace, made every span say where it ran. Before going further with our own emulation, it is worth looking at what the world already uses. The tools sort into layers by where they act:</p>
+<p>The lower the layer, the more it can do and the less it knows about your system. The higher, the more it knows and the more it needs installed.</p>
+<p>Everything network-shaped in this list ends at the kernel's netem sooner or later. It adds delay, jitter and loss to packets leaving a device (tc-netem(8)):</p>
+<p>The man page has one warning worth repeating: for TCP performance tests, netem should sit on the ingress of the receiver, not on the sender. On its own, netem knows nothing about which peer is which; that is up to the filters around it.</p>
+<p>Toxiproxy is "a TCP proxy to simulate network and system conditions for chaos and resiliency testing" (Toxiproxy). The client connects to the proxy instead of the real service, and toxics are added to the proxy over an HTTP API on port 8474:</p>
+<p>The toxics are latency, down, bandwidth, slow_close, timeout, reset_peer, slicer, limit_data and packet_loss. That is a richer vocabulary than netem has, at one price: the client must be pointed at the proxy.</p>
+<p>Pumba does chaos and network emulation for containers on Docker, containerd and Podman (Pumba). It runs tc from a helper that joins the target's namespace, so the target image needs nothing:</p>
+<p>That is the same trick as our sidecar in part 3, packaged as a tool.</p>
+<p>In Kubernetes, network chaos becomes a resource. Chaos Mesh's NetworkChaos supports netem, delay, loss, duplicate, corrupt, partition and bandwidth, selects pods by label and has a direction of to, from or both (Chaos Mesh):</p>
+<p>LitmusChaos, a CNCF Incubating project, describes itself as "a Cloud-Native Chaos Engineering Framework with cross-cloud support" (Litmus). Its pod-network-latency experiment starts tc with netem inside the target, takes NETWORK_LATENCY, JITTER and DESTINATION_IPS or DESTINATION_HOSTS to aim at one peer, and can use Pumba as its library (pod-network-latency).</p>
+<p>Zones on a laptop cluster are node labels. kind takes them in the cluster config (kind); k3d takes them on the command line with a node filter (k3d):</p>
+<p>Then topologySpreadConstraints spread the pods. DoNotSchedule tells the scheduler not to place a pod that would break the skew; ScheduleAnyway places it anyway, preferring nodes that reduce the skew (Kubernetes):</p>
+<p>Labels and spread give zones as a scheduling fact. They give no distance: two "zones" on a laptop are as close as two processes.</p>
+<p>Jepsen is at a different layer altogether. It "aims to improve the safety of distributed databases, queues, consensus systems" (Jepsen). While a test runs operations against a system, a nemesis process introduces faults, and a checker then analyses the recorded history for correctness (jepsen-io/jepsen). Network manipulation in its tests is typically done with iptables.</p>
+<p>What Jepsen adds is not a better way to cut a network. It is a rigorous answer to "was the result correct", which every tool above leaves to you.</p>
+<p>For tests in code, Testcontainers wraps Toxiproxy as a module. A ToxiproxyContainer joins the same network as the service under test, a proxy is created in front of it, and toxics are added from the test (Testcontainers):</p>
+<p>A connection cut is bandwidth zero in both directions; removing the toxics restores it.</p>
+<p>The honest summary: we did not invent a new way to delay a packet. Under the hood it is netem and iptables, like most of the list. What is ours is the model above them - one declaration of a planet, from which every rule, every placement and every chaos action is derived. None of the tools above has a continent or a provider as a concept.</p>
+<p>Two things, both from the top of the list. Toxiproxy's vocabulary - slow_close, reset_peer, limit_data - names failures that netem cannot express. And Jepsen's stance: a chaos run without a strict check of the result is a demonstration, not a test. Both are ideas, not plans yet.</p>
+<p>Cross-anything on a laptop - Part 5. Next: Every Verdict Carries A Trace.</p>
+<p>If you use Toxiproxy in tests, which toxic found the most? If you run Chaos Mesh or Litmus, do you run it locally or only on a shared cluster? If you have run Jepsen, what did the checker catch that nothing else would? Which of these would you add to a laptop first?</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/credit-risk-what-are-we-actually-measuring/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/anton_brilliantov/how-others-test-cross-zone-locally-4g7k" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

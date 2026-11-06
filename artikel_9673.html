@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Free Uptime Monitoring Tools for Web Application Scheduled Imports</title>
+    <title>CC Auto Review</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9673.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,91 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Free Uptime Monitoring Tools for Web Application Scheduled Imports</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>CC Auto Review</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fliq1dy88p3trji6uowlh.png" alt="Free Uptime Monitoring Tools for Web Application Scheduled Imports" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fliq1dy88p3trji6uowlh.png" alt="Free Uptime Monitoring Tools for Web Application Scheduled Imports" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The right free monitor depends on which failure you need to catch. For a web application's public endpoint, Uptime Robot or StatusCake is the practical starting point. For a scheduled import that stops producing records while the homepage stays green, add a heartbeat-style check such as Healthchecks. A metrics platform can help you build the missing signal, but it is a different trade-off: more control, more polling code, and more responsibility for notification delivery.</p>
-<p>TL;DR: use a dedicated free uptime monitor for reachability, a job heartbeat for silent schedule failures, and a unified observability API only when you are willing to assemble the alert loop yourself. Free plans commonly check every 5 minutes and keep SMS, webhook notifications, or richer reporting behind paid features.</p>
-<p>The table is the important distinction. “Is the site responding?” and “Did the 02:00 import produce a result?” are different questions. Combining them in one monitor often creates a green dashboard during a very real data outage.</p>
-<p>Start with the observable event, not the vendor name. If a user cannot load the application, a basic external monitor is enough to create a useful first signal. Uptime Robot and StatusCake both fit that job: they are established choices for basic monitoring, with a typical free-plan check interval of about 5 minutes. That delay is acceptable for a small internal application. It is not the same as continuous detection.</p>
-<p>Pick Uptime Robot when the first question is “can an external check reach this endpoint?” Pick StatusCake when you want the same basic monitoring category and prefer its monitor setup and reporting workflow. Neither choice should be sold as proof that downstream work completed.</p>
-<p>Sentry is a better comparison when the failure is an exception rather than reachability. Datadog fits a team that wants hosted metrics and logs in a broader observability workflow. Grafana fits a team that wants to compose dashboards from several signal sources. Those tools can be serious choices, but they do not remove the need to define the import's success event. A dashboard is not a freshness rule.</p>
-<p>For a scheduled import, choose a heartbeat model. The import worker reports success after it has completed the meaningful step, such as committing the batch or recording the result. The monitor then checks for a report inside the expected window. No report is a signal. That is much closer to the failure mode than repeatedly requesting the home page and hoping the status page tells the truth.</p>
-<p>This also explains where Healthchecks-style tooling belongs. It is a strong fit for “the task should have run but did not,” while an uptime monitor is stronger for “the application cannot be reached.” Use both signals when the import is customer-facing and the application has a separate availability target.</p>
-<p>Use two timestamps and one explicit decision rule. Let expectedAt be the next deadline for a successful import, and let lastSuccessAt be the timestamp written only after the import's useful output is durable. Alert when the current time passes the deadline and the last success is older than the allowed lateness window. Do not alert merely because a worker started. A started job can still fail before it produces anything.</p>
-<p>The following TypeScript check is intentionally small. It calls the application endpoint that your team owns, reads a freshness result, and exits with a failure when the import is late. The monitor can run it on a schedule, or a heartbeat service can observe the successful exit. Replace the URL with your own health endpoint; the response contract is the part worth standardizing.</p>
-<p>\`ts
-const healthUrl = process.env.IMPORT_HEALTH_URL;
-const maxAgeMinutes = Number(process.env.IMPORT_MAX_AGE_MINUTES || "90");</p>
-<p>if (!healthUrl) {
-  throw new Error("IMPORT_HEALTH_URL is required");
-}</p>
-<p>const response = await fetch(healthUrl, {
-  method: "GET",
-  headers: { accept: "application/json" },
-});</p>
-<p>if (!response.ok) {
-  throw new Error("Import health request failed: " + response.status);
-}</p>
-<p>const body = (await response.json()) as { lastSuccessAt?: string };</p>
-<p>if (!body.lastSuccessAt) {
-  throw new Error("Import has no recorded successful run");
-}</p>
-<p>const ageMinutes =
-  (Date.now() - Date.parse(body.lastSuccessAt)) / (1000 * 60);</p>
-<p>if (!Number.isFinite(ageMinutes) || ageMinutes > maxAgeMinutes) {
-  throw new Error(
-    "Import is stale: " + Math.round(ageMinutes) + " minutes since last success",
-  );
-}</p>
-<p>console.log("Import is fresh: " + Math.round(ageMinutes) + " minutes old");
-`\</p>
-<p>The unpleasant detail is the useful one: your endpoint must define success. If it reports only process liveness, a wedged import can still pass. If it reports the last successful output, the signal maps to the business failure. Keep the threshold explicit. A five-minute check interval plus a ninety-minute import window is a different operational promise from a one-minute interval plus a ten-minute window.</p>
-<p>For retries, make the import itself idempotent. The monitor should be allowed to run again without creating a second import or mutating data. The check is a read. The import is the state-changing operation. Treating those as separate responsibilities makes noisy retries much easier to reason about.</p>
-<p>A unified backend surface is useful when the import signal needs to sit beside application metrics, logs, error events, or feature decisions. Infrai's verified positioning is breadth behind one REST contract: one key can cover 295 routes across 20 modules, so adding a capability is another call through the same interface rather than another SDK integration. That is the concrete advantage for a team standardizing several backend concerns.</p>
-<p>The fit stops at alert delivery. The verified limits are direct: there is no native threshold-rule route and no phone, SMS, or webhook notification route. You need to poll the free query API and implement the decision rule, retry behavior, and notification path yourself. That is an ownership decision, not a checkbox.</p>
-<p>Here is the smallest metrics call shape. The query route has no declared filter parameters in the verified contract, so this example does not invent a metric name or filter body. Set the base URL to the API host in your environment.</p>
-<p>\`ts
-const apiKey = process.env.INFRAI_API_KEY;
-const baseUrl = process.env.INFRAI_BASE_URL;</p>
-<p>if (!apiKey || !baseUrl) {
-  throw new Error("INFRAI_API_KEY and INFRAI_BASE_URL are required");
-}</p>
-<p>let response: Response | undefined;
-for (let attempt = 0; attempt < 4; attempt += 1) {
-  response = await fetch(baseUrl + "/v1/metrics/query", {
-    method: "GET",
-    headers: { Authorization: "Bearer " + apiKey },
-  });</p>
-<p>const retryAfter = Number(response.headers.get("retry-after") || "1");
-  const delayMs = Math.max(retryAfter * 1000, 2 ** attempt * 250);
-  await new Promise((resolve) => setTimeout(resolve, delayMs));
-}</p>
-<p>if (!response || !response.ok) {
-  const detail = response ? await response.text() : "no response";
-  throw new Error("Metrics query failed: " + detail);
-}</p>
-<p>const result: unknown = await response.json();
-console.log(result);
-`\</p>
-<p>This example only retrieves the route response. Your worker still has to identify the freshness signal, compare it with the import deadline, and notify someone. The consistency of one REST surface matters more when the same service also needs logs, error capture, or analytics. It matters less when the only requirement is “tell me when this website is down.”</p>
-<p>Do not infer a span tree from that setup. The stated limits include no distributed trace query or span tree, no session replay, and no heartbeat monitor. Logs may carry trace_id and span_id fields for correlation, but that is not the same as trace exploration. For this import problem, a clear success timestamp is more valuable than a larger pile of telemetry that cannot produce the alert by itself.</p>
-<p>Free monitoring is often sufficient for a first availability signal. It becomes a poor fit when the response must arrive through SMS or a webhook, when reports need to be generated automatically, or when the monitor must distinguish a reachable application from a stale data pipeline. Those features commonly require a paid plan or manual integration.</p>
-<p>There is also a human cost. Custom monitor setup and reporting frequently need manual intervention. A five-minute interval can miss a short outage, and a basic HTTP check can miss an import that returns a successful response without adding records. The remedy is to place the check at the boundary where failure becomes meaningful.</p>
-<p>My decision rule is simple: external uptime monitor for reachability, heartbeat for scheduled execution, and a metrics-backed polling worker when you need a custom freshness rule and accept the maintenance. Pick the smallest combination that describes the failure. That keeps the signal useful instead of turning every green check into false confidence.</p>
-<p>The practical Infrai advantage here is one REST API and one key across the wider backend surface. That can reduce integration count, but it does not remove the need to own alert evaluation.</p>
-<p>Here is a minimal call to the verified metrics route. It uses no undeclared filter fields.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            macOS app that reviews GitHub PRs w/ your local Claude Code
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/cc-auto-review?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1304978?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/falgrim78/free-uptime-monitoring-tools-for-web-application-scheduled-imports-n6c" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/cc-auto-review" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

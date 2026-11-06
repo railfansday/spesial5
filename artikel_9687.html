@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Data Observability for Banking Pipelines</title>
+    <title>Clocknext</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9687.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,66 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building Data Observability for Banking Pipelines</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Clocknext</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/5wpKgV75aONqkTJlafw2yQmK9yd2-qb93b19.jpeg" alt="Building Data Observability for Banking Pipelines" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/5wpKgV75aONqkTJlafw2yQmK9yd2-qb93b19.jpeg" alt="Building Data Observability for Banking Pipelines" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Data Engineer specialising in Azure, AWS, Databricks, dbt, and scalable data platforms.
-Writing about Data Engineering, AI, and cloud architecture.</p>
-<p>Data Engineer specialising in Azure, AWS, Databricks, dbt, and scalable data platforms.
-Writing about Data Engineering, AI, and cloud architecture.</p>
-<p>Data Engineer specialising in Azure, AWS, Databricks, dbt, and scalable data platforms.
-Writing about Data Engineering, AI, and cloud architecture.</p>
-<p>Loud failures are easy. A job crashes, the scheduler turns red, somebody gets paged, and within the hour there is a chat thread with far too many people in it. Annoying, sure, but the system is at least telling you the truth.</p>
-<p>The failure I worry about is the quiet one. Every task shows green. The report lands on time. And one number inside it is wrong, because a feed stopped refreshing three days ago or a join started dropping rows, and nothing in the stack was built to care.</p>
-<p>In most industries that is an embarrassing dashboard. In banking it can turn into a regulatory submission, a liquidity figure in front of a risk committee, or a customer statement. The stakes shift quite a lot. So this piece is about silent failures: what they look like, why banks are unusually exposed to them, and a way of building observability that catches them before a report breaks. I should say early that it will not catch everything. I'll come back to what it misses.</p>
-<p>I can think of three reasons, though there are probably more.</p>
-<p>First, the chains are long. A single regulatory figure, say a liquidity coverage ratio, might pass through a core banking extract, a treasury system, a reference data service, a staging layer, a transformation layer and finally a reporting tool. Each hop belongs to someone else, often with a release calendar nobody downstream has seen.</p>
-<p>Second, banks lean heavily on batch. Plenty of critical feeds arrive once a day, and some only once a month. If a daily feed breaks on Tuesday, you might not see the damage until the Friday reconciliation, or the month-end close. A long feedback loop gives bad data plenty of time to travel.</p>
-<p>Third, and this is the uncomfortable one, a lot of existing monitoring answers the question "did the job run?" when the question that matters is "is the data right?" Those are different questions. A job can run perfectly and load nothing at all.</p>
-<p>None of the following is a real incident from a named bank, but the shapes are familiar to anyone who has worked near a data warehouse.</p>
-<p>The stale rate table. An FX rates feed from a market data vendor stops updating after a change on the vendor side. Your pipeline keeps reading the table, which still has plenty of rows, so the job-level check passes. Euro and dollar positions get converted at last Wednesday's rate. Totals look sensible. They just are not true.</p>
-<p>The shrinking join. An upstream team changes a code in a product reference table, perhaps a new product type with no mapping yet. An inner join quietly drops everything that no longer matches. Three percent of the loan book disappears from a report. Three percent does not look dramatic on a chart. In a capital calculation, it might be very dramatic.</p>
-<p>The drifting distribution. A source system starts defaulting a null field, like days past due, to zero. Row counts are identical. The schema is identical. But the share of loans classed as current jumps overnight, and nobody changed a credit policy.</p>
-<p>None of these throws an exception. All of them pass a "job succeeded" check.</p>
-<p>I'm a bit wary of the word "observability" because vendors have stretched it until it covers almost anything. The distinction I find useful is simple. Monitoring checks things you already know can go wrong. Observability means collecting enough information about the data itself, continuously, that when something strange happens you can work out where it started and what it touched.</p>
-<p>For data, that mostly means watching the data and not only the machinery. CPU on the warehouse tells you very little about whether the FX table is current.</p>
-<p>There are lots of ways to slice this. The five below are the ones I keep coming back to, partly because each maps neatly to one of the failures above.</p>
-<p>Freshness. When did this table last change, compared with when it should have? One trap here: check the business date inside the data, not the load timestamp. A job can load yesterday's rates today and look perfectly fresh by the wrong clock. That is exactly how the stale rate table slips through.</p>
-<p>Volume. Are row counts in a plausible range? The word that matters is plausible, because banks have calendars. UK bank holidays, month-end, quarter-end and year-end all change expected volumes. A check that ignores them will cry wolf every few weeks, and people will stop listening.</p>
-<p>Schema. Have columns been added, dropped or retyped? This is the cheapest signal to collect and often the most useful, since a renamed column is a common cause of everything downstream going subtly wrong.</p>
-<p>Distribution. Null rates, value ranges, category proportions, and sums of balances. This is where the drifting distribution gets caught. It is also the noisiest signal, so I would introduce it last.</p>
-<p>Lineage. Which reports depend on this table? When a check fails, lineage tells you the blast radius. Without it, the alert reads "something is odd in staging" and everyone shrugs. With it, the alert reads "something is odd in staging, and it feeds the liquidity report due at 10am". That is a very different conversation.</p>
-<p>Here is the layout I would sketch on a whiteboard. The main idea is that checks live at the boundaries between layers, not only at the end next to the report.</p>
-<p>Reading it left to right, the data moves from source systems through ingestion, raw storage, staging, curated marts, and finally the regulatory and management reports. Underneath, an observability layer attaches a different kind of check to each stage.</p>
-<p>At ingestion, you ask the cheap questions: did the file arrive, is it fresh by business date, does the schema match the agreed contract? In staging, you look at keys, referential integrity and null rates. In the marts, you run reconciliations and distribution checks. At the report layer, you compare control totals against the prior period and against the general ledger.</p>
-<p>Reconciliation deserves a special mention because it is old-fashioned and brilliant. Finance teams have done it for decades. The idea is that the sum of balances in your mart should equal the sum in the source extract, within a tolerance. If a join drops three percent of the loan book, a control total notices immediately, even though row counts and schemas look fine. Plenty of data teams skip it because it feels unglamorous. I would start there.</p>
-<p>Every check writes its result to a metadata store. That store feeds the alerting layer and, ideally, a lineage graph, so a failure can be traced to the reports it threatens.</p>
-<p>A small example of the volume check, written as plain SQL so it is easy to port. It compares the latest day against the same weekday over the past eight weeks. Treat it as a sketch rather than production code, because it knows nothing about holidays yet.</p>
-<p>If the z-score goes past something like 3, raise a flag. The threshold is a guess you will tune, and you should expect to be wrong about it the first few times.</p>
-<p>Collecting signals is the easy half. The harder half is making sure a human reacts to them.</p>
-<p>I have seen, or at least heard enough war stories to believe in, the pattern where a team switches on two hundred checks, gets forty alerts a day, and within a month has muted the channel. At that point you have built an expensive way of generating noise. So the design question is less "what can we check?" and more "what deserves to interrupt someone?"</p>
-<p>A scheme that tends to hold up has three tiers. Informational checks get logged and reviewed weekly. Warnings go to the named owner of the dataset during working hours. Critical failures, meaning anything that touches a regulatory report, go to the owner immediately and also close a gate in front of the publish step.</p>
-<p>That gate is the controversial part. Some teams prefer to publish anyway with a visible warning banner, on the argument that a late report is worse than a flagged one. Others hold the previous approved version until someone signs off. I lean towards holding for regulatory outputs and warning for internal dashboards, but I can see the other side. If your submission deadline is fixed by a regulator, the calculation changes.</p>
-<p>Whichever way you go, two things matter more than the tooling. Every dataset needs a named owner, a person and not a shared inbox. And upstream teams need a lightweight data contract, even a one-page agreement, saying which columns and codes they promise not to change without notice. Without that, you are monitoring someone else's decisions with no way to influence them.</p>
-<p>I would be overselling it if I stopped there.</p>
-<p>Observability catches data that is stale, missing, malformed or oddly distributed. It does not catch data that is fresh, complete, consistent and simply wrong because the business logic misreads a rule. A risk weight applied to the wrong asset class will sail through every check described above. That needs code review, testing and domain experts, and no dashboard replaces them.</p>
-<p>Thresholds can also create false confidence. A check tuned so loosely that it never fires is worse than no check, because people assume it is protecting them. Anomaly detection tools driven by machine learning can help with tuning, but I am slightly cautious about them in a regulated setting. An auditor can read a rule that says "volume within three standard deviations of the weekday baseline". A black box that quietly adapts its own thresholds is harder to defend.</p>
-<p>And then there is the organisational side, which no architecture diagram captures. If upstream teams see your alerts as an accusation and not a courtesy, the checks will be ignored. A bit of diplomacy goes a long way here.</p>
-<p>If I were starting on Monday, I would not try to cover the whole warehouse. I would pick one regulatory report, trace its lineage back to the ten or so tables it truly depends on, and add three things: freshness by business date, a volume check with a calendar, and a control total that reconciles to source.</p>
-<p>Then I would assign owners and run everything in warn-only mode for two weeks. That gives you a feel for false positives before anyone is woken up at night. Only after that would I switch the critical checks to blocking.</p>
-<p>That staged approach is slower than a big-bang rollout, and some teams will find it frustrating. But it builds trust in the alerts, and trust is the thing that decides whether anyone responds when the real one fires.</p>
-<p>Silent failures are hard because they look like success. The pipeline is green, the report is on time, and the number is wrong. Catching them means shifting attention from whether the job ran to whether the data still makes sense, and doing it at every boundary, not just at the finish line.</p>
-<p>None of this is exotic. Freshness, volume, schema, distribution, lineage, plus a few reconciliations that finance has trusted for decades. The hard parts are the unglamorous ones: ownership, contracts, tuning thresholds and keeping the noise low enough that people still care. If your team is working through the same problem, I would be curious which of the five signals you found most useful in practice. My bet is freshness by business date, but I could easily be wrong.</p>
-<p>The Missing Layer in Enterprise AI: A Governance Architecture for LLMs and Machine Learning</p>
-<p>Data Engineer specialising in Azure, AWS, Databricks, dbt, and scalable data platforms.
-Writing about Data Engineering, AI, and cloud architecture.</p>
+                <p><p>
+            Pricing and Billing Infrastructure for AI Agents
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/clocknext?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1301590?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/building-data-observability-for-banking-pipelines?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/clocknext" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

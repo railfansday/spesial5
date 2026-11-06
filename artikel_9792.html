@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Gemini Omni 1.2 Flash Is 30% Cheaper. Your 1.1 Calls Move to It on December 3 Anyway</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9792.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-05</p>
+        <h1>Gemini Omni 1.2 Flash Is 30% Cheaper. Your 1.1 Calls Move to It on December 3 Anyway</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fvbr6lq3ehzp3ksmzif3i.jpg" alt="Gemini Omni 1.2 Flash Is 30% Cheaper. Your 1.1 Calls Move to It on December 3 Anyway" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fvbr6lq3ehzp3ksmzif3i.jpg" alt="Gemini Omni 1.2 Flash Is 30% Cheaper. Your 1.1 Calls Move to It on December 3 Anyway" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>Posted on Nov 6
+•
+Edited on Nov 6
+•
+
+
+
+
+AI-assisted</p>
+<p>Google cut the price of its video model on November 5. Gemini Omni 1.2 Flash is generally available in the Gemini API, makes clips up to 15 seconds long, and costs about $0.07 per second of 720p video. Omni 1.1 Flash costs about $0.10 per second at the same resolution, according to Google's pricing page.</p>
+<p>The line in the release notes that will reach your code is easier to miss. The Gemini API changelog says that starting December 3, 2026, requests to gemini-omni-1.1-flash automatically route to gemini-omni-1.2-flash and bill at 1.2 rates. You don't have to change anything for that to happen, which also means nothing in your deploy history will show the day the model changed.</p>
+<p>Google's launch post lists what changed from 1.1:</p>
+<p>Google is specific about the weak spots. The post says development is ongoing "to further improve things like fast sports action, rapid script changes and complex physics" (Google). Google DeepMind's model page shows a side-by-side win rate of 62% to 38% for 1.2 over 1.1 on visual consistency, which The Next Web reports as testers preferring 1.2. That is a vendor's number, and it leaves room for plenty of clips where 1.1 looked as good or better.</p>
+<p>The model ID is gemini-omni-1.2-flash, and calls go through the Interactions API. This is the basic sample from the Omni docs, with the prompt string split to fit:</p>
+<p>The same docs say: "When you don't set the duration, the model defaults to 10 seconds." Ask for more than 15 and you get an invalid argument error.</p>
+<p>Longer clips, lower price per second. The price per call depends on how long you ask for.</p>
+<p>Omni bills video as output tokens: $12.00 per 1M for 1.2, against $17.50 per 1M for 1.1 (pricing). The pricing page converts that into seconds:</p>
+<p>The 720p clip total is Google's figure. The other three totals in the last column are my arithmetic from the page's token rates at $12 per 1M tokens.</p>
+<p>A 4K clip costs three times a 720p clip of the same length, so the upscale step is where a video budget goes. The 30% cut is also per second. If your product moves from 10-second clips to 15-second ones, the bill per call goes up slightly: a 15-second 1.2 clip at 720p is about $1.04, and a 10-second 1.1 clip at the same resolution works out to about $1.01 by the same arithmetic at 1.1's rate.</p>
+<p>There is no free tier for either model: the pricing page lists free-tier input and output as "Not available", and the rate limits page lists Free as "Not supported". A paid Tier 1 project gets 8 requests per minute and 40 per day. Tier 3 gets 40 per minute and 2,000 per day. Limits apply per project, not per API key. The changelog says paid-tier limits doubled with this release.</p>
+<p>The deprecations page is plain about it: "Effective December 3, 2026, the endpoint is automatically routing API requests to gemini-omni-1.2-flash". The Omni docs add that this happens "with no code changes required." Omni 1.1 Flash was released on August 27, 2026, and the older gemini-omni-flash-preview was shut down on October 22, per the same deprecations page.</p>
+<p>The switch is cheaper and needs no code change. What changes is the model answering your request, and Google's model page shows the two are not the same:</p>
+<p>On December 3, the same model ID leads to a different model.</p>
+<p>Google did the same thing with its December 1 reroute of gemini-2.5-pro to Gemini 3.8 Flash: the ID stayed fixed while the model and the price behind it changed.</p>
+<p>The launch post names "audio cues" among the reference inputs (Google). The API docs say: "Uploading audio inputs or audio references is unsupported in the current version of the API." Audio inside a reference video is ignored. The blog covers several products at once, including Flow and the Gemini app, so the cue may live there. On the API, build against the docs.</p>
+<p>Multi-turn editing chains turns with previous_interaction_id. The docs also say setting store=false "means the generated video won't be editable in subsequent turns." If your team turns storage off for data reasons, editing is off too, and every change becomes a new generation at full price.</p>
+<p>A hit on the preview ID points at a model the model page lists as shut down.</p>
+<p>Moving early also gets you the lower price now instead of on December 3.</p>
+<p>Does a vendor swapping the model behind an ID you pinned count as a breaking change in your book, even when it gets cheaper? Tell me in the comments.</p>
+<p>A reroute like this is a quality change you never deployed. Catching it takes three habits: trace which model actually answered each request, keep an eval set you can re-run the week a vendor swaps the model behind an ID, and watch cost per request instead of the monthly total. Observability for LLM Applications is the book I wrote about exactly that, for LLM features running in production.</p>
+<p>I also build Hermes IDE, so weigh this with that in mind: it's a free, source-available desktop app for macOS, Windows and Linux that runs Claude Code, Codex and other coding agents side by side, each in its own worktree. Download it or read the code on GitHub.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/gabrielanhaia/gemini-omni-12-flash-is-30-cheaper-your-11-calls-move-to-it-on-december-3-anyway-34de" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
