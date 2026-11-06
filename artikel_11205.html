@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multivariate Probabilistic Time Series Forecasting with Informer</title>
+    <title>Making a web app generator with open ML models</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11205.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,103 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Multivariate Probabilistic Time Series Forecasting with Informer</h1>
+        <h1>Making a web app generator with open ML models</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/134_informer/thumbnail.png" alt="Multivariate Probabilistic Time Series Forecasting with Informer" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/134_informer/thumbnail.png" alt="Multivariate Probabilistic Time Series Forecasting with Informer" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A few months ago we introduced the Time Series Transformer, which is the vanilla Transformer (Vaswani et al., 2017) applied to forecasting, and showed an example for the univariate probabilistic forecasting task (i.e. predicting each time series' 1-d distribution individually). In this post we introduce the Informer model (Zhou, Haoyi, et al., 2021), AAAI21 best paper which is now available in 🤗 Transformers. We will show how to use the Informer model for the multivariate probabilistic forecasting task, i.e., predicting the distribution of a future vector of time-series target values. Note that this will also work for the vanilla Time Series Transformer model.</p>
-<p>As far as the modeling aspect of probabilistic forecasting is concerned, the Transformer/Informer will require no change when dealing with multivariate time series. In both the univariate and multivariate setting, the model will receive a sequence of vectors and thus the only change is on the output or emission side.</p>
-<p>Modeling the full joint conditional distribution of high dimensional data can get computationally expensive and thus methods resort to some approximation of the distribution, the easiest being to model the data as an independent distribution from the same family, or some low-rank approximation to the full covariance, etc. Here we will just resort to the independent (or diagonal) emissions which are supported for the families of distributions we have implemented here.</p>
-<p>Based on the vanilla Transformer (Vaswani et al., 2017), Informer employs two major improvements. To understand these improvements, let's recall the drawbacks of the vanilla Transformer:</p>
-<p>As you can see, the motivation for the Informer model is similar to Longformer (Beltagy et el., 2020), Sparse Transformer (Child et al., 2019) and other NLP papers for reducing the quadratic complexity of the self-attention mechanism when the input sequence is long. Now, let's dive into ProbSparse attention and the Distilling operation with code examples.</p>
-<p>The main idea of ProbSparse is that the canonical self-attention scores form a long-tail distribution, where the "active" queries lie in the "head" scores and "lazy" queries lie in the "tail" area. By "active" query we mean a query qiq_iqi​ such that the dot-product ⟨qi,ki⟩\langle q_i,k_i \rangle⟨qi​,ki​⟩ contributes to the major attention, whereas a "lazy" query forms a dot-product which generates trivial attention. Here, qiq_iqi​ and kik_iki​ are the iii-th rows in QQQ and KKK attention matrices respectively.</p>
-<p>Given the idea of "active" and "lazy" queries, the ProbSparse attention selects the "active" queries, and creates a reduced query matrix QreducedQ_{reduced}Qreduced​ which is used to calculate the attention weights in O(Tlog⁡T)O(T \log T)O(TlogT). Let's see this more in detail with a code example.</p>
-<p>Recall the canonical self-attention formula:</p>
-<p>Attention(Q,K,V)=softmax(QKTdk)V
-\textrm{Attention}(Q, K, V) = \textrm{softmax}(\frac{QK^T}{\sqrt{d_k}} )V
-Attention(Q,K,V)=softmax(dk​​QKT​)V</p>
-<p>Where Q∈RLQ×dQ\in \mathbb{R}^{L_Q \times d}Q∈RLQ​×d, K∈RLK×dK\in \mathbb{R}^{L_K \times d}K∈RLK​×d and V∈RLV×dV\in \mathbb{R}^{L_V \times d}V∈RLV​×d. Note that in practice, the input length of queries and keys are typically equivalent in the self-attention computation, i.e. LQ=LK=TL_Q = L_K = TLQ​=LK​=T where TTT is the time series length. Therefore, the QKTQK^TQKT multiplication takes O(T2⋅d)O(T^2 \cdot d)O(T2⋅d) computational complexity. In ProbSparse attention, our goal is to create a new QreduceQ_{reduce}Qreduce​ matrix and define:</p>
-<p>ProbSparseAttention(Q,K,V)=softmax(QreduceKTdk)V
-\textrm{ProbSparseAttention}(Q, K, V) = \textrm{softmax}(\frac{Q_{reduce}K^T}{\sqrt{d_k}} )V
-ProbSparseAttention(Q,K,V)=softmax(dk​​Qreduce​KT​)V</p>
-<p>where the QreduceQ_{reduce}Qreduce​ matrix only selects the Top  uuu "active" queries. Here, u=c⋅log⁡LQu = c \cdot \log L_Qu=c⋅logLQ​ and ccc called the sampling factor hyperparameter for the ProbSparse attention. Since QreduceQ_{reduce}Qreduce​ selects only the Top uuu queries, its size is c⋅log⁡LQ×dc\cdot \log L_Q \times dc⋅logLQ​×d, so the multiplication QreduceKTQ_{reduce}K^TQreduce​KT takes only O(LKlog⁡LQ)=O(Tlog⁡T)O(L_K \log L_Q) = O(T \log T)O(LK​logLQ​)=O(TlogT).</p>
-<p>This is good! But how can we select the uuu "active" queries to create QreduceQ_{reduce}Qreduce​? Let's define the Query Sparsity Measurement.</p>
-<p>Query Sparsity Measurement M(qi,K)M(q_i, K)M(qi​,K) is used for selecting the uuu "active" queries qiq_iqi​ in QQQ to create QreduceQ_{reduce}Qreduce​. In theory, the dominant ⟨qi,kj⟩\langle q_i,k_j \rangle⟨qi​,kj​⟩ pairs encourage the "active" qiq_iqi​'s probability distribution away from the uniform distribution as can be seen in the figure below. Hence, the KL divergence between the actual queries distribution and the uniform distribution is used to define the sparsity measurement.</p>
-<p>In practice, the measurement is defined as:</p>
-<p>M(qi,K)=max⁡jqikjTd−1Lk∑j=1LkqikjTd
-M(q_i, K) = \max_j \frac{q_ik_j^T}{\sqrt{d}}-\frac{1}{L_k} \sum_{j=1}^{L_k}\frac{q_ik_j^T}{\sqrt{d}}
-M(qi​,K)=jmax​d​qi​kjT​​−Lk​1​j=1∑Lk​​d​qi​kjT​​</p>
-<p>The important thing to understand here is when M(qi,K)M(q_i, K)M(qi​,K) is larger, the query qiq_iqi​ should be in QreduceQ_{reduce}Qreduce​ and vice versa.</p>
-<p>But how can we calculate the term qikjTq_ik_j^Tqi​kjT​ in non-quadratic time? Recall that most of the dot-product ⟨qi,ki⟩\langle q_i,k_i \rangle⟨qi​,ki​⟩ generate either way the trivial attention (i.e. long-tail distribution property), so it is enough to randomly sample a subset of keys from KKK, which will be called K_sample in the code.</p>
-<p>Now, we are ready to see the code of probsparse_attention:</p>
-<p>Note that in the implementation, UpartU_{part}Upart​ contain LQL_QLQ​ in the calculation, for stability issues (see this disccusion for more information).</p>
-<p>We did it! Please be aware that this is only a partial implementation of the probsparse_attention, and the full implementation can be found in 🤗 Transformers.</p>
-<p>Because of the ProbSparse self-attention, the encoder’s feature map has some redundancy that can be removed. Therefore,
-the distilling operation is used to reduce the input size between encoder layers into its half slice, thus in theory removing this redundancy. In practice, Informer's "distilling" operation just adds 1D convolution layers with max pooling between each of the encoder layers. Let XnX_nXn​ be the output of the nnn-th encoder layer, the distilling operation is then defined as:</p>
-<p>Xn+1=MaxPool(ELU(Conv1d(Xn))
-X_{n+1} = \textrm{MaxPool} ( \textrm{ELU}(\textrm{Conv1d}(X_n))
-Xn+1​=MaxPool(ELU(Conv1d(Xn​))</p>
-<p>By reducing the input of each layer by two, we get a memory usage of O(N⋅Tlog⁡T)O(N\cdot T \log T)O(N⋅TlogT) instead of O(N⋅T2)O(N\cdot T^2)O(N⋅T2) where NNN is the number of encoder/decoder layers. This is what we wanted!</p>
-<p>The Informer model in now available in the 🤗 Transformers library, and simply called InformerModel. In the sections below, we will show how to train this model on a custom multivariate time-series dataset.</p>
-<p>First, let's install the necessary libraries: 🤗 Transformers, 🤗 Datasets, 🤗 Evaluate, 🤗 Accelerate and GluonTS.</p>
-<p>As we will show, GluonTS will be used for transforming the data to create features as well as for creating appropriate training, validation and test batches.</p>
-<p>In this blog post, we'll use the traffic_hourly dataset, which is available on the Hugging Face Hub. This dataset contains the San Francisco Traffic dataset used by Lai et al. (2017). It contains 862 hourly time series showing the road occupancy rates in the range [0,1][0, 1][0,1] on the San Francisco Bay area freeways from 2015 to 2016.</p>
-<p>This dataset is part of the Monash Time Series Forecasting repository, a collection of time series datasets from a number of domains. It can be viewed as the GLUE benchmark of time series forecasting.</p>
-<p>As can be seen, the dataset contains 3 splits: train, validation and test.</p>
-<p>Each example contains a few keys, of which start and target are the most important ones. Let us have a look at the first time series in the dataset:</p>
-<p>The start simply indicates the start of the time series (as a datetime), and the target contains the actual values of the time series.</p>
-<p>The start will be useful to add time related features to the time series values, as extra input to the model (such as "month of year"). Since we know the frequency of the data is hourly, we know for instance that the second value has the timestamp 2015-01-01 01:00:01, 2015-01-01 02:00:01, etc.</p>
-<p>The validation set contains the same data as the training set, just for a prediction_length longer amount of time. This allows us to validate the model's predictions against the ground truth.</p>
-<p>The test set is again one prediction_length longer data compared to the validation set (or some multiple of prediction_length longer data compared to the training set for testing on multiple rolling windows).</p>
-<p>The initial values are exactly the same as the corresponding training example. However, this example has prediction_length=48 (48 hours, or 2 days) additional values compared to the training example. Let us verify it.</p>
-<p>The first thing we'll do is convert the start feature of each time series to a pandas Period index using the data's freq:</p>
-<p>We now use datasets' set_transform functionality to do this on-the-fly in place:</p>
-<p>Now, let's convert the dataset into a multivariate time series using the MultivariateGrouper from GluonTS. This grouper will convert the individual 1-dimensional time series into a single 2D matrix.</p>
-<p>Note that the target is now 2-dimensional, where the first dimension is the number of variates (number of time series) and the second is the time series values (time dimension):</p>
-<p>Next, let's instantiate a model. The model will be trained from scratch, hence we won't use the from_pretrained method here, but rather randomly initialize the model from a config.</p>
-<p>We specify a couple of additional parameters to the model:</p>
-<p>Let us check the default lags provided by GluonTS for the given frequency ("hourly"):</p>
-<p>This means that this would look back up to 721 hours (~30 days) for each time step, as additional features. However, the resulting feature vector would end up being of size len(lags_sequence)*num_of_variates which for our case will be 34480! This is not going to work so we will use our own sensible lags.</p>
-<p>Let us also check the default time features which GluonTS provides us:</p>
-<p>In this case, there are four additional features, namely "hour of day", "day of week", "day of month" and "day of year". This means that for each time step, we'll add these features as a scalar values. For example, consider the timestamp 2015-01-01 01:00:01. The four additional features will be:</p>
-<p>Note that hours and days are encoded as values between [-0.5, 0.5] from GluonTS. For more information about time_features, please see this. Besides those 4 features, we'll also add an "age" feature as we'll see later on in the data transformations.</p>
-<p>We now have everything to define the model:</p>
-<p>By default, the model uses a diagonal Student-t distribution (but this is configurable):</p>
-<p>Next, we define the transformations for the data, in particular for the creation of the time features (based on the dataset or universal ones).</p>
-<p>Again, we'll use the GluonTS library for this. We define a Chain of transformations (which is a bit comparable to torchvision.transforms.Compose for images). It allows us to combine several transformations into a single pipeline.</p>
-<p>The transformations below are annotated with comments, to explain what they do. At a high level, we will iterate over the individual time series of our dataset and add/remove fields or features:</p>
-<p>For training/validation/testing we next create an InstanceSplitter which is used to sample windows from the dataset (as, remember, we can't pass the entire history of values to the model due to time- and memory constraints).</p>
-<p>The instance splitter samples random context_length sized and subsequent prediction_length sized windows from the data, and appends a past_ or future_ key to any temporal keys in time_series_fields for the respective windows. The instance splitter can be configured into three different modes:</p>
-<p>Next, it's time to create the DataLoaders, which allow us to have batches of (input, output) pairs - or in other words (past_values, future_values).</p>
-<p>As can be seen, we don't feed input_ids and attention_mask to the encoder (as would be the case for NLP models), but rather past_values, along with past_observed_mask, past_time_features and static_real_features.</p>
-<p>The decoder inputs consist of future_values, future_observed_mask and future_time_features. The future_values can be seen as the equivalent of decoder_input_ids in NLP.</p>
-<p>We refer to the docs for a detailed explanation for each of them.</p>
-<p>Let's perform a single forward pass with the batch we just created:</p>
-<p>Note that the model is returning a loss. This is possible as the decoder automatically shifts the future_values one position to the right in order to have the labels. This allows computing a loss between the predicted values and the labels. The loss is the negative log-likelihood of the predicted distribution with respect to the ground truth values and tends to negative infinity.</p>
-<p>Also note that the decoder uses a causal mask to not look into the future as the values it needs to predict are in the future_values tensor.</p>
-<p>It's time to train the model! We'll use a standard PyTorch training loop.</p>
-<p>We will use the 🤗 Accelerate library here, which automatically places the model, optimizer and dataloader on the appropriate device.</p>
-<p>At inference time, it's recommended to use the generate() method for autoregressive generation, similar to NLP models.</p>
-<p>Forecasting involves getting data from the test instance sampler, which will sample the very last context_length sized window of values from each time series in the dataset, and pass it to the model. Note that we pass future_time_features, which are known ahead of time, to the decoder.</p>
-<p>The model will autoregressively sample a certain number of values from the predicted distribution and pass them back to the decoder to return the prediction outputs:</p>
-<p>The model outputs a tensor of shape (batch_size, number of samples, prediction length, input_size).</p>
-<p>In this case, we get 100 possible values for the next 48 hours for each of the 862 time series (for each example in the batch which is of size 1 since we only have a single multivariate time series):</p>
-<p>We'll stack them vertically, to get forecasts for all time-series in the test dataset (just in case there are more time series in the test set):</p>
-<p>We can evaluate the resulting forecast with respect to the ground truth out of sample values present in the test set. For that, we'll use the 🤗 Evaluate library, which includes the MASE and sMAPE metrics.</p>
-<p>We calculate both metrics for each time series variate in the dataset:</p>
-<p>To plot the prediction for any time series variate with respect the ground truth test data we define the following helper:</p>
-<p>How do we compare against other models? The Monash Time Series Repository has a comparison table of test set MASE metrics which we can add to:</p>
-<p>As can be seen, and perhaps surprising to some, the multivariate forecasts are typically worse than the univariate ones, the reason being the difficulty in estimating the cross-series correlations/relationships. The additional variance added by the estimates often harms the resulting forecasts or the model learns spurious correlations. We refer to this paper for further reading. Multivariate models tend to work well when trained on a lot of data.</p>
-<p>So the vanilla Transformer still performs best here! In the future, we hope to better benchmark these models in a central place to ease reproducing the results of several papers. Stay tuned for more!</p>
-<p>We recommend to check out the Informer docs and the example notebook linked at the top of this blog post.</p>
-<p>Thanks for this super useful blog.I get this error "DatasetGenerationError: An error occurred while generating the dataset" when I try to load_dataset any hourly dataset from the Monash-University/monash_tsf.I was able to load_dataset other datasets other than the hourly datasets.Do you know why?How to fix this problem.I want to try the Multivariate Probabilistic Time Series Forecasting. Which dataets can I use for this purpose?</p>
-<p>what is the exact command that is giving the error?</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/informer" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/text-to-webapp" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

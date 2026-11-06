@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Agent Said It Was Done. The Database Disagreed.</title>
+    <title>Turning Database Grading into RL Rewards: Post-Training Agents with ThinkingBox</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9885.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,95 +15,119 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The Agent Said It Was Done. The Database Disagreed.</h1>
+        <h1>Turning Database Grading into RL Rewards: Post-Training Agents with ThinkingBox</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/NStwJm1AafDELVsU4KGwS.png" alt="The Agent Said It Was Done. The Database Disagreed." style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/oS8I8qx7iBS8EcNIXR3q9.png" alt="Turning Database Grading into RL Rewards: Post-Training Agents with ThinkingBox" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/NStwJm1AafDELVsU4KGwS.png" alt="The Agent Said It Was Done. The Database Disagreed." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/oS8I8qx7iBS8EcNIXR3q9.png" alt="Turning Database Grading into RL Rewards: Post-Training Agents with ThinkingBox" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Microsoft ThinkingBox grades AI agents on the records they leave behind, not the sentences they generate, and then asks whether they can do it twenty times in a row. It is now available through Hugging Face.</p>
-<p>Figure 1: ThinkingBox runs an agent against isolated MCP tool sessions, then grades the terminal backend state and side effects it leaves behind. From our ThinkingBox paper.</p>
-<p>A customer writes in. Her $745 kitchen appliance has been stuck in a courier "exception" at a Nashville distribution center, fifteen days past its estimated delivery date.</p>
-<p>The AI agent does careful work. Nine tool calls: it pulls the order, checks tracking, looks up her customer profile, searches the refund policy twice, confirms no ticket exists, opens one, documents the timeline, and reads the policy correctly; her account segment genuinely does not qualify for late-delivery compensation.</p>
-<p>Then it closes the ticket as resolved and replies “ Since your query is resolved, is there anything I may assist you with? ”</p>
-<p>Two things are wrong. The carrier exception is still open, so the required end state was on hold, pending resolution. And the customer never got a real answer to what she actually asked.</p>
-<p>An AI grader checking tool calls would see nine well-formed ones. The grader checking whether the agent wrote to the database would see that too. The database is what disagrees.</p>
-<p>That gap is what ThinkingBox measures. Across 507 stateful business workflows, each run 20 times against various LLM models, it grades agents on terminal backend state and side effects. This post covers what we found, what consistency costs, and how to run the benchmark yourself through OpenEnv.</p>
-<p>You can run this one yourself: the example above is adapted from a benchmark task sandbox_external_retail_group1.py:test_case_ST003_006, and the executable check that fails is a single field: the ticket's status is solved where the required end state is hold. The full trace is in  Appendix D.4, Case 3 of our paper.</p>
-<p>Want to try it before reading the results? Skip to section Run it yourself.</p>
-<p>Final responses and valid tool calls are only proxies. An agent can sound correct while leaving the wrong value, changing the wrong record, or creating an extra side effect. Only the records it leaves behind settle the question.</p>
-<p>The gap is substantial. In a common-set ablation covering 121,680 valid trials across 12 LLM models, 79,853 attempts failed the executable checks. Of those failures, 67.24% still terminated cleanly, invoked a state-changing tool, and reported no final tool error. Executable checks nevertheless found wrong field values in 77.61% of them, unintended extra effects in 43.30%, and missing required effects in 25.36%. Those state-check findings overlap.</p>
-<p>A trajectory is a claim. Database state is the evidence. Repetition is the trust test.</p>
-<p>An agent that processes a refund correctly once and mishandles it the next four times is not a working refund agent. So every task runs 20 independent times, each from an identical clean backend, and we report three different things:</p>
-<p>Table 1: The three numbers we report, and the question each one answers.</p>
-<p>We use observed 20/20 in this blog post as the literal count of how many of the 507 tasks passed 20 out of 20. No estimator, no smoothing.</p>
-<p>Starting with the familiar view. The table below reports pass@1, the single-attempt score estimate, broken out by domain. This is the number most leaderboards publish, and on its own it reads like an ordinary capability ranking.</p>
-<p>Table 2: ThinkingBox-Bench pass@1 (%) by domain. Each model is evaluated on every task for 20 repeated trials. Bold marks the group leader; underline marks the runner-up. The standard errors for the single attempt score estimates are provided in Table 4 in our ThinkingBox paper.</p>
-<p>Claude Opus 5.5 leads overall at 67.16%, two-thirds of a point above Claude Opus 5. Kimi-K3 is the strongest open-weights model, within a point of GPT-6-Astra. Domain matters just as much: Claude Opus 4.6 scores 68.62% on retail but 8.30% on auto insurance.</p>
-<p>One good run tells you a model can do the work. It does not tell you whether it will do it again. So run every task 20 times and ask how much of that score survives.</p>
-<p>Figure 2: How much of each model's single-attempt score survives 20 repeats.</p>
-<p>Only three hold on to most of their pass@1 scores: GPT-6 Astra retains 78% of its single-attempt rate, and Claude Opus 5.5 and Claude Opus 5 each retain 71%. At the other end, GLM-5.1, Kimi-K2.6 and DeepSeek-V4-Pro each keep about 8%.</p>
-<p>The gap between what a model can do once and what it does every time is the whole story.</p>
-<p>Figure 3: Breadth and consistency pull apart. Twelve of the eighteen models are shown; six below 33% pass@1 are omitted for legibility.</p>
-<p>Kimi-K3 has the broadest coverage of any model we tested. It solves 93.89% of the benchmark at least once: 476 of 507 tasks. Only 31 tasks defeat it entirely, the lowest count in the field. On retail workflows it leads outright at 82.24% pass@1, ahead of every proprietary model.</p>
-<p>Kimi-K3 is also among the least consistent. Just 68 of 507 tasks, 13.41%, succeed in all 20 attempts.</p>
-<p>Claude Opus 5 inverts this. It solves fewer tasks at least once (79.09%; 106 defeat it entirely) but completes 47.53% of the benchmark on every single attempt.</p>
-<p>A newer model does not fix this. Claude Opus 5.5 scores higher than Claude Opus 5 on every-attempt average, 67.16% against 66.50%, and solves more tasks at least once. It passes exactly the same number of tasks on all 20 attempts: 241. Half a point of headline accuracy bought no additional dependability at all.</p>
-<p>If you are choosing a model for work that touches real records, pass@20 is the wrong column to look at.</p>
-<p>Capability comparisons usually stop at the score. For anyone deploying, the relevant question is what a successful unit of work costs. We measure that as cost per successful task attempt. We say task attempt because every benchmark task is run repeatedly and cost is incurred per attempt, so pass@1 is the matching quality denominator.</p>
-<p>We took each model's recorded token usage from its full 507 × 20 campaign and priced it at undiscounted list rates available on OpenRouter+, reversing promotional discounts and excluding endpoints that declare quantization. Input, output and cache rates all come from one provider endpoint per model.</p>
-<p>Then we divided one run's cost by the number of attempts that succeeded:</p>
-<p>Cost per successful task attempt = estimated cost for 507 attempts, one per task ÷ (507 × pass@1)</p>
-<p>This is a comparative efficiency index, not an invoice, and not the price of serving one production request. It also prices single successes, not consistency. We price consistency next.</p>
-<p>Example: GPT-5.4 costs $43.49 for 507 attempts (one attempt per task) and has 65.36% pass@1, so $43.49 ÷ (507 × 0.6536) = $0.131 per successful task attempt.</p>
-<p>A model is on the frontier if no other model is both no more expensive and at least as accurate. Three models qualify; every other model is dominated on at least one axis.</p>
-<p>Figure 4: Cost per successful task attempt against pass@1. Ringed dots are pareto cost frontier models.</p>
-<p>The frontier has three steps. GPT-5.6 Sol has the lowest cost per success at $0.127; GPT-5.4 raises pass@1 by 3.45 percentage points for $0.004 more per success; Claude Opus 5.5 adds another 1.80 points at $0.276 per success. Each of the three remains on the cost frontier line because no cheaper model matches its pass@1.</p>
-<p>Claude Opus 5 is the clearest case: at $0.475 per successful attempt and 66.50% pass@1, it is both more expensive and less accurate than Claude Opus 5.5 at $0.276 and 67.16%.</p>
-<p>Cost per success rewards a model that is cheap and often right. It does not reward a model that is right every time. So we also compute cost per dependable task: the cost of the full 20-run campaign divided by the number of tasks the model passed on all 20 attempts.</p>
-<p>Cost per dependable task = estimated cost of 20 runs of 507 attempts ÷ tasks passing 20/20</p>
-<p>Example: GPT-6-Astra costs 20 × $86.03 = $1,720.60 for the campaign and passes 231 tasks on every attempt, so $1,720.60 ÷ 231 = $7.45 per dependable task.</p>
-<p>Table 3: The nine lowest costs per dependable task among models with at least one observed 20/20 task, sorted low to high. Estimated $, not actual cloud bills.</p>
-<p>Now rank by consistency. GPT-5.4 is the cheapest at $6.80, though only 128 tasks meet the bar. GPT-6 Astra reaches 231 at $7.45, and Claude Opus 5.5 the joint-highest 241 at $7.80.</p>
-<p>None of the three dominates the others: each additional dependable task costs more. Claude Opus 5 also passes 241, but at $13.30, so Opus 5.5 dominates it outright. GPT-5.6 Sol, the cheapest per single success at $0.127, costs $9.76 per dependable task. The cheapest way to get a right answer is not the cheapest way to get a dependable one.</p>
-<p>We assign each failed trace one deterministic diagnostic signature, and the headline is actionable: roughly four in five failures are tool handling, not reasoning. Across an ablation study in Table 5 of our paper:</p>
-<p>These are unweighted averages of per-model shares and observable labels, not unique causal explanations.</p>
-<p>The practical pattern is simple: agents usually get far enough to attempt the workflow, then fail to recover from tool errors, failed preconditions, or empty lookups. That is a retry and error-recovery problem before it is a model problem.</p>
-<p>Difficulty also changes by domain: across the models listed in Table 2 above, retail averages 59.52% pass@1 while auto insurance averages 33.83%.</p>
-<p>What to do about it. Treat the 20/20 rate as a design input, not a verdict. The same signal the benchmark grades on is available in production: check the terminal state before you commit, not the model's summary of it.</p>
-<p>Classify tool and system errors so retries target the recoverable ones. Cut the tool surface to what the workflow needs. And require human approval on the changes you cannot cheaply reverse. We have not measured the lift from any of these on this benchmark, which is exactly the kind of thing the environment now makes testable.</p>
-<p>ThinkingBox is the agent sandbox, while ThinkingBox-Bench is a dataset benchmark to evaluate agents. The diagram at the top of this post shows the loop; here is what each part does.</p>
-<p>Figure 5: The sandbox loop from panel A in Figure 1 above: isolated tool session, terminal database state, side effects, executable judges.</p>
-<p>Each task defines a starting backend state, a user goal, the available MCP tools, the domain policy, and executable checks over the terminal state. A simulated user holds private context (a booking reference, a preference, or a date of birth) and releases it only when asked.</p>
-<p>Every attempt gets an isolated MCP session with freshly initialized state. Two attempts of the same task never share a database row or cached tool state, which is what makes 20-trial comparison meaningful.</p>
-<p>At the end, a side-effect extractor derives what actually changed, and deterministic judges compare it against the required end state, accepting any trajectory that produces the right outcome while rejecting wrong, missing or extra effects. For requirements with no clean database value ("did the agent disclose this is not guaranteed?"), a narrow binary rubric question handles the semantics. 477 of the 507 tasks are graded on state alone; 30 add response rubrics.</p>
-<p>The trust boundary: the model sees tasks, dialogue and tool schemas. Golden state, assertions, grading internals and credentials stay on the evaluator side.</p>
-<p>ThinkingBox is now on Hugging Face, both the harness and the dataset. ThinkingBox-Bench now sits behind the OpenEnv interface, and each finished episode returns a binary pass/fail reward. The released adapter is designed for evaluation; separate, non-benchmark scenarios can use the same interface in training workflows.</p>
-<p>Tested on Linux and WSL, with Python 3.11+, uv and Docker. You also need a thinkingbox-data checkout at the pinned release and model endpoints for the agent, simulated user and judge. One endpoint can serve all three roles, which is the simplest way to start. The OpenEnv image starts only the OpenEnv API; everything else you run yourself.</p>
-<p>In a second terminal, start Typesense 30.1 and wait for its health check:</p>
-<p>In a third terminal, start the Session Proxy and MCP servers.</p>
-<p>Back in the first terminal, start the OpenEnv server against a ThinkingBox YAML config naming your three models (config guide):</p>
-<p>Gate on readiness before running anything. It returns 503 until its observable data, configuration and Session Proxy checks pass. It cannot observe Typesense or live-probe every model endpoint, so confirm those separately:</p>
-<p>Now score a real episode. example_usage.py only resets and lists tools; for agent actions, effects and assertions use the packaged evaluator:</p>
-<p>The OpenEnv adapter writes operational failures to an errors sidecar so they can be rerun rather than silently mixed with model outcomes. A canonical result must resolve or explicitly account for those attempts; we counted system errors as unsuccessful trials.</p>
-<p>Runs are gated on a pinned framework commit, a pinned data release and a bundle hash, so a canonical result is verifiable rather than asserted.</p>
-<p>The useful part of this work is not our pass@1 leaderboard. It is the environment.</p>
-<p>If you are evaluating an agent that touches real records:</p>
+                <p>This is the follow up to our first blog post, The Agent Said It Was Done. The Database Disagreed. ThinkingBox-Training is now available on GitHub.</p>
+<p>We built ThinkingBox to evaluate an agent's work by comparing the final database state with the expected outcome. We then used the same kind of executable signal as a reward on training tasks outside ThinkingBox-Bench. For Qwen3.8-27B, average success rose from 51.70% to 60.78%, while tasks completed correctly on all twenty attempts rose from 38 to 107 with 50 GRPO steps.</p>
+<p>Figure 1. ThinkingBox turns executable checks of terminal database state into rewards for post-training agents on tasks outside ThinkingBox-Bench.</p>
+<p>We built ThinkingBox to catch agents that say they are done when they are not.</p>
+<p>Each of its 507 tasks in ThinkingBox-Bench (our benchmark dataset) hands an agent a real backend and a set of tools, lets it work, then checks what really changed in the database. In the first post, we caught a model closing a customer's ticket as resolved while the carrier exception behind it was still open. Nine competent-looking tool calls, one wrong database row.</p>
+<p>Then we noticed what we had built. For most tasks, an executable check can return 1 or 0 directly from the final database state. That is not just a grader. This can be a reward function.+</p>
+<p>So we constructed a training pool from ThinkingBox-format tasks outside the benchmark and used their executable outcomes as rewards. The catch was choosing which tasks are suitable for agent training: most tasks are either already solved or hopeless for the model in front of you, and both teach it nothing.</p>
+<p>Difficulty is policy-relative: a task is hard for the current model only until that model learns it.</p>
+<p>We call this offline policy-relative difficulty. We estimated each task's success probability once using the base policy before training and kept the selected training pool fixed throughout the run.</p>
+<p>We used offline policy-relative difficulty to build the training pool, then fine-tuned Qwen3.8-27B with GRPO for 50 steps. To recap, we evaluate each of the 507 benchmark tasks 20 times. pass@1 measures average success across all 10,140 attempts. pass@20 measures the share of tasks solved at least once. Observed 20/20 measures the share of tasks that pass every recorded attempt.</p>
+<p>Table 1. Qwen3.8-27B results before and after 50 steps of GRPO on the offline-selected training pool.</p>
+<p>Training sharply increased repeatable success, with a small decline in at-least-once coverage. The rest of the post explains how we selected practice tasks, built the reward loop, and measured that tradeoff.</p>
+<p>What does that improvement look like on one task? A traveler requests a room downgrade, but company policy requires manager approval first. Before training, the agent changed the booking and issued refunds without approval in 15 of 20 attempts. After RL fine-tuning, it preserved the booking and payment state in all 20.</p>
+<p>Figure 2. One corporate hotel-booking task, 20 attempts per model. The base Qwen3.8-27B model changed the booking without required manager approval in 15 attempts. The RL fine-tuned model preserved booking and payment state in all 20; all expected records matched in 19.</p>
+<p>In a hurry? The headline result is above. The implementation is in Run the training stack.</p>
+<p>ThinkingBox-Bench grades agents on the database records they leave behind. Each of its 507 tasks starts a real backend, hands the agent a set of MCP tools and a simulated LLM user with private context, and at the end runs executable checks against the terminal database state. Checks are against the backend record that needs to be correct, not the specific tool calls. This incentivizes the model to discover possibly new solution paths rather than “rediscover” the human-backed solution, that might be suboptimal albeit correct.</p>
+<p>In our first post we ran eighteen models through that benchmark twenty times each and reported a gap that headline accuracy hides. Kimi-K3 solved 93.89% of tasks at least once but completed only 68 of 507 tasks (13.41%) on all twenty recorded attempts. Claude Opus 5 inverted it: narrower coverage, far more consistency.</p>
+<p>And bigger or better model did not close it. Claude Opus 5.5 scored 0.66 percentage points higher than Claude Opus 5 on pass@1, yet passed exactly the same number of tasks, 241, on all twenty attempts. That gain in headline accuracy bought zero additional dependability.</p>
+<p>If you are choosing a model for work that touches production database records, pass@1 should not be read alone. Observed 20/20 shows which tasks succeed on every attempt, which is closer to what production reliability requires.</p>
+<p>The executable terminal-state verdict was also the training reward. Before unpacking the training loop, here is what changed on the sealed benchmark.</p>
+<p>After training Qwen3.8-27B, we evaluated the selected step-50 checkpoint on the 507-task benchmark it had never trained on. The 507 tasks represent an out-of-distribution test set: their domains, databases, and most MCP tools were not encountered during RL training.</p>
+<p>Table 2. ThinkingBox-Bench pass@1 (%) by domain, for selected models from our first blog's Table 2 and our fine-tuned model for different domains and overall. Observed 20/20 numbers are over the entire benchmark with 507 tasks. Each model is evaluated on all 507 tasks for 20 repeated trials. Bold marks the column leader; underline marks the runner-up.</p>
+<p>The headline result is the observed-20/20 row in Table 1. A 27B model that initially completed 38 (7.5%) of ThinkingBox-Bench on every attempt now completes 107 (21.1%) on every attempt, almost thrice. For comparison, observed 20/20 for Kimi-K3 is 68, GPT-5.4 with 128, GPT-6 Astra has 231, and Claude Opus 5.5 leads with 241.</p>
+<p>Average success and repeatability produce different orderings. In Table 2, we notice that GPT-5.6 Sol scored slightly higher on pass@1 than the RL fine-tuned Qwen3.8-27B (61.91% versus 60.78%) but passed fewer tasks on all 20 recorded attempts: 82 versus 107. Claude Sonnet 4.6 scored lower on pass@1, at 59.19%, yet passed nearly the same number of tasks every time, at 102. Neither metric alone captures the full picture.</p>
+<p>The observed pattern is consistent with sharpening: repeatable success rose while at-least-once coverage fell slightly. This is in-line with prior work. One explanation is that probability distribution moved toward trajectories that work repeatedly while some low-probability paths disappeared.</p>
+<p>Overall, the model did not become broader. It became more repeatable. The next question is where those gains landed.</p>
+<p>Figure 3. Domain-level base scores, RLFT scores, and percentage-point changes. Green change cells show gains and red cells show declines; blue shading indicates the score level within each metric.</p>
+<p>Pass@1 and observed 20/20 rose in all five domains. Pass@20 was mixed: it increased in neobank and consulting, but declined in retail, travel, and auto insurance. Auto insurance had the largest breadth loss (−7.0 points), while retail had the largest observed-20/20 gain (+24.5 points).</p>
+<p>The first post priced consistency using simple math: divide the estimated cost of the full 20-run campaign by the number of tasks the model passed every single time.</p>
+<p>Cost per dependable task = estimated cost of the 507 × 20 campaign ÷ tasks passing 20/20</p>
+<p>Applying the same cost math to the fine-tuned checkpoint's measured token usage:</p>
+<p>Table 3. Estimated evaluation cost and dependability for base and RL fine-tuned Qwen3.8-27B.  Cost per successful attempt divides total estimated campaign cost (507 x 20) by the number of passing attempts.</p>
+<p>At $8.00 per dependable task, the fine-tuned model came close to GPT-5.4 ($6.80), GPT-6 Astra ($7.45), and Claude Opus 5.5 ($7.80) in the companion comparison.</p>
+<p>Figure 4 prices cost per successful attempt against pass@1.</p>
+<p>Figure 4. The golden arrow traces Qwen3.8-27B base pareto cost position to the RLFT (diamond): pass@1 rises from 51.70% to 60.78% while estimated cost per successful attempt falls from $0.177 to $0.139. Ringed circles mark the Pareto cost frontier.</p>
+<p>The move places the fine-tuned checkpoint close to GPT-5.6 Sol, although GPT-5.6 Sol remains cheaper and slightly higher on pass@1. Four models priced in our paper fall outside the plotted range.</p>
+<p>The dollar values are a comparative serving index, not invoice or cloud bills. Serving the fine-tuned checkpoint would be the same as the base model. The calculation includes model inference cost, and excludes training run and policy-probe cost for curating the training dataset.</p>
+<p>These results tell us what moved. The next sections explain the training loop and why selecting the right tasks matters the most.</p>
+<p>Figure 5. The six stages, now in context: candidate tasks feed in, the first three run once offline, the last three repeat for every group in the training run. The trained checkpoint is evaluated against ThinkingBox-Bench.</p>
+<p>Selection runs once, offline, against the base policy model, i.e in this case Qwen3.8 27B; training then uses that fixed pool that has been curated. The dashed amber arrow in Figure 5 marks the path we did not take: re-probing difficulty during the training run.</p>
+<p>Every rollout is a complete episode, not a text completion. It gets a fresh backend, an isolated MCP session, and GPT-5 Chat as the simulated user. Most rewards come from deterministic terminal-state checks; a minority of narrow rubric requirements can invoke the configured judge (GPT-5 Chat).</p>
+<p>Training and evaluation must interpret Qwen output identically. That includes reasoning extraction, tool calls, argument typing, rendering, and isolated task state. Otherwise the reward measures a different agent from the one evaluated. The shared interpretation code is in trainer/core/tb_interpret.py.</p>
+<p>For the reference run, we ran full-parameter RL fine-tuned Qwen3.8-27B on 187 tasks using token-mean GRPO. Each update generated 18 groups of 8 rollouts, or 144 episodes, across 24 H100s. Training ran synchronously with parameter and optimizer offload; AdamW used a 1e-6 learning rate and zero weight decay. We ran the training for 50 steps.</p>
+<p>Zero-variance groups were replaced DAPO-style during training. System errors were handled separately: a backend timeout is not an incorrect agent outcome, so affected groups were refilled rather than scored as failures.</p>
+<p>That explains how retained tasks were trained. The remaining question is which tasks entered the training pool.</p>
+<p>Before diving deep into the selection of training tasks, a disclaimer:</p>
+<p>No ThinkingBox-Bench task was included in the RL training pool. The benchmark was reserved for evaluation.</p>
+<p>ThinkingBox-Bench is out-of-distribution relative to the RL training pool: its domains, databases, policies, and most tools were not encountered during RL training. The two sets still share the ThinkingBox framework, simulated-user machinery, executable terminal-state grading, a few common tools, and a similar task style. These shared elements limit the scope of the transfer claim.</p>
+<p>Why selection matters comes down to one arithmetic fact about GRPO. If all eight rollouts fail, the reward vector is [0, 0, 0, 0, 0, 0, 0, 0]. If all eight succeed, it is [1, 1, 1, 1, 1, 1, 1, 1]. In either case, centering within the group produces no task-reward advantage because no trajectory did better than another.++</p>
+<p>A mixed group such as [0, 0, 0, 1, 1, 1, 1, 1] supplies the contrast GRPO can learn from. That distinction is expensive for a stateful agent: every rollout provisions an isolated backend, runs a real tool session, and calls a separate model to play the user.</p>
+<p>The question that shaped this work was therefore not only which model or optimizer? It was: which candidate tasks should enter the fixed training pool?</p>
+<p>We used an offline pass-rate filter on the posterior to select the training pool. It estimates which tasks are likely to produce contrasting terminal rewards under the base policy.</p>
+<p>So we probe. Each candidate task is run repeatedly against the base policy model. The plain-language rule is simple: tasks the model always fails are unlikely to teach it yet; tasks it always passes are already learned; tasks it solves sometimes are where outcomes can provide contrast.</p>
+<p>Each candidate task is run n times, producing k successes. We model its latent success probability with Jeffreys posterior probability:</p>
+<p>success probability | k successes in n probes  ~  Beta(k + ½, n − k + ½)</p>
+<p>Figure 6. Offline policy-relative difficulty is estimated from repeated base-policy probes and used to retain tasks likely to produce contrasting rewards.</p>
+<p>We partition the unit interval into five buckets with boundaries at 0.08, 0.40, 0.60, and 0.90, chosen as hyperparameters for these runs. Each task is assigned to the bucket containing the greatest posterior mass:</p>
+<p>Further details are in Appendix C.4 of our ThinkingBox paper.</p>
+<p>Figure 7. Zooming in, one task through all six stages: GPT-5.4 screening, base-model probes, difficulty classification, a rollout group, terminal-state grading, and a GRPO update.</p>
+<p>Figure 7 follows one candidate task that can potentially enter the training pool. For the Qwen3.8 27B full-parameter pool, GPT-5.4 first served as a solvability screen. The base policy then succeeded on few of the probes e.g 3 of 8, producing a Beta(3.5, 5.5) posterior. Its largest mass, 54.0%, fell in the Difficult band.</p>
+<p>When sampled for training, the task produced the mixed reward group [0, 0, 0, 0, 1, 1, 1, 1]. Successful trajectories therefore received above-mean task advantage and failed trajectories below-mean advantage, giving GRPO contrast to learn from. A different policy model could place the same task in a different difficulty band.</p>
+<p>The final Qwen3.8-27B curated training pool contained 187 tasks.</p>
+<p>Nothing about the trajectory. The reward is the task's own executable verdict.</p>
+<p>When an episode ends, the sandbox extracts what actually changed in the backend and runs the task's deterministic checks against the terminal state. Any trajectory that produces the correct end state passes. Wrong, missing, or extra side effects fail. The reward is 1 or 0.</p>
+<p>In the benchmark, the database grader can be thought of as the “examiner”: it caught agents that reported success and left the wrong record. In training, the same kind of check can be seen as the “teacher” on a different, disjoint set of tasks.</p>
+<p>We release the data-selection, rollout, reward, and Verl integration used to train Qwen3.8-27B in microsoft/thinkingbox-training. The repository README is the entry point. The detailed guides are:</p>
+<p>Tested on Linux and WSL with Python 3.12 and uv. You need NVIDIA GPUs with a compatible CUDA/NCCL stack, a local Qwen3.8-27B checkpoint, and OpenAI-compatible endpoints for the simulated user and judge. The validated reference configuration uses 3 nodes x 8 H100 GPUs; smaller custom configurations depend on model size, context length, and rollout concurrency.</p>
+<p>The public sample task list exercises the interface. It is not the private 187-task training pool used for the reported run. Supply an authorized training source that remains disjoint from the public benchmark.</p>
+<p>Keep the three repositories side by side:</p>
+<p>The released stack targets Linux, Python 3.12, Verl 0.9.0, and the pinned package lock:</p>
+<p>The final two commands should report a verified patched Verl checkout and no broken requirements. Do not run another automatic package sync afterward: it can replace the patched source installation with the vanilla Verl wheel.</p>
+<p>Start with the publicly provided samples, or add your own authorized dataset in ThinkingBox format. Then run the repository's preparation script:</p>
+<p>The script aggregates policy probes, applies offline policy-relative difficulty filters and benchmark exclusions, and writes the selected train.yaml and test.yaml files. docs/data-preparation.md documents the input fields, loader contract, and complete command.</p>
+<p>Follow docs/reference-q38-run.md to start Typesense and the MCP servers, configure the simulated user and judge, set the model, task-list, checkpoint, and topology variables, and prepare the Ray cluster. Keep credentials in runtime secret injection rather than committed files or shell history.</p>
+<p>Before allocating a training job, use the guide's dry-run command:</p>
+<p>It must exit zero without starting Ray or allocating GPUs. Read the emitted python -m verl.trainer.main_ppo command and every resolved override before launching the run.</p>
+<p>The launcher configures training; it does not provision hosts. On the reference three-node topology, export the same environment on every node, mount CHECKPOINT_DIR at the same absolute path, then start Ray:</p>
+<p>After ray status reports all 24 GPUs, launch once from the head node:</p>
+<p>The first ThinkingBox
+post
+covers Typesense, the MCP Session Proxy, and OpenEnv setup. Merge the trained
+checkpoint following
+docs/evaluation.md,
+then serve it with vLLM.</p>
+<p>From the OpenEnv repository root, set MERGED_MODEL to the merged model
+directory and THINKINGBOX_DATA to the pinned benchmark checkout. The
+historical checkpoint evaluation used this eight-A100 serving configuration:</p>
+<p>In a separate terminal, start the OpenEnv compatibility proxy for the Qwen chat template from the ThinkingBox Training checkout. It listens on port 8014 and forwards to vLLM on 8001:</p>
+<p>Keep it running during evaluation. From another terminal, check readiness:</p>
+<p>Update the agent entry in the existing thinkingbox.yaml; retain its MCP, simulated-user, and judge configuration:</p>
+<p>Start OpenEnv as in the first post, with OPENENV_TB_CONFIG pointing to this
+thinkingbox.yaml and OPENENV_TB_DATASET to $THINKINGBOX_DATA. Once
+/ready succeeds, run the full protocol of 507 tasks × 20 attempts:</p>
+<p>The full profile validates all 10,140 expected task/repetition keys before
+aggregation.</p>
+<p>The useful part of this work is not one Qwen3.8-27B checkpoint. It is the training loop and training data curation that turns executable outcomes into rewards.</p>
+<p>If you are training or evaluating an agent that touches real database records:</p>
 <p>Further details can be found in the following links:</p>
-<p>ThinkingBox code is MIT-licensed; the benchmark data is CDLA-Permissive-2.0; the OpenEnv environment ships under OpenEnv's BSD-3-Clause.</p>
-<p>Disclaimer: every task in the public benchmark is a synthetic reconstruction. The workflows and policies are modeled on real AI agentic enterprise patterns; the customers are not real.</p>
-<p>ThinkingBox and ThinkingBox-Bench is built by the Microsoft Copilot Studio team in partnership with Toloka with collaborators from the University of Pittsburgh, Northwestern University, Columbia University and UC Irvine who interned at Microsoft. Questions are welcome in the comments section below or on github or by email at firstnamelastname@microsoft.com.</p>
-<p>+ OpenRouter cost snapshot taken on Sept 20th 2026; Opus 5.5 pricing as per the Anthropic site.</p>
-<p>ST003_006 delegates its pass check to validate_database. Unequal result and golden database hashes fail even when diff is empty. The diff explains a failure; it does not decide the pass.</p>
-<p>This small replay exercises the released function with four authored effect inputs. Run python3 reproduce.py. It verifies the source pin and tests supplied hashes; it does not calculate a database hash, run an agent, or reproduce the full environment.</p>
-<p>AI-assisted source reading and example by CyberNative AI LLC.</p>
-<p>The useful cut is agent-reported "done" versus backend terminal state.</p>
-<p>A green success from the same process that acted is a claim, not a grade. I'd want the eval to score durable side effects (ticket status, refund state, policy-cited fields) against a frozen oracle — and fail when the narrative is green while the database disagrees.</p>
-<p>Practical check: can a run be marked done when the terminal-state fixture is red?</p>
+<p>ThinkingBox code is MIT-licensed; the benchmark data is CDLA-Permissive-2.0.</p>
+<p>Disclaimer: every task in the public benchmark is a synthetic reconstruction. The workflows and policies are modeled on real enterprise agent patterns; the customers are not real.</p>
+<p>ThinkingBox, ThinkingBox-Bench and ThinkingBox-Training is built by the Microsoft Copilot Studio team in partnership with Toloka with collaborators from the University of Pittsburgh, Northwestern University, Columbia University and UC Irvine who interned at Microsoft. Questions are welcome in the comments section below or on github or by email at firstnamelastname@microsoft.com.</p>
+<p>+ A minority of tasks also include narrow binary rubric requirements for outcomes that the database cannot capture cleanly; those checks can invoke the configured LLM judge.</p>
+<p>++ That zero-gradient problem has a standard batch-time fix: oversample, discard the degenerate groups, refill. The full-parameter run did exactly that, similar to DAPO with replacement of zero-variance groups. But refilling still pays full price for every wasted rollout before throwing it away.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/microsoft/thinkingbox" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/microsoft/thinkingbox-training" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

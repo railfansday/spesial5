@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)</title>
+    <title>Re-Implementing :nth-child() With Modern CSS</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10260.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,57 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)</h1>
+        <h1>Re-Implementing :nth-child() With Modern CSS</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_7f84dc250a.png" alt="Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://css-tricks.com/wp-content/uploads/2026/11/nth-child-3n.webp" alt="Re-Implementing :nth-child() With Modern CSS" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_7f84dc250a.png" alt="Why Your AI Agent Can't Read the Web (and How to Build a Fetch Layer That Can)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://css-tricks.com/wp-content/uploads/2026/11/nth-child-3n.webp" alt="Re-Implementing :nth-child() With Modern CSS" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>This is the least glamorous part of building with LLMs and it's where a lot of agent projects quietly fall over. The model is rarely the problem. The fetch is. In this article we'll look at why live web retrieval has become so unreliable for AI tools, what the numbers say about the shift, and how to build a small, well-behaved fetch layer in Python that fails loudly instead of feeding your model garbage.</p>
-<p>A few years ago, a plain requests.get() worked on most of the public web. That's no longer true, and the reason is simple: there are now more bots than people.</p>
-<p>According to the 2025 Imperva Bad Bot Report, automated traffic made up 51% of all web traffic in 2024. That's the first time in a decade it has passed human activity. Bad bots alone (scrapers, credential stuffers, scalpers) went from 32% to 37% of traffic in a single year.</p>
-<p>Source: Imperva Bad Bot Report 2024 and 2025</p>
-<p>From a site owner's point of view, your polite research agent and a credential-stuffing botnet look much the same at the network edge. Both are non-browser clients making fast requests from data-center IP ranges. So the defaults have tightened. In July 2025 Cloudflare began blocking known AI crawlers by default for new customers, and bot management products now look at TLS fingerprints, header order, IP reputation and JavaScript execution, not just the User-Agent string.</p>
-<p>It helps to understand the publisher's side of the deal, because it explains why your agent is being treated with suspicion.</p>
-<p>Cloudflare splits AI crawling into three purposes: training (collecting data to train models), search (building an index for AI search answers) and user action (fetching a page because a person just asked a question). Training dominates.</p>
-<p>Training crawls take content and send nothing back. Cloudflare measures this with a crawl-to-referral ratio: how many pages a platform crawls for every visitor it sends to the site. In its crawl-to-click gap analysis, the ratios for some AI platforms ran into the tens of thousands, compared with single digits for traditional search.</p>
-<p>If you ran a publication and saw those numbers, you'd block too. The catch is that blocking is usually done by user agent or IP range, so it hits user-action fetches as well. Those are the ones that happen when a person asks your agent to read a specific article, and Cloudflare's 2025 Year in Review found they grew more than 15x during the year. Your agent is caught in a fight it didn't start.</p>
-<p>The mix of crawlers also shifts quickly, which makes static allow and block lists fragile on both sides:</p>
-<p>And restrictions keep piling up. The Consent in Crisis study audited 14,000 web domains and found that a large and fast-growing share of the sources behind the C4 training corpus now restrict AI crawlers, either through robots.txt or their terms of service.</p>
-<p>Source: Longpre et al., Consent in Crisis (NeurIPS 2024)</p>
-<p>So that's the environment your agent fetches in. Here's how to build for it.</p>
-<p>Before writing any retry logic, put names on your failures. "The request failed" is useless to both you and the model. In practice almost every failed fetch falls into one of four buckets:</p>
-<p>Bucket 2 is the dangerous one, because a block page often comes back with a 200 OK. If you don't check, the model will happily summarise "Checking your browser before accessing..." as if it were the article.</p>
-<p>Here's a compact fetch layer in Python using httpx and the standard library's robots.txt parser. It's around 100 lines and covers the four buckets above.</p>
-<p>Use a descriptive user agent with a contact URL. It costs you nothing and site operators are far more likely to allow a client they can identify and reach. Then check robots.txt (standardised as RFC 9309) before every new host.</p>
-<p>The lru_cache means you fetch robots.txt once per origin rather than once per page. In a long-running service you'll want a cache with a TTL instead, since robots.txt files do change.</p>
-<p>This is the core of the layer. Instead of returning raw HTML, return a result that says which bucket you landed in.</p>
-<p>The marker list is deliberately simple. It won't catch every interstitial, but it catches the common ones, and a false "blocked" is much cheaper than a confident summary of a CAPTCHA page. Log every blocked result with its first few hundred characters so you can grow the list from real data.</p>
-<p>Retries should depend on the bucket. Throttled and broken responses get exponential backoff with jitter. Blocked and not-allowed responses get no retries at all.</p>
-<p>Note the cap on wait. A site sending Retry-After: 3600 is telling you to go away for an hour. An interactive agent should report that to the user rather than block a request thread for that long.</p>
-<p>The cheapest fetch is the one you don't make. Agents often re-read the same documentation page several times in one session. Store the ETag and Last-Modified headers and send them back as If-None-Match and If-Modified-Since. A 304 Not Modified response costs the server almost nothing and lowers the odds of being rate limited.</p>
-<p>Wire these into fetch() by passing headers=conditional_headers(url) to client.get(). On a 304, return the cached text. On a 200, call remember().</p>
-<p>Finally, don't hide failures from the LLM. Give the tool output a structured shape so the model can reason about it:</p>
-<p>(extract_main_text is whatever readability or boilerplate-removal step you already use. Libraries like trafilatura work well here.)</p>
-<p>With this in place, the model's answer changes from a made-up summary to "I couldn't read that page because the site blocks automated access. Here's what I found from two other sources." That's a better product, and it builds trust with users.</p>
-<p>Once you've done everything above, some legitimate user-action fetches will still fail. That's usually because the site blocks data-center IP ranges outright, not because of anything your agent did. Teams handle this in a few ways, roughly in order of preference:</p>
-<p>The principle is the same in every case: the network path is a reliability decision, not a way around a site's wishes. Your robots.txt check and your honest user agent should stay in place whichever route the request takes.</p>
-<p>Once your fetch layer returns structured results, observability is easy. Emit one event per fetch with the host, status bucket and latency, and watch these:</p>
-<p>If you're prototyping agents with AI coding assistants, ask them to generate these metrics hooks from the start. They're easy to bolt on now and painful to add later. For a sense of how well current tools handle this kind of infrastructure code, Vibe Coder Journal publishes hands-on reviews and benchmarks of AI coding tools.</p>
-<p>The web your agent reads in 2026 isn't the open, fetch-anything web many of us learned on. More than half the traffic is automated, publishers have good reasons to be wary of AI crawlers, and the defaults now lean toward blocking. You can't change that. You can make your agent a good citizen, though: one that identifies itself, respects the rules, backs off when asked, and tells the truth when it can't read something.</p>
-<p>Most of the reliability gains come from the unglamorous parts: classifying failures, caching and passing honest errors to the model. Get those right and your agent will feel much more dependable, even on the days when half the web won't let it in.</p>
-<p>It depends on the jurisdiction, the site's terms of service and what you do with the content. Respecting robots.txt and site terms is the baseline. For commercial products, get proper legal advice.</p>
-<p>Many site owners expect it to, and RFC 9309 makes no exception for user-triggered fetches. The safest default is to obey it and tell the user when a page is disallowed.</p>
-<p>Many bot-protection systems serve a challenge page with a 200 status. Check the body for challenge markers before passing it to the model, as in the looks_blocked() function above.</p>
-<p>Only for pages that render their main content with JavaScript. Try a plain HTTP fetch first. Headless browsers are slower, cost more to run and are easier to fingerprint.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>The title sounds a bit strange, right? Why re-implement an existing feature, that’s completely useless! I have two reasons for that. The first reason is to be able to adjust the :nth-child() arguments on the fly.</p>
+<p>And you decide to update the 5 or the 8. The only way is to manually rewrite the selector, which isn’t ideal. We cannot have something like the below where you can change the variables as you want:</p>
+<p>With my implementation, you will be able to do it!</p>
+<p>The second reason is to have fun and play with some new features. You will probably never need to rely on a dynamic :nth-child() selector, but I am sure you will learn one or two useful tricks along the way.</p>
+<p>We will rely on the same code structure in all the examples: a container with a bunch of <div> elements inside it.</p>
+<p>And the container controls the variables of :nth-child():</p>
+<p>I am not saying that this structure is mandatory for the implementation. I just considered a simple one to keep things easy to follow.</p>
+<p>Let’s start with the simplest case, a selector that selects only one element:</p>
+<p>I don’t think I need to explain what this selector does. The 5 is nothing but the index of the selected element. So, if B is equal to the index of the element, that element is selected.</p>
+<p>We can translate this into the following CSS code:</p>
+<p>I am using the new if() syntax that allows me to define a condition within style(). If that condition is true, the background color is set to red. Otherwise, nothing happens.</p>
+<p>The if() syntax is not that complex. In our case, we only have one condition, so you can see it as follows:</p>
+<p>The tricky part is how to define the condition within style(). I wrote a small post explaining this part, so do yourself a favor and go read it before we continue: “The Hidden Trick of Style Queries and if().” It’s a quick reading with crucial details that helps you better understand how if() works. From there, you will notice that our condition can be written several ways that are all valid:</p>
+<p>We have our first implementation! You can easily apply it to any property as well:</p>
+<p>The code looks a bit redundant, which is probably one of the drawbacks of this method, but it’s still cool to implement the selector and be able to adjust the value of --B on the fly. Don’t forget that our goal is to learn new tricks, and you already have two of them in your pocket (sibling-index() and if()).</p>
+<p>Here is an interactive demo where you can adjust the value of --B and see the changes:</p>
+<p>Let’s move to our next selector. It selects more than one element.</p>
+<p>Think for a moment about how to implement such a selector. It’s almost the same as the previous one.</p>
+<p>If the index of the element is greater than or equal to the value of --B, the element is selected. As simple as that!</p>
+<p>What about this one? Easy, right? We simply use <= instead of >=!</p>
+<p>We can also easily implement a range selection, which is the combination of both selectors:</p>
+<p>The code should be self-explanatory. It’s even more intuitive than the :nth-child() notation, which requires a few minutes of deciphering if you are not used to it.</p>
+<p>Now let’s deal with the A argument. For example, the following selector:</p>
+<p>…selects the 3rd, 6th, 9th, etc. elements. Seen differently, the index of the element needs to be a multiple of 3. To do such testing, we can use the mod() function. If mod(index, 3) returns 0, it means the remainder of the division of index by 3 is equal to 0, hence, it’s a multiple of 3.</p>
+<p>It works! Another selector with a simple implementation.</p>
+<p>We can identify two special cases. When --A is equal to 1, we have :nth-child(n), which selects all the elements and when it’s equal to 2, we have :nth-child(2n) which is also :nth-child(even).</p>
+<p>While this works fine, there is a small gotcha. When A is a negative value, the selector should select nothing which is logical as all the indexes are positive, but if you try using negative values with my implementation, some elements still get selected which is wrong.</p>
+<p>The mod() function works with negative numbers and can still return 0 in such cases, so to be more accurate, we should test the sign of A.</p>
+<p>See that? I simply added another condition inside style() using the and keyword. The syntax of if() may sound confusing at first glance, but at the end it’s the same as any other language: a bunch of conditions defined inside style(). You can have as many as you want combined with and and or.</p>
+<p>Now let’s combine all the tricks we learned so far to implement the generic form of :nth-child(). In this case, the index is equal to An + B, and we can express n like this:</p>
+<p>n should be a positive integer (zero included). For the positive part, we can use:</p>
+<p>For the integer part, we need to make sure index - B is a multiple of A, and for this, we use mod():</p>
+<p>We translate this into CSS to get the following:</p>
+<p>We are almost good except for the case when --A is equal to 0. In that case, the selection is simply wrong. The mod() results in NaN since its second argument is equal to 0, and this will mess with the condition. Actually, that condition is not meant to work with --A equal to 0.</p>
+<p>We either consider that this implementation is only valid for a value of --A different from 0 (which is probably what we want) or we try to find a solution to include that case.</p>
+<p>We are here to learn and discover new stuff, so let’s try something else. There are probably a lot of ways to fix the case of 0, but here is my idea:</p>
+<p>How does it work? Well, this will be your homework!</p>
+<p>As you can see, I have introduced a new variable that should be equal to 1 if the element is selected by :nth-child(An + B). Try to dissect the code to understand how it works. If you still struggle, check the following post: “Dynamic nth-child() using sibling-index() andif().”</p>
+<p>And here is the final interactive with the complete implementation of :nth-child(An + B):</p>
+<p>We can easily get all the previous selectors by simply adjusting the variables:</p>
+<p>I hope you enjoyed this small exercise. It was a good opportunity to explore the new if() feature, and the :nth-child() selector was the perfect candidate for this. After all, selectors are nothing but a set of conditions to filter elements and select the needed ones.</p>
+<p>What about :nth-last-child()? If you are up for another challenge, try to see how you can update the previous implementation to make it work with :nth-last-child(). (Hint: you may need to rely on sibling-count().)</p>
+<p>We've got lots of ways to help you connect with the greatest front-end community in all the land.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>This is a really clever way to make :nth-child() feel dynamic. Using sibling-index() together with if() and mod() to adjust the A and B values on the fly makes the logic much easier to follow than the usual An+B notation. I especially liked how the range and multiple cases build up step by step from the simplest example.</p>
+<p>@container style(...) can probably solve the basic case for browsers other than Chrome-based ones, but I am not sure about the support for ranges (using <, >, <=, and >=), which itself is only a draft I think … ? But still, this can be a helpful pattern to introduce conditions based on variables. Thanks for the idea!</p>
+<p>Your email address will not be published. Required fields are marked *</p>
+<p>Save my name, email, and website in this browser for the next time I comment.</p>
+<p>Notify me of follow-up comments by email.</p>
+<p>Join our community of front-end nerds! You'll get into the Discord server and member-only perks and free swag.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>Get your t-shirts, prints, stickers, and yes, even mousepads at the brand-spankin' new CSS-Tricks store, now open.</p>
+<p>CSS-Tricks is powered by a small team of real-life humans.</p>
+<p>Coming back November 10! See past issues →</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/why-your-ai-agent-can-t-read-the-web-and-how-to-build-a-fetch-layer-that-can/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://css-tricks.com/re-implementing-nth-child-with-modern-css/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

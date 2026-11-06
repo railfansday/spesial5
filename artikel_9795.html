@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Moving face search off AWS Rekognition in two days: a photo marketplace&#x27;s playbook</title>
+    <title>The Zero-Budget AI Launch Playbook: 80% of Your Launch Happens Before Launch Day</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9795.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,66 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Moving face search off AWS Rekognition in two days: a photo marketplace&#x27;s playbook</h1>
+        <h1>The Zero-Budget AI Launch Playbook: 80% of Your Launch Happens Before Launch Day</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Ftng54chg9b5udtzm96ko.png" alt="Moving face search off AWS Rekognition in two days: a photo marketplace&#x27;s playbook" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/ffT7xg3TrTNEOpm0q2RoZZdy1vX2-uz83e35.jpeg" alt="The Zero-Budget AI Launch Playbook: 80% of Your Launch Happens Before Launch Day" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Ftng54chg9b5udtzm96ko.png" alt="Moving face search off AWS Rekognition in two days: a photo marketplace's playbook" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/ffT7xg3TrTNEOpm0q2RoZZdy1vX2-uz83e35.jpeg" alt="The Zero-Budget AI Launch Playbook: 80% of Your Launch Happens Before Launch Day" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 6
-•
-Edited on Nov 6
-•
-
-
-
-
-Fully Autonomous</p>
-<p>Disclosure: I work on SightRadar, the API this team moved to. The figures below are the ones sellphotos.online reported. The full case study is at sightradar.com/customers/sellphotos.</p>
-<p>sellphotos.online is a marketplace where event and sports photographers upload their shots and guests buy the ones they appear in. A guest uploads a selfie and the platform finds every photo that person is in. They process hundreds of thousands of photos a month across weddings, marathons and corporate events.</p>
-<p>They ran this on AWS Rekognition and had two problems with it. The bill had grown to about $3,500 a month. And in crowd shots, the smaller faces in the back rows were often missed, so guests searched for themselves and came up empty. Those guests complained to the photographer, and the photographer complained to the platform.</p>
-<p>They moved face search to SightRadar in about two days. This post is the playbook they followed, with code. Most of it applies whichever provider you move to.</p>
-<p>A selfie-search product on Rekognition is three things:</p>
-<p>The first two are API calls, and they port. The third is a number tuned to one vendor's model, and it does not. Most bad migrations go wrong at the threshold, not at the API.</p>
-<p>They set up a test collection, indexed about 5,000 photos from a recent wedding, and compared search results against what Rekognition returned for the same photos.</p>
-<p>Pick an event with the hard cases in it: group shots, people far from the camera, bad light. Every provider handles a well-lit portrait, so clean photos tell you nothing.</p>
-<p>Their backend is mostly Python, so they used the Rekognition shim. It keeps boto3's method names, arguments and response shapes, so the change is the import and the constructor:</p>
-<p>This was the biggest chunk of work: hundreds of thousands of existing photos. Indexing them one synchronous call at a time is slow at that volume. Instead they used the batch endpoint, which takes up to 1,000 photo URLs per call and delivers one webhook per photo as results land. They scripted the submissions and let it run overnight.</p>
-<p>Each webhook carries your external_id, a status, and on failure an error.code such as image_fetch_failed. Failed photos are not charged. Keep a list of them and resubmit once you have fixed the cause. The batch guide covers registering the endpoint and verifying signatures.</p>
-<p>Plan for this step to take longer than you expect. It did for them. While it runs you are paying both providers, because live uploads still go to the old one. That double cost is short, but put it in the budget.</p>
-<p>For the next day, every guest search went to both providers and they compared the ranked results. The shim returns Rekognition-shaped responses, so the comparison is short:</p>
-<p>Look at the "only" sets by eye. They tell you more than any aggregate number.</p>
-<p>In their case, SightRadar found more faces in group shots. Its detector scans each photo at several scales, which catches smaller faces that a single-scale pass misses. The ranking order differed slightly in a few searches, but every face Rekognition found, SightRadar found too.</p>
-<p>This is the step people skip, and then they blame the new provider when results look off.</p>
-<p>Rekognition scores similarity from 0 to 100. SightRadar returns cosine similarity from 0 to 1. The shim converts the scale both ways, but converting the scale does not convert the decision. Two models put the same "same person" call at different scores, so a cut-off copied from Rekognition is wrong on the new model.</p>
-<p>They spent a day on this with known match and non-match pairs from their test events. The method is short:</p>
-<p>Each compare is billed as two photos ($0.00186 a pair), so 600 pairs costs about $1.12. Two bands usually beat a single cut-off for photo discovery, because a wrong suggestion is cheap when the guest confirms it. The threshold guide goes further on picking bands.</p>
-<p>By now every existing photo was indexed in both systems, so the cutover was a config change: new index calls and searches went to SightRadar. If you can afford it, keep the old collection for a while so rolling back is also just a config change.</p>
-<p>For context on those numbers, here are the list prices. Rekognition's first US tier is $0.0010 per image. SightRadar's batch rate is $0.00062 per photo, 38% lower, and its real-time rate is $0.00093, 7% lower. Your saving depends mostly on how much of your volume can go through batch and on how many calls you make per photo. Run your own numbers with the pricing calculator before you decide anything.</p>
-<p>Disclosure again: I work on SightRadar. Results depend on your photo mix, your volume, and how carefully you calibrate thresholds.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p>Host of GTM Works. Writing about AI products, go-to-market, and growth.</p>
+<p>Host of GTM Works. Writing about AI products, go-to-market, and growth.</p>
+<p>Host of GTM Works. Writing about AI products, go-to-market, and growth.</p>
+<p>Part 1 of 2: How to earn attention from Reddit, Hacker News and Product Hunt when you have no ad budget</p>
+<p>Try this thought experiment. You have a good idea for an AI product. How long before someone else ships something nearly identical?</p>
+<p>A year ago the honest answer was a few months. Today, with Claude Code, Cursor and a dozen other tools, it's closer to a long weekend. You can polish the model, sand down the UX, tune the prompts. Competitors can do all of that too, and they'll do it faster than you'd like.</p>
+<p>What they can't copy overnight is who already knows you exist: the communities that trust you, the search results that surface you, the people who will say your name when someone asks "what should I use for this?" That's distribution, and it's still stubbornly human work.</p>
+<p>I come from a growth background and have worked on go-to-market for several AI products: a music generator, an AI companion app, a financial-data platform, and a few others. I've done launches with money and without it. Some of them worked. Some of them got my accounts banned. This two-part series is the playbook I wish I'd had at the start, with the failures left in.</p>
+<p>Part 1 is about the launch itself and the three communities most founders obsess over: Reddit, Hacker News and Product Hunt. Part 2 covers search, PR, creators and the art of making noise.</p>
+<p>When I picture "launching a product," my brain reaches for the standard toolkit: buy promotion, record a slick demo video, line up a wave of creators to post the same demo on the same day with the same script, and manufacture the feeling that this thing is blowing up.</p>
+<p>That's a valid playbook, and I'll get to it. But it hides the most important fact about launches: the visible event is the tip of the iceberg.</p>
+<p>Take Product Hunt. Whether your product climbs the daily ranking has very little to do with what you do that day. It depends on whether, months earlier, you quietly gathered people who care. We live in an attention economy where everyone is distracted by something else, so the traffic and noise you capture on launch day are a function of the groundwork underneath.</p>
+<p>The same goes for offline. A great launch is rarely purely online. It leans on the founder friends you met at a conference, the developers you traded favors with, the investor who happily retweets your news. These threads connect to each other, and none of them can be pulled out of thin air the week before.</p>
+<p>So the first reframe: stop asking "how do I launch?" and start asking "what can I build in the 90 days before the launch that makes launch day easy?"</p>
+<p>If I could only give you one principle, it would be this: share the value, not your product.</p>
+<p>In marketing terms: give first, collect later. Put something genuinely useful in front of people before you ask for anything. Don't expect anyone to use your product in return. They have alternatives, they owe you nothing, and they can smell an agenda from the first sentence.</p>
+<p>I'll keep returning to this idea, because it shows up everywhere: in how you post on Reddit, how you write comments, how you build an audience, how you approach creators, even how you make friends at conferences. The tactics change by channel. The rule doesn't.</p>
+<p>It also changes how fast you should move. Value-first marketing is slow by design. If you're in a hurry, you'll be tempted to skip straight to the ask, and the channels below are very good at punishing that.</p>
+<p>Product Hunt is where most founders start, so let's be honest about what it has become.</p>
+<p>The best example I know of a good Product Hunt launch is Gamma, the AI presentation tool. As I remember it, they spent a long time building up a large group of loyal early users before they launched, back when Product Hunt's credibility was still intact. On launch day they rallied those users, and the upvotes were real: actual customers vouching for a product they already liked. That's the model. The ranking was the result of earlier work, not a substitute for it.</p>
+<p>Today the picture is murkier, for three reasons:</p>
+<p>My suggestion: treat Product Hunt as an optional credibility badge, not your launch. If you already have a base of users who will show up and vouch for you organically, go for it, and choose a calm day. If you don't, spend those weeks building the base.</p>
+<p>My team and I have launched on both Product Hunt and Hacker News, and I find Hacker News the more community-driven of the two. It's run by Y Combinator, and it is famously hard to game. If you're thinking about creating a stack of accounts to push a post up the front page, don't bother.</p>
+<p>Three things I'd tell anyone planning a Hacker News post:</p>
+<p>1. Start building your account months ahead. If you want to share an article or a launch there someday, begin now. Spend three or four months commenting thoughtfully on other people's posts and becoming a recognizable voice. You can't suddenly decide on launch week to do something promotional. The community leans technical and pure, and it reacts badly to anything that smells like marketing.</p>
+<p>2. Reputation is what keeps a post alive. If you've made real friends in the community and respected regulars comment on your post, it stays visible far longer. Without that, it sinks quickly.</p>
+<p>3. Interesting beats technical. You don't need to publish hardcore engineering to get noticed. When we were working on an AI music product, ChatGPT went down one day. We wrote a song about the outage and shared it. It caught fire on Hacker News, a small but very real win. The bonus came afterwards: a number of people who write technical blogs saw it and linked to our song from their own posts, which handed us several natural backlinks for free.</p>
+<p>That last part is worth sitting with. We didn't set out to win backlinks. We made something people wanted to share, and the SEO benefit came as a by-product. That's value-first marketing in miniature.</p>
+<p>If you have a small budget or none at all, Reddit is the channel I'd look at first, but only if you can start two to three months early to build up karma and a credible profile.</p>
+<p>One warning before the tactics: don't outsource your posts to someone else's accounts. Only the founder really knows what the product feels like, and many "we'll post for you" accounts just generate generic AI-written content that readers sniff out immediately.</p>
+<p>Write a genuine comparison of your product and similar tools. Be fair. Cover the pros and cons of your competitors as well as your own, and write as a user of AI tools rather than as the company.</p>
+<p>Then post it in small, niche subreddits with a few hundred to a few thousand members, ideally ones whose rules aren't strict about self-promotion. Avoid the giant communities. Their moderators have seen every flavor of disguised promotion and will remove it.</p>
+<p>Why bother if the audience is tiny? Because the goal isn't Reddit traffic. It's two long-tail effects:</p>
+<p>The mistake people make is wanting both: a comparison post and thousands of eyeballs, so they post it in a huge subreddit and get it removed. Pick one goal.</p>
+<p>Posts are slow and risky. Comments are underrated.</p>
+<p>This only works if your profile looks like a real community member's and not a billboard. Participate in discussions that have nothing to do with your product.</p>
+<p>If you do want to post, make it beneficial to others first. In my experience, the posts that have done well for me, reaching tens of thousands of views and thousands of upvotes, all shared something useful and weren't ads.</p>
+<p>Building an AI music product? Share your favorite playlists, artists or recent releases in the right music community. Building an AI travel product? Share routes. Weaving your product into a post in a natural way is tricky, so don't force it.</p>
+<p>And here's the pattern that works: be consistent. Post the same kind of thing on a schedule, say one or two playlists a week. For the first four weeks, mention nothing about your product. Let people get used to you as the person who brings good music. Only when the community knows you can you say, "By the way, I'm building this, and it tries to solve that." By then it feels like a friend sharing news.</p>
+<p>Reddit communities care deeply about their atmosphere. If people recognize you as someone who adds value, they upvote you and thank you in the comments. If not, you're gone.</p>
+<p>The lesson is the one I started with: you can't extract value from a community before you've put some in.</p>
+<p>The cheapest launch I've ever run started months before there was a product to launch.</p>
+<p>We were building a data platform, something like a Bloomberg-style terminal where people can explore all kinds of data. The question every founder in that position asks is: where do the first users come from?</p>
+<p>My answer was to build a media publication in parallel with the product. While the platform was being developed, the publication used its data to write analysis: price trends, macroeconomic outlooks, that kind of thing. Readers found the articles useful enough to forward to friends, and they spread well in several markets. At the bottom of each piece, we invited readers into a private community (a Discord server, for readers outside China).</p>
+<p>The whole thing cost almost nothing. It worked because the content and the product were tightly connected: the articles were made from the product's data, so every reader was already a qualified prospect.</p>
+<p>If you take one idea from this section, take this: find the valuable thing your product makes possible and give that away publicly, long before you ask for a signup.</p>
+<p>Everyone wants the shortcut: the viral post, the front-page ranking, the one tweet that changes everything. Sometimes shortcuts exist. But the launches that hold up are the ones that look like overnight successes and turn out to be slow, boring groundwork on the inside.</p>
+<p>Give first. Be patient. Show up in the places where your users already are, as one of them.</p>
+<p>In Part 2, I'll cover the other half of the playbook: starting SEO on day one with long-tail keywords, using PR to build authority (including with AI search), working with creators without wasting money, and what to make of the rising wave of attention-grabbing stunts, including the cautionary side of the story.</p>
+<p>Host of GTM Works. Writing about AI products, go-to-market, and growth.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/ashish_sikka/moving-face-search-off-aws-rekognition-in-two-days-a-photo-marketplaces-playbook-5ele" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/the-zero-budget-ai-launch-playbook-80percent-of-your-launch-happens-before-launch-day?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

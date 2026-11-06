@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPS in PyTorch 2.15</title>
+    <title>What I Learned Mapping Public Record Links Across 56 Korean Local Councils</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9842.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>MPS in PyTorch 2.15</h1>
+        <h1>What I Learned Mapping Public Record Links Across 56 Korean Local Councils</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/QmoCzaCARLMpBcs7vR2ylpWCDaX2-zk03bzo.png" alt="What I Learned Mapping Public Record Links Across 56 Korean Local Councils" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/QmoCzaCARLMpBcs7vR2ylpWCDaX2-zk03bzo.png" alt="What I Learned Mapping Public Record Links Across 56 Korean Local Councils" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
-<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
-<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
-<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
-<p>To try the release candidate in a separate environment:</p>
-<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
-<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
-<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
-<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
-<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
-<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
-<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
-<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
-<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
-<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
-<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
-<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
-<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
-<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
-<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
-<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
-<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
-<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
-<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
-<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
-<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
-<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
-<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
-<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
-<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
-<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
+                <p>Building JALHANA. Writing about civic tech, public data, AI, and data engineering.</p>
+<p>Building JALHANA. Writing about civic tech, public data, AI, and data engineering.</p>
+<p>Building JALHANA. Writing about civic tech, public data, AI, and data engineering.</p>
+<p>When I started working with South Korean local council records, I expected to spend most of my time reading them.</p>
+<p>I did not expect finding the right entry points to take so much work.</p>
+<p>I’m building JALHANA, a project that connects public records about the same issue over time. To trace an issue, I need to revisit meeting minutes, find related bills, and check what was discussed afterward.</p>
+<p>Before any of that can happen, I need to know where each council publishes its records—and how to find that location again.</p>
+<p>A council’s records are not always accessible through a single system.</p>
+<p>Meeting minutes may live on a separate website. Bills may have their own search interface. Information about council members may appear elsewhere on the main site.</p>
+<p>For someone looking up one issue, a few clicks might be enough. Working across multiple councils creates a different problem: I need repeatable starting points rather than a route I happen to remember.</p>
+<p>I began keeping a directory with four entry points for each council:</p>
+<p>These links serve different purposes. Meeting minutes show questions and responses. Bills provide another part of the legislative record. Member directories help identify the people involved.</p>
+<p>Eventually, I decided to publish the directory so other people would not have to repeat the same search.</p>
+<p>The list began with five local councils and later expanded to 24. The October 5, 2026 release covers 56 local councils and 224 links.</p>
+<p>Those figures describe the directory’s coverage. They do not mean JALHANA has collected every record from all 56 councils.</p>
+<p>Publishing the directory raised another question: what could I reasonably claim about each link?</p>
+<p>An HTTP response provides evidence that a server responded. It does not, by itself, establish that the URL leads to the intended meeting archive or bill search page.</p>
+<p>Following a link from an official council menu provides a different kind of evidence. A person opening the destination and confirming its purpose provides another.</p>
+<p>Rather than placing all of these under one “verified” label, I recorded the checking methods separately:</p>
+<p>The directory also records source URLs, check dates, and the intended scope of each link.</p>
+<p>This makes the files more useful than a bookmark list. Users can assess what was checked and decide whether they need to check anything further.</p>
+<p>Dates matter, too. A council can redesign its website or move its archive. A recorded check describes an observation at a particular time, rather than a guarantee that a URL will keep working.</p>
+<p>The directory is available as CSV and JSON on GitHub.</p>
+<p>The October 5 release contains 56 rows and 31 fields. I wanted people to be able to use the directory independently of JALHANA’s interface.</p>
+<p>For example, after downloading the repository, this Python code prints each council’s name and meeting-minutes URL:</p>
+<p>The files provide starting points for finding records. You still need to examine each council’s system and the records relevant to your question.</p>
+<p>The CSV includes a UTF-8 BOM so Korean text can be opened in Excel. When reading it with pandas, use encoding="utf-8-sig":</p>
+<p>For people who simply want to find an official page, there is also a web directory.</p>
+<p>The directory contains links and metadata. It does not redistribute the underlying meeting minutes, bill documents, or attachments.</p>
+<p>That distinction reflects the larger project.</p>
+<p>At JALHANA, I use AI to help read and connect records about an issue. Readers should also be able to return to the official source and examine the basis for an explanation.</p>
+<p>Finding the source is only an early step. It does not resolve the harder questions: whether two records concern the same issue, whether a later response addresses an earlier question, or what remains unknown.</p>
+<p>But it gives that work a repeatable starting point.</p>
+<p>I originally built this directory because I needed it. Publishing it made me more explicit about what I had checked, how I had checked it, and what the dataset could actually support.</p>
+<p>The directory is still growing. If you find a broken link or an incorrect destination, corrections are welcome through the GitHub repository.</p>
+<p>Building JALHANA. Writing about civic tech, public data, AI, and data engineering.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/what-i-learned-mapping-public-record-links-across-56-korean-local-councils?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

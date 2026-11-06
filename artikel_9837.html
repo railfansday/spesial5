@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hardening Production Multi-Container Topologies with Docker Compose v2</title>
+    <title>The Struggle to Secure Hardware Samples for Honest Tech Reviews</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9837.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,49 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Hardening Production Multi-Container Topologies with Docker Compose v2</h1>
+        <h1>The Struggle to Secure Hardware Samples for Honest Tech Reviews</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/Q5tOwkulFYeQOZHgLwpoxPqZK0O2-ux83a90.jpeg" alt="Hardening Production Multi-Container Topologies with Docker Compose v2" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/i2ucL9JOyqNIH2sJvpyCnp4rqDk1-gp83350.png" alt="The Struggle to Secure Hardware Samples for Honest Tech Reviews" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/Q5tOwkulFYeQOZHgLwpoxPqZK0O2-ux83a90.jpeg" alt="Hardening Production Multi-Container Topologies with Docker Compose v2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/i2ucL9JOyqNIH2sJvpyCnp4rqDk1-gp83350.png" alt="The Struggle to Secure Hardware Samples for Honest Tech Reviews" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
-<p>restart: always is not a resilience strategy. It is a retry loop that hides an ordering bug until the night it doesn't. A Compose stack that survives production treats startup order, network reachability, credentials, and resource ceilings as explicit, testable contracts. This piece takes a typical four-service stack (Nginx, a FastAPI app, PostgreSQL 16, Redis 7) and hardens each of those contracts in turn.</p>
-<p>It works on a laptop and fails in four predictable ways elsewhere:</p>
-<p>Compose v2 implements the Compose Specification's long-form depends_on, where each dependency carries a condition:</p>
-<p>The dependency's container has started (the default)</p>
-<p>Dependencies with their own connection retry logic</p>
-<p>The dependency's healthcheck reports healthy</p>
-<p>The dependency ran to completion and exited 0</p>
-<p>Migrations, seed jobs, one-shot init tasks</p>
-<p>The distinction that matters is process versus readiness. service_started tells you PID 1 exists. It says nothing about whether port 5432 accepts connections. service_healthy gates on a probe you define:</p>
-<p>Note the -h 127.0.0.1. During first-boot initialization, the official Postgres entrypoint runs its temporary server with listen_addresses='': Unix socket only. A socket-based pg_isready can report ready during init, just before that server is stopped. Probing over TCP only succeeds once the real server is listening.</p>
-<p>Migrations become their own service. It runs once, after the database is healthy, and the application gates on its exit code:</p>
-<p>If a migration fails, the app never starts, which is exactly what you want. And because only one container applies the schema, scaling app no longer causes races.</p>
-<p>Split the topology into two user-defined bridge networks:</p>
-<p>The app is the only service on both networks. Nginx cannot resolve the name postgres, because it shares no network with it.</p>
-<p>For credentials, move passwords out of environment: into top-level secrets:. Compose mounts each secret at /run/secrets/<name>, and the value never appears in docker inspect or the process environment. The official Postgres image reads *_FILE variants natively:</p>
-<p>Your own code reads the file the same way:</p>
-<p>One caveat: outside Swarm, Compose implements file-sourced secrets as bind mounts, and silently ignores the long-syntax uid, gid, and mode options for them. They only apply to secrets sourced from environment. With file secrets, the host file's permissions decide who inside the container can read it. Lock down the directory on the host (chmod 700 secrets/) and make the files readable by the service UIDs (chmod 444). A container reads a bind-mounted file without traversing the host directory.</p>
-<p>Without limits, one leaking worker can trigger the kernel OOM killer for the whole host, taking down the database with it. Compose v2 applies deploy.resources outside Swarm:</p>
-<p>cpus is a ceiling. The separate cpu_shares key is only a relative weight that applies when CPUs are contended. Use limits for isolation, and shares only to prioritize.</p>
-<p>Use image-native non-root UIDs where they exist: 70 for postgres:16-alpine, 999:1000 for redis:7-alpine, and 101 for nginxinc/nginx-unprivileged. Running the images as those users from the start means the entrypoints never need root to drop privileges.</p>
-<p>Volume ownership is the trap here. A named volume is safe: Docker seeds it from the image's /var/lib/postgresql/data, which the Postgres image creates with permissions that accept a fixed user:. A bind mount of a host directory is not. The directory is typically owned by root, initdb running as UID 70 cannot write to it, and the container exits on first boot. If you must bind-mount, chown -R 70:70 the host path first. Never reuse a data directory initialized by the Debian-based image, whose postgres user is UID 999.</p>
-<p>Redis runs as a pure cache: persistence is off, and maxmemory sits at 75% of the container's memory limit. That headroom covers connection buffers and fragmentation, so Redis evicts keys before the cgroup kills it.</p>
-<p>Nginx rate-limits per client IP before traffic reaches the app:</p>
-<p>If Nginx sits behind a cloud load balancer, configure set_real_ip_from with the load balancer's range. Otherwise $binary_remote_addr is the load balancer's IP, and every client shares a single rate-limit bucket. TLS terminates either at that load balancer or in an additional listen 8443 ssl server block. On rootless Docker, publishing host port 80 or 443 fails unless net.ipv4.ip_unprivileged_port_start is lowered, so map to unprivileged host ports there and front them with the load balancer.</p>
-<p>Hardening that isn't verified is a guess. After docker compose up -d --wait, which blocks until services are running and healthy:</p>
-<p>Wire the first three checks into CI, so a regression in startup ordering fails the pipeline instead of a deploy.</p>
-<p>The complete, runnable topology lives in the production-compose/ directory of devops-infra-toolkit. It contains this exact docker-compose.yml, the Nginx configuration, and a minimal FastAPI service with an Alembic migration. Generate the two secret files, run docker compose up --build --wait, and every check above should pass. The repository's top-level docker-compose.yml is the naive shape from section 1, so diffing the two files shows every control in this piece side by side.</p>
-<p>Compose hardening contains what runs inside the stack. It does not govern who may drive the Docker daemon itself. That boundary matters most when the client is an autonomous AI agent. The security architecture specification of docker-mcp-guardian lays out that container isolation model. It covers why socket access is root-equivalent, how a read-only-by-default MCP layer narrows what an agent can ask of the daemon, and where a filtering socket proxy fits. Issues and pull requests are welcome on both repositories.</p>
-<p>Don't Hand Claude Your Docker Socket — Build It a Guarded One</p>
-<p>Senior DevOps/Platform Engineer, ~15 years in DevOps, platform engineering & AEM. Deep AWS, Kubernetes/EKS, cloud-native expertise.</p>
+                <p>Australian technology news journalist. Matt, 20 years of IT systems & networking engineering + security turned Journo.</p>
+<p>Australian technology news journalist. Matt, 20 years of IT systems & networking engineering + security turned Journo.</p>
+<p>Australian technology news journalist. Matt, 20 years of IT systems & networking engineering + security turned Journo.</p>
+<p>I’ve reached out to hardware vendors, including NVIDIA and AMD, seeking review samples for Tech Business News, but so far, all I’ve heard back is crickets.</p>
+<p>Meanwhile, I watch channels such as Gamers Nexus and Linus Tech Tips, featuring Linus Sebastian, publishing hardware reviews while I’m still trying to arrange product access.</p>
+<p>They’ve built substantial audiences, and I understand why manufacturers would see value in having their products reviewed by people with that kind of reach and recognition.</p>
+<p>But I keep coming back to the same question: where does that leave smaller publications and individual reviewers who have experience and something worthwhile to contribute?</p>
+<p>I founded Tech Business News in 2020 after spending roughly two decades working in IT, and I want to bring that practical background into hardware reviews.</p>
+<p>The challenge has been getting equipment into my hands so I can form an opinion based on using it, then explain that experience honestly to readers.</p>
+<p>When I watch established reviewers working through the latest hardware, access appears considerably easier from the outside than it has been through my own vendor enquiries.</p>
+<p>I don’t know what arrangements sit behind each review, how equipment was obtained or how much work went into establishing those relationships with the companies involved.</p>
+<p>What I do know is that I’ve approached vendors about reviewing their hardware and haven’t received the replies needed to move those conversations towards actual testing.</p>
+<p>That’s frustrating when you’re trying to build coverage, particularly when the request is about obtaining access to equipment so you can assess it properly for readers.</p>
+<p>A smaller audience doesn’t automatically mean a reviewer has less useful experience, just as a large audience doesn’t automatically establish the quality of an individual review.</p>
+<p>There should be room for different perspectives, including someone who wants to explain what a product feels like to use outside a tightly controlled benchmark session.</p>
+<p>My own interest in hardware starts with a fairly ordinary question: will someone notice a meaningful improvement after spending their money and installing the new component?</p>
+<p>A CPU might have a slightly higher clock speed, but that alone doesn’t tell me whether my everyday experience will improve enough to justify an upgrade.</p>
+<p>I want to know whether a game feels smoother, whether an application responds faster and whether the improvement remains noticeable once the excitement of upgrading wears off.</p>
+<p>For me, chasing small benchmark differences can become a hobby in itself, especially when the discussion centres on advantages that are difficult to perceive during use.</p>
+<p>There’s an audience for that level of comparison, but my preference is to investigate what those results translate into when someone sits down at their computer.</p>
+<p>If I need a chart to distinguish between two experiences that otherwise feel much the same, I’d want to make that clear in my review too.</p>
+<p>That doesn’t make the measured difference irrelevant, because some buyers have workloads where relatively small gains become useful, particularly when repeated across long periods of work.</p>
+<p>It does mean I’d want to explain who benefits, under what circumstances, and whether someone using the hardware differently should expect to notice the same advantage.</p>
+<p>With gaming hardware, I’m interested in the experience of playing, including whether movement feels consistent and whether interruptions become distracting during the parts that demand responsiveness.</p>
+<p>An average frame rate gives useful information, but I’d also want to investigate stuttering and performance drops that might explain why a game sometimes feels uncomfortable.</p>
+<p>Measurements can help identify those problems, while time spent playing helps me describe how they affect the experience and whether they would influence my buying decision.</p>
+<p>My approach would combine those observations with enough testing detail for readers to understand what I experienced, including the settings and other hardware in the system.</p>
+<p>I’m comfortable giving a personal opinion, provided I explain what supports it and acknowledge that someone with different equipment or priorities might reach a different conclusion.</p>
+<p>That’s the kind of review I want to publish: a practical account of whether the hardware improved my experience and who might find that improvement worthwhile.</p>
+<p>My years working in IT give me a foundation for assessing hardware, but they can’t replace direct access to the particular product I’m supposed to review.</p>
+<p>I can read specifications and report a manufacturer’s claims, although an independent assessment requires testing that gives me something of my own to say about performance.</p>
+<p>Without the product, I can’t investigate whether a promising specification becomes a useful improvement, or whether an unexpected limitation changes how I’d assess its overall value.</p>
+<p>Buying hardware provides another route, but every purchase adds an expense before accounting for the time involved in preparing tests, investigating problems and writing the review.</p>
+<p>For a smaller publication, those costs influence which products can realistically receive coverage and how often there’s an opportunity to compare equipment under similar testing conditions.</p>
+<p>A loan sample could help make that work possible, with clear arrangements about testing timeframes and returns, alongside the editorial freedom needed to publish the findings.</p>
+<p>I’m not suggesting that NVIDIA or AMD owes me equipment, and I can’t explain why my approaches haven’t received replies or assume what caused that silence.</p>
+<p>I’d still appreciate an answer, even if it simply explained that review samples weren’t available, because that would give me something definite to work with instead.</p>
+<p>At present, the silence leaves me trying to develop hardware coverage without knowing whether there’s a suitable contact or a realistic opportunity to arrange product access.</p>
+<p>I want the chance to assess equipment through my own experience, bringing a smaller publication’s perspective to a conversation that already includes some very prominent voices.</p>
+<p>If an upgrade makes a noticeable difference, I want to explain where I experienced it, while being equally clear when the benefit is harder to recognise.</p>
+<p>Readers deciding whether to replace a working computer deserve that context, particularly when a technically faster component might deliver less practical improvement than they were expecting.</p>
+<p>Is Elon Musk's "Flying" Roadster The World's Most Expensive Bunny Hop?</p>
+<p>Learjet Crash Has Brought The Conspiracy Crowd Out of The Woodwork</p>
+<p>Australian technology news journalist. Matt, 20 years of IT systems & networking engineering + security turned Journo.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/hardening-production-multi-container-topologies-with-docker-compose-v2?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/the-struggle-to-secure-hardware-samples-for-honest-tech-reviews?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

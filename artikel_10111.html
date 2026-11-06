@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Experimenting with the proposed Cross-Origin Storage API in Transformers.js</title>
+    <title>Accessibility statements now have a home on GitHub</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10111.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,49 +15,115 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Experimenting with the proposed Cross-Origin Storage API in Transformers.js</h1>
+        <h1>Accessibility statements now have a home on GitHub</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/cross-origin-storage/thumbnail.jpg" alt="Experimenting with the proposed Cross-Origin Storage API in Transformers.js" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2026/11/656823335-947f6f10-c9af-4a85-b9b8-72dfcce66825.png" alt="Accessibility statements now have a home on GitHub" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/cross-origin-storage/thumbnail.jpg" alt="Experimenting with the proposed Cross-Origin Storage API in Transformers.js" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2026/11/656823335-947f6f10-c9af-4a85-b9b8-72dfcce66825.png" alt="Accessibility statements now have a home on GitHub" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>(This is a guest post by Developer Relations Engineer Thomas Steiner from the Chrome team at Google.)</p>
-<p>Transformers.js provides Web developers with a simple way to use the power of transformers in their Web apps through task-specific pipelines. To run inference in the browser, developers create an instance of pipeline() and specify a task they want to use the pipeline for. As a concrete example, the following snippet shows how to set up an automatic speech recognition (ASR) pipeline.</p>
-<p>You will notice in the source code that I specified Xenova/whisper-tiny.en as the model, which is a very decent choice for common English automatic speech recognition tasks. In fact, it's even the default model according to the Transformers.js default model resolution, as per the linked excerpt.</p>
-<p>When you run this example in the browser, Transformers.js automatically takes care of downloading and caching the relevant model resources and Wasm files. The following screenshot shows the Chrome DevTools Cache storage section after visiting the app. When you reload the page, the resources are served from the Cache API, and the model returns results almost instantly.</p>
-<p>However, Xenova/whisper-tiny.en being a popular model (and, as mentioned before, even being the ASR default model in Transformers.js), you can well imagine that more than just one app that you visit would use it. To simulate this situation, here's the same example app from before, but served from a different origin. When you visit this different origin app, rather than being usable almost instantly, the browser instead has to download and cache all the model resources again, even if they're byte-by-byte the same as before. Even in this toy example, this adds up to 177 MB of duplicate download and storage, as you can examine in the Storage section of the Chrome DevTools Application panel. You can imagine that this quickly adds up.</p>
-<p>But it gets worse. Let's add a second pipeline to the toy example: sentiment analysis. Sentiment analysis by default uses the Xenova/distilbert-base-uncased-finetuned-sst-2-english model. By not specifying the model, Transformers.js' default model resolution automatically picks it for you.</p>
-<p>Two entirely different AI models, but they depend on the same 4,733 kB ort-wasm-simd-threaded.asyncify.wasm WebAssembly (Wasm) runtime file from the underlying ONNX Runtime library that Transformers.js is built on top of. Open the extended demo on a different origin, and you will notice in the Network tab how also the Wasm runtime gets downloaded and cached again.</p>
-<p>So even if you run apps that don't share the same AI models, your browser still makes redundant requests for shared Wasm resources you already have, and on top of that also caches them again, which consumes space on your hard disk.</p>
-<p>By default, AI model resources come from the Hugging Face Hub, and ultimately the Hugging Face CDN. The browser makes a request for a resource like https://huggingface.co/Xenova/distilbert-base-uncased-finetuned-sst-2-english/resolve/main/config.json which then gets redirected to the final CDN URL like https://huggingface.co/api/resolve-cache/models/Xenova/distilbert-base-uncased-finetuned-sst-2-english/0b6928efcb76139cae2c6881d49cda67fe119f42/config.json?%2FXenova%2Fdistilbert-base-uncased-finetuned-sst-2-english%2Fresolve%2Fmain%2Fconfig.json=&etag=%223c36342ef1f74de2797d667c68c6b7b988d0b87c%22 in this case.</p>
-<p>The Wasm runtime resources are served from the jsDelivr CDN by default. For example, ort-wasm-simd-threaded.asyncify.wasm comes from https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0-dev.20260416-b7804b056c/dist/ort-wasm-simd-threaded.asyncify.wasm at the time of this writing.</p>
-<p>The concrete implementation may vary by browser, but in Chrome, cached resources are keyed using a Network Isolation Key in addition to the resource URL. The Network Isolation Key is composed of the top-level site and the current-frame site. Take the previous toy examples hosted on the origins https://googlechrome.github.io and https://rawcdn.rawgit.net. If they both use the Wasm runtime from https://cdn.jsdelivr.net/npm/onnxruntime-web@1.26.0-dev.20260416-b7804b056c/dist/ort-wasm-simd-threaded.asyncify.wasm, their cache keys will look like in the following table.</p>
-<p>So even if the resource URLs are exactly the same, since the Network Isolation Keys don't match, there's no cache hit, which means duplicate download and duplicate storage. This is the challenge that the Cross-Origin Storage proposal aims to tackle.</p>
-<p>💡 Note: The Cross-Origin Storage API is an early-stage proposal that isn't final. While the proposed API is not yet natively implemented in any browser, you don't have to wait to experiment with it. Install the Cross-Origin Storage extension to inject the navigator.crossOriginStorage polyfill on all pages and test the complete flow.</p>
-<p>The proposed Cross-Origin Storage (COS) API introduces a dedicated navigator.crossOriginStorage interface through which web apps can store and retrieve large files across origin boundaries, identified not by a URL, but by a cryptographic hash.</p>
-<p>That last point about cryptographic hashes is key. Because COS identifies files by their hash rather than by their URL or origin, the same ort-wasm-simd-threaded.asyncify.wasm Wasm runtime you downloaded while visiting https://googlechrome.github.io is recognized as identical to the one https://rawcdn.rawgit.net is about to request, no matter where either of the two origins fetched it from. See the following code snippet that illustrates the basic flow.</p>
-<p>If the resource is in COS, you get back a FileSystemFileHandle from which you can read the blob directly via getFile() (the resulting File inherits from Blob). If the resource is not in COS, you fall back to the network, and write the resource into COS for the next app that needs it, which could be your app, or another unrelated app, potentially on a completely different origin.</p>
-<p>The API is deliberately shaped after the File System Standard's FileSystemDirectoryHandle.getFileHandle() you likely are familiar with from the Origin Private File System (OPFS) API. The hash parameter plays the same role as the name parameter in OPFS: uniquely identifying a resource. The options.create flag works the same way: absent or false for read-only access, true when you intend to write.</p>
-<p>Not every resource should be globally shared. COS gives developers precise control over visibility through the origins option when storing a file.</p>
-<p>One important rule: visibility can be upgraded but never downgraded. If a file is already globally available, a later attempt to store it with a restricted origins list is silently ignored. This prevents a malicious actor from re-storing a public resource and narrowing its availability. The reverse is possible: a file initially stored with a restricted origins list can later be made more permissive. Any site, not just the original storer, can call getFileHandle() for the same hash (hashes are not a secret) with create: true and a broader origins value, and given the browser verifies the hash matches, the resource becomes available to the wider audience from that point on. Note that the upgrading site must still write the full file through the returned handle. This requirement exists to prevent sites from exploiting the upgrade path as a side-channel to detect whether a particular file was already stored in COS.</p>
-<p>A subtle but important property of COS is that the browser verifies the hash when you write a file. If the data you write doesn't match the declared hash, the write fails with an error. This makes integrity checking automatic: an app reading a file from COS can be confident it's getting exactly the bytes it expected. The same guarantee it would have had if it had computed the hash itself after a network download.</p>
-<p>This turns out to be doubly useful in the Transformers.js scenario. Today, after downloading model weights, most apps have no practical way to verify that the CDN served the right bytes. With COS, every file in the store is implicitly verified on write, no matter where it came from, the official Hugging Face CDN or a random site's self-hosted mirror.</p>
-<p>Of course a cross-origin shared cache raises the same question as the partitioned HTTP cache in reverse: if any site can probe for the presence of a file by hash, couldn't an attacker learn something about the user's browsing history by checking whether, say, a game engine Wasm module is cached?</p>
-<p>COS addresses this through two complementary mechanisms:</p>
-<p>Crucially, this means an error is not a definitive answer. It might mean "not stored", or it might mean "stored, but the browser isn't telling you". Apps should always handle it the same way: fall back to the network.</p>
-<p>Going back to the toy examples from before: the ort-wasm-simd-threaded.asyncify.wasm runtime weighs in at 4,733 kB and is shared by every Transformers.js-powered app regardless of which AI model it uses. With COS, the first app to load it downloads it once and stores it under its SHA-256 hash with origins: '*'. Every subsequent app, whether on https://googlechrome.github.io, on https://rawcdn.rawgit.net, or any other origin, finds it in COS immediately. The 177 MB of duplicate Whisper model weights? Same story: Xenova/whisper-tiny.en gets downloaded once, recognized by hash the second time around, and served from COS in milliseconds. And of course, the same also happens for  Xenova/distilbert-base-uncased-finetuned-sst-2-english.</p>
-<p>Transformers.js itself is already piloting the COS API at the library level. Pull request #1549 introduced an experimental COS cache backend behind an opt-in flag. Enabling it takes a single line before you set up your pipeline:</p>
-<p>Note the experimental_ prefix on the flag. It's intentional and signals that the underlying browser API has not yet been standardized and may change without a major version bump. With that flag set, Transformers.js resolves the SHA-256 hash for each Xet-tracked model file (the large ONNX weight files) by fetching the raw Xet pointer (example raw pointer file) and extracting its oid sha256: field. It then uses that hash as the key for navigator.crossOriginStorage. If the model is already in COS (because another site stored it there first), it's served instantly without a network round-trip. If not, it falls back to a regular download and stores the result in COS for the next caller. With the toy example, the advantage in practice is that Xenova/whisper-tiny.en and Xenova/distilbert-base-uncased-finetuned-sst-2-english (and of course ort-wasm-simd-threaded.asyncify.wasm) only ever need to cross the ether once, regardless of how many different origins ask for them.</p>
-<p>The toy example works just fine with Xenova/whisper-tiny.en, but of course you possibly wouldn't say no if the user already has any of the other Whisper variants in their COS cache. For example, the user might already have Xenova/whisper-large-v3, which, as the name suggests, is a lot larger than the tiny variant. Transformers.js's Model Registry makes being flexible about your models possible. If you know your app's needs can be addressed by, for example, any of Xenova/whisper-tiny.en, whisper-medium.en, or Xenova/whisper-large-v3, you can check the registry for the associated files for each model, probe for their existence in the COS cache (which may partially or completely contain the model resources you need), and then take a decision what model to choose eventually. The ModelRegistry.is_pipeline_cached() API directly integrates with COS (and of course the Cache API), so this operation is really ergonomic.</p>
-<p>The COS API is not yet natively implemented in any browser, but you don't have to wait to experiment with it. Install the Cross-Origin Storage extension to inject the navigator.crossOriginStorage polyfill on all pages and test the complete flow. Check out the source code of the extension and follow the usage instructions to get started.</p>
-<p>With the extension installed, try the full end-to-end experience right now: open the first toy example with COS enabled, let it load Xenova/whisper-tiny.en, then open the toy example with COS enabled from the second origin. Instead of the 177 MB re-download you saw before, the model is served from COS in milliseconds. When you open the extension's popup window, you can see COS in action. If you View by Resource, you can see the resource with the SHA-256 hash 950978b1dbcbf250335358c1236053ba19a7f7849b33dc777f4421b72b7626fa shared across https://googlechrome.github.io and https://rawcdn.rawgit.net.  It may not be obvious, but as you can verify by comparing the SHA-256 hash on Hugging Face, you're looking at https://huggingface.co/Xenova/whisper-tiny.en/blob/main/onnx/decoder_model_merged.onnx. For now, the extension is mostly aimed at power users like you. Once implemented in the browser, there will be a friendlier integration in the browser's Settings page. The screenshot below shows the extension's popup window with the View by Resource tab active, where you can see the shared resource with its hash and the two origins that have it in their COS cache.</p>
-<p>If you're building your own Transformers.js app, the call to action is simple: add env.experimental_useCrossOriginStorage = true before your first pipeline() call, install the extension, and watch the duplicate downloads disappear from your Network tab. Every site that opts in makes the experience faster and cheaper for every other site's users. Opting in is completely risk-free: if the COS API isn't supported because the user doesn't have the COS extension installed, the code just falls back to the default path (the Cache API).</p>
-<p>Transformers.js is not alone in experimenting with COS. WebLLM (opt-in, see documentation) and wllama (automatic, see PR) are likewise excited about this proposed API.</p>
-<p>On the Chrome team, we're considering implementing the COS API natively in the browser. As an early stage proposal, we welcome feedback on the API, and the shape of the proposal itself. The Cross-Origin Storage repository is the place to file issues, express support, or open PRs.</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>GitHub now highlights ACCESSIBILITY.md files and helps maintainers document accessibility goals, known barriers, supported environments, contributor expectations, and reporting processes.</p>
+<p>Accessibility work often lives in issue trackers, contribution guidelines, audit reports, team knowledge, and conversations with users. When that information has no predictable home, people who encounter a barrier must search for it, and maintainers lose context as contributors and project ownership change.</p>
+<p>An ACCESSIBILITY.md file, now visible on repository overview pages, gives a project one durable place to explain its accessibility goals, contributor expectations, supported environments, known limitations, and process for reporting barriers.</p>
+<p>GitHub now recognizes the ACCESSIBILITY.md file in the repository’s root, .github/ directory, or docs/ directory. A repository can also inherit a statement from its organization’s .github/ repository. For public repositories, maintainers can add or propose a statement from Insights > Community Standards using a concise starter document.</p>
+<p>GitHub’s community health files help people understand how a project works:</p>
+<p>Recognizing ACCESSIBILITY.md gives accessibility information a dedicated place alongside that guidance.</p>
+<p>New repositories also include an accessibility issue label by default. The statement explains how to report a barrier and what to expect next, while the label helps maintainers organize and track the resulting work.</p>
+<p>GitHub CLI’s accessibility statement, for example, documents settings, known barriers, and workarounds. It explains why table output can be difficult to follow with a screen reader and provides a command that prints pull request numbers and titles one per line instead. It also asks contributors changing prompts or output to show the results with relevant accessibility settings enabled. Developers using the CLI get a specific workaround; developers contributing to it get clear expectations for their changes.</p>
+<p>The GitHub Annotation Toolkit’s accessibility statement documents a limitation of its Figma library: annotations use canvas position, connecting lines, and matching numbers to visually convey relationships. Access to individual canvas objects does not necessarily communicate what those relationships are.</p>
+<p>The statement gives collaborators a concrete alternative: provide a structured text description that identifies each annotated element, its intended semantics and behavior, and any relevant ordering. For developers preparing or receiving a design handoff, this explains what information needs to accompany the visual annotations.</p>
+<p>The file also explains how to report accessibility barriers and explicitly states that the library has not undergone keyboard-only or screen-reader testing. Readers get both practical guidance and clear limits on what the project has verified. Showing this information in the repository overview makes it easier to find alongside the project’s other documentation.</p>
+<p>There is no one fixed format for an ACCESSIBILITY.md file. A small library, command-line tool, documentation site, and large web application have different users, risks, and maintenance capacity. Start with accurate information that the project can keep current.</p>
+<p>Keep in mind that a project can name a Web Content Accessibility Guidelines version and level as a target. A target does not establish verified conformance. A conformance claim requires an evaluation and should identify the evaluated scope, date, method, and evaluator.</p>
+<p>The most useful accessibility statements serve people who arrive after something has already gone wrong. Plain language, descriptive links, and a clear reporting route matter more than legal or standards-heavy language.</p>
+<p>Useful reporting guidance invites relevant context, such as the affected task, page, observed behavior, browser, operating system, and assistive technology. It makes screenshots and recordings optional and avoids asking someone to prove a disability.</p>
+<p>The statement should also set expectations that maintainers can consistently meet. That can include acknowledgement, status updates, available workarounds, expected timelines, and an opportunity for the reporter to verify a fix.</p>
+<p>The Open Source Accessibility Toolkit provides a detailed public example.</p>
+<p>GitHub’s Community Standards workflow provides a shorter starter with prompts that projects can replace with their own information. The goal is not to produce a perfect policy before publishing the file. Start with accurate information, name the gaps, and update the statement as the project’s accessibility practices mature.</p>
+<p>Adding an accessibility statement makes accessibility work more discoverable to users, contributors, and maintainers. Normalizing that practice across open source projects helps make accessibility part of how communities plan, build, report, and improve their work.</p>
+<p>Add an accessibility statement to your repository ></p>
+<p>Jan Maarten (he/him) is a designer and accessibility specialist living on unceded Duwamish lands. He brings two decades of experience across product design, brand, strategy, and leadership. At GitHub, he bridges design and engineering to improve accessible products, evolve design-system infrastructure, and create resources for the wider design community, including the open-source GitHub Annotation Toolkit.</p>
+<p>We built a plugin for the GitHub Accessibility Scanner to make sure your alt text is actually accessible. Here’s how it works.</p>
+<p>Learn about the progress we’ve made toward our accessibility goals and how you can help make open source more inclusive.</p>
+<p>Louis Erbkamm built the first prototype in his free time. Now GitHub Copilot helps him maintain it alone.</p>
+<p>GitHub’s annual month-long game jam is back for its 14th year! This November, make a game inspired by the theme SHIFT. Change gears, swap perspectives, bend reality, or just press a certain key.</p>
+<p>The open source Git project just released Git 2.56. Here is GitHub’s look at some of the most interesting features and changes introduced since last time.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/cross-origin-storage" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/open-source/maintainers/accessibility-statements-now-have-a-home-on-github/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

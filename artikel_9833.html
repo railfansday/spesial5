@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Exactly-Once Publishing on Cloudflare D1 Without Transactions</title>
+    <title>Egyptian and Nigerian English join the Open ASR Leaderboard</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9833.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,50 +15,26 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Exactly-Once Publishing on Cloudflare D1 Without Transactions</h1>
+        <h1>Egyptian and Nigerian English join the Open ASR Leaderboard</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/79HRs4xnb5UK7XbfTI5Pz7TyOhu2-aig3b44.png" alt="Exactly-Once Publishing on Cloudflare D1 Without Transactions" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/open-asr-leaderboard-liva/thumbnail.png" alt="Egyptian and Nigerian English join the Open ASR Leaderboard" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/79HRs4xnb5UK7XbfTI5Pz7TyOhu2-aig3b44.png" alt="Exactly-Once Publishing on Cloudflare D1 Without Transactions" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/open-asr-leaderboard-liva/thumbnail.png" alt="Egyptian and Nigerian English join the Open ASR Leaderboard" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I run a small daily game, Costcodle, where everyone guesses the price of the same Costco item each day. Just after midnight UTC, a scheduled job publishes the answer page of every puzzle that has finished. It is a tiny job, and for a while it was the part of the system I trusted least.</p>
-<p>The reason was a migration. I was merging two Cloudflare Workers, one for the website and one for scheduled jobs, into a single Worker. Until the old one was deleted, both would fire the same cron string at the same moment, against the same database. I wanted three guarantees to survive that overlap:</p>
-<p>The database is Cloudflare D1, and that is where it gets interesting.</p>
-<p>D1 gives you batch(). The documentation is clear about what it does: "Batched statements are SQL transactions," and if a statement in the sequence fails, D1 "aborts or rolls back the entire sequence" (D1 Database API).</p>
-<p>That is a strong guarantee about errors. It says nothing about statements that succeed and do nothing. An UPDATE whose WHERE clause matches zero rows is not an error, so the batch carries on and commits whatever the other statements did.</p>
-<p>What the Worker binding does not give you is an interactive transaction: open it, read a row, decide in your own code, then write, all under one lock. So the natural pattern, "check that I still hold the lease, then write," has a gap in it. Between the read that checks and the batch that writes, another job can take over. If the batch then runs three statements and only some of their conditions still hold, you get exactly the state you were trying to avoid: an item marked published with no page, or a page with no revision bump.</p>
-<p>The fix I ended up with has two parts. A lease with a fencing token decides who may publish. A guard repeated inside every statement of the final batch makes sure a writer that lost the lease changes nothing at all.</p>
-<p>Leases live in a job_leases table: a key such as publication:1121, an owner id, an expiry and a fence counter. Taking a lease is a single upsert (simplified from the real repository):</p>
-<p>If nobody holds the key, the insert creates it with fence 1. If the current lease has expired, the conflict branch hands it to the new owner and increments the fence. If the lease is still live, the setWhere clause matches nothing, no row comes back, and the caller skips that item for now. Each run gets a fresh random owner id, so two Workers firing the same cron look like two independent owners competing for the same keys. My leases last 180 seconds.</p>
-<p>A lease alone is not enough, and the reason is well known. Martin Kleppmann's How to do distributed locking puts it plainly: "you need to include a fencing token with every write request to the storage service." A holder can stall long enough for its lease to expire, someone else takes over, and then the first holder wakes up and writes anyway. HackerNoon has two good deep dives on this failure, The Fencing Gap: Why Your Distributed Lock Isn't Safe and Building Distributed Leases With Consensus, Heartbeats, and Fencing Tokens. Both arrive at the same rule: the storage layer has to check the token itself.</p>
-<p>In my case the storage layer is the same SQLite database that holds the lease, which makes that check unusually cheap. It can be part of the write.</p>
-<p>Every write that depends on the lease carries this condition:</p>
-<p>If another job has taken over, the fence no longer matches, and the condition is false inside the very statement that would have written.</p>
-<p>The final publish batch takes this further. Its first statement inserts or updates the page with INSERT ... SELECT ... WHERE <guard>, and the guard re-checks everything the job verified earlier, in SQL: the lease, the ledger item's state, the question bank version, that the image is ready, and that the page is still at the content version the job expected (plain optimistic concurrency). That statement also writes a random commit_token. Every statement after it is conditioned on that token having landed:</p>
-<p>If the guard is false, statement 1 writes nothing, so the token never lands, so statements 2 and 3 match zero rows as well. The zero propagates through the whole batch. The job reads the page back, sees a different token, and reports lease_lost or conflict without having changed anything.</p>
-<p>The same guard enforces two one-way rules I care about. A page that search engines may index never goes back to noindex, and a page that has its product photo never loses it. Both are expressed as conditions on the existing row, so a stale or confused writer cannot undo them.</p>
-<p>There is a test for the exact gap described earlier. It lets the job finish its read batch, then has a second repository take over the lease before the final batch runs. The call returns lease_lost, and the test then checks the database: no page row, a publication revision still at 0, and the ledger item still marked as processing.</p>
-<p>Statement 3 above is the second half of the design. Every change to published content, a new page, an updated page or a withdrawal, bumps one global publicationRevision in the same atomic batch that made the change. A rerun that changes nothing public leaves it alone.</p>
-<p>The edge cache uses that number as part of every key for content that depends on publications:</p>
-<p>Each request reads the current revision from the primary database first and only then looks in the cache. After a publication, every request builds a key that has never been stored, misses, renders the fresh page and stores it under the new key. The old entries are still there. Nothing will ever ask for them again, and they age out on their own.</p>
-<p>This matters more on Workers than it might elsewhere. The Cache API documentation notes that "the contents of the cache do not replicate outside of the originating data center," and that cache.delete "only purges content of the cache in the data center that the Worker was invoked." A purge from inside a Worker is a local operation. Changing the key is global by construction.</p>
-<p>The general pattern of versioned cache keys is covered well in The Many Layers of Caching. What surprised me was the one case it did not cover.</p>
-<p>In my game, yesterday's puzzle stays playable for a 10 minute grace window after midnight UTC, and its answer must not become public until that window ends. At 00:10 UTC, yesterday's answer becomes publishable. No publication has happened at that instant, so the revision has not changed.</p>
-<p>If a "not published yet" response had been cached at 00:09 with a 300 second lifetime, it would keep answering until 00:14 under a perfectly valid key. So content entries get a lifetime of the smaller of 300 seconds and the time left until 00:10 UTC. If your data has any moment where visibility changes without a write, a revision-keyed cache needs the same treatment: find that moment and make sure no entry lives across it.</p>
-<p>The price of the whole scheme is one database read per cacheable request, to learn the revision. For a site of this size that is a good trade.</p>
-<p>The pattern of putting every condition inside the write also works without a lease. After each game, the client can report the result for the day's shared stats. The rules are: one row per game session, at most 50,000 rows per puzzle, and a dense slot number for each row. All three are handled by one statement:</p>
-<p>SQLite runs a single statement atomically and D1 serializes writes to a database, so two concurrent reports cannot take the same slot, a duplicate session inserts nothing, and a full puzzle inserts nothing. There is no window between the check and the write because there is no separate check.</p>
-<p>One detail took a test to get right. The bare max(slot) sits alone in its own scalar subquery. SQLite's MIN/MAX optimization can answer a single MAX() over the leading column of an index "by doing a single index lookup rather than by scanning the entire table," and wrapping it in a larger expression loses that. A test seeds 49,999 rows for one puzzle and asserts that the next insert reads fewer than 20 rows. For the ON CONFLICT clauses used throughout, the SQLite UPSERT documentation is the reference.</p>
-<p>Unit tests cover each piece: concurrent lease claims, two concurrent compare-and-set commits where only one wins, and the takeover between preflight and commit. The test I trust most runs on the real stack. An integration run starts the actual Worker with D1 and R2 and fires the publish cron twice at the same instant, the way the old and new Workers would during the merge. Then it fires the hourly compensation job twice at once, several rounds in a row.</p>
-<p>The result: one daily quota row, six pages each published exactly once at content version 1, a publication revision of exactly 6, and seven source images each downloaded and stored exactly once. Two more simultaneous compensation runs afterwards find nothing to do and change nothing.</p>
-<p>You can see the pages this pipeline publishes in the Costcodle answers list.</p>
-<p>How do you get exactly-once behavior out of a store that only offers batches? I would like to hear what other people have built on D1 or plain SQLite.</p>
-<p>Costcodle is an independent fan game. It is not affiliated with, endorsed by, or sponsored by Costco Wholesale Corporation.</p>
-<p>My Tests Fail If Anyone Types a Dollar Amount by Hand</p>
+                <p>A few months ago, we added private data to the Open ASR Leaderboard: 11 splits from Appen and DataOceanAI covering scripted and conversational speech from five accents (blog). The community response was great, with many highlighting the importance of held-out sets for trustworthy evaluations. Since then, we added one more private split for Indian-accented English with Voice Arena (blog).</p>
+<p>We’re excited to announce a new collaboration with Liva AI to add even more private data with two new accents: Egyptian 🇪🇬 and Nigerian 🇳🇬.</p>
+<p>This is part of our continued effort to improve representation in ASR evals (more accents and more languages) and to improve trust (new private data to minimize benchmaxxing, and new data providers). We’re excited to see the community continuing to push ASR performance for the world 🤗</p>
+<p>With these new accents, we can now present a richer breakdown of accents, based on Kachru’s Three Circles (kudos to Hume AI for this idea in their leaderboard). The Open ASR Leaderboard will now report:</p>
+<p>As more accents join, we’ll split the Outer and Expanding Circles.</p>
+<p>Liva AI collects multimodal interaction data through consumer products used by real people. Because Liva owns both the collection environment and distribution, it can design products around specific model gaps across domains, industries, languages, modalities, and interaction types. This gives it access to natural, high-context behavior that emerges through real product use, rather than artificially elicited or task-based interactions.</p>
+<p>Explore and compare English speech‑recognition model performance</p>
+<p>Browse speech‑to‑text model performance across datasets</p>
+<p>Explore and compare English speech‑recognition model performance</p>
+<p>Browse speech‑to‑text model performance across datasets</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/exactly-once-publishing-on-cloudflare-d1-without-transactions?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-asr-leaderboard-liva" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
