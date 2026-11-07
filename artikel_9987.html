@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Nondeterminism in Futhark</title>
+    <title>Hugging Face and Cerebras bring Gemma 4 to real-time voice AI</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9987.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,180 +15,35 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Nondeterminism in Futhark</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
+        <h1>Hugging Face and Cerebras bring Gemma 4 to real-time voice AI</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/cerebras-gemma4-voice-ai/thumbnail.png" alt="Hugging Face and Cerebras bring Gemma 4 to real-time voice AI" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/cerebras-gemma4-voice-ai/thumbnail.png" alt="Hugging Face and Cerebras bring Gemma 4 to real-time voice AI" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Last week I attended IFL2026, which was
-probably one of the best conference experiences I have ever had. One of the many
-good presentations was by Michael Haddon, who
-presented The Replay
-Lattice, which is a type
-system for floating-point reproducibility. The type system was presented for a
-demonstration language called Lane, but it inspired me to think more carefully
-about nondeterminism in Futhark (there is some), and what it might cost to get
-rid of it.</p>
-<p>I often use the terms âdeterminismâ or âdeterministicâ when explaining why I
-think data parallel programming is such a good paradigm, so perhaps it is
-surprising to see me write a blog post about nondeterminism in Futhark. But as
-is so often the case with such bold promises, they often tend to get a little
-weaker once you look closely enough. Michael Haddonâs work defines some
-nomenclature that is helpful for this discussion:</p>
-<p>Exact means that the computation produces the same result every time,
-guaranteed. (Michael describes this as matching the âserial referenceâ, which
-I think is not the best way of looking at it, but thatâs a question of
-perspective)</p>
-<p>Replay means that if you rerun the computation with the same âscheduleâ
-(in some sense âmachineâ), you will get the same result, but other machines
-may give different results.</p>
-<p>Approx means potentially nondeterministic results.</p>
-<p>The kind of nondeterminism we are talking about here is not the kind of
-free-form nondeterminism that arises from classic shared-state concurrent
-programming. Indeed, both Lane and Futhark are pretty much exclusively concerned
-with the kind of nondeterminism that arises from floating-point rounding errors.
-The simplest example is the non-associativity of addition:</p>
-<p>If we have an array of numbers we need to sum, then the result depends on the
-order in which you sum them. When parallelising a summation, you often do things
-like split the numbers into blocks, sum each block on a separate processor, then
-combine the partial results. This changes the order of addition, and hence the
-result. Now, an important point is that there is no reason to think that the
-parallelised result is numerically worse than a serial left-to-right
-summation, but it will be different. Further, an efficient implementation will
-likely choose a number of chunks somewhat proportional to the number of
-processors on the machine, which means the result may also be different on other
-machines (but again, not necessarily worse). This corresponds to the âReplayâ
-class of nondeterminism. Finally, the partial results may be combined using
-atomic instructions, which may be
-resolved in a different order when the program is rerun on the same machine.
-This is then âApproxâ.</p>
-<p>Even in this simple example of summing a bunch of numbers, we encounter both
-classes of nondeterminism. Note that none of them are ârace conditionsâ in the
-usual sense of the program sometimes just malfunctioning: the point is that
-the result changes, but given that the result is in some sense already âwrongâ
-(due to roundoff error), the main issue is that there are cases where we care
-about getting the same âwrongâ result every time.</p>
-<p>So in Futhark, ostensibly a deterministic language, where does the
-nondeterminism come from? There are a few sources. Some of them come when
-programmers violate mandated constraints (but which are unchecked for various
-reasons), and others are basically down to floating-point roundoff error.</p>
-<p>Let us start by considering language abuse. The worst but also least interesting
-case is using the #[unsafe] attribute
-to disable safety checks, after which you can do arbitrary memory reads and
-writes. This can be avoided by passing
---safe to the compiler, or perhaps by just not doing this kind of cowboy
-coding in the first place. If you are a good enough programmer that your code
-does not need any safety checks, why not just go and write in C? Those folks
-never make mistakes.</p>
-<p>Another more insidious problem is related to the scatter construct. The
-semantics of an expression scatter d is vs are simple enough, and can be
-expressed with this imperative pseudocode:</p>
-<p>That is, scatter d is vs pairs the indexes in is with the corresponding
-values in vs and writes each value to the corresponding index. It is a
-parallel random-access write. To ensure that the writes can indeed be written in
-parallel, Futhark requires that is contains no duplicates, or in a slight
-weakening, that if is contains duplicates, then the corresponding values are
-also identical. This is not checked dynamically, and a program can get in an
-awful lot of trouble by violating this property. Which write âwinsâ is
-unpredictable - in the worst case, you can even get a âtornâ write that combines
-two different values.</p>
-<p>This behaviour of scatter is thorny, and even experienced Futhark programmers
-sometimes make this mistake. The reason it has no safety checks is twofold:</p>
-<p>scatter is a fundamental
-construct used in
-most sophisticated parallel algorithms, and so its performance is paramount.</p>
-<p>Iâm not sure how to detect duplicate writes in a way that does not violate
-the cost model (although
-scatter is already a bit iffy in that
-regard). Basically, the
-cost of scatter must be proportional to the number of elements written, not
-to the total size of the target array, and that makes it difficult to
-construct appropriate auxiliary structures for safety checks.</p>
-<p>And yes, I do realise the irony of insisting on an unsafe scatter after making
-fun of C programmers for using an unsafe language.</p>
-<p>Anyway, letâs move on to reduce. Parallel reductions, just like parallel
-scans, histograms, and so on, work only if the provided operator is
-associative and in some
-cases also commutative. This is documented but unchecked - in Futhark you can
-do a reduce with an arbitrary operator of the right type, and it just might
-give you nonsensical or nondeterministic results. It is a common error among new
-Futhark programmers to treat reduce as a general fold and use operators that
-are not associative, but it seems not to show up so much among more experienced
-programmers. The reason we do not check for associativity is that it is
-impossible, and even when it is
-possible it remains hard - well beyond what a practical type checker is capable
-of. It is not too hard to empirically test
-associativity and other properties, and so it seems
-that this source of nondeterminism is not so problematic in practice.</p>
-<p>That actually concludes the list of âtrueâ nondeterminism in Futhark, and in
-both cases we can wash our hands and blame the programmer. Of course, there is
-one rather important caveat hereâ¦</p>
-<p>Strictly speaking, floating-point addition is not associative, and so we could
-just declare that reduce (+) 0 on floating-point numbers is simply wrong.
-However, Futhark is not mainly intended as a framework for explaining why the
-program you wrote is wrong, but rather as a practical tool for parallel
-programming, and clearly people want to sum floating-point numbers. Indeed,
-summing and multiplying floating-point numbers is worth trillions of currency
-units these days!</p>
-<p>As such, Futharkâs reduce (and similar functions) do not say that the result
-you get back is completely arbitrary in case the provided operator is
-nonassociative. Instead, they say that the result you get back is some
-arbitrary ordering of applying the operator to the input elements. The precise
-ordering is unspecified (weâll return to this), but it will be some order, and
-if the function is associative, it just so happens that the order does not
-matter for the final result.</p>
-<p>The application order chosen by Futhark depends on the backend and the hardware.
-With the c backend, it will be a straightforward left-to-right loop across the
-input array. With the GPU backend, it will split the input into chunks, sum them
-separately, and combine the partial results. The number of chunks depends on
-runtime queries of the GPU hardware topology, and can also be configured by the
-user via tuning parameters. Since the chunking
-strategy (the âscheduleâ) depends on the hardware and the input size, repeatedly
-re-running the same reduction on the same system will consistently give the same
-result - the âReplayâ case in Michael Haddonâs terminology. This is not a
-language guarantee, but it is how it is implemented right now.</p>
-<p>A reasonable question is whether we could implement summation in a different way
-that will always give the same result, no matter the input. Indeed, this is
-possible. Consider for simplicity that the input array is a power of two. We can
-then implement reduction by repeatedly splitting the array in half, combining
-the two halves using the provided operator, and continuing until only a single
-element is left:</p>
-<p>We can generalise this to arbitrary operators (even non-commutative ones) and
-non-power-of-two sizes with a bit more complexity. Note that this implementation
-does not use any Futhark constructs that are nondeterministic, hence by
-construction it is also fully deterministic. Will it produce the same result as
-a sequential foldl (+) 0? No, because the order of application is different,
-but if you compile sum_tree with the c backend then it will produce
-exactly the same results as if you compile with the cuda backend. This is
-the âExactâ case.</p>
-<p>There is a reason we donât implement reduce like that, of course. In a quick
-experiment for summing 100 million numbers, I observe that using reduce (+) 0
-is almost 3x faster than sum_tree on an MI100 GPU. The gap can be narrowed
-by using blocking to reduce the number of GPU kernels necessary, but ultimately
-the fastest way to perform a reduction does depend on fine details of the
-hardware, and when your operator is not truly associative, that will result in
-observable differences.</p>
-<p>The same situation arises with Futharkâs other basic building blocks. I suspect
-reduce is actually the best case, in the sense that a hand-written version
-can approach the performance of the built-in one. For scan, I know that the
-compilerâs fancy decoupled
-lookback
-is much faster than anything that can be written in Futhark itself, and for
-reduce_by_index a fully deterministic implementation involves a sort and a
-segmented
-reduction, which
-is wildly slower than the code produced by the compiler, which makes careful
-use of atomic instructions.</p>
-<p>This does make me wonder if one could write a Futhark library that replaces all
-the SOAC implementations with guaranteed deterministic implementations, and what
-the performance of that might be across the benchmark
-suite, but that will have to
-wait for a future post.</p>
+                <p>For voice AI, latency is a critical parameter. Developers have made tremendous progress in model quality, but the user experience is still often limited by response times. Hugging Face and Cerebras are changing that experience. Today, we demonstrate what becomes possible when an open, modular voice AI architecture is paired with industry-leading inference speed.</p>
+<p>The result is a speech-to-speech experience that feels dramatically more natural. Instead of waiting for an AI to respond, conversations flow with the responsiveness users expect from human interaction.</p>
+<p>The demo is built as a real-time speech-to-speech pipeline. Each part of the system is modular, open, and replaceable, making it easy for developers to adapt the stack for different assistants, robots, products, or research projects.</p>
+<p>This creates a fully open speech-to-speech loop:</p>
+<p>The architecture brings together the strength of the open-source AI ecosystem: Cerebras for fast inference, Google DeepMind’s Gemma 4 31B for the language model, and Qwen for text-to-speech. Every layer can be inspected, modified, and extended by the developers</p>
+<p>Today, some production systems see a reasonable median latency while still experiencing frustrating multi-second delays at the P95. Those delays become even more noticeable when tool calls or multimodal steps require multiple turns.</p>
+<p>Cerebras helps solve one of the most important bottlenecks in the stack: the language-model response time. By making inference dramatically faster and more stable, Cerebras allows the rest of the Hugging Face pipeline to shine.</p>
+<p>That stability is especially important at the long tail. Many systems can deliver acceptable median response times, but occasional slow responses still make conversations feel unreliable.</p>
+<p>This same Hugging Face speech-to-speech pipeline already powers Reachy Mini robots, with more than 9,000 robots in the wild. For robots, voice assistants, and embodied AI, responsiveness is not a cosmetic improvement. It is what makes the interaction feel alive.</p>
+<p>The motivation to use Cerebras is therefore not simply cost reduction. It is low latency, predictable performance, and the ability to create real-time experiences that feel natural at scale.</p>
+<p>This collaboration reflects a shared belief that the future of AI will be both open and performant. Open-source models, open infrastructure, and breakthrough inference speed together create a foundation for the next generation of conversational AI.</p>
+<p>We invite developers to explore the demo, experiment with the code, and help shape what comes next for real-time voice AI.</p>
+<p>We even crossed 10k Reachy Minis in the wild 😄</p>
+<p>It's exciting to see how Hugging Face and Cerebras are pushing real-time voice technology forward. Fast responses make conversations feel much more comfortable and engaging, and that's exactly what users have been hoping for. 😊 When the delay is reduced, interactions become smoother and more natural, making voice experiences feel less like talking to software and more like having a real conversation.</p>
+<p>What I appreciate most is the focus on an open and modular approach. That gives developers more flexibility to build solutions that fit different needs instead of being locked into a single ecosystem. The combination of strong model quality with impressive inference speed could help unlock many practical applications across education, customer support, accessibility, and beyond. 🚀</p>
+<p>The emphasis on latency is absolutely the right direction because speed directly shapes the overall experience. Even the smartest system can feel frustrating if every response takes too long. Bringing that waiting time down creates a much more fluid interaction, and it's great to see innovation focused on something users notice immediately. 👏</p>
+<p>Looking forward to seeing how this evolves over the coming months... Faster conversations... Better responsiveness... More natural interactions... Exciting progress for developers and users alike... 🌟🙂</p>
+<p>Does anybody work on multipoint speech2speech interaction? I.e. when 2 or more people are talking to AI?I think LLM can handle messages from several persons when they are properly tagged.How about speech2text models - are there any works in this direction? The model would have to have some context and probably stereo audio input or some additional tagging to differentiate between persons.As an example  practical usage: voice assistant in car, when we have more than one person there, not unusual.Also some public kiosks where a group of people can interact by voice.There is much more in it then just text tagging by voice, as in this case people could also talk to each other (not to AI) and here also some capturing of non-verbal communication will be needed.</p>
+<p>The development of voice technology is opening up new possibilities for businesses, especially in improving customer interactions and automating everyday communication. Modern AI voice assistants are becoming more capable, while Voice AI for enterprise is helping organizations build smarter and more efficient workflows. As these technologies continue to evolve, understanding how AI agents use context to deliver accurate and relevant responses is equally important.I also came across this article, which I found useful to read. It is a good resource to look into for understanding context engineering and its role in enterprise AI agents: https://mobisoftinfotech.com/resources/blog/ai-development/context-engineering-for-llms-enterprise-ai-agents</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://futhark-lang.org/blog/2026-11-04-nondeterminism.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/cerebras-gemma4-voice-ai" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

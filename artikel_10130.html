@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Inkling by Thinking Machines</title>
+    <title>Re-Implementing :nth-child() With Modern CSS</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10130.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,62 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome Inkling by Thinking Machines</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
+        <h1>Re-Implementing :nth-child() With Modern CSS</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://css-tricks.com/wp-content/uploads/2026/11/nth-child-3n.webp" alt="Re-Implementing :nth-child() With Modern CSS" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://css-tricks.com/wp-content/uploads/2026/11/nth-child-3n.webp" alt="Re-Implementing :nth-child() With Modern CSS" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Inkling now comes in smaller size 🤗 Inkling-Small is out by Thinking Machines Lab. We have updated this post with performance, and deployment configurations for the Inkling-Small and the Inkling-Small-NVFP4 variants. Here’s the collection with all the Inkling models. We made it easier for you to deploy Inkling-Small with one-click on Inference Endpoints (getting up to 160 TPS). We also ship a real-time voice and image demo where you can interact with the model.</p>
-<p>Inkling is a large (1T params!) open model to natively accept image, text, and audio inputs.</p>
-<p>TLDR; Inkling by Thinking Machines is out on Hugging Face. Inkling is a huge multimodal LLM that understands all modalities (image, audio, text), has agentic capabilities, and supports 1M context. It comes in full BF16 and a well-calibrated NVFP4 variant, and includes speculative MTP layers for faster inference. There’s day-0 support in transformers, SGLang, vLLM, and llama.cpp. Thinking Machine Labs also released Inkling-Small with 276B total and 12B active parameters, as well as support for MXFP8 and NVFP4 weights, with the same architecture as Inkling.</p>
-<p>Inkling is the first large open model with ~1T parameters and 1M context window to natively receive image, text, and audio inputs, trained on 45 trillion tokens of text, images, audio and video. It’s focused on reasoning across modalities such as audio, images, and text; and is intended for domain adaptation via fine-tuning. We’ve tinkered with this model to build some demos and explore the architecture, and we think it’s great for building a new wave of multimodal reasoning apps.</p>
-<p>Inkling is a decoder-only multimodal Mixture-of-Experts model with 975B total and 41B active parameters. There are a lot of things going on, so let’s break each part down:</p>
-<p>Here’s a quick glance of the architecture.</p>
-<p>Relative attention: Instead of RoPE, which is the usual method to inject positional information in transformers models, Inkling uses relative attention to encode position information. Each attention layer learns position directly in the attention logits. Aside from key-query-values, there's a fourth projection producing a per-token, per-head relative feature R. This projection tensor is then tweaked with distance information (distance between the key and the query vector) and propagated into the attention module.</p>
-<p>Hybrid attention: The decoder layers alternate between global attention (attending to the full context length at once) and sliding window attention (attending to a fixed context window in a sliding fashion). The architecture has a pattern of 5:1 sliding window to global attention layers. This hybrid attention scheme provides efficiency in computation. The final layer uses global attention to help build feature-rich representations.</p>
-<p>Short convolution: The model uses a distinctive short 1D convolution, or SConv over the hidden states. SConv reads the current token and the previous W-1 hidden states, with W being the sliding window size. The intuition here is that SConv helps with local attention while freeing the attention and MoE modules from local representations.</p>
-<p>MoE with shared experts sink: In Inkling, the router scores both routed experts and shared experts. Top-k selection is performed over 6 experts, plus 2 shared experts always active.</p>
-<p>Vision understanding: The model includes a simple hierarchical MLP patchifier consisting of several linear layers. Each layer merges pixels progressively, until the final layer produces one embedding per patch.</p>
-<p>Audio understanding: The architecture employs a discretized mel spectrogram, where each of the audio chunks (of 100 ms) are converted to the mel scale and then classified into the exact mel spectrogram bin.</p>
-<p>The multimodal towers are relatively simple modules, unlike other models that employ separate encoders for each modality. Each image patch passes through the image embedding tower and the audio chunk is passed through the audio embedding tower to get both media embeddings. Image inputs also include an additional temporal dimension for video processing. We expect this capability to be useful for downstream fine-tuning, but we haven’t evaluated out-of-the-box video performance. The tower folds the patch grid, a small local block of neighboring tokens is stacked into the channel dimension and goes through hMLP. The audio waveform is converted to mel scale, which is then classified into a discrete mel bin. These mel bin values are embedded in the audio embedding tower and the embeddings are then summed to construct the final audio input.</p>
-<p>Inkling comes with day-0 transformers support and is supported in major inference engines like SGLang and vLLM.</p>
-<p>This model is huge. The bf16 checkpoint requires 2 TB of VRAM, while the nvfp4 version requires 600 GB of VRAM. You can try the model through serverless inference routers like Inference Providers, or use ggml quants for local deployment with llama.cpp.</p>
-<p>The easiest way to infer with transformers directly is to use the any-to-any pipeline. You can use either the 16 bit "thinkingmachines/Inkling" on Hopper or later GPUs, or the quantized NVFP4 checkpoint "thinkingmachines/Inkling-NVFP4" on Blackwell Nvidia GPUs. Make sure to have the latest version of transformers (5.14.0 was released today) (pip install -U transformers).</p>
-<p>After initializing the pipeline, you can pass in the prompt as follows.</p>
-<p>Going one level lower, you can use Auto classes. For inference, you can use the AutoModelForMultimodalLM class for models and AutoProcessor class for processors. For different reasoning tasks, the tokenizer takes in a reasoning_effort argument. Existing options for reasoning effort are "none", "minimal", "low", "medium", "high", "xhigh", and "max".</p>
-<p>For multimodal inference, you can use the same classes. We provide example snippets for each different modality in the model card.</p>
-<p>Inkling also takes in audio input. Below is an example inference snippet, which still uses the same AutoModelForMultimodalLM class.</p>
-<p>For more realistic parallel deployment in a cluster of several nodes, please refer to the Slurm section below.</p>
-<p>SGLang is one of the fastest deployment frameworks for Inkling at the time of release, as it includes a custom model implementation. The launch command below shards the model across 8 GPUs and serves an OpenAI-compatible API on port 30000.</p>
-<p>Match --tp-size to your GPU count. Add --mem-fraction-static (e.g. 0.85) if you need to leave more headroom for the KV cache.</p>
-<p>vLLM is strong for production serving. A single vllm serve command downloads the weights from the Hub, shards the model across your GPUs with tensor parallelism, and starts an OpenAI-compatible server on port 8000. You can view the vLLM Recipe for the model here to customize to your hardware.</p>
-<p>In practice, you might need multiple nodes and a distribution tool like SLURM (see below). Key parameters are --tensor-parallel-size to the number of GPUs on your node, and use --max-model-len to cap the context window if you hit KV-cache memory limits.</p>
-<p>You can infer with this model using several inference providers through Hugging Face. You can see all the code snippets to consume here. Below you can see how to use with the OpenAI client.</p>
-<p>Using the “:auto” suffix routes to your preferred provider in your settings; you can also use “cheapest” or “:fastest” as well. For this release, we cover the inference costs for 2 hours within the release for everyone.</p>
-<p>Note: audio support in Inference Providers is work in progress and will be added shortly.</p>
-<p>You can use llama.cpp to run quantized versions of the model on limited hardware. Unsloth have quantized the model down to 1-bit precision, reducing VRAM consumption by 95% over the original model.</p>
-<p>This starts an OpenAI-compatible server running at http://localhost:8080/v1 that you connect to in your preferred tool or clients. Heading there, you can start chatting with the model, and set it up with your favorite MCPs, pass in images or files conveniently and more!</p>
-<p>Llama cpp also ships with a built-in UI that supports tools, mcp, and agentic workloads. Checkout Inkling running at 1-bit precision in the llama app:</p>
-<p>Inkling GGUFs are also runnable in Unsloth Studio with dynamic 1-bit GGUFs which retain ~74.2% of top-1% accuracy whilst being 86% smaller.</p>
-<p>Pi is a minimal coding agent harness you can use with different language models. You can use Pi with either an inference engine server endpoint, such as llama.cpp, or with Inference Providers on Hugging Face by adding this to your ~/.pi/agent/models.json after installation.</p>
-<p>Then you can start Pi in your project directory by calling pi and you’re good to go! In this demo, we give the model a hard math reasoning problem and it uses tools in pi to solve it.</p>
-<p>Inkling is focused on broad multimodality reasoning and low token consumption, so try it out with document processing or audio tasks.</p>
-<p>MTP adds extra layers to the model that predict several tokens at once, not just the next one. During inference, the extra layers act as “drafters” for speculative decoding, speeding up generation without compromising performance. With MTP, you get the exact same generated outputs, multipliers in generation speed-up at small memory cost in VRAM (due to serving the drafter). Thinking Machines also provides an MTP drafter with this release.</p>
-<p>We have prepared a small suite of reasoning questions from expert-level sources and university entrance exams. We have taken photos of the screen with watermarks in the screenshot to challenge the model. The model has solved all of them on high one, failed one in highest and medium reasoning efforts, so we provide a link to the model answers for you to check out how the model sounds and provide the number of tokens the model has taken to solve each of them. Note that we provide no system prompts in these vibe evals, and these reasoning questions should often be run with a good system prompt. The vibe eval images and results live here.</p>
-<p>We have vibe-evaluated the model on some audio reasoning examples from BigBenchAudio and a few multilingual audio examples of GlobeAudio (Russian and Chinese multi-choice questions asking the last word in transcription). The BigBenchAudio examples we tested consist of logical statements and questions that either ask for formal fallacies (whether an argument can be logically deduced from the context given in audio) or object counting (stating multiple distinctive objects in the audio, asking for the total count of a certain one). Although this benchmark is initially made for speech-to-speech reasoning, we just want to see audio reasoning capabilities of this model. For GlobeAudio, the questions are relatively straightforward, so we ran with reasoning efforts of 0.1. We ran the first example of each language within GlobeAudio. All tests pass on all questions and efforts, except for second formal fallacy example on lowest effort, so we only provide the number of tokens spent in each question against reasoning effort. Vibe eval results and audio files live here.</p>
-<p>If you would like to use Inkling for post-training, Thinking Machines have built tinker, a managed tool for post-training open weight models. Their cookbook includes examples for fine-tuning, distillation, and reinforcement learning.</p>
-<p>We post trained Inkling with tinker and OpenEnv, an agentic RL environment tool. We used the ECHO algorithm that trains a model to predict the environment without a verifier, applying next-token cross-entropy loss to tokens produced by the environment, alongside the usual policy learning on agent actions. This teaches the policy an implicit world model without requiring a separate model, teacher, or additional rollouts. Check out the example.</p>
-<p>If you’re working with Transformers Reinforcement Learning we suggest using Inkling as a teacher model in a knowledge distillation setup. For example, take advantage of Inkling’s document understanding abilities to improve the performance of a smaller (on-device) model. In this example, we use the transformer reinforcement learning library and the GOLD algorithm to distill knowledge. GOLD is handy here because it matches token logits between different tokenizers, so you can distill to any model on the hub.</p>
-<p>Below you can find each Inkling checkpoint as well as their VRAM requirements.</p>
-<p>To deploy Inkling on a cluster, we provide SLURM scripts serving with transformers API, as well as how to query the endpoint with different modalities. You can adapt these scripts to vLLM or SGlang by updating the commands. These scripts live here.</p>
-<p>You can deploy an Inkling-Small NVFP4 checkpoint using Inference Endpoints. We provide a pre-tested configuration to deploy it on 8 RTX PRO 6000s with an aggregated VRAM of·768 GB, giving large space for KV cache, costs $ 22 per hourly uptime (scales to zero when unused). To deploy, run hf endpoints catalog deploy --repo thinkingmachines/Inkling-Small-NVFP4 using the Hugging Face CLI or alternatively, head to https://endpoints.huggingface.co/new/thinkingmachines/Inkling-Small-NVFP4. With this setup, you can get 140 TPS (single user inference, prepared for multi-user support with continuous batching)</p>
-<p>Once the endpoint is up, you can query as follows.</p>
-<p>Releasing a natively multimodal model (text, vision, and audio) open-weights is a huge step forward for the open-source AI ecosystem! Having variable and controllable thinking effort built into a MoE architecture makes Inkling a really attractive foundation for fine-tuning. Excited to test out the smaller 12B active parameter variant for local agent workflows at https://geometrydashsubzero.io</p>
+                <p>The title sounds a bit strange, right? Why re-implement an existing feature, that’s completely useless! I have two reasons for that. The first reason is to be able to adjust the :nth-child() arguments on the fly.</p>
+<p>And you decide to update the 5 or the 8. The only way is to manually rewrite the selector, which isn’t ideal. We cannot have something like the below where you can change the variables as you want:</p>
+<p>With my implementation, you will be able to do it!</p>
+<p>The second reason is to have fun and play with some new features. You will probably never need to rely on a dynamic :nth-child() selector, but I am sure you will learn one or two useful tricks along the way.</p>
+<p>We will rely on the same code structure in all the examples: a container with a bunch of <div> elements inside it.</p>
+<p>And the container controls the variables of :nth-child():</p>
+<p>I am not saying that this structure is mandatory for the implementation. I just considered a simple one to keep things easy to follow.</p>
+<p>Let’s start with the simplest case, a selector that selects only one element:</p>
+<p>I don’t think I need to explain what this selector does. The 5 is nothing but the index of the selected element. So, if B is equal to the index of the element, that element is selected.</p>
+<p>We can translate this into the following CSS code:</p>
+<p>I am using the new if() syntax that allows me to define a condition within style(). If that condition is true, the background color is set to red. Otherwise, nothing happens.</p>
+<p>The if() syntax is not that complex. In our case, we only have one condition, so you can see it as follows:</p>
+<p>The tricky part is how to define the condition within style(). I wrote a small post explaining this part, so do yourself a favor and go read it before we continue: “The Hidden Trick of Style Queries and if().” It’s a quick reading with crucial details that helps you better understand how if() works. From there, you will notice that our condition can be written several ways that are all valid:</p>
+<p>We have our first implementation! You can easily apply it to any property as well:</p>
+<p>The code looks a bit redundant, which is probably one of the drawbacks of this method, but it’s still cool to implement the selector and be able to adjust the value of --B on the fly. Don’t forget that our goal is to learn new tricks, and you already have two of them in your pocket (sibling-index() and if()).</p>
+<p>Here is an interactive demo where you can adjust the value of --B and see the changes:</p>
+<p>Let’s move to our next selector. It selects more than one element.</p>
+<p>Think for a moment about how to implement such a selector. It’s almost the same as the previous one.</p>
+<p>If the index of the element is greater than or equal to the value of --B, the element is selected. As simple as that!</p>
+<p>What about this one? Easy, right? We simply use <= instead of >=!</p>
+<p>We can also easily implement a range selection, which is the combination of both selectors:</p>
+<p>The code should be self-explanatory. It’s even more intuitive than the :nth-child() notation, which requires a few minutes of deciphering if you are not used to it.</p>
+<p>Now let’s deal with the A argument. For example, the following selector:</p>
+<p>…selects the 3rd, 6th, 9th, etc. elements. Seen differently, the index of the element needs to be a multiple of 3. To do such testing, we can use the mod() function. If mod(index, 3) returns 0, it means the remainder of the division of index by 3 is equal to 0, hence, it’s a multiple of 3.</p>
+<p>It works! Another selector with a simple implementation.</p>
+<p>We can identify two special cases. When --A is equal to 1, we have :nth-child(n), which selects all the elements and when it’s equal to 2, we have :nth-child(2n) which is also :nth-child(even).</p>
+<p>While this works fine, there is a small gotcha. When A is a negative value, the selector should select nothing which is logical as all the indexes are positive, but if you try using negative values with my implementation, some elements still get selected which is wrong.</p>
+<p>The mod() function works with negative numbers and can still return 0 in such cases, so to be more accurate, we should test the sign of A.</p>
+<p>See that? I simply added another condition inside style() using the and keyword. The syntax of if() may sound confusing at first glance, but at the end it’s the same as any other language: a bunch of conditions defined inside style(). You can have as many as you want combined with and and or.</p>
+<p>Now let’s combine all the tricks we learned so far to implement the generic form of :nth-child(). In this case, the index is equal to An + B, and we can express n like this:</p>
+<p>n should be a positive integer (zero included). For the positive part, we can use:</p>
+<p>For the integer part, we need to make sure index - B is a multiple of A, and for this, we use mod():</p>
+<p>We translate this into CSS to get the following:</p>
+<p>We are almost good except for the case when --A is equal to 0. In that case, the selection is simply wrong. The mod() results in NaN since its second argument is equal to 0, and this will mess with the condition. Actually, that condition is not meant to work with --A equal to 0.</p>
+<p>We either consider that this implementation is only valid for a value of --A different from 0 (which is probably what we want) or we try to find a solution to include that case.</p>
+<p>We are here to learn and discover new stuff, so let’s try something else. There are probably a lot of ways to fix the case of 0, but here is my idea:</p>
+<p>How does it work? Well, this will be your homework!</p>
+<p>As you can see, I have introduced a new variable that should be equal to 1 if the element is selected by :nth-child(An + B). Try to dissect the code to understand how it works. If you still struggle, check the following post: “Dynamic nth-child() using sibling-index() andif().”</p>
+<p>And here is the final interactive with the complete implementation of :nth-child(An + B):</p>
+<p>We can easily get all the previous selectors by simply adjusting the variables:</p>
+<p>I hope you enjoyed this small exercise. It was a good opportunity to explore the new if() feature, and the :nth-child() selector was the perfect candidate for this. After all, selectors are nothing but a set of conditions to filter elements and select the needed ones.</p>
+<p>What about :nth-last-child()? If you are up for another challenge, try to see how you can update the previous implementation to make it work with :nth-last-child(). (Hint: you may need to rely on sibling-count().)</p>
+<p>We've got lots of ways to help you connect with the greatest front-end community in all the land.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>This is a really clever way to make :nth-child() feel dynamic. Using sibling-index() together with if() and mod() to adjust the A and B values on the fly makes the logic much easier to follow than the usual An+B notation. I especially liked how the range and multiple cases build up step by step from the simplest example.</p>
+<p>@container style(...) can probably solve the basic case for browsers other than Chrome-based ones, but I am not sure about the support for ranges (using <, >, <=, and >=), which itself is only a draft I think … ? But still, this can be a helpful pattern to introduce conditions based on variables. Thanks for the idea!</p>
+<p>Your email address will not be published. Required fields are marked *</p>
+<p>Save my name, email, and website in this browser for the next time I comment.</p>
+<p>Notify me of follow-up comments by email.</p>
+<p>Join our community of front-end nerds! You'll get into the Discord server and member-only perks and free swag.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>Get your t-shirts, prints, stickers, and yes, even mousepads at the brand-spankin' new CSS-Tricks store, now open.</p>
+<p>CSS-Tricks is powered by a small team of real-life humans.</p>
+<p>Coming back November 10! See past issues →</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/thinkingmachines-inkling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://css-tricks.com/re-implementing-nth-child-with-modern-css/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

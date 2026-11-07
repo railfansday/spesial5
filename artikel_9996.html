@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pushing the Limits with getaddrinfo</title>
+    <title>Norway&#x27;s aid agency pwned and all users&#x27; data is stolen</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9996.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,50 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Pushing the Limits with getaddrinfo</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
+        <h1>Norway&#x27;s aid agency pwned and all users&#x27; data is stolen</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://acid.vegas/blog/pushing-the-limits-with-getaddrinfo/social-card.png" alt="Pushing the Limits with getaddrinfo" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/260104.jpg?imageId=260104&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="Norway&#x27;s aid agency pwned and all users&#x27; data is stolen" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://acid.vegas/blog/pushing-the-limits-with-getaddrinfo/social-card.png" alt="Pushing the Limits with getaddrinfo" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/260104.jpg?imageId=260104&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="Norway's aid agency pwned and all users' data is stolen" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>An IPv4 address is just a 32-bit number, and glibc will accept it in forms you would never recognize. â°ðâ´5ï¼ð¯°ï¼âãâµââð²ð¯¶ is one of them. Anything that judges an address by how it looks can be walked around.</p>
-<p>That is a real ping, to a real box, and it got a real reply. The thing after ping -c1 is a mix of LCD segmented digits, superscripts, subscripts, circled digits, a double-struck X and math-alphabet digits, with nine invisible characters that my terminal drew as white boxes because it had no idea what else to do with them. Paste it into a terminal and it looks like line noise. Hand it to getaddrinfo() and it is 69.30.206.130.</p>
-<p>Every example in this post points at the same server, 69.30.206.130. It answers ping, and it serves exactly one page, /poc.html, on its bare IP so you can prove the HTTP side works too. Every screenshot is real output, captured on Ubuntu 24.04 with glibc 2.39, iputils 20240117 and curl 8.5.0.</p>
-<p>Start with the boring part, which is already weirder than most people expect. An IPv4 address is a 32-bit unsigned integer. The dotted quad is just how we have agreed to write it down. The parser that turns text into that integer is inet_aton(), and its rules date back to 4.2BSD. In glibc it lives in resolv/inet_addr.c, and each part is read like this:</p>
-<p>Base 0 means strtoul() picks the base from the prefix: 0x is hex, a leading 0 is octal, anything else is decimal. Each dotted part gets its own prefix, so you can mix bases inside one address. Then there is the part count:</p>
-<p>One part is the whole 32-bit number. Two parts are an 8-bit network and a 24-bit host. Three parts are 8, 8 and 16 bits. These were meant for the old class A/B/C networks, and nobody ever took them out. Leading zeros are unlimited too, as long as the value still fits.</p>
-<p>Everything above is well known. It is the reason SSRF filters are supposed to parse addresses instead of regexing them. The fun starts with a flag most people never look at: AI_IDN.</p>
-<p>AI_IDN is a glibc extension that tells getaddrinfo() the name might be an internationalized domain name, so it should be converted to ASCII before lookup. ping sets it, because iputils is built with IDN support. Here is what glibc does with it, in sysdeps/posix/getaddrinfo.c:</p>
-<p>Look at the order. The IDNA conversion runs first, and the numeric address parser only sees the output. __idna_to_dns_encoding() hands the string to libidn2, which applies UTS #46 mapping. UTS #46 exists so that a user typing a domain in a different width or style still lands on the same name. To do that it folds a huge range of compatibility characters down to plain ASCII. That table does not care that the result is going to be read as a number.</p>
-<p>Digits are covered, and so are the dots. The x in a hex prefix and the a–f hex letters are covered too, which means every one of the classic forms above can be rebuilt out of Unicode lookalikes:</p>
-<p>Circled two-digit numbers are a nice touch: â¥â¨.ã.â³â¥.â¬âª is four characters shorter than the plain address it decodes to. Hex works the same way, with a bold script x for the prefix, a Roman numeral one hundred standing in for c, and modifier letters for e:</p>
-<p>Notice that ping echoes back 0x451ece82 in its PING line. ping also asks for AI_CANONIDN, so what it prints is the name after IDNA mapping. That is the clearest view you will get of what the resolver actually parsed.</p>
-<p>Nothing says a single address has to stick to one style. The mapping is done one character at a time, so every digit, dot and hex letter can come from a different block. I wrote a small script that reads IdnaMappingTable.txt, collects every code point that maps to 0–9, a–f, x or ., and rebuilds each classic form by picking a random lookalike for every character: fullwidth, superscript, subscript, circled, math bold, sans-serif, monospace, double-struck, script, fraktur, Roman numerals, and the LCD segmented digits from ð¯° to ð¯¹. Every result resolved:</p>
-<p>Here are a few more, all 69.30.206.130, ready to paste:</p>
-<p>UTS #46 does not only map characters. It also has a category called ignored, and an ignored code point is simply deleted from the input:</p>
-<p>So you can put invisible characters before, inside and after the address, and they are gone before inet_aton ever sees the string. I verified soft hyphen, zero width space, word joiner, invisible plus, combining grapheme joiner, Mongolian free variation selector, variation selectors 1, 16 and 17, the BOM, and the shorthand format controls. Most terminals render them as nothing. Mine renders them as the white <fe0f> boxes in the cover image, which is how I noticed the copy-pasted address was not what it looked like.</p>
-<p>The cover combines all of it: a zero-padded hex first part, a zero-padded octal second part, and a 16-bit decimal tail, with every character swapped for a random lookalike and nine ignored code points scattered through it. After mapping it is 0x00000045.00036.52866, which inet_aton reads as 0x45, 036 (octal 30) and 52866 (206 × 256 + 130).</p>
-<p>None of this is magic in getaddrinfo() itself. It only happens when the caller passes AI_IDN. Without the flag, glibc goes straight to the numeric parser, sees a circled zero, and falls through to a DNS lookup that fails. Python makes the difference easy to see:</p>
-<p>Tools that do their own IDN conversion work as well. curl and wget both link libidn2 and run the hostname through it before resolving. OpenBSD netcat does not, and fails:</p>
-<p>The last command there is a different failure. IPv4-mapped IPv6 such as ::ffff:69.30.206.130 works in curl, because the kernel turns a connect on an IPv6 TCP socket to a mapped address into IPv4. ping instead opens an ICMPv6 socket and sends a real IPv6 packet to ::ffff:0:0/96, which no router will carry.</p>
-<p>curl has its own wrinkle. Its URL parser has an ipv4_normalize() step that rewrites 0x451ece82 or 69.2018946 to 69.30.206.130, but that runs before IDN conversion. A Unicode host skips normalization, gets converted to ASCII afterwards, and goes out on the wire like that. The server receives a Host: header of 0x451ece82:</p>
-<p>curl also percent-decodes the host part of a URL, so http://%36%39.30.206.130/, http://69%2E30%2E206%2E130/, and the fully percent-encoded UTF-8 of the circled hex address all connect as well.</p>
-<p>Because a lot of code decides whether something is an IP address by looking at it. Blocklists, SSRF guards that regex for 169.254. or 127., log searches, chat filters, and a human reading a config file all compare strings. If the thing doing the check does not run the same IDNA mapping and the same inet_aton rules as the thing doing the connect, the check and the connection are looking at two different strings. âªðâ¦ðâªâªâªâªâªâ  is 127.0.0.1, and so is â â¡â¦ãâ .</p>
-<p>â°ðâ´5ï¼ð¯°ï¼âãâµââð²ð¯¶ is a valid IP address. It resolves to 69.30.206.130, and that is fucking weird.</p>
-<p>It is also more than a party trick. Malware has used the plainer versions of this for years: Emotet spam in 2022 wrote its download URLs with hex and octal IP addresses, likely to dodge pattern matching. The same idea applies to any filter that only reads the input. If something refuses 127.0.0.1, you could hand it â°ðð³ð¿ï¼â  instead, and ping lands on loopback all the same.</p>
-<p>The defence is the boring one: resolve first, then check the address you actually got back, and connect to that exact address. Never check the string.</p>
-<p>The address is still just a number, so the trick is not in getaddrinfo() â it is in the address bar. Drop a fully percent-encoded Unicode host into a URL with a made-up user:pass@ prefix and a /? query, and the host stops being the part a human reads.</p>
-<p>Glance at it and the eye lands on the trusted-looking parts: images.google.com as the user, static-uploads as the password, ?picture_of_you.png as a path to a photo. But the host is the hex integer 0xcdb97a5a, and inet_aton() turns it into 205.185.122.90. curl connects there, sends Host: 0xcdb97a5a, and ignores the credentials and the path entirely â they are decoration. A single one is easy to pass; a list of them is how a phishing link looks like a Google image.</p>
-<p>The same trick works with the plain hex form, which is the cleanest because nothing has to be mapped:</p>
-<p>Two things make it stick. First, humans read a URL as one token and rarely isolate the host field; the user:pass@ prefix and the /?file suffix both read as authoritative and pull attention away from the middle. Second, the decoy and the real target disagree about what the URL means. The browser or the reader sees a path to an image; getaddrinfo() sees a number and connects to it. The decoy does not have to be wrong â 0xcdb97a5a really is 205.185.122.90 â it only has to be something the reader does not expand.</p>
-<p>It is the same gap as the blocklist check, aimed at the eye instead of the regex. A guard that regexes 127. or 169.254. on the string still misses 0x7f000001; a person who reads 0xcdb97a5a as "some hex" misses it too. The defence is the same: expand the host to the number it really is, and connect to that.</p>
-<p>curl is not the only tool that reads a number where you do not. wget takes the URL as its first positional argument and treats everything after it as an option. Drop a bare integer in place of the URL and a URL-looking value in an option, and the eye lands on the option â but the number is what actually gets fetched.</p>
-<p>1159646850 is just 69.30.206.130 in decimal, and it is the URL â wget connects there and sends Host: 1159646850. -A is --user-agent, but most people read it as just a flag and take the images.google.com link as the target, thinking the number belongs to -q. The number is the host; the link is the decoy, and it does not have to be wrong â the same gap, a tool that reads the option as the target instead of the argument. -A works better than --comment for the trick: short, nearly invisible, and nobody assumes a user-agent is a URL.</p>
-<p>Every form I tested, against 69.30.206.130. ping is iputils ping with one packet. curl fetched http://<address>/poc.html and got a 200. Every address is the real string, so you can copy it straight into a terminal. The invisible characters are in there even though you cannot see them.</p>
+                <p>Norad said it cannot be sure that the details of those in 'conflict areas and authoritarian states' are safe or not</p>
+<p>Norway's national aid agency, Norad, has confirmed that cyber criminals broke into its systems, stealing information about each and every registered user of its grant portal.</p>
+<p>Norad, which coordinates Norway's assistance for foreign development, said that 20,614 registered individuals had their names and email addresses swiped, and information from at least three organizations' applications was "misdirected."</p>
+<p>The agency clarified that the grant portal, which was launched in 2017, has 20,614 registered users, meaning all were affected, across 12,511 organizations.</p>
+<p>In addition, the grant applications for at least three organizations are confirmed to be involved, though Norad said it may discover more as its investigation continues.</p>
+<p>Torger Kjeldstad, director of digitalization at Norad, said "the attack is complex," and confirmed the agency has initiated a crisis team to manage it.</p>
+<p>"We know a lot about what has happened, but to ensure that we have a complete overview of the attack, we are working to engage external experts in cybersecurity," he said.</p>
+<p>"They will give us a detailed description of what information those who attacked the solution have gained access to."</p>
+<p>Kjeldstad added that "it should be safe" to continue using Norad's services while it continues to probe what happened, and who was behind it.</p>
+<p>Norad did not reveal many details about how the attack unfolded, other than saying that 27 accounts were compromised and were then used to gain access to the portal and the data in question.</p>
+<p>The agency said the intrusion was detected on October 30, but did not offer any indication as to how long the attackers retained access to the grant portal.</p>
+<p>It also refused to rule out that names of applicants in "conflict areas and authoritarian states" may have been included in the stolen data – it is not known if recipients would have also been registered users – and said it is approaching the matter "very seriously."</p>
+<p>The grant portal, managed by Norad, which itself is part of Norway's Ministry of Foreign Affairs, is responsible for handling applications from organizations across the world.</p>
+<p>Recent case studies include support for independent, investigative journalism in Moldova, a country which routinely battles Russian propaganda and election interference, and backing for Ukrainian children and prisoners of war.</p>
+<p>The issues Norad and the Norwegian government support, however, are wide-ranging – from access to healthcare for transgender people worldwide and Kenyan incubators for innovative transport solutions, to delivering aid to war-torn Gaza. ®</p>
+<p>If you wouldn't put it on GitHub, don't give models access to it</p>
+<p>Technical debt shoveled aside to make large-scale AI training more resilient</p>
+<p>PARTNER CONTENT: 300+ AI applications delivering surges in core metrics and annual cost reduction of over CNY100m</p>
+<p>New and revived desktops promise Cupertino polish, but our quick tests found a few seams showing</p>
+<p>Co-design platform for quantum error correction melds IBM quantum kit with AMD CPUs and GPUs</p>
+<p>Technical debt shoveled aside to make large-scale AI training more resilient</p>
+<p>Agent orchestration startup gets its exit</p>
+<p>Firms still want kit on-premises, but spike in revenue is as much about increased costs as higher sales</p>
+<p>Customers sweating assets amid tight budgets, as Microsoft execs get creative with sales pitches</p>
+<p>But first it needs planning permission, government approval and, rather importantly, a customer</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>OpenVDDK is reportedly already being used in production, at scale</p>
+<p>Combining the NetBSD kernel with the Alpine Linux userland</p>
+<p>Canonical has a long way to catch up, but it knows who it's chasing</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://acid.vegas/blog/pushing-the-limits-with-getaddrinfo/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/cyber-crime/2026/11/05/norways-aid-agency-pwned-and-all-users-data-is-stolen/5307765" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

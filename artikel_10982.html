@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accelerate 1.0.0</title>
+    <title>Speculative Decoding for 2x Faster Whisper Inference</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10982.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,157 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Accelerate 1.0.0</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-06</p>
+        <h1>Speculative Decoding for 2x Faster Whisper Inference</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/whisper-speculative-decoding/thumbnail.png" alt="Speculative Decoding for 2x Faster Whisper Inference" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/whisper-speculative-decoding/thumbnail.png" alt="Speculative Decoding for 2x Faster Whisper Inference" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Open AI's Whisper is a general 
+purpose speech transcription model that achieves state-of-the-art results across a range of different benchmarks and 
+audio conditions. The latest large-v3 model tops the 
+OpenASR Leaderboard, ranking as the best open-source 
+speech transcription model for English. The model also demonstrates strong multilingual performance, achieving less than 
+30% word error rate (WER) on 42 of the 58 languages tested in the Common Voice 15 dataset.</p>
+<p>While the transcription accuracy is exceptional, the inference time is very slow. A 1 hour audio clip takes upwards of 
+6 minutes to transcribe on a 16GB T4 GPU, even after leveraging inference optimisations like flash attention, 
+half-precision, and chunking.</p>
+<p>In this blog post, we demonstrate how Speculative Decoding can be employed to reduce the 
+inference time of Whisper by a factor of 2, while mathematically ensuring exactly the same outputs are achieved 
+from the model. As a result, this method provides a perfect drop-in replacement for existing Whisper pipelines, since it 
+provides free 2x speed-up while maintaining the same accuracy. For a more streamlined version of the blog post 
+with fewer explanations but all the code, see the accompanying Google Colab.</p>
+<p>Speculative Decoding was proposed in Fast Inference from Transformers via Speculative Decoding 
+by Yaniv Leviathan et. al. from Google. It works on the premise that a faster, assistant model very often generates the same tokens as a larger main model.</p>
+<p>First, the assistant model auto-regressively generates a sequence of N N N candidate tokens, y^1:N \hat{\boldsymbol{y}}_{1:N} y^​1:N​. 
+In the diagram below, the assistant model generates a sequence of 5 candidate tokens: The quick brown sock jumps.</p>
+<p>While these candidate tokens are generated quickly, they may differ from those predicted by the main model. Therefore, 
+in the second step, the candidate tokens are passed to the main model to be "verified". The main model takes the 
+candidate tokens as input and performs a single forward pass. The outputs of the main model are the "correct" 
+token for each step in the token sequence y1:N \boldsymbol{y}_{1:N} y1:N​.</p>
+<p>In the diagram above, we see that the first three tokens predicted by the main model agree with those from the assistant 
+model: The quick brown. However, the fourth candidate token from the assistant model, 
+sock, mismatches with the correct token from the main model, fox.</p>
+<p>We know that all candidate tokens up to the first mismatch are correct (The quick brown), 
+since these agree with the predictions from the main model. However, after the first mismatch, the candidate tokens 
+diverge from the actual tokens predicted by the main model. Therefore, we can replace the first incorrect candidate 
+token (sock) with the correct token from the main model (fox), 
+and discard all predicted tokens that come after this, since these have diverged. The corrected sequence, The quick brown fox, 
+now forms the new input to the assistant model:</p>
+<p>The inference process then repeats, the assistant model generating a new set of N N N candidate tokens, which are verified 
+in a single forward pass by the main model.</p>
+<p>Since we auto-regressively generate using the fast, assistant model, and only perform verification forward passes with 
+the slow, main model, the decoding process is sped-up substantially. Furthermore, the verification forward passes 
+performed by the main model ensures that exactly the same outputs are achieved as if we were using the main model standalone. 
+This makes speculative decoding a perfect drop-in for existing Whisper pipelines, since one can be certain that the 
+same quality will be attained.</p>
+<p>To get the biggest improvement in latency, the assistant model should be significantly faster than the main model, 
+while predicting the same token distribution as often as possible. In practice, these two attributes form a trade-off:
+the faster a model is, the less accurate it is. However, since 70-80% of all predicted tokens tend to be "easier" tokens,
+this trade-off is heavily biased towards selecting a faster model, rather than a more accurate one. Thus, the assistant 
+model should be at least 3x faster than the main model (the more the better), while predicting all the "easy" tokens 
+in the examples correctly. The remaining 20-30% of more "difficult" tokens can then be verified by the larger, main model.</p>
+<p>The only constraint for selecting an assistant model is that it must share the same vocabulary as the main model. That is
+to say, the assistant model must use one-to-one the same tokenizer as the main model.
+Therefore, if we want to use speculative decoding with a multilingual variant of Whisper, e.g. large-v2 
+(multilingual), we need to select a multilingual variant of Whisper as the assistant model, e.g. tiny. 
+Whereas, if we want to use speculative decoding with and English-only version of Whisper, e.g. medium.en, 
+we need an English-only of version as the assistant model, e.g. tiny.en. 
+At the current time, Whisper large-v3 is an exception, since 
+it is the only Whisper checkpoint with an expanded vocabulary size, and thus is not compatible with previous Whisper 
+checkpoints.</p>
+<p>Now that we know the background behind speculative decoding, we're ready to dive into the practical implementation. In 
+the 🤗 Transformers library, speculative decoding is implemented as 
+the "assisted generation" inference strategy. For more details about the implementation, the reader is advised to read 
+Joao Gante's excellent blog post on Assisted Generation.</p>
+<p>We start by benchmarking Whisper large-v2 to get our baseline number 
+for inference speed. We can load the main model and it's corresponding processor via the convenient 
+AutoModelForSpeechSeq2Seq 
+and AutoProcessor classes. We'll 
+load the model in float16 precision and make sure that loading time takes as little time as possible by passing 
+low_cpu_mem_usage=True. In addition, 
+we want to make sure that the model is loaded in safetensors 
+format by passing use_safetensors=True.
+Finally, we'll pass the argument attn_implementation="sdpa" to benefit from Flash Attention speed-ups through PyTorch's 
+SDPA attention kernel:</p>
+<p>Let's load the English speech transcription dataset that we will use for benchmarking. We'll load a small dataset 
+consisting of 73 samples from the LibriSpeech ASR validation-clean 
+dataset. This amounts to ~9MB of data, so it's very lightweight and quick to download on device:</p>
+<p>For the benchmark, we only want to measure the generation time, so let's write a short helper function that measures 
+this step. The following function will return both the decoded tokens and the time it took to run the model:</p>
+<p>We can now iterate over the audio samples in our dataset and sum up the overall generation time:</p>
+<p>Alright! We see that transcribing the 73 samples took 73 seconds. Let's check the WER of the predictions:</p>
+<p>Our final baseline number is 73 seconds for a WER of 3.5%.</p>
+<p>Now let's load the assistant model for speculative decoding. In this example, we'll use a distilled variant of Whisper, 
+distil-large-v2. The distilled model copies the entire encoder 
+from Whisper, but only 2 of the 32 decoder layers. As such, it runs 6x faster than Whisper, while performing to within 
+1% WER on out-of-distribution test sets. This makes it the perfect choice as an assistant model, since it has both 
+high transcription accuracy and fast generation 1{}^11.</p>
+<p>Since Distil-Whisper uses exactly the same encoder as the Whisper model, we can share the encoder across the main and 
+assistant models. We then only have to load the 2-layer decoder from Distil-Whisper as a "decoder-only" model. We can do 
+this through the convenient AutoModelForCausalLM 
+auto class. In practice, this results in only an 8% increase to VRAM over using the main model alone.</p>
+<p>1{}^11 We intend to release an improved variant of Distil-Whisper with a stronger alignment in the token distribution 
+that will improve speculative decoding performance further. Follow the Distil-Whisper repository 
+for updates.</p>
+<p>We can define a modified function for our speculative decoding benchmark. The only difference from the previous function 
+is that we pass the assistant model to our call to .generate:</p>
+<p>Let's run the benchmark with speculative decoding, using Distil-Whisper as the assistant to Whisper:</p>
+<p>With speculative decoding, the inference time was just 33 seconds, 2.2x faster than before! Let's verify we have the same 
+WER:</p>
+<p>Perfect! 3.5% WER again, as we have identical outputs to using the main model standalone.</p>
+<p>Speculative decoding can also be used with the easy 🤗 Transformers pipeline API for inference. Below, we instantiate the pipeline using the model and processor, and then use it to 
+transcribe the first sample from the toy dataset. This can be extended to transcribe audio samples of arbitrary length, 
+including with the use of batching:</p>
+<p>An end-to-end code snippet for running speculative decoding with Whisper and Distil-Whisper can be found on the Distil-Whisper model card. 
+It combines the stages of inference covered in this notebook into a single code example.</p>
+<p>Distil-Whisper is the perfect assistant model for English speech transcription, since it performs to within 1% WER of the 
+original Whisper model, while being 6x faster over short and long-form audio samples. However, the official Distil-Whisper 
+checkpoints are English only, meaning they cannot be used for multilingual speech transcription.</p>
+<p>To use speculative decoding for multilingual speech transcription, one could either use one of the official multilingual Whisper checkpoints, 
+or a fine-tuned variant of Whisper. At the time of writing, there are over 5,000 fine-tuned Whisper checkpoints 
+on the Hugging Face Hub in over 100 languages. These provide an excellent starting point for selecting assistant Whisper 
+checkpoints that perform very well on a single language. In this example, we'll use the smallest official multilingual 
+checkpoint, Whisper tiny. Feel free to experiment with different checkpoints
+fine-tuned in your language!</p>
+<p>Let's load the weights for our new assistant model, Whisper tiny. Since the encoder in Whisper tiny differs from that in 
+large-v2, this time we'll load both the encoder and decoder using the AutoModelForSpeechSeq2Seq class:</p>
+<p>For our benchmarking dataset, we'll load 73 samples from the Dutch ("nl") split of the VoxPopuli dataset:</p>
+<p>Great! We can now re-run our benchmark for our baseline Whisper large-v2 model as before. The only change we make is that 
+we pass the language and task arguments to our generate function, in order to ensure we perform speech transcription 
+(not speech translation). Speculative decoding is fully compatible with both the speech transcription and translation tasks. Simply 
+set the task argument as required below:</p>
+<p>Right! We have our baseline time of 117 seconds and a WER of 12.8%. Let's re-run the generation process using speculative decoding:</p>
+<p>Again, we achieve 12.8% WER, but this time in just 62 seconds of inference time, representing a speed-up of 1.9x.
+Given the low overhead of loading the assistant model and the mathematical property that exactly the same outputs are 
+achieved, speculative decoding offers the perfect drop-in replacement to existing Whisper pipelines.</p>
+<p>In this final section, we cover two strategies for ensuring the fastest possible inference time with speculative decoding.</p>
+<p>Our objective is to select an assistant model that is at least 3x faster than the main model and transcribes at least
+70-80% of the predicted tokens correctly, typically the "easier" tokens in the examples. If you have a particular 
+language in which you want to transcribe, an effective strategy is to train two Whisper models of different sizes, and 
+use one as the assistant to the other:</p>
+<p>Fine-tuning and distillation can improve the WER performance of both the main and assistant models on your chosen language, 
+while maximising the alignment in the token distributions. A complete guide to Whisper fine-tuning can be found 
+here, and distillation here.</p>
+<p>It is worth noting that the largest speed gains with speculative decoding come with a batch size of 1. For batched 
+speculative decoding, all candidate tokens across the batch must match the validation tokens in order for the tokens 
+to be accepted. If a token in the batch at a given position does not agree, all candidate tokens that proceed the position 
+are discarded. Consequently, speculative decoding favours lower batch sizes. In practice, we find that speculative decoding 
+provides a speed-up until a batch size of 4. Above batch size 4, speculative decoding returns slower inference than the 
+main model alone. For full results, refer to Section D.3 of the Distil-Whisper paper.</p>
+<p>In this blog post, we covered the inference strategy of speculative decoding, as applied to the Whisper model for speech 
+transcription. We demonstrated how 2x speed-ups can be achieved, while mathematically ensuring the same outputs as using 
+the original model alone. We encourage you to try speculative decoding as a drop-in replacement for existing Whisper 
+pipelines, given the low overhead of using the additional assistant model and the guarantee of the same transcription results.</p>
+<p>Blog post by Sanchit Gandhi. Many thanks to Patrick von Platen
+and Pedro Cuenca for their constructive comments, and to Joao Gante
+for the assisted generation implementation in 🤗 Transformers.</p>
+<p>Browse speech‑to‑text model performance across datasets</p>
+<p>Browse speech‑to‑text model performance across datasets</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/accelerate-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/whisper-speculative-decoding" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
