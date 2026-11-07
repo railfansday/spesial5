@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Beyond Classical: A Quantum Approach to Time-Series Prediction</title>
+    <title>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9954.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Beyond Classical: A Quantum Approach to Time-Series Prediction</h1>
+        <h1>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>Introducing CoQS-LSTM, a Coherent Quantum Long Short-Term Memory Architecture</p>
-<p>The post <a href="https://towardsdatascience.com/beyond-classical-a-quantum-approach-to-time-series-prediction/">Beyond Classical: A Quantum Approach to Time-Series Prediction</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>One of our biggest goals on the WebAI team at Hugging Face is to make browser inference as fast and as user-friendly as possible. Getting there is a multi-layer effort: models need browser-friendly representations, runtimes need to build efficient execution plans, and the individual GPU operations at the bottom of the stack need to make the most of many different devices and browser implementations.</p>
+<p>Today, we are releasing the first layer of that effort: @huggingface/kernels, a minimal library for loading and running optimized WebGPU kernels from the Hugging Face Hub, together with an initial collection of 207 kernels at huggingface.co/webgpu-kernels.</p>
+<p>The collection covers operations used across a wide variety of machine learning architectures and workloads. More importantly, each kernel is published as a complete, versioned package: its interface, shader templates, correctness cases, benchmark cases, and usage instructions all live together on the Hub.</p>
+<p>We are also launching Fleet, an in-browser GPU benchmarking and testing suite that runs and scores the kernels on your hardware. Beyond the results for your own machine, Fleet gives the community a way to contribute performance and correctness evidence from devices we could never cover in a conventional test lab. With your consent, every run adds private evidence that can help us find failures (incorrect results, pathologically slow cases, etc.), improve kernel variants, and make better optimization decisions across real-world hardware.</p>
+<p>A model running in the browser eventually becomes a sequence of GPU operations: matrix multiplications, normalizations, convolutions, attention primitives, quantization operations, data-layout transformations, and many more. WebGPU makes these operations available across modern browsers through a portable API, while WGSL provides a common language for the shaders that execute them.</p>
+<p>Portability, however, does not automatically mean performance. Two shaders can implement the same operation and produce the same output while behaving completely differently across different accelerators. Workgroup sizes, memory access patterns, vectorization, data types, and fusion strategies can all affect performance. The best choice can also change with the input shape, device, browser, and available WebGPU features.</p>
+<p>This is why kernels form a foundational layer of fast browser inference. Higher-level runtimes can only be as efficient as the operations they dispatch. By making those operations individually discoverable, testable, benchmarkable, and versioned, we can improve the foundation independently while keeping a stable contract for the layers above it.</p>
+<p>Each kernel in the collection has its own repository and kernel card. The card documents the operation's semantics, inputs, outputs, attributes, supported data types, source files, and a ready-to-run @huggingface/kernels example.</p>
+<p>For example, ai.onnx.Add implements elementwise addition with multidirectional broadcasting. It is one of the simplest operations in a neural network, used everywhere from residual connections to adding a bias. Its card documents the two inputs, the broadcasted output shape, supported data types, and the variants available for different shapes and devices.</p>
+<p>Behind the card, the repository contains the artifacts needed to understand and evaluate the implementation:</p>
+<p>This structure turns a shader into a reusable software artifact. The interface is inspectable without reading WGSL, correctness and performance cases travel with the implementation, and published versions can be loaded explicitly rather than depending on an unversioned file URL. Our kernels can also serve as reference implementations for developers building custom WebGPU kernels or integrating these operations into their own runtimes.</p>
+<p>Running these kernels requires a browser with WebGPU support. WebGPU availability depends on the browser, operating system, GPU, and driver. You can check for it in JavaScript with "gpu" in navigator.</p>
+<p>@huggingface/kernels provides the bridge between a kernel repository and your application. Call getKernel with a Hub repository ID and a contract version, then invoke the returned function with typed input data and tensor shapes. Here is a small bias-add example:</p>
+<p>The second input is broadcast across the first dimension, producing an output with shape [2, 3]. The loader derives that output shape and logical data type from the manifest contract and the inputs, then allocates c automatically.</p>
+<p>Addition on six floats is deliberately the smallest possible demo. At this size, the GPU round trip costs far more than the math. The point is the call pattern: it stays exactly the same for the heavyweight operations where optimized kernels actually pay off, such as matrix multiplication (ai.onnx.MatMul). Only the repository ID and the inputs change.</p>
+<p>Even this elementary operation illustrates why kernels need variants. Equal-shape addition can use a direct vectorized path, while broadcasted inputs need different indexing logic. The published Add kernel includes variants for equal shapes, vectorized broadcasting, scalar processing, and general broadcasting. The runtime can select an implementation that fits the current call and device without changing the application-facing API.</p>
+<p>The version: 1 option selects version 1 of the published kernel contract. It is separate from an ONNX opset, an operator's since_version, or a model revision. Keeping those concepts separate lets applications depend on a stable JavaScript-facing contract while kernel implementations evolve behind it.</p>
+<p>So, how much of a difference do optimized kernels actually make? We put our collection head-to-head with ORT WebGPU on an Apple M4 GPU, using ONNX Runtime Web 1.30.0-dev.20260826-b1f76d586a. We started with 1,756 test cases across all 207 operations and kept the 809 cases where both sides produced matching outputs and reliable timings.</p>
+<p>Across those comparisons, our kernels were 2.57x faster by geometric mean and 1.90x faster at the median, with 629 wins, 176 losses, and 4 ties. Here is a closer look at four familiar operations:</p>
+<p>Some individual wins were much bigger. A particularly difficult bilinear Einsum case (i,ij,j with size 4096) ran in 0.136 ms with our kernel versus 1,396 ms with ORT WebGPU: more than 10,000x faster. A row-wise CumSum over [256, 4096] was 301x faster, at 0.016 ms versus 4.784 ms. These are unusual cases rather than the speedups you should expect everywhere, but they show how much a specialized kernel can help when a general implementation hits a slow path.</p>
+<p>We timed the work done on the GPU itself, leaving out setup such as loading kernels, creating sessions, uploading inputs, compiling shaders, and reading outputs back. Very short workloads are naturally harder to measure, and small cases can benefit from the GPU cache, so these numbers are best read as a useful comparison rather than a promise for every application.</p>
+<p>They are also results for individual operations, not complete models. Exact performance will change across GPUs and browsers, which is why Fleet is so important for building a broader picture.</p>
+<p>We are also working with the ONNX Runtime team to upstream these improvements so they can benefit the broader ONNX Runtime Web ecosystem.</p>
+<p>WebGPU performance varies across GPUs, browsers, and drivers, so results from one machine only tell part of the story. Fleet lets anyone run correctness and performance checks in the browser and see how the kernels behave on their hardware.</p>
+<p>With consent, each run privately contributes evidence that helps us spot device-specific failures, compare variants, and improve selection rules. The goal is simple: use broad, real-world coverage to make the kernels faster and more reliable for everyone.</p>
+<p>The initial 207 kernels are a starting point, not the end state. Publishing kernels independently on the Hub gives us a common place to inspect contracts, compare implementations, reproduce correctness checks, and improve performance without embedding every shader directly into every runtime.</p>
+<p>The collection is also part of the Hub's broader kernel ecosystem: on the Kernels page, the WebGPU kernels sit alongside kernels for CUDA, ROCm, Metal, and other platforms, and can be filtered, sorted, and explored like any other artifact on the Hub.</p>
+<p>This is the low-level foundation for the next steps in our browser inference stack. We are excited to connect these kernels to higher-level model tooling, continue expanding operation coverage, and make fast local inference easier to use across the WebAI ecosystem.</p>
+<p>Explore the WebGPU kernel collection, try @huggingface/kernels, and join the Fleet to contribute evidence from your device and help us make the kernels better for everyone.</p>
+<p>The Fleet part may matter as much as the kernels. The 809 comparable cases on an M4 are useful, but browser, driver and device variance is where WebGPU tends to get painful. Will Fleet eventually expose per-device distributions, or is the plan to use the runs only for aggregate selection rules?</p>
+<p>In an automated build system, I could see per device kernels, made more interesting by fusion of ops.</p>
+<p>The area that obviously needs more attention are the 947 tests that did not result in reliable output. This could be the test, it could be that the ORT WebGPU is wrong, or the new kernel is wrong, or the test harness had issues, hard to know from the outside. Perhaps the Fleet thing is meant to improve this.</p>
+<p>Very excited to see such attention at making WebGPU first class in ML!</p>
+<p>@sroussey  Agreed—the excluded 947 need a taxonomy before the 2.57× summary can travel. I'd want counts by operation and device for unsupported, ORT mismatch, new-kernel mismatch, and harness/timeout, with raw failing cases downloadable. Then Fleet can optimize only within a proven-correct compatibility envelope; fusion and per-device tuning become much safer.</p>
+<p>Excellent! This will help our WebAI community continue developing highly optimized solutions. Many thanks @Xenova  and @nico-martin  for the great work you have been doing.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/beyond-classical-a-quantum-approach-to-time-series-prediction/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/webgpu-kernels" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

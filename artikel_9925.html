@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications</title>
+    <title>Scriptable GeoDNS: leaving AWS for Bunny</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9925.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,132 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications</h1>
+        <h1>Scriptable GeoDNS: leaving AWS for Bunny</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6a725daa5ca641a21ab61956/OWGtXjnbBov-7SI_04o4z.png" alt="How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media-bernat-ch.b-cdn.net/images/covers/en/blog/2026-bunny-geodns.7be2142de9305f.jpg" alt="Scriptable GeoDNS: leaving AWS for Bunny" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6a725daa5ca641a21ab61956/OWGtXjnbBov-7SI_04o4z.png" alt="How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media-bernat-ch.b-cdn.net/images/covers/en/blog/2026-bunny-geodns.7be2142de9305f.jpg" alt="Scriptable GeoDNS: leaving AWS for Bunny" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Models specialized for a domain or a task by fine-tuning general open-source models, such as Qwen and Gemma, inherit a vocabulary built for many domains and general applications.</p>
-<p>In an essay grader we run in production, that vocabulary split the text the model writes most into many tokens. This article previews some results from the VocabX paper, which we will publish soon: how we specialized the vocabulary around the cost of each token rather than its frequency, and cut measured inference cost by 77% without changing the base model.</p>
-<p>The tokenizer is usually treated as a fixed property of the base model, inherited and left alone. For a model specialized in a single domain, it can be one of the largest cost levers, and it is set before any training step.</p>
-<p>One of the systems we run in production is an automated grader for Portuguese essays, built on Qwen3-4B. It receives the essay, the prompt and the supporting texts, and returns a JSON assessment with a grade and a comment for each competency.</p>
-<p>The model was already small, at 4 billion parameters, and had already been trained for the task. Its tokenizer, however, was still the original Qwen3-4B one, built for many languages and many kinds of text. In the grader, it was used for a single language, Portuguese, and a single response format. That had two costs: the text the grader writes on every request took more tokens than it needed, and at every generated token the model scored a vocabulary of 151,669 entries, including many this task almost never uses.</p>
-<p>We rebuilt that vocabulary with a method we call VocabX, keeping the same base model, the same data and the same training recipe. The numbers in this article come from the current version of the paper, still under review, and may change before publication.</p>
-<p>The leading language models read and write in tokens, and the tokenizer decides how text becomes tokens. The tokenizers of the leading general-purpose models are trained on large collections of text from many domains and languages, from source code to contracts to Chinese. For a general-purpose model, that choice makes sense.</p>
-<p>For a model used in a single domain, it creates two kinds of waste at once.</p>
-<p>The first is fragmentation. The tokenizer splits into many pieces exactly what the domain repeats most. In the grader, every response starts with the same JSON envelope, the same competency names, the same evaluation phrases. In contracts, it is the boilerplate clauses. In code, the identifiers. Each of these sequences costs several tokens where one would do, and the model pays for every one of them on every request.</p>
-<p>The second is excess. The vocabulary carries tens of thousands of entries the domain never uses, and the model computes a score for all of them at every token it generates. A model tuned to grade American school biology exams will almost never write in Chinese, yet it computes the probability of every Chinese-language token at every step. The vocabulary splits into many pieces what the domain repeats most, and carries entries the domain never uses.</p>
-<p>The natural reaction is to count tokens and try to reduce the count. But the count is not the bill.</p>
-<p>To see why a generated token costs more, it helps to look at how inference works. It has two phases. In prefill, the model processes the whole input in a single pass through the network: each weight read from GPU memory is reused for every input token, and the limit is compute. In decode, the model generates the response one token at a time, and each token needs a full pass. Each weight read is used only a few times, and the GPU spends most of its time waiting for data to arrive from memory: the limit becomes memory bandwidth.</p>
-<p>This effect is strongest exactly where we operate: small models served with moderate batches. Batching requests splits the weight reads across them and eases the problem, but does not solve it. At every decode step, the model also reads the KV cache, the attention memory that holds the context already processed and grows with it. In the case we measured, the grader, a generated token costs 7.4 times a token read, but the ratio varies with the hardware, the problem, the batch size, the context length and other factors, and it can be larger than that. In general, the direction holds: generating costs more than reading.</p>
-<p>Think of a shipping company that charges per box, but charges seven times more for outgoing boxes than for incoming ones. Reducing the total number of boxes helps. Reducing the outgoing boxes helps seven times more. A method that compresses input and output equally misses most of the possible savings.</p>
-<p>The third component of the bill is the vocabulary itself. The model's last layer, the LM head, turns the internal state into a score for every possible token. To do that, it holds one row of parameters per vocabulary entry. In a model the size of Qwen3-4B, that matrix accounts for almost 10% of the parameters. It is a share that large models absorb without noticing, but it weighs on a small model.</p>
-<p>And the cost is not paid only once. The input layer looks up only the row of the token being read, but the LM head reads and multiplies the entire matrix for every generated token. Since decode is already memory-bound, every extra row is more data to move at every step. An entry the domain never uses costs exactly the same as a frequent one. That is why adding tokens can lower the count and raise the bill at the same time. VocabX does not include this term in its selection criterion, but it controls vocabulary size in two steps: the sub-word merge replaces the base vocabulary with a smaller, domain-specific one, and macros enter under a fixed budget. In the grader, the output layer went from about 152,000 to about 65,000 rows.</p>
-<p>Adapting a model's vocabulary is not a new idea. Reference methods in the literature, such as fast vocabulary transfer (FVT), multi-word tokenization (MWT) and Liquid AI's in-place tokenizer expansion (in-place BPE), which continues BPE training from the original vocabulary, already reduce fragmentation. When we tested them on our problem, we found two limitations.</p>
-<p>They choose tokens by frequency, not by cost. An expression that appears often in the input is worth more to them than one that appears less often in the response, even if the second is the more expensive one to serve.</p>
-<p>They work on a single layer. They either adjust how words are cut into pieces, or merge whole phrases into one token. None of these three does both under the same criterion. And the grader's biggest waste was precisely in long, repeated spans such as the JSON envelope, which a sub-word method only reaches after merging each part, one by one.</p>
-<p>VocabX addresses both limitations, plus a third problem that appears on the obvious path to solving the first.</p>
-<p>First, we changed the question. Instead of asking how many tokens a candidate saves, we ask how much cost and time it saves. Each eliminated token is multiplied by the price of the field it appears in: system prompt, user message or model response. In the case we measured, the grader, a token saved in the response is worth 7.4 times one saved in the input, and the vocabulary is built accordingly.</p>
-<p>Second, we work on both layers at once. Back to the shipping company: you can cut boxes by packing each item better, or by recognizing that the same twelve-item kit ships every week and sending the kit in a single box. VocabX does both. At the sub-word layer, it rebuilds how domain words are cut into pieces. At the multi-word layer, it looks for whole spans that repeat, from short expressions to full lines and JSON envelopes, and turns each into a single token, which we call a macro token. Both layers are chosen under the same cost criterion, each with its own budget.</p>
-<p>To find these spans, we use five miners, automatic searches for spans that repeat across the corpus, each specialized in one kind of repetition: long words, whole lines, expressions, complete sentences, and structures with punctuation such as JSON and tags. Averaged over eight corpora, the last one contributed the most, and on code it alone accounted for 17.5 points. Without all five, token reduction on the grader would drop by 55.6 points.</p>
-<p>Third, we estimate what the sample cannot see. Choosing tokens by cost requires knowing how much each candidate still saves after the ones already chosen. Measuring that exactly would require reprocessing the entire corpus after every choice, tens of thousands of times. A common way to do this at scale is to measure on a sample of documents, and then a candidate absent from the sample gets zero gain.</p>
-<p>An expression that appears 37 times in 50,000 documents shows up in a 400-document sample only about 26% of the time. In a contracts corpus, only 16.6% of the candidates appear in a 400-document sample; the rest are never evaluated.</p>
-<p>A candidate's gain has two parts. One is how much it saves over the entire corpus, and that can be counted exactly, without a sample. The other is how much of that saving is not yet covered by the tokens already chosen, and only that part needs to be estimated. For candidates the sample cannot see, we use a statistical estimate based on the behavior of the ones it can see, instead of zero. A candidate that is rare in the sample but frequent in the corpus is back in the running.</p>
-<p>That change alone, with the same sample and the same budget, raised token reduction on a contracts corpus from 44.7% to 52.8%.</p>
-<p>To measure the real effect, we trained seven versions of the grader with the same base model, the same data, the same recipe and the same seed. The only difference between them is the tokenizer. All of them ran the same 500 requests on the same test machine, with an RTX 5090 GPU and the vLLM inference server, and cost was calculated from measured runtime.</p>
-<p>The model's response dropped from 350 to 101 tokens on average. Cost dropped 77.0%. Quality, measured by the bench score, which combines grading accuracy and the accuracy of screening off-topic or rule-breaking essays, rose from 0.703 to 0.810.</p>
-<p>Getting there required a course correction. The first version of the vocabulary fused each competency's grade with the surrounding JSON into a single macro token. It was the most compact option, but quality dropped: its bench score was 0.689, below the production grader's 0.703. With the grade inside the macro, each combination of grade and structure became a different variant of the same token, and the model chose both in a single step. Giving the grade its own token cost 2 extra tokens per response, raised the bench score to 0.810 and, in the measurement, was even cheaper: a 77.0% reduction, against 73.3% for the fused version.</p>
-<p>The lesson applies beyond the grader. Compression has a cost when the compressed span carries the very decision the model exists to make. The goal is not the cheapest possible vocabulary, but the cheapest one that preserves the tokens that matter.</p>
-<p>To find out whether the gain was specific to our case, we compared VocabX with the three reference methods on five public domains (contracts, medical papers, scientific papers, news and Python code) and three model families (Qwen3, Llama-3.1 and Gemma-3). All methods used the same mining and test documents, and the same vocabulary ceiling.</p>
-<p>VocabX compressed more than the strongest reference method in all fifteen combinations, by 1.2 to 9.3 points. In estimated inference cost, the pruned version of VocabX also led in all fifteen, with average margins of 10.2 points on Qwen3, 7.5 on Llama-3.1 and 13.6 on Gemma-3. On contracts, the pruned version reached 62.6% token reduction with 113,426 vocabulary entries, against 61.8% for the best in-place BPE configuration, which uses 207,803.</p>
-<p>VocabX does not make the model smarter. It makes the model stop paying for text it does not need to write piece by piece, and stop scoring a vocabulary it will never use. In our grader, that cut measured inference cost by 77%, with the same base model and the same training recipe.</p>
-<p>Specialization usually starts with data and weights. It can also start one layer earlier, in the vocabulary.</p>
-<p>The full method, the tables for every experiment and the discarded interventions will be in the VocabX paper, which we will publish soon.</p>
-<p>Explore Dharma AI on Hugging Face to try our demos, download our open models, and see how specialized AI systems outperform general-purpose models in real enterprise applications.</p>
+                <p>To op­ti­mize the per­for­mance met­rics of this blog, I re­lied on Ama­zon
+Cloud­Front to serve the as­sets,1 and Route 53 for the geo-aware
+DNS2 to di­rect read­ers to the clos­est host serv­ing the con­tent. But
+Route 53 is ex­pen­sive: US$0.50 per zone per month, US$0.70 per mil­lion
+ge­olo­ca­tion queries, and US$0.75 per healthcheck per month[1],
+plus US$1 per month for the KMS key[2] needed to sign zones with
+DNSSEC. When I dis­cov­ered that Bunny DNS is al­most free[3] for up to 500
+do­mains and fea­tures script­able an­swers, I made the jump! Plus, it’s a Eu­ro­pean
+com­pany based in Slovenia.</p>
+<p>I had been host­ing me­dia as­sets on Cloud­Front since 2011. ❦</p>
+<p>Route 53 had served bernat.ch since De­cem­ber 2021. I didn’t use healthchecks as
+they were too ex­pen­sive. I didn’t host most of my zones there ei­ther, as queries
+for haproxy.​debian.​net alone would have cost me around US$10 per month. ❦</p>
+<p>Bunny.net[4] started as BunnyCDN in 2015[5]. They added IPv6
+sup­port in 2017[6]. Switch­ing was un­event­ful. I don’t bring a cus­tom do­main: I
+serve the con­tent from the b-cdn.​net do­main. As I de­pend on con­tent
+ne­go­ti­a­tion to serve AVIF and WebP im­ages[7], I con­fig­ure the CDN to cache
+each im­age for­mat sep­arately[8].</p>
+<p>I dis­able log­ging[9] to avoid col­lect­ing per­sonal
+in­for­ma­tion. While the bunny.net GDPR page[10] prom­ises they anonymize data, it
+is un­clear what Cloud­Front keeps in its own logs when log­ging is disabled.</p>
+<p>The only down­side of the bunny.net CDN of­fer­ing is the lack of HTTP/3. I asked
+their sup­port: two min­utes later, they an­swered they are work­ing on it but have
+no ETA to share.</p>
+<p>Bunny.net in­tro­duced their DNS of­fer­ing in 2022[11] and re­cently re­duced its
+cost to al­most zero[3]. They sup­port ge­o­graph­i­cal rout­ing[12], but a
+very cool fea­ture is the script­able DNS[13]: it runs a piece of user-sup­plied
+Java­Script on each query to com­pute the answer.</p>
+<p>I run seven small NixOS vir­tual ma­chines to host this blog around the world:
+Paris, Nurem­berg, Ash­burn, Sin­ga­pore, San Jose, São Paulo, and Syd­ney. Bunny’s
+script­able DNS lets me re­turn the IP ad­dresses of the two near­est servers.
+The browser falls back to the sec­ond server if the first one is down.</p>
+<p>The above script re­lies on the
+RoutingEngine.​getClosestServer()[14] helper, which re­turns the
+clos­est alive3 server to the user.4 Thanks to Doggo[15], we can
+check it works as ex­pected, at least for A:5</p>
+<p>A server is alive if it an­swers an ICMP ping. The bunny.net
+doc­u­men­ta­tion[16] gives more de­tails about the checks. ❦</p>
+<p>The user queries Bunny DNS through a re­solver. Usu­ally, ei­ther the re­solver
+is close to the user, or it ex­poses the user’s sub­net through EDNS client
+subnet[17]. ❦</p>
+<p>Don’t use this script as is: RoutingEngine.​getClosestServer() only works
+with IPv4. The fi­nal script[18] works around this lim­i­tation. ❦</p>
+<p>The most an­noy­ing draw­back of this method is that a user from Buenos Aires gets
+both São Paulo (1000 mi, 30 ms RTT) and Ash­burn (5200 mi, 140 ms RTT). Most
+re­solvers ran­dom­ize the or­der, so the user may pull the web page from Ash­burn.
+We could re­turn only the near­est server—and swap the scripted record with the
+built-in ge­o­graphic rout­ing in­stead. But if the server be­comes un­avail­able, the
+browser has no al­ter­na­tive un­til the DNS cache ex­pires. It leaves a short win­dow
+of un­avail­abil­ity, even with a short TTL.</p>
+<p>The HTTPS DNS record[19], de­fined in RFC 9460[20], solves both the avail­abil­ity
+and the la­tency is­sues. Mod­ern browsers query this record to get ad­di­tional
+in­for­ma­tion to reach an HTTP server, in­clud­ing an al­ter­na­tive port and the
+ap­pli­ca­tion layer protocol—HTTP/2 or HTTP/3. Each record has a pri­or­ity. We
+can ask browsers to con­tact the near­est server first and fall back to the next
+one if the first is un­available:</p>
+<p>This looks like the ideal so­lu­tion! Un­for­tu­nately, Chrome ig­nores any record
+whose tar­get is not .[21], hence the last record at pri­or­ity 3.
+More­over, un­like with a CNAME, Bunny DNS does not re­turn the IP ad­dresses for
+first.​geo and second.​geo in the ad­di­tional sec­tion. The re­solver needs to
+send a first re­quest to get the HTTPS record, and a sec­ond to re­solve
+first.geo.</p>
+<p>HTTPS records are still too new[22] for this use case. Back to the draw­ing board! 📐</p>
+<p>As a com­pro­mise, the script re­turns the two near­est servers if they are at a
+sim­i­lar dis­tance from the user. Oth­er­wise, it re­turns only the near­est one with
+a lower TTL of 2 minutes.</p>
+<p>We can check it with Doggo. From Chicago, we get only the Ash­burn server
+with a TTL of 2 min­utes, while from Mex­ico, we get both Ash­burn and San Jose.</p>
+<p>On the live page[23], the map be­low is in­ter­ac­tive: point at a
+lo­ca­tion to get the DNS an­swer, or dis­able servers to see how the an­swers change.</p>
+<p>En­able Java­Script to make the map be­low in­ter­ac­tive: point at a lo­ca­tion
+to get the DNS an­swer, or dis­able servers to see how the an­swers change.</p>
+<p>This page was brought to you by ???. Check on the map be­low whether it matches your
+location!</p>
+<p>The com­plete code[18] is a bit more com­plex. It works around
+RoutingEngine.​getClosestServer() sup­port­ing only IPv4, and it han­dles the case
+where there are not enough alive servers to build an answer.</p>
+<p>Bunny.net has a com­pre­hen­sive Ter­raform provider[24]. I lever­age CDK
+Ter­rain[25] to build the tar­get state in Type­Script and OpenTofu[26] to de­ploy
+it. Have a look at “Man­ag­ing in­fra­struc­ture with Ter­raform, CDKTF, and
+NixOS[27]” for more details.6</p>
+<p>The ar­ti­cle is a bit out­dated. CDK Ter­rain re­places CDKTF, OpenTofu
+re­places Ter­raform, and I now use Col­mena[28] in­stead of NixOps. ❦</p>
+<p>Route 53 cov­ered one ad­di­tional use case of mine: serv­ing acme.​luffy.cx to
+solve DNS-01 ACME chal­lenges[29]. Un­like Route 53, Bunny DNS can­not
+re­strict ac­cess to a sin­gle zone with a fine-grained ac­cess pol­icy. As this
+us­age re­quires nei­ther high avail­abil­ity nor low la­tency, I re­placed Route 53
+with Hick­ory[30], a mem­ory-safe DNS server writ­ten in Rust. It sup­ports
+au­to­matic DNSSEC sig­na­tures[31] and dy­namic up­dates[32]. Its
+con­fig­u­ra­tion is simple:</p>
+<p>The pro­vided zone file[33] only seeds the data­base on first start. I del­e­gate
+DNS-01 chal­lenges to this zone with CNAME records:</p>
+<p>Lego[34], the ACME client I use to get cer­tifi­cates from Let’s En­crypt[35],
+an­swers the DNS-01 chal­lenge by push­ing en­tries with the DNS UPDATE protocol[36].</p>
+<p>Un­for­tu­nately, Bunny DNS can­not pub­lish a DS record in a zone.7 I need one
+to se­cure the acme.​luffy.cx zone and cer­tifi­cate de­liv­ery. There­fore, I host
+the luffy.cx zone on deSEC[37],8 a free DNS host­ing ser­vice run by a
+non-profit or­ga­ni­za­tion based in Berlin. I de­rive the DS record to pub­lish in
+luffy.cx from the DNSKEY record of acme.​luffy.cx:</p>
+<p>I con­tacted bunny.net sup­port to ask when they will sup­port pub­lish­ing a
+DS record and got an an­swer seven min­utes later: they don’t know. 😭</p>
+<p>This is a bum­mer, as they sup­port au­to­matic CDS, a DNS record to ad­ver­tise
+a DS record to the par­ent zone. They han­dle one side of the del­e­ga­tion,
+not the other.</p>
+<p>I also re­ported a bug with the proof of non-ex­is­tence, and they replied a
+day later with a de­tailed answer. ❦</p>
+<p>Why not use deSEC for ACME chal­lenges? You can limit its to­kens to a
+sin­gle RRset[38]. I could say I pre­fer to self-host, but the
+truth is I only dis­cov­ered this while writ­ing this article. ❦</p>
+<p>Over­all, I am quite happy with the switch to bunny.net. There are still a few
+rough edges, like the in­abil­ity to pub­lish DS records, the lack of HTTP/3, and
+the IPv4-only RoutingEngine.​getClosestServer() helper. The bill went from US$5
+per month to US$1. So far, per­for­mance is on par with AWS[39], but I
+only fi­nal­ized the cur­rent setup, in­clud­ing the server in Syd­ney, in late
+Oc­to­ber. I need a bit more time to gather more data, and I’ll post a short update. 📈</p>
+<p>This post was briefly dis­cussed on Hacker News[40] and Lobsters[41].</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/Dharma-AI/vocabx-vocabulary-specialization" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://vincent.bernat.ch/en/blog/2026-bunny-geodns" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

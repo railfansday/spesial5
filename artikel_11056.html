@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Preference Optimization for Vision Language Models</title>
+    <title>Introducing ConTextual: How well can your Multimodal model jointly reason over text and image in text-rich scenes?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11056.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,57 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Preference Optimization for Vision Language Models</h1>
+        <h1>Introducing ConTextual: How well can your Multimodal model jointly reason over text and image in text-rich scenes?</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/dpo_vlm/thumbnail.png" alt="Preference Optimization for Vision Language Models" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/leaderboards-on-the-hub/thumbnail_contextual.png" alt="Introducing ConTextual: How well can your Multimodal model jointly reason over text and image in text-rich scenes?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/dpo_vlm/thumbnail.png" alt="Preference Optimization for Vision Language Models" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/leaderboards-on-the-hub/thumbnail_contextual.png" alt="Introducing ConTextual: How well can your Multimodal model jointly reason over text and image in text-rich scenes?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Training models to understand and predict human preferences can be incredibly complex. Traditional methods, like supervised fine-tuning, often require assigning specific labels to data, which is not cost-efficient, especially for nuanced tasks. Preference optimization is an alternative approach that can simplify this process and yield more accurate results. By focusing on comparing and ranking candidate answers rather than assigning fixed labels, preference optimization allows models to capture the subtleties of human judgment more effectively.</p>
-<p>Preference optimization is widely used for fine-tuning language models, but it can also be applied to vision language models (VLM).
-We are excited to announce that the TRL library now supports direct preference optimization (DPO) for VLMs. This article will guide you through the process of training VLMs using TRL and DPO.</p>
-<p>Preference optimization requires data that captures user preferences. In the binary choice setting, each example consists of a prompt, and two candidate answers: one that is chosen and one that is rejected. The model's goal is to learn to predict the chosen answer over the rejected one.
-For example, you need to have samples like the following:</p>
-<p>Note that the chosen message is not necessarily correct. For example, the chosen response that says 18,000 families is still wrong, but it's less wrong compared to the rejected response.</p>
-<p>For this blog post, we'll be using the openbmb/RLAIF-V-Dataset, which includes over 83,000 annotated rows. Let's take a closer look at the dataset:</p>
-<p>Our model requires both text and images as input, so the first step is to format the dataset to fit this requirement. The data should be structured to simulate a conversation between a user and an assistant. The user provides a prompt that includes an image and a question, while the assistant responds with an answer. Here's how this formatting is done:</p>
-<p>Our dataset is now formatted. Let's have a look at the first example:</p>
-<p>Warm up your GPUs, the dataset is ready for training!</p>
-<p>For the sake of the example, we'll be training the Idefics2-8b model, but note that the DPO implementation in TRL supports other models like Llava 1.5 and PaliGemma. More information in Section Finetuning Llava 1.5, PaliGemma and others. Before looking into the training process, we'll first ensure everything fits smoothly into memory.</p>
-<p>I have a GPU with 80GB of VRAM. Is it enough to train my Idefics2-8b model? Here are the calculation steps to get a rough estimate of the memory needed.</p>
-<p>Let N N N be the number of parameters, P P P the precision. The following components will have to fit together in memory:</p>
-<p>Idefics2-8b has 8 billion parameters, and we use float32 precision which requires 4 bytes per float. So the total memory required is:</p>
-<p>This is way above my GPU's memory capacity. Fortunately, by applying techniques such as quantization and LoRA, we can significantly reduce the memory requirements and make the training feasible. Let's see how to do this.</p>
-<p>Quantization is a technique that reduces the precision of the model's weights and activations. Switching from float32 to bfloat16 precision halves the storage requirement per parameter from 4 bytes to 2 bytes. This optimization conserves memory while also accelerating computations, ensuring high performance with minimal compromise.
-To implement bfloat16 precision in the model:</p>
-<p>bfloat16 precision can also be applied to the optimizer by setting bf16=True in the training arguments:</p>
-<p>LoRA is a method that reduces the number of trainable parameters by learning pairs of rank-decomposition matrices while keeping the original weights frozen. This significantly decreases the storage needs for LLM adapted to specific tasks. LoRA is integrated in PEFT and you can set it up in no time:</p>
-<p>PEFT acts like a wrapper (called adaptater) around the model. This is the adapter that will be trained while the inner model is kept frozen. How much does LoRA reduce the number of trainable parameters?</p>
-<p>It reduces the number of trainable parameters from 8 billion to 55 million, which is a huge gap, and it will significantly reduce the memory requirements.</p>
-<p>Now that we have reduced the memory requirements, let's recalculate the memory needed:</p>
-<p>This time, we need around 32GB of memory to finetune our Idefics2-8b model, which is much more reasonable and fits within my GPU!</p>
-<p>For additional information on optimizing memory usage using LoRA and QLoRA, refer to the PEFT documentation or LoRA and QLoRA Google's recommendations for LLMs.</p>
-<p>Our memory calculation isn't exact as it doesn't account for activations. Activations are the intermediate outputs of the network layers and their memory requirements depend on the model structure and batch size. Precisely calculating the memory needed for activations is challenging, so we'll rely on empirical observations.</p>
-<p>To choose an appropriate training batch size (per_device_train_batch_size), start with your desired batch size (e.g., 64). This will likely result in an out-of-memory (OOM) error. If it does, reduce the batch size by half and double the gradient accumulation steps (gradient_accumulation_steps) to maintain the same effective batch size. Repeat this process until the memory fits within your GPU. In our case, we end up with a batch size of 2 and gradient accumulation steps of 32.</p>
-<p>An additional optimization is to use gradient checkpointing (gradient_checkpointing) to reduce the memory needed for activations. This technique trades off compute for memory by recomputing parts of the network during the backward pass. It can be enabled by setting gradient_checkpointing=True in the training arguments.</p>
-<p>Now that we've set up the model, dataset, and training parameters, we're ready to train. Here's how to put everything together in a script, including some additional elements to speed up processing, like dataset_num_proc and dataloader_num_workers:</p>
-<p>A few hours later, the training is complete. Let's take a look at the training curves:</p>
-<p>In DPO, we focus on several metrics to assess the quality of the training:</p>
-<p>With the model training complete, the next step is to evaluate its performance on some examples. This will give us a sense of how well the model has learned and how effectively it can make predictions. Here’s a script to help you evaluate the model and analyze its performance on a set of test examples:</p>
-<p>As mentioned above, the openbmb/RLAIF-V-Dataset is designed to reduce hallucinations. But has the fine-tuning actually reduced hallucinations? To find out, we can use the AMBER benchmark, a dataset specifically created to evaluate hallucinations in VLMs. We will report the results for Idefics2 and Idefics2+DPO on the discriminative task and compare them with other models for reference.</p>
-<p>Overall, the fine-tuned model seems to hallucinate a bit less. The training seems to have been successful!</p>
-<p>Here are some cherry-picked examples to illustrate the model's performance:</p>
-<p>Try it yourself and see how the model performs on your own examples!</p>
-<p>At the time of writing, the DPO implementation in TRL supports Idefics2, Llava 1.5, and PaliGemma, with ongoing efforts to add support for more models. The easiest way to fine-tune these models is to use the example script provided in the TRL repository. For example, to finetune PaliGemma, you can use the following command:</p>
-<p>You can find a detailed focus on PaliGemma finetuning in the smol-vision project.</p>
-<p>🚀🚀 Now you have everything you need to start fine-tuning your own VLMs with DPO. Share your findings, models, and datasets with the community!</p>
-<p>I applied DPO fine-tuning to the Qwen VL-2.5 7B model using PEFT LoRA. When I loaded the model with the adapter, inference was 6 times slower compared to the base model. What could be the reason for this?</p>
-<p>I think it's related to this: https://github.com/huggingface/peft/issues/303</p>
-<p>Is this method works for Qwen/Qwen2.5-VL-3B-Instruct to train</p>
+                <p>Models are becoming quite good at understanding text on its own, but what about text in images, which gives important contextual information? For example, navigating a map, or understanding a meme? The ability to reason about the interactions between the text and visual context in images can power many real-world applications, such as AI assistants, or tools to assist the visually impaired.</p>
+<p>We refer to these tasks as "context-sensitive text-rich visual reasoning tasks".</p>
+<p>At the moment, most evaluations of instruction-tuned large multimodal models (LMMs) focus on testing how well models can respond to human instructions posed as questions or imperative sentences (“Count this”, “List that”, etc) over images... but not how well they understand context-sensitive text-rich scenes!</p>
+<p>That’s why we (researchers from University of California Los Angeles) created ConTextual, a Context-sensitive Text-rich visuaL reasoning dataset for evaluating LMMs. We also released a leaderboard, so that the community can see for themselves which models are the best at this task.</p>
+<p>For an in-depth dive, you can also check these additional resources: paper, code, dataset, validation dataset, and leaderboard.</p>
+<p>ConTextual is a Context-sensitive Text-rich visual reasoning dataset consisting of 506 challenging instructions for LMM evaluation. We create a diverse set of instructions on text-rich images with the constraint that they should require context-sensitive joint reasoning over the textual and visual cues in the image.</p>
+<p>It covers 8 real-world visual scenarios - Time Reading, Shopping, Navigation, Abstract Scenes, Mobile Application, Webpages, Infographics and Miscellaneous Natural Scenes. (See the figure for a sample of each dataset).</p>
+<p>The leaderboard contains model results both on the validation and test datasets (the information is also present in the paper). The development set allows the practitioners to test and iterate on their approaches easily. The evaluation sandbox is present in our github.</p>
+<p>For our initial experiments, our benchmark assessed the performance of 13 models. We divided them into three categories:</p>
+<p>Our dataset includes a reference response for each instruction, allowing us to test various automatic evaluation methods. For evaluation, we use an LLM-as-a-judge approach, and prompt GPT-4 with the instruction, reference response, and predicted response. The model has to return whether the predicted response is acceptable or not. (GPT4 was chosen as it correlated the most with human judgement in our experiments.)</p>
+<p>Example 1
+In this instance, GPT-4V provides an incorrect response to the instruction, despite its logical reasoning. The use of green indicates responses that match the reference, while red highlights errors in the responses. Additionally, a Summarized Reasoning is provided to outline the rationale used by GPT-4V to arrive at its answer.</p>
+<p>Example 2
+In this example, GPT-4V correctly responds to the instruction. However, ShareGPT-4V-7B (best performing open-source LMM) and GPT-4 w/ Layout-aware OCR + Caption (Augmented LLM) produce a wrong response, due to lack of joint reasoning over text and image.</p>
+<p>You’ll find more examples like this in the Appendix section of our paper!</p>
+<p>Our analysis suggests promising next steps include:</p>
+<p>This, in turn, will lead to more effective context-sensitive text-rich visual reasoning.</p>
+<p>We’d love to evaluate your models too, to help collectively advance the state of vision language models! To submit, please follow our guidelines below.</p>
+<p>We hope that this benchmark will help in developing nuanced vision-language alignment techniques and welcome any kind of collaboration! You can contact us here: Rohan and Hritik, and know more about the team here: Rohan, Hritik, Kai-Wei Chang, Nanyun (Violet) Peng.</p>
+<p>We are accepting submissions for both the test and validation sets. Please, follow the corresponding procedure below.</p>
+<p>To submit your validation results to the leaderboard, you can run our auto-evaluation code (Evaluation Pipeline with GPT4), following these instructions.</p>
+<p>We expect submissions to be json format as shown below:</p>
+<p>There should be 100 predictions, corresponding to the 100 urls of the val set.</p>
+<p>To make the submission please go to the leaderboard hosted on HuggingFace and fill up the Submission form.</p>
+<p>Once you are happy with your validation results, you can send your model predictions to Rohan and Hritik.</p>
+<p>We expect submissions to be json format similar to val set as shown below:</p>
+<p>There should be 506 predictions, corresponding to the 506 urls of the test set.</p>
+<p>Submit and evaluate models for contextual understanding tasks</p>
+<p>Submit and evaluate models for contextual understanding tasks</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/dpo_vlm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/leaderboard-contextual" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

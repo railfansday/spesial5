@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CPU Optimized Embeddings with 🤗 Optimum Intel and fastRAG</title>
+    <title>Optimizing Bark using 🤗 Transformers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11138.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,56 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>CPU Optimized Embeddings with 🤗 Optimum Intel and fastRAG</h1>
+        <h1>Optimizing Bark using 🤗 Transformers</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/optimum_intel/intel_thumbnail.png" alt="CPU Optimized Embeddings with 🤗 Optimum Intel and fastRAG" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/optimum_intel/intel_thumbnail.png" alt="CPU Optimized Embeddings with 🤗 Optimum Intel and fastRAG" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Embedding models are useful for many applications such as retrieval, reranking, clustering, and classification. The research community has witnessed significant advancements in recent years in embedding models, leading to substantial enhancements in all applications building on semantic representation. Models such as BGE, GTE, and E5 are placed at the top of the MTEB benchmark and in some cases outperform proprietary embedding services. There are a variety of model sizes found in Hugging Face's Model hub, from lightweight (100-350M parameters) to 7B models (such as Salesforce/SFR-Embedding-Mistral). The lightweight models based on an encoder architecture are ideal candidates for optimization and utilization on CPU backends running semantic search-based applications, such as Retrieval Augmented Generation (RAG).</p>
-<p>In this blog, we will show how to unlock significant performance boost on Xeon based CPUs, and show how easy it is to integrate optimized models into existing RAG pipelines using fastRAG.</p>
-<p>Embedding models encode textual data into dense vectors, capturing semantic and contextual meaning. This enables accurate information retrieval by representing word and document relationships more contextually. Typically, semantic similarity will be measured by cosine similarity between the embedding vectors.</p>
-<p>Should dense vectors always be used for information retrieval? The two dominant approaches have trade-offs:</p>
-<p>Embedding models serve multiple and critical purposes in RAG applications:</p>
-<p>Optimizing the embedding model component in RAG pipelines is highly desirable for a higher efficiency experience, more particularly:</p>
-<p>Optimum Intel is an open-source library that accelerates end-to-end pipelines built with Hugging Face libraries on Intel Hardware. Optimum Intel includes several techniques to accelerate models such as low-bit quantization, model weight pruning, distillation, and an accelerated runtime.</p>
-<p>The runtime and optimizations included in Optimum Intel take advantage of Intel® Advanced Vector Extensions 512 (Intel® AVX-512), Vector Neural Network Instructions (VNNI) and Intel® Advanced Matrix Extensions (Intel® AMX) on Intel CPUs to accelerate models. Specifically, it has built-in BFloat16 (bf16) and int8 GEMM accelerators in every core to accelerate deep learning training and inference workloads. AMX accelerated inference is introduced in PyTorch 2.0 and Intel Extension for PyTorch (IPEX) in addition to other optimizations for various common operators.</p>
-<p>Optimizing pre-trained models can be done easily with Optimum Intel; many simple examples can be found here.</p>
-<p>In this blog, we focus on recently released embedding models by researchers at the Beijing Academy of Artificial Intelligence, as their models show competitive results on the widely adopted MTEB leaderboard.</p>
-<p>Bi-encoder models are Transformer-based encoders trained to minimize a similarity metric, such as cosine-similarity, between two semantically similar texts as vectors. For example, popular embedding models use a BERT model as a base pre-trained model and fine-tune it for embedding documents. The vector representing the encoded text is created from the model outputs; for example, it can be the [CLS] token vector or a mean of all the token vectors.</p>
-<p>Unlike more complex embedding architectures, bi-encoders encode only single documents, thus they lack contextual interaction between encoded entities such as query-document and document-document. However, state-of-the-art bi-encoder embedding models present competitive performance and are extremely fast due to their simple architecture.</p>
-<p>We focus on 3 BGE models: small, base, and large consisting of 45M, 110M, and 355M parameters encoding to 384/768/1024 sized embedding vectors, respectively.</p>
-<p>We note that the optimization process we showcase below is generic and can be applied to other embedding models (including bi-encoders, cross-encoders, and such).</p>
-<p>We present a step-by-step guide for enhancing the performance of embedding models, focusing on reducing latency (with a batch size of 1) and increasing throughput (measured in documents encoded per second). This recipe utilizes optimum-intel and Intel Neural Compressor to quantize the model, and uses IPEX for optimized runtime on Intel-based hardware.</p>
-<p>To install optimum-intel and intel-extension-for-transformers run the following command:</p>
-<p>Post-training static quantization requires a calibration set to determine the dynamic range of weights and activations. The calibration is done by running a representative set of data samples through the model, collecting statistics, and then quantizing the model based on the gathered info to minimize the accuracy loss.</p>
-<p>The following snippet shows a code snippet for quantization:</p>
-<p>In our calibration process we use a subset of the qasper dataset.</p>
-<p>Loading a quantized model can be done by simply running:</p>
-<p>Encoding sentences into vectors can be done similarly to what we are used to with the Transformers library:</p>
-<p>We provide additional and important details on how to configure the CPU-backend setup in the evaluation section below (correct machine setup).</p>
-<p>Quantizing the models' weights to a lower precision introduces accuracy loss, as we lose precision moving from fp32 weights to int8. Therefore, we aim to validate the accuracy of the optimized models by comparing them to the original models with two MTEB tasks:</p>
-<p>The table below shows the average accuracy (on multiple datasets)  of each task type (MAP for Reranking, NDCG@10 for Retrieval), where int8 is our quantized model and fp32 is the original model (results taken from the official MTEB leaderboard). The quantized models show less than 1% error rate compared to the original model in the Reranking task and less than 1.55% in the Retrieval task.</p>
-<p>We compare the performance of our models with two other common methods of usage of models:</p>
-<p>We created a script that generated random examples using the vocabulary of the model. We loaded the original model and the optimized model and compared how much time it takes to encode those examples in the two scenarios we mentioned above: latency when encoding in batch size 1, and throughput using batched example encoding.</p>
-<p>In this evaluation, we aim to measure how fast the models respond. This is an example use case for encoding queries in RAG pipelines. In this evaluation we set the batch size to 1 and we measure latency of different document lengths.</p>
-<p>We can see that the quantized model has the best latency overall, under 10 ms for the small and base models and <20 ms for the large model. Compared to the original model, the quantized model shows up to 4.5x speedup in latency.</p>
-<p>In our throughput evaluation, we aim to search for peak encoding performance in terms of documents per second.  We set text lengths to be 256 tokens longs, as it is a good estimate of an average document in a RAG pipeline, and evaluate with different batch sizes (4, 8, 16, 32, 64, 128, 256).</p>
-<p>Results show that the quantized models reach higher throughput values compared to the other models, and reach peak throughput at batch size 128. Overall, for all model sizes, the quantized model shows up to 4x improvement compared to the baseline bf16 model in various batch sizes.</p>
-<p>As an example, we will demonstrate how to integrate the optimized Retrieval/Reranking models into fastRAG (which can also be easily integrated into other RAG frameworks such as Langchain and LlamaIndex).</p>
-<p>fastRAG is a research framework, developed by Intel Labs, for efficient and optimized retrieval augmented generative pipelines, incorporating state-of-the-art LLMs and Information Retrieval. fastRAG is fully compatible with Haystack and includes novel and efficient RAG modules for efficient deployment on Intel hardware.
-To get started with fastRAG we invite readers to see the installation instructions here and get started with fastRAG using our guide.</p>
-<p>We integrated the optimized bi-encoder embedding models in two modules:</p>
-<p>Let's create a dense index by using a dense retriever that utilizes an optimized embedding model.</p>
-<p>Load a Retriever with an optimized bi-encoder embedding model, and encode all the documents in the document store:</p>
-<p>Below is an example of loading an optimized model into a ranker node that encodes and re-ranks all the documents it retrieves from an index given a query:</p>
-<p>Done! The created pipeline can be used to retrieve documents from a document store and rank the retrieved documents using (another) embedding models to re-order the documents.
-A more complete example is provided in this notebook.</p>
-<p>For more RAG-related methods, models and examples we invite the readers to explore fastRAG/examples notebooks.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/intel-fast-embedding" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/optimizing-bark" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

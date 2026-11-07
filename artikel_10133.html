@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Firecracker VM Escape: PwnEscape Part 2</title>
+    <title>Where should your code live in a Docker Sandbox?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10133.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,73 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Firecracker VM Escape: PwnEscape Part 2</h1>
+        <h1>Where should your code live in a Docker Sandbox?</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://api.pwn.ai/api/blog/images/photo-2026-11-04-22-55-56-b01dcd719e0c.jpeg" alt="Firecracker VM Escape: PwnEscape Part 2" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.docker.com/app/uploads/2025/03/image.png" alt="Where should your code live in a Docker Sandbox?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://api.pwn.ai/api/blog/images/photo-2026-11-04-22-55-56-b01dcd719e0c.jpeg" alt="Firecracker VM Escape: PwnEscape Part 2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.docker.com/app/uploads/2025/03/image.png" alt="Where should your code live in a Docker Sandbox?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Firecracker is supposed to keep untrusted code inside a microVM. We escaped it and achieved code execution as root on the host.</p>
-<p>We found how it saved registers, changed where it would resume, and made it execute a call of our choosing when it returned from KVM. The guest then restored the temporary stack changes. Firecracker kept running, and the VM remained accessible over SSH.</p>
-<p>PwnEscape Part 1 introduced the host memory primitive behind this work. Here we follow the next part of the chain: using that access to find Firecracker in memory and take over a live thread from inside the guest. This is a continuation to show CVE-2026-99999 on a Firecracker setup.</p>
-<p>A Firecracker microVM has a process on the host that manages it. Each virtual CPU, or vCPU, has a thread in that process. The thread enters KVM to run the guest and returns to Firecracker when an event needs handling in userspace. Firecracker documents this arrangement in its architecture overview.</p>
-<p>The call that runs the virtual CPU looks like this:</p>
-<p>While the thread is in that system call, the host kernel holds its saved userspace registers in a structure called pt_regs. These registers describe the Firecracker thread: its instruction pointer says where execution should resume, and its stack pointer says which userspace stack it should use.</p>
-<p>That made the return from KVM_RUN an attractive target. If we could locate and modify the saved frame, we could choose the code Firecracker executed when the thread returned to userspace. A guest operation that caused such a return would provide the trigger.</p>
-<p>We already had access to selected host physical memory through a guest mapping. To use it, we needed to identify the Firecracker process, find code we could call in that process, and locate the register frame belonging to its active vCPU thread. The starting point was a page of memory we controlled inside the guest.</p>
-<p>Figure 1. The guest identifies its Firecracker process, finds the saved registers for a vCPU thread, and redirects the thread when it returns from KVM.</p>
-<p>The guest and host use different physical address spaces. A page has a guest physical address, or GPA, inside the VM and a host physical address, or HPA, in the machine backing it. On the target, Extended Page Tables (EPT) provide the translation between them.</p>
-<p>We placed a recognizable byte pattern, a nonce, in a guest page. The first resolver took that page's known GPA and its contents as inputs. Together, they gave us an address to translate and a way to check whether the translation reached our page.</p>
-<p>The resolver searched the host physical ranges covered by the memory primitive for candidate EPT roots. An EPT root is the starting point of the translation tables. For each candidate, the resolver followed the entries selected by the guest address until it reached a physical page, then checked that page for the nonce.</p>
-<p>The snippets below are explanatory pseudocode with descriptive helper names. They show the data passed between stages and the checks used to connect them.</p>
-<p>The nonce check connected a proposed translation to memory we controlled. The broader search produced two candidates; validation of the nested page tables reduced them to one EPT root. Walking that root gave us the host physical address of our guest page.</p>
-<p>We called this result guest_page_hpa and passed it to the next resolver. We now had a recognizable object in host memory. The next task was finding the host process that mapped it.</p>
-<p>Firecracker maps memory used by the guest into its own address space. That mapping gave us a way to work backward from the guest page to the process.</p>
-<p>Host processes use page tables to translate their virtual addresses into physical memory. The top level is called the page global directory, or PGD. Recovering the appropriate PGD would let us translate addresses inside Firecracker and read its code and stack through the memory primitive.</p>
-<p>Our reverse mapper searched the native host page tables for a mapping of guest_page_hpa. A normal page table walk starts with a virtual address and produces a physical address. Here, we looked for a mapping to a physical page we already knew, then recovered the virtual address and page table root associated with it.</p>
-<p>This connected the host process's virtual mapping to the physical page found through EPT. The reverse mapper returned one validated address space. We retained its root as host_pgd and used it to inspect the process.</p>
-<p>The next resolver looked for the Firecracker executable in those mappings. It identified an ELF image and checked a known byte sequence in Firecracker's write(2) wrapper. That connected the recovered address space to the binary we were targeting.</p>
-<p>ASLR changes where an executable is loaded. The difference between an address in the ELF image and its corresponding runtime address is the load bias. Once the mapper had identified the image, it could recover that bias and use it to locate the code required by the exploit:</p>
-<p>The mapper returned the load bias as firecracker_base. With that value and host_pgd, we could locate code in the running process, translate its virtual address to host physical memory, and compare the bytes there with the expected binary.</p>
-<p>We checked three locations: the write(2) wrapper that would produce our proof, the continuation after the KVM ioctl, and a short xor eax,eax; ret sequence needed to return cleanly. Their purposes become relevant when we construct the return path below.</p>
-<p>At this point, the guest could inspect the Firecracker image and its private mappings. We still needed the saved registers of the thread currently running our VM.</p>
-<p>Figure 2. The nonce identifies the guest page in host memory. Its mapping leads to a host page table root, which lets the next resolver locate and validate the Firecracker image.</p>
-<p>The frame finder took host_pgd and firecracker_base from the preceding stages. It used them to recognize the host thread's saved state.</p>
-<p>The most useful clue was the return address. A vCPU thread in KVM_RUN should have a saved instruction pointer at the corresponding ioctl continuation in Firecracker. We could calculate that address from the validated binary and its load bias.</p>
-<p>We then searched host memory for a pt_regs frame consistent with that call. An address match alone would also pick up stale stack contents, so the candidate had to satisfy several related checks:</p>
-<p>The stack check tied the frame to the same address space we had recovered from the guest page. The instruction and caller addresses tied it to the Firecracker image. The syscall fields tied it to the operation running the vCPU.</p>
-<p>The search left one candidate. Its location was stored as frame_hpa, the host physical address of the saved register frame. We passed it, the PGD, and the load bias to the final helper.</p>
-<p>Before changing memory, the helper repeated the code signature, frame, and stack checks. This ensured that the active stage used the same process state the resolvers had identified. The subsequent execution and recovery checks would establish that the selected frame was live.</p>
-<p>Figure 3. The candidate register frame must agree with the KVM ioctl, the recovered process page tables, and the validated Firecracker code.</p>
-<p>We chose a simple payload: make the Firecracker process write a recognizable string to its own stderr. This would give the host runner an observable result from the process we had taken over.</p>
-<p>The string was N8V23M2\n, seven characters followed by a newline. It occupies eight bytes and fits in one stack word. The call we wanted Firecracker to execute was:</p>
-<p>Here 2 is Firecracker's stderr file descriptor. The buffer pointer must refer to the string in Firecracker's address space, so we stored the string on its private userspace stack.</p>
-<p>We saved three stack words before modifying them. One held the string; the other two held the return addresses for the temporary call sequence. We then changed the saved register frame to supply the wrapper address, its arguments, and a stack pointer for that sequence:</p>
-<p>Returning from write also needed care. A successful write of eight bytes returns 8, while a successful KVM_RUN call returns zero. We placed the address of xor eax,eax; ret first in the return sequence. It clears the return value before the second address brings execution back to Firecracker's original ioctl continuation.</p>
-<p>With the stack and saved registers prepared, the guest wrote one byte to its serial port. That operation caused the vCPU thread to return from KVM_RUN. The kernel restored the modified registers, and Firecracker entered the write wrapper with our arguments.</p>
-<p>The wrapper emitted the marker, the return sequence cleared eax, and the thread rejoined its original execution path. After control returned to the guest, the helper restored all three stack words.</p>
-<p>Figure 4. The saved register frame enters the write wrapper. Two return addresses lead through the return-value adjustment and back into the original Firecracker path.</p>
-<p>The host runner captured Firecracker's stderr separately from the guest. The complete output was:</p>
-<p>The capture contained exactly eight bytes, including the final newline. Firecracker was still running, guest SSH was responsive, and the helper had restored the three temporary stack words.</p>
-<p>We checked recovery with a fresh pass that made no memory changes. It was given the same frame address and repeated the register, code, and stack checks after the trigger. The checks passed, and it found no stale marker in the temporary stack location.</p>
-<p>These observations answered three different questions. The guest log recorded the trigger and restoration. The host capture showed that Firecracker executed the selected operation. The final validation checked the state after execution.</p>
-<p>Figure 5. The guest log, Firecracker stderr capture, and final validation record the trigger, host execution, and restored state.</p>
-<p>By the time the marker appeared, the guest had selected the host thread's instruction pointer, function arguments, stack data, and return path. Firecracker executed the call using its own privileges.</p>
-<p>The target was Firecracker v1.16.1 on x86-64, with host kernel 7.0.0-1011-aws and guest kernel 6.18.44+. We launched Firecracker directly as root under systemd-run and pinned it with taskset. Consequently, the controlled call executed as root on the host.</p>
-<p>The existing write wrapper gave us a compact proof of that control. Extending it to other calls would require choosing code and arguments compatible with the process's mappings and syscall policy.</p>
-<p>The configuration used here had no jailer. Firecracker's production containment includes dropping privileges and restricting the process through namespaces and seccomp. A deployment using those controls requires a separate assessment of the privileges and resources available after compromising its VMM.</p>
-<p>The address discovery is what lets the exploit follow the running instance. The EPT resolver connects a guest page to host memory; the reverse mapper recovers the host address space; the image mapper locates Firecracker under ASLR; and the frame finder identifies the vCPU's saved state. Adapting the final stage to another build requires validating that binary's code signatures and return path.</p>
-<p>The guest had used access to host memory to take over the thread running the VM itself. A serial write supplied the trigger, and the next userspace operation belonged to us.</p>
-<p>The following values come from the preserved execution record. The methods above use symbolic names so that the role of each value is clear; this table connects those names to the recorded addresses.</p>
-<p>The records use run ID eventpath-v23-0907self02 and boot ID 2b3cd5ac-2311-427f-a50a-6a79ecb8daa7. These identifiers connect the resolver records, host capture, and validation after restoration.</p>
-<p>The earlier memory provider also received host-selected task and canary page frame numbers as independent validation overlays after constructing the memory aperture. Those addresses were not consumed by the EPT resolver, reverse mapper, Firecracker mapper, frame finder, or final marker helper.</p>
-<p>The release bundle contains the final helper source, JSONL resolver records, host capture, recovery manifest, four preserved read-only resolver binaries with provenance, and SHA-256 manifests. The final helper accepts the PGD, load bias, and frame HPA produced by the resolvers. Its checks cover the run identifier, address ranges, code signatures, saved registers, and stack geometry; its dry-run mode performs validation without writing memory.</p>
-<p>Verify the bundle against its manifest with:</p>
-<p>How one HTML select crossed Chrome's line of death and turned a single click into a spoofed, convincing fake software-download flow.</p>
+                <p>Secure, minimal container images for every team, free with enterprise features, if needed.</p>
+<p>Giving an agent a sandbox also means deciding which files it will work on. You can share a checkout from your host, give it a separate working directory for a task, or keep the repository entirely inside the sandbox. Each arrangement changes how you, the human, participate in the work.</p>
+<p>You might want to watch the diff in your local editor and make changes alongside the agent, or give it room to manage several tasks while you review the results. sbx supports both. The way you organize the checkout can change as you ask the agent to take on more of the work.</p>
+<p>Sharing a checkout puts the agent in the working tree you already use. Run sbx run from your project directory, and it mounts that directory at the same absolute path inside the sandbox:</p>
+<p>Open a file in your local editor while the agent works on it, and you’ll see changes as they happen. Git works from either side, so you choose whether you want to let the agent make commits or you do it yourself. Development servers on your host can pick up the edits through hot reload, using the runtime and dependencies installed on your host.</p>
+<p>This fits close collaboration on one task. The coordination cost comes from sharing that working tree: switching branches changes the files the agent sees, and your edits become part of its ongoing work. If you want to switch to something unrelated while the agent continues, you’ll need another checkout.</p>
+<p>NOTE: Dependencies written into the shared checkout are shared too. Packages with native binaries, such as esbuild, may work in the Linux sandbox and fail on a macOS or Windows host. Reinstalling on the host can reverse the problem. Keep separate dependency installations, or run the app consistently in one environment.</p>
+<p>Git worktrees give each task a directory and branch. You can mount each worktree in its own sandbox, while your original checkout remains available for other work. The agent’s edits appear in the worktree. You can inspect either with your local editor and development tools. Each task also gets its own running environment, with tools to prepare and a sandbox and worktree to clean up afterward.</p>
+<p>There is a Git limitation with mounting only a linked worktree. Its .git file points to metadata outside the mount, which the agent can’t reach. It can edit files, but checking status, branching, and committing have to happen on the host. The future of software development still needs you to run git status.</p>
+<p>sbx supports a clone mode that gives the agent a separate checkout with Git available inside the sandbox. You keep your local project, but sbx mounts the host source as read-only and creates an independent clone for the agent. Its branch changes and dependency installations stay in its checkout.</p>
+<p>Bringing the result back becomes a handoff. While the sandbox is running, you can fetch committed branches through the Git remote sbx adds on your host. Or the agent can push to the repository’s remote and you can retrieve the branch through your usual Git workflow. Your local editor and development server see the changes after you bring them into your checkout.</p>
+<p>A mountless sandbox has no host workspace directory attached. Clone the repository inside it, and the sandbox holds the checkout and its development environment. Your host copy of the project shares no connection with the sandbox checkout.</p>
+<p>This workflow resembles working on a remote development machine. Agents connect to the project environment, and you can open a shell with sbx exec or connect an editor to the sandbox over SSH. Changes and dependency installations stay separate from your host. To bring work back, you push a branch to the Git remote.</p>
+<p>One sandbox per project can be a useful mental model here. The project and its tools persist across agent sessions and sandbox restarts. An agent can create worktrees per feature it’s working on, push branches, and create pull requests for review. Starting another task doesn’t require you to prepare another host worktree and sandbox, and the agent has Git access in each working directory. Clone mode supports this internal-worktree approach too.</p>
+<p>Those tasks share tools and services, so running servers or changing the environment still needs coordination. Separate sandboxes are useful when tasks need independent environments as well as separate files. Branches alone don’t isolate simultaneous edits in one working directory.</p>
+<p>That independence adds some distance when you want to try the result. Your usual local editor isn’t looking at these files, and a development server running inside the sandbox needs a published port to reach it from your browser.</p>
+<p>Start the development server on port 8080, bound to 0.0.0.0.</p>
+<p>Then publish the port from another terminal on the host:</p>
+<p>Open http://localhost:8080 in your browser. It’s possible to work interactively this way, but there’s more ceremony than opening a project already on your filesystem.</p>
+<p>An environment file can make setup repeatable, selecting tools and cloning the repository at creation with something like the community github-clone kit. Recreating the sandbox then gives you a fresh environment. Push or copy out work you want to retain first: removing a sandbox deletes files held only there.</p>
+<p>An API change might need a corresponding frontend change, or another repository might provide useful reference material. You can mount several directories into one sandbox, with read-only access for reference repositories. Local editing and previews remain available, but each writable checkout needs branch and change coordination. Task-specific checkouts also leave directories to clean up afterward.</p>
+<p>A workspace manager such as jganoff/wsp can assemble selected repositories for a task. Mounting that workspace gives the agent the projects it needs together. These are standard clones with their own Git metadata, so the agent retains Git access, unlike a mounted linked worktree.</p>
+<p>The same scope fits inside a mountless sandbox: clone the repositories needed there and keep the whole workspace in the sandbox. The number of repositories and where their files live are separate choices.</p>
+<p>The checkout’s location, the sandbox’s lifetime, and the repositories it contains are choices you can combine. You can keep a project sandbox around for many tasks, or mount a workspace assembled for one job. What suits you may change when you want to work more closely with the agent, or give it more room to manage the work itself.</p>
+<p>The Git workflows documentation covers the mechanics of direct mounts, clone mode, and host worktrees.</p>
+<p>Docker’s WeAreDevelopers keynote shows how Sandboxes, Kits, and Cloud Sandboxes give AI agents strong isolation and reproducible authority.</p>
+<p>Docker is a founding member of the Blueprint Alliance, a 12-company reference architecture for securing AI agents, built around four governance questions.</p>
+<p>Docker Sandboxes support three ways to organize an agent’s code: shared mounts, Git worktrees, and clone mode. Here’s how to choose between them.</p>
+<p>An AI code review agent invented a CVE and recommended dangerous fixes. Learn how Docker Sandboxes contain agents and why their output needs verification.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://pwn.ai/blog/firecracker-escape" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.docker.com/blog/docker-sandbox-code-checkout-workflows/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
