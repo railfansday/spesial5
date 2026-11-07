@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🧨 Accelerating Stable Diffusion XL Inference with JAX on Cloud TPU v5e</title>
+    <title>Debugging CSS Layout Issues: A Practical Guide to Browser DevTools</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11010.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,46 +15,75 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>🧨 Accelerating Stable Diffusion XL Inference with JAX on Cloud TPU v5e</h1>
+        <h1>Debugging CSS Layout Issues: A Practical Guide to Browser DevTools</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/sdxl-jax/thumbnail.jpg" alt="🧨 Accelerating Stable Diffusion XL Inference with JAX on Cloud TPU v5e" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Debugging_CSS_Layout_Issues_fba90e6109.png" alt="Debugging CSS Layout Issues: A Practical Guide to Browser DevTools" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/sdxl-jax/thumbnail.jpg" alt="🧨 Accelerating Stable Diffusion XL Inference with JAX on Cloud TPU v5e" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Debugging_CSS_Layout_Issues_fba90e6109.png" alt="Debugging CSS Layout Issues: A Practical Guide to Browser DevTools" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Generative AI models, such as Stable Diffusion XL (SDXL), enable the creation of high-quality, realistic content with wide-ranging applications. However, harnessing the power of such models presents significant challenges and computational costs. SDXL is a large image generation model whose UNet component is about three times as large as the one in the previous version of the model. Deploying a model like this in production is challenging due to the increased memory requirements, as well as increased inference times. Today, we are thrilled to announce that Hugging Face Diffusers now supports serving SDXL using JAX on Cloud TPUs, enabling high-performance, cost-efficient inference.</p>
-<p>Google Cloud TPUs are custom-designed AI accelerators, which are optimized for training and inference of large AI models, including state-of-the-art LLMs and generative AI models such as SDXL. The new Cloud TPU v5e is purpose-built to bring the cost-efficiency and performance required for large-scale AI training and inference. At less than half the cost of TPU v4, TPU v5e makes it possible for more organizations to train and deploy AI models.</p>
-<p>🧨 Diffusers JAX integration offers a convenient way to run SDXL on TPU via XLA, and we built a demo to showcase it. You can try it out in this Space or in the playground embedded below:</p>
-<p>Under the hood, this demo runs on several TPU v5e-4 instances (each instance has 4 TPU chips) and takes advantage of parallelization to serve four large 1024×1024 images in about 4 seconds. This time includes format conversions, communications time, and frontend processing; the actual generation time is about 2.3s, as we'll see below!</p>
-<p>Serving SDXL with JAX on Cloud TPU v5e with high performance and cost-efficiency is possible thanks to the combination of purpose-built TPU hardware and a software stack optimized for performance. Below we highlight two key factors: JAX just-in-time (jit) compilation and XLA compiler-driven parallelism with JAX pmap.</p>
-<p>A notable feature of JAX is its just-in-time (jit) compilation. The JIT compiler traces code during the first run and generates highly optimized TPU binaries that are re-used in subsequent calls.
-The catch of this process is that it requires all input, intermediate, and output shapes to be static, meaning that they must be known in advance. Every time we change the shapes
-a new and costly compilation process will be triggered again. JIT compilation is ideal for services that can be designed around static shapes: compilation runs once, and then we take advantage of super-fast inference times.</p>
-<p>Image generation is well-suited for JIT compilation. If we always generate the same number of images and they have the same size, then the output shapes are constant and known in advance. The text inputs are also constant: by design, Stable Diffusion and SDXL use fixed-shape embedding vectors (with padding) to represent the prompts typed by the user. Therefore, we can write JAX code that relies on fixed shapes, and that can be greatly optimized!</p>
-<p>Workloads can be scaled across multiple devices using JAX's pmap, which expresses single-program multiple-data (SPMD) programs. Applying pmap to a function will compile a function with XLA, then execute it in parallel on various XLA devices. 
-For text-to-image generation workloads this means that increasing the number of images rendered simultaneously is straightforward to implement and doesn't compromise performance. For example, running SDXL on a TPU with 8 chips will generate 8 images in the same time it takes for 1 chip to create a single image.</p>
-<p>TPU v5e instances come in multiple shapes, including 1, 4 and 8-chip shapes, all the way up to 256 chips (a full TPU v5e pod), with ultra-fast ICI links between chips. This allows you to choose the TPU shape that best suits your use case and easily take advantage of the parallelism that JAX and TPUs provide.</p>
-<p>We'll go step by step over the code you need to write to run inference super-fast using JAX! First, let's import the dependencies.</p>
-<p>We'll now load the base SDXL model and the rest of the components required for inference. The diffusers pipeline takes care of downloading and caching everything for us. Adhering to JAX's functional approach, the model's parameters are returned separately and will have to be passed to the pipeline during inference:</p>
-<p>Model parameters are downloaded in 32-bit precision by default. To save memory and run computation faster we'll convert them to bfloat16, an efficient 16-bit representation. However, there's a caveat: for best results, we have to keep the scheduler state in float32, otherwise precision errors accumulate and result in low-quality or even black images.</p>
-<p>We are now ready to set up our prompt and the rest of the pipeline inputs.</p>
-<p>The prompts have to be supplied as tensors to the pipeline, and they always have to have the same dimensions across invocations. This allows the inference call to be compiled. The pipeline prepare_inputs method performs all the necessary steps for us, so we'll create a helper function to prepare both our prompt and negative prompt as tensors. We'll use it later from our generate function:</p>
-<p>To take advantage of parallelization, we'll replicate the inputs across devices. A Cloud TPU v5e-4 has 4 chips, so by replicating the inputs we get each chip to generate a different image, in parallel. We need to be careful to supply a different random seed to each chip so the 4 images are different:</p>
-<p>We are now ready to put everything together in a generate function:</p>
-<p>jit=True indicates that we want the pipeline call to be compiled. This will happen the first time we call generate, and it will be very slow – JAX needs to trace the operations, optimize them, and convert them to low-level primitives. We'll run a first generation to complete this process and warm things up:</p>
-<p>This took about three minutes the first time we ran it.
-But once the code has been compiled, inference will be super fast. Let's try again!</p>
-<p>It now took about 2s to generate the 4 images!</p>
-<p>The following measures were obtained running SDXL 1.0 base for 20 steps, with the default Euler Discrete scheduler. We compare Cloud TPU v5e with TPUv4 for the same batch sizes. Do note that, due to parallelism, a TPU v5e-4 like the ones we use in our demo will generate 4 images when using a batch size of 1 (or 8 images with a batch size of 2). Similarly, a TPU v5e-8 will generate 8 images when using a batch size of 1.</p>
-<p>The Cloud TPU tests were run using Python 3.10 and jax version 0.4.16. These are the same specs used in our demo Space.</p>
-<p>TPU v5e achieves up to 2.4x greater perf/$ on SDXL compared to TPU v4, demonstrating the cost-efficiency of the latest TPU generation.</p>
-<p>To measure inference performance, we use the industry-standard metric of throughput. First, we measure latency per image when the model has been compiled and loaded. Then, we calculate throughput by dividing batch size over latency per chip. As a result, throughput measures how the model is performing in production environments regardless of how many chips are used. We then divide throughput by the list price to get performance per dollar.</p>
-<p>The demo we showed before was built using a script that essentially follows the code we posted in this blog post. It runs on a few Cloud TPU v5e devices with 4 chips each, and there's a simple load-balancing server that routes user requests to backend servers randomly. When you enter a prompt in the demo, your request will be assigned to one of the backend servers, and you'll receive the 4 images it generates.</p>
-<p>This is a simple solution based on several pre-allocated TPU instances. In a future post, we'll cover how to create dynamic solutions that adapt to load using GKE.</p>
-<p>All the code for the demo is open-source and available in Hugging Face Diffusers today. We are excited to see what you build with Diffusers + JAX + Cloud TPUs!</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>CSS makes it possible to build flexible, responsive, and visually engaging websites. However, even a small styling change can produce unexpected results. An element may appear outside its container, a navigation bar may wrap incorrectly, or a layout that works on desktop may break on mobile devices.</p>
+<p>Instead of randomly changing CSS properties until the page looks right, developers can use browser developer tools to identify the underlying cause. Understanding how to inspect elements, trace conflicting styles, and diagnose layout behavior makes debugging faster and helps prevent similar problems in future projects.</p>
+<p>This tutorial explores practical techniques for debugging common CSS layout issues using browser DevTools.</p>
+<p>One of the most useful debugging habits is to inspect the affected element before modifying its styles.</p>
+<p>In Chrome, Edge, and Firefox, you can open developer tools by right-clicking an element and selecting Inspect. The Elements or Inspector panel displays the HTML structure alongside the CSS rules applied to the selected element.</p>
+<p>At first glance, each card appears to fit within the container because its declared width is 300 pixels. However, the default box-sizing: content-box means padding and borders are added outside the declared width.</p>
+<p>Two cards require 688 pixels, exceeding the container's 600-pixel width.</p>
+<p>A straightforward solution is to use border-box sizing:</p>
+<p>Now the declared width includes padding and borders.</p>
+<p>Debugging tip: When an element appears wider than expected, inspect its computed width, padding, borders, and box-sizing property before reducing its dimensions.</p>
+<p>A CSS declaration in your stylesheet does not always determine an element's final appearance. Other rules may override it because of specificity, source order, inheritance, or the cascade.</p>
+<p>Both selectors have the same specificity. Because .primary-button appears later, the button receives a green background.</p>
+<p>If another stylesheet introduces a more specific selector, the result may change again.</p>
+<p>Browser DevTools helps distinguish between the styles you wrote and the values the browser actually uses. In the Styles panel, overridden declarations are usually crossed out. The Computed panel shows the final calculated values for properties such as color, width, margin, and display.</p>
+<p>You can also temporarily disable a declaration by unchecking it in the Styles panel. This lets you test whether a property is responsible for the problem without editing the original file immediately.</p>
+<p>The selector responsible for the winning declaration.</p>
+<p>Whether a property is inherited from a parent.</p>
+<p>Whether a media query changes the property at a particular viewport width.</p>
+<p>Whether a shorthand declaration resets other properties.</p>
+<p>Whether a CSS custom property resolves to the expected value.</p>
+<p>This approach is more reliable than adding !important whenever a style does not behave as expected.</p>
+<p>Flexbox and CSS Grid simplify many layout tasks, but their behavior depends on the available space, sizing constraints, and alignment properties.</p>
+<p>Consider a navigation bar that should display links in one row:</p>
+<p>If the links overflow on a narrow screen, the first step is to inspect the container's dimensions and the space required by its children.</p>
+<p>Alternatively, if the navigation must remain on one line, you may need a different responsive strategy, such as a compact menu.</p>
+<p>Grid layouts have similar debugging tools. Consider:</p>
+<p>This creates three equal fractional columns. On smaller screens, those columns may become too narrow for their content.</p>
+<p>This allows the browser to fit as many columns as the available space permits, while keeping each column near or above the preferred minimum when space allows.</p>
+<p>In Chrome and Firefox, layout inspection tools can highlight Grid tracks, Flexbox alignment, gaps, and container boundaries. These overlays help reveal whether the issue comes from the layout algorithm, the container's dimensions, or the content itself.</p>
+<p>A layout that works at 1440 pixels wide may fail at 390 pixels. Responsive debugging should therefore include more than checking whether the page fits on a phone-sized screen.</p>
+<p>Open the device toolbar in browser DevTools and test several viewport widths. Pay particular attention to:</p>
+<p>Cards that become too narrow for their content.</p>
+<p>Fixed-width elements that prevent horizontal scrolling from disappearing.</p>
+<p>For example, this rule may cause problems on small screens:</p>
+<p>A more flexible approach uses a fluid font size with reasonable limits:</p>
+<p>The clamp() function defines a minimum size, a preferred fluid size, and a maximum size. This allows the heading to scale with the viewport without becoming excessively small or large.</p>
+<p>Remember that browser emulation does not reproduce every aspect of a physical device. Real-device testing remains valuable for checking touch interactions, font rendering, and browser-specific behavior.</p>
+<p>Spacing issues are another common source of CSS bugs. Two elements may appear to have too much space between them even when neither has an obviously incorrect margin.</p>
+<p>Use the box-model visualization in DevTools to inspect the selected element's content, padding, border, and margin.</p>
+<p>If the global box-sizing rule is missing, the padding can cause the element to extend beyond a constrained parent.</p>
+<p>Overflow can also originate from a child element rather than the container itself. Long unbroken strings, large images, and fixed-width code blocks are common causes.</p>
+<p>The image rule keeps images within their containing block, while the code block can scroll horizontally when its contents require more space.</p>
+<p>Avoid applying overflow: hidden to every container as a quick fix. Although it can conceal unwanted content, it may also clip focus indicators, dropdown menus, and other important interface elements.</p>
+<p>A consistent debugging process helps you identify causes rather than accumulate temporary fixes.</p>
+<p>Reproduce the issue. Identify the viewport size, browser, and interaction that trigger the problem.</p>
+<p>Inspect the affected element. Examine its HTML structure and surrounding containers.</p>
+<p>Check computed styles. Look for overridden declarations, unexpected dimensions, and inherited values.</p>
+<p>Test one change at a time. Temporarily disable or modify a property to determine whether it affects the result.</p>
+<p>Check related elements. A child's overflow may originate from a parent, or a parent's dimensions may be affected by its contents.</p>
+<p>Verify the fix. Test nearby viewport widths and check that the change has not introduced another layout problem.</p>
+<p>Update the stylesheet. Move the confirmed fix into the appropriate source file and remove temporary debugging declarations.</p>
+<p>This workflow makes CSS problems easier to reproduce and explain, especially when several developers are working on the same interface.</p>
+<p>Effective CSS debugging starts with understanding what the browser is actually rendering. Developer tools provide visibility into computed styles, the box model, layout behavior, and responsive changes, making it easier to identify the source of unexpected results.</p>
+<p>By inspecting elements before changing code, testing one property at a time, and verifying fixes across different viewport sizes, developers can avoid unnecessary overrides and build more maintainable stylesheets.</p>
+<p>The goal is not simply to make a layout look correct once. It is to understand why the problem occurred and implement a fix that remains reliable as the rest of the website evolves.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/sdxl_jax" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/debugging-css-layout-issues-a-practical-guide-to-browser-devtools/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

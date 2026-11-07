@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPS in PyTorch 2.15</title>
+    <title>How to proof bread in the oven: Common challenge, simple solution.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9743.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,88 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>MPS in PyTorch 2.15</h1>
+        <h1>How to proof bread in the oven: Common challenge, simple solution.</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/how%20to%20proof%20bread%20in%20oven.jpg" alt="How to proof bread in the oven: Common challenge, simple solution." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/how%20to%20proof%20bread%20in%20oven.jpg" alt="How to proof bread in the oven: Common challenge, simple solution." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
-<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
-<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
-<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
-<p>To try the release candidate in a separate environment:</p>
-<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
-<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
-<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
-<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
-<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
-<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
-<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
-<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
-<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
-<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
-<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
-<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
-<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
-<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
-<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
-<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
-<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
-<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
-<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
-<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
-<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
-<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
-<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
-<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
-<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
-<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
+                <p>During proofing, bread and other yeasted doughs do best in a temperature-controlled, humid, draft-free environment. Your kitchen counter may not cut it (especially in colder months), but is there a corner of your kitchen that fits that description? Yes, your oven — and you don’t even need to fire it up!</p>
+<p>Yeast dough is happiest when rising at temperatures between 75°F and 78°F. It will certainly rise in cooler or warmer temperatures. But for most doughs, that range is optimum for both yeast development and bread flavor.</p>
+<p>Your oven’s interior will pretty much mirror room temperature. And depending on the time of year (or how much you use air conditioning), that temperature could be pretty cool—too cool for yeast’s comfort.</p>
+<p>To get the oven up to that ideal proofing temperature, people often turn to a couple of different methods. I decided to try a bunch of them to see which is best — and helpfully, there was a clear winner.</p>
+<p>It’s tempting to simply preheat the oven for a minute or so to warm its interior; but not only is this hit-and-miss (How long should I leave it on? Will the oven get too hot?), it’s ineffective; the heat quickly dissipates once you turn the oven off.</p>
+<p>Enter your oven light. When turned on, your oven light’s slow, gentle heat will gradually warm the oven to the desired temperature. After trying a number of different methods for proofing bread in the oven, including several listed below, this was my clear favorite because it created the ideal temperature (not too hot, not too cold), maintained that temperature for several hours, and was essentially failproof (no overshooting the temp, for example!).</p>
+<p>It can take your oven a while to reach the desired temperature, especially if your kitchen is cold to begin with. With so many variables — season, climate, kitchen, oven — you’ll want to do a simple experiment to determine your own best method for turning your oven into an effective, efficient proof box:</p>
+<p>Take your oven’s temperature before turning on the light. Then turn on the light and measure the temperature again at 15-minute intervals, to see just how quickly the light warms things up. For reference, the light in my electric oven takes about an hour to raise the oven’s interior temperature by 10 degrees, and another hour to raise it an additional five degrees; your results will probably vary a bit.</p>
+<p>Warm your oven to about 80°F before turning off the light. Over the next couple of hours, the temperature will gradually drift down by about 10 degrees, giving your rising dough plenty of time in and around that 75°F to 78°F sweet spot.</p>
+<p>Once you know how to warm your oven using only its lightbulb, think about maintaining humidity: Dry dough can develop a tough skin, which inhibits rising.</p>
+<p>If you’re proofing dough in a bowl (or later, a shaped loaf in a pan), cover it with a clear plastic shower cap or reusable plastic bowl cover. Whatever you use, make sure it's large enough to form a “poof” on top, so the cover doesn’t touch the rising dough.</p>
+<p>For shaped rolls (or anything else in a large, flat pan), use an extra-large shower cap; or simply drape the pan with well-greased plastic wrap, waxed paper, or parchment.</p>
+<p>What if your oven doesn’t have a light, the lightbulb only lights when you open the oven door, or it’s a “cool” LED bulb?</p>
+<p>Then your best bet is a pan of boiling water set on the lowest rack, which will both warm and humidify your oven’s interior. Place the bread dough on the oven’s middle rack; no need to cover it.  Set a shallow pan (e.g., 9" x 13" pan) on the lower rack, and add four cups of boiling water. Quickly close the oven door.</p>
+<p>Your oven’s temperature will immediately rise by about 30 degrees, which will probably be warmer than you want. Cool it down by opening the door wide for about five minutes; the temperature should drop about 15 degrees.</p>
+<p>As the water in the oven cools, the air around it cools, too. But it happens so gradually that your oven should still remain sufficiently warm for the one to two hours your bread typically needs to rise. For longer-rising breads, simply switch out the cool water with another pan of hot water, if necessary.</p>
+<p>Some ovens actually have a proof setting or proofing drawer. I don’t always love using this setting, though: Most are programmed to temperatures ranging from 90°F to 100°F, far warmer than yeast dough’s optimal 75°F to 78°F. For best results, figure out how long it takes to reach about 80°F, then turn it off.</p>
+<p>Tip #1: If you have to open the oven door to check your rising dough, don’t worry. Unlike the huge 15- to 20-degree drop you experience when opening a fully heated oven, the temperature inside your light- or steam-warmed oven will only drop by a degree or two.</p>
+<p>Tip #2: Typically, you don’t preheat your oven with rising dough inside. So when your dough is close to fully risen, remove it from the oven and set it somewhere safe. (If there’s room, the top of your fridge is both warm and out of harm’s way.) Timed just right, your bread will be perfectly proved by the time the oven finishes preheating.</p>
+<p>Tip #3: To prevent someone from killing your rising dough by turning on the oven (say, to warm their leftover pizza), write “NO!” on a sticky note and affix it to the oven’s start button. Really!</p>
+<p>For the highly passionate bread baker (or a small baking business), an electronic proof box like the Brod & Taylor Proofer Pro is a step up from proofing dough in the oven. It controls temperature with exquisite precision, from cold-proofing (down to 41°F) for those overnight ferments up to 122°F for an express warmup, all while ensuring perfect humidity. Wi-Fi and programmable timers let you control your dough’s development for up to eight days. It’s literally set it and forget it — the process is simple, but the results are simply amazing.</p>
+<p>Still looking for a warm, draft-free spot for your rising bread dough? Think beyond your oven to other major appliances: Both your clothes dryer and dishwasher can double as a proof box!</p>
+<p>Cover photo by Mark Weinberg; food styling by Liz Neily.</p>
+<p>Mini pies may be the secret to a stress-free celebration.</p>
+<p>See our complete collection of Tips and Techniques posts.</p>
+<p>Dough temperature is key to achieving consistently great results in your bread baking.</p>
+<p>Facebook
+
+
+
+TikTok
+
+
+
+Instagram
+
+
+
+Threads
+
+
+
+Pinterest
+
+
+
+LinkedIn
+
+
+
+YouTube
+
+
+
+
+
+
+
+
+
+
+Reddit
+
+
+
+
+
+
+
+
+
+Substack</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.kingarthurbaking.com/blog/2026/10/23/how-to-proof-bread-in-oven" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
