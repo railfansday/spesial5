@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>BetRivers owner Rush Street grows revenue 39% but sees October at low end of 2026 guidance</title>
+    <title>Tokenization in Transformers v5: Simpler, Clearer, and More Modular</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10238.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,19 +15,81 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>BetRivers owner Rush Street grows revenue 39% but sees October at low end of 2026 guidance</h1>
+        <h1>Tokenization in Transformers v5: Simpler, Clearer, and More Modular</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/tokenizers/thumbnail.png" alt="Tokenization in Transformers v5: Simpler, Clearer, and More Modular" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers/thumbnail.png" alt="Tokenization in Transformers v5: Simpler, Clearer, and More Modular" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><div><img alt="Chicago skyline with the John Hancock Center rising above Lake Michigan" class="attachment-medium size-medium wp-post-image" height="169" src="https://readwrite.com/wp-content/uploads/2026/10/chicago-300x169.jpg" style="width: 100%; height: 56.17%; margin-bottom: 15px;" width="300" /></div>
-<p>Rush Street Interactive kept its 2026 revenue guidance but said October trading points to the low end of the range, after raising its outlook a quarter earlier. With online casino at 75% of revenue, the warning is fresh operator evidence that US online casino growth is cooling heading into the fourth quarter.</p>
-<p>The post <a href="https://readwrite.com/betrivers-owner-rush-street-grows-revenue-39-but-sees-october-at-low-end-of-2026-guidance/">BetRivers owner Rush Street grows revenue 39% but sees October at low end of 2026 guidance</a> appeared first on <a href="https://readwrite.com">ReadWrite</a>.</p></p>
+                <p>Transformers v5 redesigns how tokenizers work. The big tokenizers reformat separates tokenizer design from trained vocabulary (much like how PyTorch separates neural network architecture from learned weights). The result is tokenizers you can inspect, customize, and train from scratch with far less friction.</p>
+<p>TL;DR: This blog explains how tokenization works in Transformers and why v5 is a major redesign, with clearer internals, a clean class hierarchy, and a single fast backend. It’s a practical guide for anyone who wants to understand, customize, or train model-specific tokenizers instead of treating them as black boxes.</p>
+<p>For experts: If you're already familiar with the concepts and want to understand the changes in v5, go to v5 Separates Tokenizer Architecture from Trained Vocab</p>
+<p>Before diving into the changes, let's quickly cover what tokenization does and how the pieces fit together.</p>
+<p>Language models don't read raw text. They consume sequences of integers usually called token IDs or input IDs. Tokenization is the process of converting raw text into these token IDs. (Try the tokenization playground here to visualize tokenization.)</p>
+<p>Tokenization is a broad concept used across natural language processing and text processing generally. This post focuses specifically on tokenization for Large Language Models (LLMs) using the transformers and tokenizers libraries.</p>
+<p>Ġworld (above) is a single token that represents the character sequence " world" (with the space).</p>
+<p>A token is the smallest string unit the model sees. It can be a character, word, or subword chunk like "play" or "##ing" ("##" is a pattern, don't worry if you don't completely understand it now 🤗). The vocabulary maps each unique token to the token ID.</p>
+<p>A good tokenizer compresses text into the smallest amount of tokens. Fewer tokens means more usable context without increasing model size. Training a tokenizer boils down to finding the best compression rules for your datasets. For example, if you work on Chinese corpus you can sometimes find very nice surprises 😉.</p>
+<p>Tokenization happens in stages. Each stage transforms text before passing it to the next:</p>
+<p>Each component is independent. You can swap normalizers or change the algorithm without rewriting everything else.</p>
+<p>You can access the rust based tokenizer through _tokenizer. We go in more depth about it in this section</p>
+<p>The following algorithms dominate modern language model tokenizers:</p>
+<p>The tokenizers library is a Rust-based tokenization engine. It is fast, efficient, and completely language model agnostic. The library handles the mechanics of converting text into token IDs and back. The tokenizers library is a general-purpose tool that implements the tokenization algorithms, but does not implement the conventions that connect those algorithms to specific language models.</p>
+<p>Consider what happens when you use tokenizers directly with the SmolLM3-3B model:</p>
+<p>The output is raw tokenization. You get token IDs and the string pieces they correspond to. Nothing more.</p>
+<p>Now consider what's missing. The SmolLM3-3B is a conversational model. When you interact with it, you typically structure your input as a conversation with roles like "user" and "assistant". The language model expects special formatting tokens to indicate these roles. The raw tokenizers library has no concept of any of this.</p>
+<p>The transformers library bridges this gap. The library is primarily known as a model definition library, but it also provides a tokenizer abstraction layer that wraps the raw tokenizers backend and adds model-aware functionality.</p>
+<p>Here's the same tokenization with the transformers wrapper:</p>
+<p>Notice how the special tokens like <|im_start|> and <|im_end|> are applied to the prompt before tokenizing. This is useful for the model to learn where a new sequence starts and ends.</p>
+<p>The transformers tokenizer adds everything the raw library lacks:</p>
+<p>transformers implements the tokenization API that is most commonly used in the entire ML community (encode, decode, convert_tokens_to_ids, etc.)</p>
+<p>The transformers library organizes tokenizers into a class hierarchy. At the top sits a base class that defines the common interface. Below it, backend classes handle the actual tokenization using different engines. At the bottom, model-specific classes configure the backends for particular models.</p>
+<p>PreTrainedTokenizerBase is the abstract base class for all tokenizers in transformers. It defines the interface that every tokenizer must implement.</p>
+<p>The base class handles functionality that doesn't depend on the tokenization backend:</p>
+<p>Every tokenizer in transformers ultimately inherits from PreTrainedTokenizerBase. The base class ensures consistent behavior across all tokenizers, regardless of which backend they use for the actual tokenization.</p>
+<p>TokenizersBackend is the primary backend class for most modern tokenizers. It inherits from PreTrainedTokenizerBase and wraps the Rust-based tokenizers library.</p>
+<p>The class stores the Rust tokenizer object internally:</p>
+<p>When you call encoding methods on a TokenizersBackend tokenizer, the class delegates the actual tokenization to the Rust backend:</p>
+<p>The Rust backend performs computationally intensive work, while the Python wrapper adds the model-aware features on top.</p>
+<p>Many model-specific tokenizers inherit from TokenizersBackend, examples include:</p>
+<p>These model-specific classes configure the backend with the correct vocabulary, merge rules, special tokens, and normalization settings for their respective models.</p>
+<p>PythonBackend inherits from PreTrainedTokenizerBase and implements tokenization in pure Python. The class is aliased as PreTrainedTokenizer.</p>
+<p>The pure-Python backend exists for several reasons:</p>
+<p>The Python backend is slower than the Rust backend. For most use cases, the Rust-backed TokenizersBackend is preferred.</p>
+<p>Model-specific tokenizers that inherit from PythonBackend (or its alias PreTrainedTokenizer) include some older or specialized models, like:</p>
+<p>SentencePieceBackend inherits from PythonBackend and provides integration with Google's SentencePiece library. SentencePiece is a standalone tokenization library that many models use, particularly those trained by Google.</p>
+<p>The backend wraps a SentencePiece processor:</p>
+<p>Models that use SentencePiece tokenization inherit from this backend. Examples include:</p>
+<p>The SentencePiece backend inherits from PythonBackend rather than directly from PreTrainedTokenizerBase because it shares much of the same interface and padding/truncation logic.</p>
+<p>AutoTokenizer is the recommended entry point for loading tokenizers. It automatically determines which tokenizer class to use for a given model and returns an instance of that class.</p>
+<p>Behind the scenes, AutoTokenizer performs these steps:</p>
+<p>The benefit of AutoTokenizer is that you don't need to know which tokenizer class a model uses. Whether a model uses LlamaTokenizer, GPT2Tokenizer, or BertTokenizer, the same AutoTokenizer.from_pretrained("model-name") call works.</p>
+<p>The tokenizer system in transformers forms a layered architecture:</p>
+<p>The most significant change in Transformers v5 is a philosophical shift in how tokenizers are defined. Tokenizers now work like PyTorch's nn.Module: you define the architecture first, then fill it with learned parameters.</p>
+<p>In v4, tokenizers were black boxes tied to pretrained checkpoint files. If you loaded LlamaTokenizerFast, you couldn't easily answer basic questions about it:</p>
+<p>The __init__ method gave no clues. You had to dig through serialized files or external documentation to understand what the tokenizer actually did.</p>
+<p>v4 also maintained two parallel implementations for every model:</p>
+<p>Worst of all, you couldn't create an empty tokenizer architecture. If you wanted to train a LLaMA-style tokenizer on your own data, there was no clean way to instantiate a "blank" LLaMA tokenizer and fill it with your vocabulary and merges. Tokenizers existed only as loaded checkpoints, not as configurable templates.</p>
+<p>v5 treats tokenizer architecture (normalizer, pre-tokenizer, model type, post-processor, decoder) as distinct from trained parameters (vocabulary, merges). This mirrors how PyTorch separates model architecture from learned weights.</p>
+<p>The tokenizer class now explicitly declares its structure. Looking at LlamaTokenizer in v5, you can immediately see:</p>
+<p>This transparency was impossible in v4, where the same information was buried in serialized files.</p>
+<p>v5 consolidates the two-file system into a single file per model. LlamaTokenizer now inherits from TokenizersBackend, which wraps the Rust-based tokenizer that was previously exposed as the “fast” implementation and is now the default.</p>
+<p>The former “slow” Python implementation lives explicitly behind PythonBackend, and SentencePieceBackend remains for models that require it, but Rust-backed tokenization is the preferred default.</p>
+<p>Users now have one clear entry point. Advanced users who need to customize can still access lower-level components, but the library no longer forces everyone to navigate two parallel implementations.</p>
+<p>Suppose you want a tokenizer that behaves exactly like LLaMA's – same normalization, same pre-tokenization, same BPE model type – but trained on a domain-specific corpus (medical text, legal documents, a new language). In v4, this required manually reconstructing the tokenizer pipeline from low-level tokenizers library primitives. In v5, you can instantiate the architecture directly and call train:</p>
+<p>The resulting tokenizer will have your custom vocabulary and merge rules, but will process text identically to how a standard LLaMA tokenizer would with the same whitespace handling, same special token conventions, same decoding behavior.</p>
+<p>The shift from "tokenizers as loaded checkpoints" to "tokenizers as configurable architectures" makes the library more modular, more transparent, and more aligned with how practitioners think about building ML systems.</p>
+<p>Transformers v5 brings three improvements to tokenization:</p>
+<p>The wrapper layer between tokenizers and Transformers remains essential. It adds model awareness, context lengths, chat templates, special tokens, that raw tokenization doesn't provide. V5 just makes that layer clearer and more customizable.</p>
+<p>If you are looking to learn more about tokenization here are some resources:</p>
+<p>Experiment with and compare different tokenizers</p>
+<p>I think it depends on the nature of tools</p>
+<p>Thanks for doing this! I had to train some tokenizers with the v4, it was indeed not straightforward to understand the behavior.</p>
+<p>Experiment with and compare different tokenizers</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://readwrite.com/betrivers-owner-rush-street-grows-revenue-39-but-sees-october-at-low-end-of-2026-guidance/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tokenizers" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

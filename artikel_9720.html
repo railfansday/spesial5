@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Keypause</title>
+    <title>Debugging Missing Results in a Multistage Search Pipeline</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9720.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,41 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Keypause</h1>
+        <h1>Debugging Missing Results in a Multistage Search Pipeline</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/p0l6k3hrL3QXQy5uTK7OJrjSQO92-q082edg.png" alt="Debugging Missing Results in a Multistage Search Pipeline" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/p0l6k3hrL3QXQy5uTK7OJrjSQO92-q082edg.png" alt="Debugging Missing Results in a Multistage Search Pipeline" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Turn off your Mac's keyboard while you clean it
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/keypause?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1304967?app_id=339">Link</a>
-          </p></p>
+                <p>Senior software engineer building search, ranking, personalization, and ML infrastructure. I write about AI evaluation and distributed systems</p>
+<p>Senior software engineer building search, ranking, personalization, and ML infrastructure. I write about AI evaluation and distributed systems</p>
+<p>Senior software engineer building search, ranking, personalization, and ML infrastructure. I write about AI evaluation and distributed systems</p>
+<p>A reader searches a library catalog for a book the library definitely owns. The request succeeds, latency looks normal, and the results page is full of plausible alternatives. The expected book is missing.</p>
+<p>The ranking model is the obvious suspect. But tweaking scores cannot help if the book never reaches the model. It might be absent from the serving index. Retrieval might cut it off at a candidate limit. A filter might reject it on a technicality. Or the page might lose it during assembly. Each explanation needs different evidence and a different fix.</p>
+<p>The argument of this piece: before you tune anything, find the first stage where your candidate stopped progressing. Everything else follows from that.</p>
+<p>A good score in a report can be misleading here. A book that would have ranked first still cannot appear if it was never in the ranking input. Counterfactual scores do not describe the actual request.</p>
+<p>Most search systems pass candidates through the same five stages. A missing result means the candidate left this chain at some point, or never entered it.</p>
+<p>Walk these in flow order. Later stages inherit everything earlier stages did wrong. The first link that broke is the one to fix.</p>
+<p>“Search quality got worse” is too broad to debug. You need one specific request and one specific item: item b04 was missing from request R, which used index snapshot S and configuration C. That gives you something to reproduce.</p>
+<p>Preserve the context: normalized query, locale, eligibility rules, experiment assignment, and personalization inputs. A replay against today's index with default settings may describe a different request. Keep sensitive inputs under access control.</p>
+<p>Request timings tell you where a system spent time, not where the result set changed. For diagnosis, you want each stage's decision on a candidate: kept, dropped, or never seen, plus the reason.</p>
+<p>A compact event record works well: request ID, candidate ID, stage, action, and a reason code. Ranking events can add score and position; display events can note items cut by the page limit. Keep shared context such as index, model, and code versions in a request-level record so you do not repeat it per event.</p>
+<p>Two cautions. First, a reason code records what the code decided, not that the decision was right. An event saying language mismatch only helps if you check the stored value, the requested value, and the intended comparison rule. Otherwise it just labels a wrong decision.</p>
+<p>Second, some candidates have no events at all. If retrieval never emitted the item, there is nothing to record downstream, and the absence of events cannot distinguish an indexing failure from a cutoff or a query mismatch. Keep two extra facts for those cases: does the item exist in the request's snapshot, and where does it sit in the full retrieval ordering? A position beyond the candidate limit explains the silence. In production, use a targeted lookup against the same snapshot or a controlled replay, and write down what the diagnostic actually proved. Say unknown where the evidence runs out.</p>
+<p>Consider a fictional library catalog where our target book is fourth in retrieval order but would rank first on relevance if it reached the ranker. Three separate faults remove it, each at a different stage.</p>
+<p>The first fault is a stale index snapshot: the current catalog has the book, but the snapshot the request served from omits it. A membership check against that snapshot comes back false, stopping the investigation before retrieval or ranking. That establishes absence from that snapshot, nothing more. Ingestion failures, rejected documents, or a request routed to an older generation could each be upstream causes, so you need ingestion and routing evidence to tell them apart. Verify fixes against the snapshot the request actually used.</p>
+<p>The second fault is a filter rejecting an eligible item. The book reaches retrieval with stored language en, but a bad configuration requests EN and compares with case-sensitive equality, so the filter event reports a language mismatch. Comparing the stored value against the intended lowercase contract exposes the mistake. The telltale symptom is breadth: this fault rejects every retrieved book, so the displayed set is empty. The fix follows the field's contract. Do not normalize blindly, though; some identifiers are case-sensitive by design, and authorization rules deserve stronger guarantees than a convenient string conversion.</p>
+<p>The third fault is retrieval truncating the candidate set. The book is in the snapshot and fourth in retrieval order, but the configuration retrieves only three candidates. The filter never receives it, so there is no filter event at all. Membership lookup, retrieval position, and the configured limit together locate the loss. In production, raising candidate counts adds retrieval, feature-loading, and ranking cost, so measure cost and coverage before making it the general answer.</p>
+<p>When candidate IDs are stable, a baseline run and the changed run are easy to compare. Walk both histories in pipeline order and stop at the first divergence. If the snapshots differ, a later score difference is probably a consequence of changed inputs, not a model problem. If retrieval is identical but filtering differs, compare filter inputs and rules before you retrain anything.</p>
+<p>Also mark your evidence complete or truncated. A request that timed out halfway should not look like a complete history.</p>
+<p>Recording every candidate transition for every request grows with traffic and candidate counts. Sample bounded diagnostics, cap the event budget, and keep retention short. Keep lightweight stage counts everywhere, and collect detailed histories only for selected investigations.</p>
+<p>When one of those lacks evidence, report the gap. The next useful change may be better instrumentation, not a different ranking model.</p>
+<p>Most missing-result investigations end where they should have started: the stage that quietly dropped the candidate. Ask where it stopped progressing, collect evidence at that boundary, and the fix usually becomes obvious.</p>
+<p>Senior software engineer building search, ranking, personalization, and ML infrastructure. I write about AI evaluation and distributed systems</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/keypause" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/debugging-missing-results-in-a-multistage-search-pipeline?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

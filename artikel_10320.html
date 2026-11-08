@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>One-Shot Any Web App with Gradio&#x27;s gr.HTML</title>
+    <title>Easily Build and Share ROCm Kernels with Hugging Face</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10320.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>One-Shot Any Web App with Gradio&#x27;s gr.HTML</h1>
+        <h1>Easily Build and Share ROCm Kernels with Hugging Face</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/build-rocm-kernels/thumbnail.png" alt="Easily Build and Share ROCm Kernels with Hugging Face" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/build-rocm-kernels/thumbnail.png" alt="Easily Build and Share ROCm Kernels with Hugging Face" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Custom kernels are the backbone of high-performance deep learning, enabling GPU operations tailored precisely to your workload; whether that’s image processing, tensor transformations, or other compute-heavy tasks. But compiling these kernels for the right architectures, wiring all the build flags, and integrating them cleanly into PyTorch extensions can quickly become a mess of CMake/Nix, compiler errors, and ABI issues, which is not fun. Hugging Face’s kernels library makes it easy to build (with kernel-builder) and share these kernels with the kernels-community, with support for multiple GPU and accelerator backends, including CUDA, ROCm, Metal, and XPU. This ensures your kernels are fast, portable, and seamlessly integrated with PyTorch.</p>
+<p>In this guide, we focus exclusively on ROCm-compatible kernels and show how to build, test, and share them using kernels. You’ll learn how to create kernels that run efficiently on AMD GPUs, along with best practices for reproducibility, packaging, and deployment.</p>
+<p>This ROCm-specific walkthrough is a streamlined version of the original kernel-builder guide. If you’re looking for the broader CUDA-focused version, you can find it here: A Guide to Building and Scaling Production-Ready CUDA Kernels.</p>
+<p>We will use the GEMM kernel from RadeonFlow_Kernels as an example. If you want to go straight to the guide, click here.</p>
+<p>This section was written by the RadeonFlow GEMM kernel authors to introduce the kernel.Authors: ColorsWind, Zesen Liu, and Andy</p>
+<p>The RadeonFlow GEMM kernel is a high-performance, FP8 block-wise matrix multiplication implementation optimized for the AMD Instinct MI300X GPU. GEMM (General Matrix Multiplication) is the core building block behind most deep learning workloads: given two matrices A and B, you compute their product C = A × B. Here it’s implemented in FP8, a low-precision floating-point format that trades a bit of accuracy for much higher throughput and lower memory bandwidth. This kernel was developed for the AMD Developer Challenge 2025, it was awarded the 🏆 Grand Prize in June 2025, recognizing its excellence in performance and innovation on AMD hardware.</p>
+<p>The kernel operates on quantized inputs using the e4m3fnuz floating-point format and applies per-block scaling to preserve accuracy during low-precision computation. The e4m3fnuz format is an FP8 variant with 4 exponent bits and 3 mantissa bits, designed to be efficient for neural network workloads. Because FP8 has a much smaller dynamic range than FP16/FP32, we apply per-block scaling factors (a_scale and b_scale) so that each block of values is rescaled into a numerically “comfortable” range before and after computation, which helps preserve accuracy despite the low precision. It takes the following arguments:</p>
+<p>where a and b are the input matrices, a_scale and b_scale are the scaling factors for a and b respectively,
+and c is the output matrix:</p>
+<p>The kernel is precompiled for specific matrix shapes and assumes a transposed memory layout (as required by the competition). To support additional shapes or alternative memory layouts, you must modify the kernel launcher.</p>
+<p>So now that we have a high-performance ROCm kernel, the natural question is: how do we integrate it into a real PyTorch workflow and share it with others? That’s exactly what we’ll cover next, using kernels to structure, build, and publish the ROCm kernel.</p>
+<p>This is a fairly technical guide, but you can still follow it step by step without understanding every detail and everything will work fine. If you’re curious, you can always come back later to dig deeper into the concepts.</p>
+<p>The Hugging Face Kernel Builder expects your files to be organized like this:</p>
+<p>Sometimes your project might depend on other files, like tests or helper scripts, and you can add them without any issues.
+In our case, our project will be structured like this:</p>
+<p>If you look at the original files of the gemm kernel in the RadeonFlow Kernels, they are HIP source files with .cpp  extensions. As a first step, you need to change these extensions to either .h or .hip depending on their content and usage:</p>
+<p>In our example, gemm_kernel.h, gemm_kernel_legacy.h, and transpose_kernel.h are header files, while gemm_launcher.hip is a HIP implementation file. This naming convention helps the kernel-builder (kernels/builder) correctly identify and compile each file type.</p>
+<p>This file orchestrates the entire build. It tells the kernel-builder what to compile and how everything connects.</p>
+<p>This section contains general project configuration settings.</p>
+<p>This section describes the Torch extension configuration. It defines the Python bindings that will expose your kernel to PyTorch.</p>
+<p>Specification of a kernel named "gemm". You can define multiple kernel sections in the same build.toml file if you have multiple kernels.</p>
+<p>To ensure anyone can build your kernel on any machine, we use a flake.nix file. It locks the exact version of the kernel-builder and its dependencies. (You can just copy and paste this example and change the description)</p>
+<p>Now for the GPU code. Inside gemm/gemm_launcher.hip, we define how the GEMM kernel is launched.
+Depending on the configuration, we either call the new optimized gemm/gemm_kernel or fall back to the legacy implementation (gemm/gemm_kernel_legacy).</p>
+<p>This step is key. We’re not just making the function available in Python; we’re turning it into a native PyTorch operator. That means it becomes a first-class part of PyTorch itself, accessible through torch.ops.</p>
+<p>The file torch-ext/torch_binding.cpp handles this registration.</p>
+<p>The torch_binding.h file contains function declarations. For instance, the gemm kernel has the following declaration in torch_binding.h:</p>
+<p>In torch-ext/gemm/ we need an __init__.py file to make this directory a Python package and to expose our custom operator in a user-friendly way.</p>
+<p>The kernel builder uses Nix for building kernels. You can build or run the kernels directly if you have Nix installed on your system. We recommend installing Nix in the following way:</p>
+<p>This generates a flake.lock file that pins the kernel builder and all its transitive dependencies. Commit both flake.nix and flake.lock to your repository to ensure that kernel builds are reproducible.</p>
+<p>Since the kernel builder depends on many packages (e.g., every supported PyTorch version), it is recommended to enable the Hugging Face cache to avoid expensive rebuilds:</p>
+<p>Or run it once without installing cachix permanently:</p>
+<p>A kernel that has a flake.nix file can be built with the build-and-copy command:</p>
+<p>The compiled kernel will then be in the local build/ directory.</p>
+<p>The kernel-builder provides shells for developing kernels. In such a shell, all required dependencies are available, as well as build2cmake for generating project files:</p>
+<p>If you want to test the kernel as a Python package, you can do so. nix develop will automatically create a virtual environment in .venv and activate it:</p>
+<p>Development shells are available for every build configuration. For instance, you can get a Torch 2.7 development shell with ROCm 6.3 using:</p>
+<p>Now that we built our kernel, we can test it and upload it to the Hub.</p>
+<p>One small thing we'll want to do before we share is clean up all of the development artifacts that were generated during the build process to avoid uploading unnecessary files.</p>
+<p>To build the kernel for all supported versions of PyTorch and ROCm, the kernel-builder tool automates the process:</p>
+<p>Note:This process may take a while, as it will build the kernel for all supported versions of PyTorch and ROCm.The output will be in the result directory.</p>
+<p>The last step is to move the results into the expected build directory (this is where the kernels library will look for them).</p>
+<p>Pushing the build artifacts to the Hub will make it straightforward for other developers to use your kernel.  We can use the kernels upload command for this:</p>
+<p>Make sure you are logged in to the Hugging Face Hub using huggingface-cli login.</p>
+<p>Now, in your project directory, connect your project to the new repository and push your code:</p>
+<p>Fantastic! Your kernel is now on the Hugging Face Hub, ready for others to use and fully compliant with the kernels library.</p>
+<p>With the kernels library, you don't "install" the kernel in the traditional sense. You load it directly from its Hub repository, which automatically registers the new operator.</p>
+<p>That's it! Your ROCm kernel is now ready to use from the Hugging Face Hub.</p>
+<p>Building and sharing ROCm kernels with the Hugging Face is now easier than ever. With a clean, reproducible workflow powered by Nix and seamless integration into PyTorch, developers can focus on optimizing performance rather than setup. Once built, your custom kernel can be shared on the Hugging Face Hub; making it instantly accessible to the community and usable across projects with just a few lines of code. 🚀</p>
+<p>really cool stuff. Can i build kernels for Apple Silicon as well?</p>
+<p>Yes, absolutely!You can find the documentation for Apple Silicon (Metal) here: https://github.com/huggingface/kernel-builder/blob/main/docs/metal.mdAnd here’s an example of a kernel built for Metal: https://huggingface.co/kernels-community/gpt-oss-metal-kernels</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/gradio-html-one-shot-apps" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/build-rocm-kernels" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
