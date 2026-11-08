@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</title>
+    <title>Beware the Slasher: AI Could Kill Off Cybersecurity Pros&#x27; Skills</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9983.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,68 +15,64 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</h1>
+        <h1>Beware the Slasher: AI Could Kill Off Cybersecurity Pros&#x27; Skills</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/bltc41ecdc8029e697f/6ae0df62008cb1fe5c9e9737/scream-Jesse_Grant-GettyImages-2261562479.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="Beware the Slasher: AI Could Kill Off Cybersecurity Pros&#x27; Skills" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/bltc41ecdc8029e697f/6ae0df62008cb1fe5c9e9737/scream-Jesse_Grant-GettyImages-2261562479.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="Beware the Slasher: AI Could Kill Off Cybersecurity Pros' Skills" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>3 months ago, we started a revival of Papers with Code (see also the announcement tweet). Its goal is to make open AI research accessible and digestible, so that people can easily find the artifacts related to a paper, find state-of-the-art (SOTA) across the various domains of AI, share interesting research and build on top of each other's work. In other words, its goal is to power the wave of research that leads to the next Transformer.</p>
-<p>Of course, making AI research accessible requires a powerful search engine, so that humans and agents can quickly find relevant and related work, either through the website or the pwc search CLI command, which agents can use via the Skill.</p>
-<p>It's important to note that searching for research is not quite the same as searching for regular text. A useful paper search engine should find an exact title or arXiv identifier, but it should also understand a query such as “small language models for code generation” even when those words do not appear together in a paper. It needs to recognize that “the original BERT paper” is a navigational request, tolerate an incomplete title or typos, and still respond quickly when a model service is cold or temporarily unavailable.</p>
-<p>For Papers with Code, we built this as a hybrid search system. This is also based on our prior experience at ML6, where we developed RAG-based systems for clients. It turned out that hybrid search typically outperforms keyword- and vector-based search systems, as it combines the best of both worlds (see also this blog for more info). Keyword search finds exact mentions, whereas vector search finds more fuzzy, semantically similar terms. Note that rerankers (also called cross-encoders) can further improve the results, although they also come with additional overhead and latency.</p>
-<p>Papers with Code relies on a PostgreSQL database, hence its full-text search capabilities provide a fast lexical baseline. For dense embeddings, pgvector is used to add semantic recall, and the reciprocal rank fusion (RRF) algorithm combines the two. Three Hugging Face services are used for the dense embeddings:</p>
-<p>Today, the system maintains embeddings for more than 110,000 current papers sourced from arXiv and Daily Papers. This post explains the architecture, the design decisions behind it, and the lessons we learned while taking it to production.</p>
-<p>We deliberately split search into an offline corpus build and an online search service:</p>
-<p>The expensive, throughput-oriented work runs as Jobs. Durable artifacts live in a Bucket. Only the small query-embedding step sits on the request path, behind a protected Inference Endpoint, to power the online search. If that endpoint is cold, busy, or unhealthy, search immediately falls back to full-text retrieval. This separation makes the system both powerful and fast.</p>
-<p>Embedding pipelines often fail in subtle ways: a model revision changes, query and document prompts are mixed up, vectors are truncated differently, or an updated abstract no longer matches its stored vector.</p>
-<p>We avoid this by treating the embedding format as a versioned API. Every paper is encoded as:</p>
-<p>Our production generation uses Qwen/Qwen3-Embedding-0.6B, pinned to an exact revision, with 256-dimensional L2-normalized vectors. We selected the model with help from the MTEB leaderboard, the go-to benchmark for comparing embedding models. Note that newer embedding models like Qwen3 allow for 2 new features:</p>
-<p>This contract follows an embedding from export, through GPU inference, into PostgreSQL, and finally into online retrieval.</p>
-<p>Full-corpus embedding is a classic batch workload. It needs a GPU for a relatively short period, benefits from high throughput, and should not consume resources between runs. Hugging Face Jobs fits that shape well: a Job is defined by a command, a hardware flavor, and optionally a Docker image, and can run uv scripts with their dependencies declared inline.</p>
-<p>Our corpus build starts by exporting the latest version of every paper from a repeatable-read PostgreSQL snapshot. The exporter streams rows rather than loading the catalog into memory, writes bounded JSONL shards, and creates a manifest containing row counts and SHA-256 checksums.</p>
-<p>We sync that immutable run directory to a private Storage Bucket and mount the Bucket directly (using hf-mount) into an l4x1 Job (an NVIDIA L4 GPU, which has 24GB of VRAM). From the worker's perspective it is simply a filesystem:</p>
-<p>Each completed shard has its own marker, so a restarted Job can skip verified work. This is useful for a large corpus: retrying should just resume work rather than overwriting existing embeddings.</p>
-<p>In our 5,000-paper pilot, the Qwen Job encoded about 75 papers per second at 1024 dimensions on an L4 GPU. The same pass could be deterministically materialized at 512 and 256 dimensions, so we could compare the storage and retrieval trade-offs without paying for more inference.</p>
-<p>Storage Buckets are mutable, S3-like object storage on the Hub, optimized for AI workloads. They can be accessed through hf://buckets/... paths and mounted read-write in Jobs without building a separate storage integration.</p>
-<p>For us, the Bucket is more than a place to put vectors. It is the boundary between three systems with different lifecycles:</p>
-<p>We organize artifacts under immutable run prefixes:</p>
-<p>Buckets themselves are intentionally mutable, so immutability is an application-level rule: a run ID is never overwritten, and every artifact is covered by a manifest and checksum.</p>
-<p>Only after the importer rechecks schemas, checksums, dimensions, normalization, unique paper IDs, and current content hashes do we load the vectors into PostgreSQL. We then build a separate HNSW index for the new generation and atomically mark it active only when every eligible current paper is covered (HNSW is the graph-based algorithm that enables fast vector search).</p>
-<p>Batch embeddings solve the document side of retrieval. A user query still needs to be embedded at request time using the same model contract.</p>
-<p>We deploy the pinned model as an authenticated Inference Endpoint backed by Text Embeddings Inference (TEI). The endpoint accepts the query text and returns a normalized 256-dimensional vector using the model's query prompt. Note that one could also leverage vLLM or SGLang here.</p>
-<p>The API then performs a cosine-distance search over the active pgvector generation:</p>
-<p>The HNSW index keeps this lookup fast. On our 5,000-paper pilot, the 256-dimensional Qwen index achieved 0.9955 Recall@20 against exact search, with 1.31 ms p50 and 2.21 ms p95 HNSW lookup latency. Its table and index used about 27% of the storage of the 1024-dimensional version while retaining essentially the same ANN recall in that test.</p>
-<p>The Endpoint is configured with a maximum of one replica and can scale to zero when idle. That is a useful cost lever, as this means you're not paying when there's no usage. However, this also means cold starts must be part of the application design rather than treated as an exceptional event, as it takes some time for the endpoint to spin up and serve traffic.</p>
-<p>Our query client therefore has deliberately strict behavior:</p>
-<p>If the endpoint is scaling up, times out, returns a malformed vector, or has no concurrency available, we skip the semantic branch immediately. Users still receive lexical results instead of waiting for an unreliable dependency.</p>
-<p>Inference Endpoints works really reliably, and includes a nice dashboard so you can quickly see key analytics.</p>
-<p>For every query, the lexical branch retrieves up to 50 candidates using weighted PostgreSQL full-text search. The semantic branch retrieves up to 50 candidates from pgvector.</p>
-<p>We combine their ranks using weighted reciprocal rank fusion (RRF):</p>
-<p>score(d)=∑r ∈ {lexical, semantic}wrk+rankr(d)
-\text{score}(d) = \sum_{r \,\in\, \{\text{lexical},\, \text{semantic}\}} \frac{w_r}{k + \text{rank}_r(d)}
-score(d)=r∈{lexical,semantic}∑​k+rankr​(d)wr​​</p>
-<p>RRF is simple and robust, because it combines ranks rather than scores from two systems with different scales. Basically, if a paper is ranked high both by the lexical branch and the semantic branch, it has a higher chance of being ranked high by the hybrid search. We currently use equal branch weights and (k=60) (k is the "rank constant", a hyperparameter of the RRF algorithm).</p>
-<p>Dense retrieval improves recall for conceptual queries. Full-text retrieval remains excellent for exact terminology, identifiers, and rare names. We also preserve deterministic identity behavior on top of the fused ranking:</p>
-<p>Note: hybrid search isn't always the best option, it is recommended to start with keyword search as a cheap and fast baseline, and only adding semantic and/or hybrid search when it turns out those give a reasonable boost in retrieval quality. One could further improve the search by adding a reranker after keyword/semantic/hybrid retrieval, using a model like Qwen3-Reranker.</p>
-<p>The large initial corpus is embedded with Jobs, but Papers with Code changes continuously. New papers arrive, abstracts are corrected, and new arXiv versions become current.</p>
-<p>Launching a GPU Job for a handful of changed rows would add unnecessary startup and orchestration overhead. Instead, an hourly incremental process selects missing or content-changed papers and sends a bounded delta to the same TEI Endpoint, this time with the document prompt.</p>
-<p>Each run processes at most 500 papers in batches of 16. Before an embedding is written, the source row is locked and its content hash is checked again. If a paper changed during inference, that vector is discarded and picked up by the next run.</p>
-<p>This gives us a useful division of labor:</p>
-<p>The hourly path keeps the active index close to the live catalog without turning an online endpoint into an unbounded batch processor.</p>
-<p>The same document embeddings also power related-paper recommendations on each paper page.</p>
-<p>Because the source paper already has a stored vector, related-paper retrieval requires no model call at request time. It is a single nearest-neighbor query over the active generation. If a vector is temporarily missing, the application can use a previous arXiv version or fill results from the existing task- and citation-based fallback. We fetch citation data through the Semantic Scholar API and also built s2-cli, a command-line interface for querying its citation graph. The latter is used by the agent at https://paperswithcode.co/chat.</p>
-<p>Corpus embedding and query embedding use the same model, but they are different infrastructure problems. Jobs optimize for throughput and bounded cost; Inference Endpoints optimize for availability and request latency.</p>
-<p>Buckets provide an explicit handoff between compute and production. Checksummed artifacts create a reviewable boundary before data enters the production index.</p>
-<p>The revision, dimension, prompt, normalization, and input formatter all affect retrieval. Store them together and validate them everywhere.</p>
-<p>Scale-to-zero is valuable when traffic is intermittent, but only if the product has a fast fallback. Hybrid search gave us that fallback naturally: lexical search is always useful on its own.</p>
-<p>Matryoshka embeddings let us evaluate quality, memory, index size, and latency as one trade-off. In our pilot, 256 dimensions preserved ANN recall while materially shrinking storage compared with 1024 dimensions.</p>
-<p>New generations are imported beside the current one, indexed independently, checked for complete and current coverage, and then activated atomically. Rollback is a configuration change, not an emergency recomputation.</p>
-<p>Feel free to try out the search at https://paperswithcode.co or the chat interface at https://paperswithcode.co/chat, and let us know any feedback!</p>
+                <p>Nathan Hamiel outlines potential SecOps horror in the AI midst, as core technical capabilities go the way of reading an atlas or remembering phone numbers.</p>
+<p>Black Hat India — Bengaluru — The use of AI as a tool to enhance cybersecurity operations is emerging as a double-edged knife for security professionals. While it can make them more capable, it could also spell the demise of the very skills they need to use it effectively.</p>
+<p>That's the concern of Nathan Hamiel, senior director of research at Kudelski Security, who has made a case for how evolving technology can erode technical skills since well before the generative AI boom. Now, that concern is getting much louder.</p>
+<p>Speaking to Dark Reading recently, he says he began noticing the problem around 2005 and 2006, when he encountered cybersecurity professionals who lacked a firm grasp of the fundamentals of their work. At that time, he warned about the dangers of relying too heavily on various types of technical tools, declaring to cybersecurity professionals that "your tools are killing you," and warning that practitioners are moving away from being "hands-on" operators who investigate problems directly, and toward "hands-off" monitors who oversee results presented through tools, interfaces, and dashboards.</p>
+<p>Related:UK Wades Into Tech Sovereignty Amid AI Policy Changes</p>
+<p>It's a shift that's being exacerbated now by AI-driven automation, he says, and organizations need to move quickly to optimize the use of AI without the expense of cybersecurity skill-building.</p>
+<p>While automation can simplify complex tasks and allow professionals to accomplish more, it can also distance them from the underlying problems they are trying to solve. Without a solid understanding of the fundamentals, practitioners may struggle to recognize when a tool produces an incorrect result or when its findings require further investigation, Hamiel says.</p>
+<p>"We need to keep these skills and not let them degrade because those skills are important to making the tools work in the best way possible," he tells Dark Reading from this week's Black Hat India conference, where he's giving a keynote entitled "The Death of Skills and the Persistence of Problems."</p>
+<p>"What AI adds to somebody with knowledge and experience is some additional capabilities," Hamiel elaborates. "A domain expert wielding AI is going to be able to gain benefits from using that tool that a novice with no domain experience isn't going to be able to get."</p>
+<p>This distinction is becoming increasingly important as AI becomes more deeply integrated into cybersecurity workflows. It also raises questions about how the industry will develop its next generation of experts if automation removes some of the hands-on tasks that junior professionals traditionally learn.</p>
+<p>Related:UK Warns Its Critical Infrastructure Faces Grave Risk</p>
+<p>The current discussion around AI often falls into extremes, Hamiel says. Some predict that the technology can go a long way toward solving major problems facing not only cybersecurity but also humanity, while others warn that it will bring the industry — and some even the world — to an end.</p>
+<p>"You have the doomers," he says, "and you have people who say this is a big nothingburger. The truth is somewhere in the middle."</p>
+<p>For Hamiel, understanding AI's impact requires separating what the technology can demonstrate in a controlled environment from what it can reliably accomplish in the real world. Impressive capabilities do not necessarily translate into the wholesale replacement of jobs or the disappearance of entire industries, he says.</p>
+<p>The same distinction applies to cybersecurity, Hamiel says. Although AI can help identify vulnerabilities, generate code and support security investigations, those capabilities do not mean that the complex problems facing security teams have suddenly become easy to solve.</p>
+<p>In fact, some recent incidents described as "rogue" AI activity — such as OpenAI models autonomously hacking the Hugging Face framework, among others — may reveal a more familiar and persistent cybersecurity problem: organizations failing to address basic security weaknesses.</p>
+<p>Related:US Government Email Systems Open to Abuse Thanks to Typos</p>
+<p>"If you read some of the incident reports, these are organizations that weren't exercising basic security hygiene," Hamiel says.</p>
+<p>In these cases, he argues, the weaknesses were already there, waiting to be discovered. "This wasn't just low-hanging fruit; this was fruit lying on the ground where anybody who looked for it would have found it," he says.</p>
+<p>Rather than signaling an impending cybersecurity apocalypse, such incidents could prompt what Hamiel calls a "cybersecurity correction."</p>
+<p>"It's not that there is this huge apocalypse happening; it's that many people weren't doing the right thing for a very long time," he explains.</p>
+<p>In other words, AI may make it easier to discover and exploit existing weaknesses, exposing the consequences of inadequate security practices. The challenge for organizations is not simply to adopt new tools but to address the underlying problems those tools bring to light.</p>
+<p>Indeed, the potential erosion of technical skills is not a problem that began with generative AI. Hamiel sees it as part of a longer trend in which technology increasingly mediates the relationship between professionals and the problems they are responsible for solving.</p>
+<p>Hamiel's concern reflects what is often called the irony of automation: As systems take on more responsibility, the humans overseeing them can lose opportunities to practice the skills needed when those systems fail.</p>
+<p>The consequences could extend beyond the skills of today's practitioners to the way the cybersecurity industry develops future experts, he says, especially in how lower-level work that AI can eliminate helps helping junior professionals learn.</p>
+<p>Tasks that might appear repetitive or straightforward can provide essential experience, allowing new practitioners to understand how systems work before progressing to more complex investigations. "If you automate that, there isn't room for them to learn," Hamiel warns.</p>
+<p>This creates a potential long-term problem for employers. AI may allow teams to complete certain tasks more efficiently today, but organizations still need experienced professionals who can investigate unfamiliar problems, evaluate automated findings, and respond when systems behave unexpectedly.</p>
+<p>For cybersecurity pros to use generative AI effectively, then, it's simply a matter of applying it to tasks where it offers meaningful benefits while remaining aware of the skills that might be weakened if pros rely too much on these tools to do their jobs effectively.</p>
+<p>"The goal here is to maximize the benefits and minimize the drawbacks," Hamiel says, something that is true for the use of any technology. "That's the framing that should be placed around this," he says.</p>
+<p>Thus, the only way that organizations can adopt AI without losing essential cybersecurity expertise is to "apply them to the right types of activities," he says.</p>
+<p>For cybersecurity pros, this means using generative AI for tasks such as threat hunting and threat intelligence, where preliminary analysis can help professionals work through information more efficiently, Hamiel notes. AI-powered penetration-testing tools are another area of promising development, extending beyond traditional vulnerability scanning to perform more complex tasks, he says.</p>
+<p>Ultimately, the question is not whether AI will change cybersecurity, Hamiel says. That genie is most certainly already out of that bottle. Ultimately, the real challenge is ensuring that the industry does not become so dependent on increasingly capable tools that it loses the human expertise required to use them effectively, he says.</p>
+<p>"Skills and expertise make your AI use more effective," Hamiel concludes. "If you have two professionals, and both use AI, the one with more knowledge of the task is going to make better use of the AI."</p>
+<p>Elizabeth Montalbano is freelance writer, editor, and journalist with 30 years of professional experience and a master's degree from Arizona State University. Her areas of expertise include enterprise technology, cybersecurity, business, and culture. During her long career, Elizabeth has lived and worked as a full-time journalist in Phoenix, San Francisco, and New York City. She specializes in news coverage and analysis, using her years of experience to look at the current state of cybersecurity with a critical gaze. She currently resides in a village on the southwest coast of Portugal, where in her free time she enjoys surfing, hiking with her dogs, growing plants, and playing and performing as a singer and musician.</p>
+<p>2026 State of Cybersecurity Report: Bridging the Divide</p>
+<p>The Autonomous Endpoint Management Advantage</p>
+<p>The State of Cloud Security: The Latest Challenges</p>
+<p>How Organizations Are Managing Incident Response</p>
+<p>How Enterprises Are Developing Secure Applications</p>
+<p>LLM Security Architecture: Building Secure AI Systems from the Ground Up</p>
+<p>Resilient Architecture: Designing Systems That Survive Compromise</p>
+<p>Prompt Injection 101: What It Is and How to Stay Ahead</p>
+<p>The Long Tail Is Now the Front Line: Reducing Frontier-AI & Third-Party App Risk</p>
+<p>How to Harness your Security Operations Data for Enterprise Defense</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/pwc-search" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/cybersecurity-operations/ai-kill-off-cybersecurity-pros-skills" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

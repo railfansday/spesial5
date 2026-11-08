@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Putting RL back in RLHF</title>
+    <title>Benchmarking Text Generation Inference</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11004.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,45 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Putting RL back in RLHF</h1>
+        <h1>Benchmarking Text Generation Inference</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/putting_rl_back_in_rlhf_with_rloo/thumbnail.png" alt="Putting RL back in RLHF" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/putting_rl_back_in_rlhf_with_rloo/thumbnail.png" alt="Putting RL back in RLHF" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>We are excited to introduce the RLOO (REINFORCE Leave One-Out) Trainer in TRL. As an alternative to PPO, RLOO is a new online RLHF training algorithm designed to be more accessible and easier to implement. In particular, RLOO requires less GPU memory and takes less wall time to converge. As shown in the figures below:</p>
-<p>With RLOO, we bring Reinforcement Learning back into RLHF, enabling the community to explore online RL methods more easily. This is exciting because more and more studies have shown that online RL is more effective than offline methods such as DPO (https://arxiv.org/abs/2402.04792, https://arxiv.org/abs/2405.08448).</p>
-<p>This blog post will explain the motivation behind the RLOO Trainer, how it works, and how to use it in TRL.</p>
-<p>PPO is an effective online RLHF training algorithm that is used to train state-of-the-art models such as GPT-4. However, PPO can be quite challenging to use in practice due to its high GPU memory requirements. In particular, PPO needs to load 4 copies of the models into the memory: 1) the policy model, 2) the reference policy model, 3) the reward model, and 4) the value model, as shown in the following figure. PPO also has many subtle implementation details that can be difficult to get right (Engstrom et al; 2020, Huang et al 2022).</p>
-<p>In a new paper from Cohere, Ahmadian et al. (2024) revisited the basics of RLHF training and proposed a more elegant method called RLOO, a new online training algorithm. RLOO only needs to load 3 copies of the models into the memory: 1) the policy model, 2) the reference policy model, and 3) the reward model, as shown in the figure above.</p>
-<p>Importantly, RLOO requires less memory, meaning it’s easier to</p>
-<p>Furthermore, RLOO models the entire completion tokens as a single action, as illustrated in the figure below. In the next section, we will dive into further detail with code snippets.</p>
-<p>Both RLOO and PPO have several shared steps:</p>
-<p>The policy model would generate some completion tokens and get the per-token log probs under the current and reference policies.</p>
-<p>We then calculate the per-token KL penalties as the difference between the logprobs under the current and reference policies.</p>
-<p>We then get the score of the entire completion from the reward model.</p>
-<p>From here on, regular PPO and RLOO differ in approach. RLOO has several key ideas. First, it treats the entire model completion as a single action, whereas regular PPO treats each completion token as individual actions. Typically, only the EOS token gets a true reward, which is very sparse.  Regular PPO would attribute a reward to the EOS token, whereas RLOO would attribute that EOS reward to the entire completion, as demonstrated below.</p>
-<p>Second, RLOO uses the REINFORCE loss, which basically multiplies the (reward - baseline) by the logprob of actions. Here, we highlight the differences between per-token REINFORCE loss and the entire completion REINFORCE loss. Note that for PPO's loss, we would need to calculate the advantage additionally based on the value model with Generalized Advantage Estimation (GAE).</p>
-<p>Third, RLOO calculates baselines smartly. Notice we used a dummy baseline above. In practice, RLOO uses the reward of all other samples in the batch as the baseline. Below is a case where we have 3 prompts and 4 completions each. We calculate the baseline for each completion by averaging the rewards of all other completions for the same prompt.</p>
-<p>A big shout out to Arash Ahmadian, who provided the vectorized implementation of the advantages calculation above.</p>
-<p>To get started with RLOO, you can install the latest version of TRL via pip install --upgrade trl and import the RLOOTrainer. Below is a short snippet that shows some high-level API usage. Feel free to checkout the documentation</p>
-<p>Here is an example of tracked weights and biases experiments: https://wandb.ai/huggingface/trl/runs/dd2o3g35</p>
-<p>When coding the RLOO and PPOv2 implementation, we emphasize making it easier to improve the transparency of model development. In particular, we have enhanced the docs to include an explanation of logged metrics and a cookbook guide on reading and debugging these metrics. For example, we recommend closely monitoring objective/rlhf_reward, the ultimate objective of the RLHF training, during training.</p>
-<p>To help visualize the training progress,, we periodically log some sample completions from the model. Here is an example of a completion. In an example tracked run at Weights and Biases (https://wandb.ai/huggingface/trl/runs/dd2o3g35), it looks like the following, allowing you to see the model’s response at different stages of training. By default, we generate --num_sample_generations 10 during training, but you can customize the number of generations.</p>
-<p>We implemented RLOO trainer based on our new experimental PPOv2Trainer, which is itself based on https://arxiv.org/abs/2403.17031. Interestingly, our implementation of the RLOO trainer still uses the PPO loss. This is because the loss of REINFORCE is a special case of PPO (https://arxiv.org/abs/2205.09123). Note that even though the logprob is explicitly in the REINFORCE loss, it is also implicitly in the PPO loss. Seeing is believing, so let's demonstrate this with a simple example.</p>
-<p>To validate the RLOO implementation works, we ran experiments on the Pythia 1B and 6.9B models and release the trained checkpoints here:</p>
-<p>We take the SFT / RM models directly from Huang et al., 2024. To evaluate, we use vLLM to load the checkpoints and GPT4 as a judge model to assess the generated TL;DR against the reference TL;DR. We also look at the GPU memory usage and runtime, as shown in the figures at the beginning of the blog post. To reproduce our work, feel free to check out the commands in our docs:</p>
-<p>Despite RLOO's performance and compute efficiency advantages, we want to highlight some numerical issues. Specifically, the response logprobs obtained during generation are slightly numerically different from the logprobs obtained during the training forward passes under bf16. This causes an issue for both PPO and RLOO, but it’s much worse for RLOO, as explained below.</p>
-<p>For example, say we are generating 10 tokens for two sequences. Under the precision fp32, the output looks as follows, where the ratio = (forward_logprob - generation_logprob).exp() and is what PPO used to clip. Under the first epoch and first minibatch, the ratio should be exactly the same because the model hasn’t done any updates:</p>
-<p>Note that the ratio for bf16 is very unstable for some reason. When the ratio becomes large, PPO’s clip coefficient = 0.2 kicks in, nulling the gradient of the tokens for which the ratio is greater than 1.2 or lower than 0.8. With RLOO, this issue is more extreme because we are looking at the (forward_logprob.sum(1) - generation_logprob.sum(1)).exp() = [ 1.0625, 12.1875], which means the gradient for the entire second sequence is nulled.</p>
-<p>In practice, we noticed PPO nulls the gradient of approximately 3% of the batch data, whereas RLOO nulls about 20-40% of the batch data. Theoretically, RLOO should null 0% of the batch data when not using mini-batches. Importantly, we observe that the clipping ratio for RLOO did not change significantly once we increased the number of gradient steps before generating new batches (through num_ppo_epochs and num_mini_batches); this provides empirical evidence that the clipping ratio is indeed due to numerical issues with bf16 as opposed to the behavior and latest policies being significantly different, as positioned in the paper.</p>
-<p>To keep reading about the latest issue updates, feel free to check out https://github.com/huggingface/transformers/issues/31267.</p>
-<p>The introduction of the RLOO (REINFORCE Leave One-Out) Trainer in TRL is an exciting algorithm in online RLHF training, providing a more accessible and efficient alternative to PPO. By reducing GPU memory usage and simplifying the training process, RLOO enables larger batch sizes and faster training times. Our experiments demonstrate that RLOO performs competitively with PPO and outperforms DPO checkpoints in terms of response win rate, making it a powerful tool for effective online RLHF. Explore our documentation to get started!</p>
-<p>We thank Lewis Tunstall, Sara Hooker, Omar Sanseviero, and Leandro Von Werra for the helpful feedback on this blog post.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/putting_rl_back_in_rlhf_with_rloo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tgi-benchmarking" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
