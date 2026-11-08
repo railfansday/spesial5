@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Amutable Foundations: A Technical Overview</title>
+    <title>Making musl and proprietary NVIDIA drivers work together</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10032.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,110 +15,190 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Amutable Foundations: A Technical Overview</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
+        <h1>Making musl and proprietary NVIDIA drivers work together</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://amutable.com/blog/amutable-foundations-technical-overview/opengraph-image?df4a8dd696d0f636" alt="Amutable Foundations: A Technical Overview" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://amutable.com/blog/amutable-foundations-technical-overview/opengraph-image?df4a8dd696d0f636" alt="Amutable Foundations: A Technical Overview" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>By Lennart Poettering, Michael Vogt, and Joaquim Rocha</p>
-<p>We recently announced Amutable Foundations. It’s now time to provide a technical overview of how Amutable Foundations is put together. In this post, we’ll discuss two of the most fundamental components:</p>
-<p>Amutable OS (“AOS”, or “⊼OS”), a modern image-based Linux OS. It builds on the foundation of established Linux distributions, but moves them from a package-based world into an image-based, integrity-protected world. It removes drift, and adds robustness, integrity, and reproducibility. On one hand this provides great conceptual compatibility with the status quo ante of enterprise distributions, and on the other hand it’s built from the ground up with image-based OS designs in mind.</p>
-<p>Amutable Control Plane (“ACP”, or “⊼CP”), a management system that tracks, controls, updates and verifies a fleet of AOS installations.</p>
-<p>Amutable OS is built on classic Linux distributions, initially from Fedora packages. Distributions do valuable integration and unification work on the basic components of the OS – work we want to leverage. However, AOS uses distribution packages to pre-assemble immutable disk images at build-time while distributions, traditionally, compose a Linux system by installing packages on the final, deployed system. Let’s take a closer look at what this means.</p>
-<p>Package-based OSes generally provide the user with a large number of regularly updated software packages (many thousands) with complex dependencies, which are composed into a working OS on the final machine it is deployed on. Installations in this style tend to vary greatly from system to system. Even with an identical selection of packages for the target system, the installation/update order, the stateful update logic and the file system data structures generally mean that the bytes that hit the disk on each machine are always different. This is called drift.</p>
-<p>Systems put together this way are hence not reproducible, not predictable, and hard to compare and analyze which is essential for tracking down security issues. They are also hard to test as the flexibility of selecting packages and assembling them in any order results in a prohibitive combinatorial explosion of systems to test.</p>
-<p>Image-based OSes instead provide pre-built file system images that contain all code and other resources the OS needs. These images are bit-by-bit identical on every deployed system, so that the installations differ only in local state acquired during runtime, but not in the OS code and resources themselves (which stay 100% identical).</p>
-<p>To improve modularity, AOS extends this concept to allow a small number of coarse images to be merged together. Rather than thousands of packages, each system only combines a small number (typically < 5) of images, so that the system stays reproducible.</p>
-<p>Building from existing distribution packages allows us to guarantee far reaching semantic compatibility with existing systems, while maintaining our image-based focus. In particular, it allows us to potentially prepare – with little effort – individualized disk images that fit perfectly for the customer’s projects.</p>
-<p>Classic distribution packages are a concept of modularization, and useful in that. With our image-based OS approach, we cut down on the modularization at deployment time, but we do allow some. This reflects the fact that while we likely will be able to cover a lot of disparate systems with a single, generic, minimal OS image, some of the components certain systems might require are so large, or specific, that it makes sense to split them out. For example, graphics/AI drivers and cloud-specific agent services tend to be large these days.</p>
-<p>In order to not require their installation on every deployment host we split some components out into system extensions (or short: “sysexts”) that contain additional files which can be overlaid on top of the OS resources in /usr/ and augment the system with additional resources. Making these components optional reduces footprint and attack surface.</p>
-<p>Note that in many cases the selection of sysexts to activate on a given host is purely a function of the host’s circumstances and equipment. More specifically, the graphics drivers and subsystem should be installed automatically when the matching hardware is detected. Similarly, the cloud-specific agent services should be picked up automatically when the system is detected to run inside a relevant cloud vendor’s environment.</p>
-<p>In AOS the selection of additional images to install is hence somewhat automated. The local AOS system carries a “hwdb” database that dictates which additional images to auto-install on the individual node if certain hardware is enumerated or the VMM indicates certain identification or functionality.</p>
-<p>A core functionality of AOS is support for configuration extensions (“confexts”). These are very similar to sysexts, but overlay /etc/ instead of /usr/. They are designed to be the primary configuration management concept on AOS: configuration is pre-built and shipped in an atomically applied image to the AOS nodes, where it appears in full or not at all, but never halfway. Or in other words, not just AOS code but also AOS configuration is free from drift and strictly reproducible.</p>
-<p>The OS image itself, as well as sysext and confext images are implemented as UAPI.3 DDIs: EROFS file system images, combined with Verity protection data, and a cryptographic signature, all wrapped in a GPT partition table as envelope. In the case of confexts, these DDIs are additionally encrypted (LUKS). This means strong integrity is enforced on all these components not just at download time, but continuously during runtime. For configuration, confidentiality is also guaranteed during runtime. Moreover, we not only protect the contents of the images but the file system data structures themselves. Since each image can be cryptographically referenced via their Verity root hash, we also have a useful handle to measure before activating each image (see below for what this means).</p>
-<p>The Linux kernel is shipped as a UAPI.5 UKI. This means it comprehensively protects the kernel itself and its initrd via UEFI SecureBoot, and via TPM measurements and policies.</p>
-<p>Amutable Control Plane (ACP) manages and supervises a fleet of AOS nodes. It primarily encompasses the following functionality:</p>
-<p>ACP is multi-tenant: each tenant has its own signing keys, storage and roles.</p>
-<p>The interplay between the incoming reports and the outgoing confext and sysext images creates a loop that we leverage for security and operational robustness. Let’s take a look at that now.</p>
-<p>ACP keeps track of the enrolled nodes; ensures they are updated, in good health and that their integrity is verified. It also needs to be able to provide new configuration to nodes so they can receive configuration changes or new workloads. This forms a bi-directional relationship:</p>
-<p>Each node sends “reports” (generated by the systemd-report tool) to the ACP instance it is enrolled in, at regular intervals. These reports describe both the runtime/resource state of the system, as well as cryptographic information about the composition of the system.</p>
-<p>On systems where a TPM is available, this carries a TPM “quote” that cryptographically indicates which UKI and DDIs the system is composed of. On systems where Confidential Computing (CoCo) is available, this carries a CPU quote instead that indicates what the initial composition of the node was. Moreover, a pure software signature scheme is available as well.</p>
-<p>These reports are collected by the ACP instance, verified both superficially (i.e. validating the signature checks out and mapping the signing keys to the source system) and in detail (i.e. checking if the UKI and all DDIs the system is composed of are recognized), in a remote attestation scheme.</p>
-<p>This information is then enriched (e.g. SBOM, CVE, … information for the UKIs/DDIs) and everything written to a centralized “ledger” database. This ledger tracks the state of the entire fleet, both the image-level composition of it and the runtime state, including resource usage. Reports are the “way up” from the AOS nodes to the ACP instance.</p>
-<p>In the opposite direction, ACP sends confext DDIs to the nodes. As mentioned above, these are Verity-protected, signed and encrypted with a key specific to the node. If the node hardware supports cryptographic sealing (as TPMs do), the confext DDI is sealed to the hardware keys of the node. The sealing uses a hardware-enforced access policy that mirrors the most recently seen report of the node (plus various other parameters).</p>
-<p>This provides very strong security guarantees: configuration and resources for a specific node may only be unlocked by the node if it still is in the state last reported. Or in other words, there’s also local attestation in play here: after ACP verifies via remote attestation that the node is in a good state, it provides updates and additional resources that can only be used after the local hardware validates that the machine is still in the expected state.</p>
-<p>This reduces the vulnerability window between ACP’s determination that the node is in a good state and the actual update for the node, as the state is re-verified at that point. Also note that this mechanism is very compatible with nodes that lack continuous connectivity as they can boot up fine even without being able to contact the ACP instance as the local TPM can reasonably attest the system’s state via the local attestation mechanism. Confext DDIs are the “way down” from the ACP instance to the AOS nodes.</p>
-<p>The way up (of the reports) and the way down (of the confext DDIs) together make up what we call the Cryptographic Locked Loop (“CLL”). A continuous cycle of reports and confexts tracks and controls the fleet. The ledger always carries a precise, frequently updated description of the fleet’s state.</p>
-<p>Note that our CLL implementation is opportunistic. TPMs and CoCo are not available everywhere. AOS and ACP will make use of this hardware if available (specifically most reasonably modern TPM 2.0 implementations in chip, firmware or virtualized should work, as should AMD SEV and Intel TDX). The system also uses a pure software scheme.</p>
-<p>Of course, the different technologies provide different security guarantees, and ACP’s UI will surface the used technologies clearly. Note that TPM, AMD SEV, Intel TDX, and software signatures are used opportunistically and in parallel if available. This is to say that in situations where a confidential VM with a vTPM is used, it might happen that reports are signed thrice (one TPM quote, one CoCo quote, and one plain software signature). It’s the job of ACP’s verifier to validate all three signatures and focus on the strongest technology of them all for the right purpose.</p>
-<p>Communication between ACP and AOS nodes primarily takes place via reports in one direction and confext DDIs in the other as explained earlier in this post. Both mechanisms are very asynchronous in nature: reports are generated, queued, transferred, and processed asynchronously.</p>
-<p>Confext DDIs are generated for the nodes, made available for download via a separate TUF repo, eventually downloaded by the node, and finally applied. This asynchronous behavior is fantastic for many scenarios and operations since it’s very robust and resilient towards spotty connectivity, unstable power sources and other disruptions. However, it is not nice for operations where interactivity is key, e.g. debugging, certain administrative operations and similar.</p>
-<p>To address this, AOS nodes have the possibility to be put into remote Varlink mode that is facilitated via ACP and use the authentication options that the varlink-http-bridge provides (like mTLS or sshauth). This is built using the zero-trust pattern: ACP is content blind and has no special access.</p>
-<p>When remote Varlink mode is enabled, a node exposes its full Varlink IPC API over HTTPS. That covers everything systemd and the other system services on the node offer via Varlink. For example: io.systemd.Hostname for hostname and machine metadata, io.systemd.Unit to list units and change their properties, io.systemd.JournalAccess to fetch journal entries, io.systemd.SysUpdate to check for and apply updates, and io.systemd.Manager to reload or reboot the system.</p>
-<p>The result is API-driven management with strong typing and a fully self-describing set of rich APIs that any language that speaks JSON and HTTPS can drive. A service that registers a Varlink interface on the node becomes reachable remotely without further changes.</p>
-<p>The API is self-describing, so a client can discover what a node offers. For each API interface the node also serves an OpenAPI 3.1 description, so you can generate typed client wrappers for Python, Go, TypeScript and other languages with standard tooling.</p>
-<p>The image-based OS approach enables us to enforce some very strict but powerful security properties, which elevate the security posture of the system substantially above traditional Linux systems. Specifically, let’s highlight seven major essential security properties of AOS here:</p>
-<p>No Shell + No SSH + No Language Interpreters. By default AOS does not install a UNIX shell, nor makes remote access via SSH available on the nodes. Moreover, we do not install any of the usual language interpreters (Python, Perl, …) by default. For most nodes a shell or interpreted language support is not required and it removes a whole class of attacks.</p>
-<p>Signed Images Only. On AOS only images that come with Verity data signed by a signing key listed in the Verity keyring may be activated.</p>
-<p>W^X. We’ve posted about W^X policies before in greater detail. The core idea is that code cannot live on writable file systems and instead must originate from Verity protected sources. This makes injecting code into AOS much harder and hardens it against remote-code-execution vulnerabilities such as the recent PHP attacks which we also covered on our blog.</p>
-<p>Everything Is Measured. We believe that for a secure system it is absolutely essential to maintain a tamper-evident log of all images containing code or configuration. This kind of tamper-evident log is based on measurements utilizing hardware features that make it impossible to forge.</p>
-<p>No SUID/SGID or File Capabilities. The SUID and SGID file access bits are a fundamental privilege escalation mechanism in classic UNIX and have led to a very large number of exploits. On AOS the SUID and SGID bits are therefore disabled completely. Privilege elevation happens securely via IPC such that a suitably privileged process performs operations on behalf of less privileged code.</p>
-<p>Integrity Is Mandatory. A modern operating system must provide integrity guarantees well beyond traditional systems. It is a conditio sine qua non given the advent of LLM agents. On AOS everything is measured, attested, and comes with fundamental protection mechanisms. For example, all file system images we ship come with block-level Verity and encryption securing complex file system data structures.</p>
-<p>Factory Reset Is Built In. Any operating system must consider the possibility that it will be hacked. For this reason, a secure OS must come with a “factory reset” mechanism. AOS makes a lot of exploits visible in its Ledger. With factory reset it gains the ability to act and put the system back into a good state.</p>
-<p>TL;DR: Putting this all together, Amutable Foundations’ AOS and ACP provide:</p>
-<p>If you are interested in the experience we described above, please sign up for the Amutable Foundations Private Preview to get a chance to try AOS and ACP first-hand yourself.</p>
-<p>We recently announced Amutable Foundations. It’s now time to provide a technical overview of how Amutable Foundations is put together. In this post, we’ll discuss two of the most fundamental components:</p>
-<p>Amutable OS (“AOS”, or “⊼OS”), a modern image-based Linux OS. It builds on the foundation of established Linux distributions, but moves them from a package-based world into an image-based, integrity-protected world. It removes drift, and adds robustness, integrity, and reproducibility. On one hand this provides great conceptual compatibility with the status quo ante of enterprise distributions, and on the other hand it’s built from the ground up with image-based OS designs in mind.</p>
-<p>Amutable Control Plane (“ACP”, or “⊼CP”), a management system that tracks, controls, updates and verifies a fleet of AOS installations.</p>
-<p>Amutable OS is built on classic Linux distributions, initially from Fedora packages. Distributions do valuable integration and unification work on the basic components of the OS – work we want to leverage. However, AOS uses distribution packages to pre-assemble immutable disk images at build-time while distributions, traditionally, compose a Linux system by installing packages on the final, deployed system. Let’s take a closer look at what this means.</p>
-<p>Package-based OSes generally provide the user with a large number of regularly updated software packages (many thousands) with complex dependencies, which are composed into a working OS on the final machine it is deployed on. Installations in this style tend to vary greatly from system to system. Even with an identical selection of packages for the target system, the installation/update order, the stateful update logic and the file system data structures generally mean that the bytes that hit the disk on each machine are always different. This is called drift.</p>
-<p>Systems put together this way are hence not reproducible, not predictable, and hard to compare and analyze which is essential for tracking down security issues. They are also hard to test as the flexibility of selecting packages and assembling them in any order results in a prohibitive combinatorial explosion of systems to test.</p>
-<p>Image-based OSes instead provide pre-built file system images that contain all code and other resources the OS needs. These images are bit-by-bit identical on every deployed system, so that the installations differ only in local state acquired during runtime, but not in the OS code and resources themselves (which stay 100% identical).</p>
-<p>To improve modularity, AOS extends this concept to allow a small number of coarse images to be merged together. Rather than thousands of packages, each system only combines a small number (typically < 5) of images, so that the system stays reproducible.</p>
-<p>Building from existing distribution packages allows us to guarantee far reaching semantic compatibility with existing systems, while maintaining our image-based focus. In particular, it allows us to potentially prepare – with little effort – individualized disk images that fit perfectly for the customer’s projects.</p>
-<p>Classic distribution packages are a concept of modularization, and useful in that. With our image-based OS approach, we cut down on the modularization at deployment time, but we do allow some. This reflects the fact that while we likely will be able to cover a lot of disparate systems with a single, generic, minimal OS image, some of the components certain systems might require are so large, or specific, that it makes sense to split them out. For example, graphics/AI drivers and cloud-specific agent services tend to be large these days.</p>
-<p>In order to not require their installation on every deployment host we split some components out into system extensions (or short: “sysexts”) that contain additional files which can be overlaid on top of the OS resources in /usr/ and augment the system with additional resources. Making these components optional reduces footprint and attack surface.</p>
-<p>Note that in many cases the selection of sysexts to activate on a given host is purely a function of the host’s circumstances and equipment. More specifically, the graphics drivers and subsystem should be installed automatically when the matching hardware is detected. Similarly, the cloud-specific agent services should be picked up automatically when the system is detected to run inside a relevant cloud vendor’s environment.</p>
-<p>In AOS the selection of additional images to install is hence somewhat automated. The local AOS system carries a “hwdb” database that dictates which additional images to auto-install on the individual node if certain hardware is enumerated or the VMM indicates certain identification or functionality.</p>
-<p>A core functionality of AOS is support for configuration extensions (“confexts”). These are very similar to sysexts, but overlay /etc/ instead of /usr/. They are designed to be the primary configuration management concept on AOS: configuration is pre-built and shipped in an atomically applied image to the AOS nodes, where it appears in full or not at all, but never halfway. Or in other words, not just AOS code but also AOS configuration is free from drift and strictly reproducible.</p>
-<p>The OS image itself, as well as sysext and confext images are implemented as UAPI.3 DDIs: EROFS file system images, combined with Verity protection data, and a cryptographic signature, all wrapped in a GPT partition table as envelope. In the case of confexts, these DDIs are additionally encrypted (LUKS). This means strong integrity is enforced on all these components not just at download time, but continuously during runtime. For configuration, confidentiality is also guaranteed during runtime. Moreover, we not only protect the contents of the images but the file system data structures themselves. Since each image can be cryptographically referenced via their Verity root hash, we also have a useful handle to measure before activating each image (see below for what this means).</p>
-<p>The Linux kernel is shipped as a UAPI.5 UKI. This means it comprehensively protects the kernel itself and its initrd via UEFI SecureBoot, and via TPM measurements and policies.</p>
-<p>Amutable Control Plane (ACP) manages and supervises a fleet of AOS nodes. It primarily encompasses the following functionality:</p>
-<p>ACP is multi-tenant: each tenant has its own signing keys, storage and roles.</p>
-<p>The interplay between the incoming reports and the outgoing confext and sysext images creates a loop that we leverage for security and operational robustness. Let’s take a look at that now.</p>
-<p>ACP keeps track of the enrolled nodes; ensures they are updated, in good health and that their integrity is verified. It also needs to be able to provide new configuration to nodes so they can receive configuration changes or new workloads. This forms a bi-directional relationship:</p>
-<p>Each node sends “reports” (generated by the systemd-report tool) to the ACP instance it is enrolled in, at regular intervals. These reports describe both the runtime/resource state of the system, as well as cryptographic information about the composition of the system.</p>
-<p>On systems where a TPM is available, this carries a TPM “quote” that cryptographically indicates which UKI and DDIs the system is composed of. On systems where Confidential Computing (CoCo) is available, this carries a CPU quote instead that indicates what the initial composition of the node was. Moreover, a pure software signature scheme is available as well.</p>
-<p>These reports are collected by the ACP instance, verified both superficially (i.e. validating the signature checks out and mapping the signing keys to the source system) and in detail (i.e. checking if the UKI and all DDIs the system is composed of are recognized), in a remote attestation scheme.</p>
-<p>This information is then enriched (e.g. SBOM, CVE, … information for the UKIs/DDIs) and everything written to a centralized “ledger” database. This ledger tracks the state of the entire fleet, both the image-level composition of it and the runtime state, including resource usage. Reports are the “way up” from the AOS nodes to the ACP instance.</p>
-<p>In the opposite direction, ACP sends confext DDIs to the nodes. As mentioned above, these are Verity-protected, signed and encrypted with a key specific to the node. If the node hardware supports cryptographic sealing (as TPMs do), the confext DDI is sealed to the hardware keys of the node. The sealing uses a hardware-enforced access policy that mirrors the most recently seen report of the node (plus various other parameters).</p>
-<p>This provides very strong security guarantees: configuration and resources for a specific node may only be unlocked by the node if it still is in the state last reported. Or in other words, there’s also local attestation in play here: after ACP verifies via remote attestation that the node is in a good state, it provides updates and additional resources that can only be used after the local hardware validates that the machine is still in the expected state.</p>
-<p>This reduces the vulnerability window between ACP’s determination that the node is in a good state and the actual update for the node, as the state is re-verified at that point. Also note that this mechanism is very compatible with nodes that lack continuous connectivity as they can boot up fine even without being able to contact the ACP instance as the local TPM can reasonably attest the system’s state via the local attestation mechanism. Confext DDIs are the “way down” from the ACP instance to the AOS nodes.</p>
-<p>The way up (of the reports) and the way down (of the confext DDIs) together make up what we call the Cryptographic Locked Loop (“CLL”). A continuous cycle of reports and confexts tracks and controls the fleet. The ledger always carries a precise, frequently updated description of the fleet’s state.</p>
-<p>Note that our CLL implementation is opportunistic. TPMs and CoCo are not available everywhere. AOS and ACP will make use of this hardware if available (specifically most reasonably modern TPM 2.0 implementations in chip, firmware or virtualized should work, as should AMD SEV and Intel TDX). The system also uses a pure software scheme.</p>
-<p>Of course, the different technologies provide different security guarantees, and ACP’s UI will surface the used technologies clearly. Note that TPM, AMD SEV, Intel TDX, and software signatures are used opportunistically and in parallel if available. This is to say that in situations where a confidential VM with a vTPM is used, it might happen that reports are signed thrice (one TPM quote, one CoCo quote, and one plain software signature). It’s the job of ACP’s verifier to validate all three signatures and focus on the strongest technology of them all for the right purpose.</p>
-<p>Communication between ACP and AOS nodes primarily takes place via reports in one direction and confext DDIs in the other as explained earlier in this post. Both mechanisms are very asynchronous in nature: reports are generated, queued, transferred, and processed asynchronously.</p>
-<p>Confext DDIs are generated for the nodes, made available for download via a separate TUF repo, eventually downloaded by the node, and finally applied. This asynchronous behavior is fantastic for many scenarios and operations since it’s very robust and resilient towards spotty connectivity, unstable power sources and other disruptions. However, it is not nice for operations where interactivity is key, e.g. debugging, certain administrative operations and similar.</p>
-<p>To address this, AOS nodes have the possibility to be put into remote Varlink mode that is facilitated via ACP and use the authentication options that the varlink-http-bridge provides (like mTLS or sshauth). This is built using the zero-trust pattern: ACP is content blind and has no special access.</p>
-<p>When remote Varlink mode is enabled, a node exposes its full Varlink IPC API over HTTPS. That covers everything systemd and the other system services on the node offer via Varlink. For example: io.systemd.Hostname for hostname and machine metadata, io.systemd.Unit to list units and change their properties, io.systemd.JournalAccess to fetch journal entries, io.systemd.SysUpdate to check for and apply updates, and io.systemd.Manager to reload or reboot the system.</p>
-<p>The result is API-driven management with strong typing and a fully self-describing set of rich APIs that any language that speaks JSON and HTTPS can drive. A service that registers a Varlink interface on the node becomes reachable remotely without further changes.</p>
-<p>The API is self-describing, so a client can discover what a node offers. For each API interface the node also serves an OpenAPI 3.1 description, so you can generate typed client wrappers for Python, Go, TypeScript and other languages with standard tooling.</p>
-<p>The image-based OS approach enables us to enforce some very strict but powerful security properties, which elevate the security posture of the system substantially above traditional Linux systems. Specifically, let’s highlight seven major essential security properties of AOS here:</p>
-<p>No Shell + No SSH + No Language Interpreters. By default AOS does not install a UNIX shell, nor makes remote access via SSH available on the nodes. Moreover, we do not install any of the usual language interpreters (Python, Perl, …) by default. For most nodes a shell or interpreted language support is not required and it removes a whole class of attacks.</p>
-<p>Signed Images Only. On AOS only images that come with Verity data signed by a signing key listed in the Verity keyring may be activated.</p>
-<p>W^X. We’ve posted about W^X policies before in greater detail. The core idea is that code cannot live on writable file systems and instead must originate from Verity protected sources. This makes injecting code into AOS much harder and hardens it against remote-code-execution vulnerabilities such as the recent PHP attacks which we also covered on our blog.</p>
-<p>Everything Is Measured. We believe that for a secure system it is absolutely essential to maintain a tamper-evident log of all images containing code or configuration. This kind of tamper-evident log is based on measurements utilizing hardware features that make it impossible to forge.</p>
-<p>No SUID/SGID or File Capabilities. The SUID and SGID file access bits are a fundamental privilege escalation mechanism in classic UNIX and have led to a very large number of exploits. On AOS the SUID and SGID bits are therefore disabled completely. Privilege elevation happens securely via IPC such that a suitably privileged process performs operations on behalf of less privileged code.</p>
-<p>Integrity Is Mandatory. A modern operating system must provide integrity guarantees well beyond traditional systems. It is a conditio sine qua non given the advent of LLM agents. On AOS everything is measured, attested, and comes with fundamental protection mechanisms. For example, all file system images we ship come with block-level Verity and encryption securing complex file system data structures.</p>
-<p>Factory Reset Is Built In. Any operating system must consider the possibility that it will be hacked. For this reason, a secure OS must come with a “factory reset” mechanism. AOS makes a lot of exploits visible in its Ledger. With factory reset it gains the ability to act and put the system back into a good state.</p>
-<p>TL;DR: Putting this all together, Amutable Foundations’ AOS and ACP provide:</p>
-<p>If you are interested in the experience we described above, please sign up for the Amutable Foundations Private Preview to get a chance to try AOS and ACP first-hand yourself.</p>
-<p>Amutable Foundations is in Private Preview.</p>
+                <p>As you may be aware, one of the limitations of musl-based distributions is that
+they will not function to their proper extent when used in computers with
+various NVIDIA graphics cards.</p>
+<p>This is due to the proprietary nature of the driver, being built for glibc.
+I have been experimenting with trying to make this work, and this post is
+the summary of that effort.</p>
+<p>The NVIDIA graphics cards are tricky on Linux. While most other GPU vendors by
+default use free software graphics drivers (with kernel drivers in-tree in
+Linux, and userspace supplied by the Mesa project), NVIDIA in general does
+not, relying on an out of tree kernel driver and proprietary userland libraries
+that are supplied by the vendor.</p>
+<p>A free software driver does exist, called Nouveau (kernel and OpenGL Mesa
+driver) and NVK (Vulkan driver). This allows the cards to work, but usually
+with significantly reduced performance, due to various reasons.</p>
+<p>Currently the state depends significantly on what generation of NVIDIA card
+you have.</p>
+<p>In even shorter, if you have RTX 2000 and above you are mostly okay with
+FOSS but lose performance, if you have newer than GTX 600 but older than
+GTX 1600 you are screwed and need the proprietary driver, if your card is
+really old it may or may not work well and you may not be able to use it at all.</p>
+<p>We now have a pull request
+open for both the 580 and 620 branch. It is not yet entirely ready but works,
+and is available for x86_64 and aarch64 architectures as NVIDIA supplies
+it.</p>
+<p>To get there, there were multiple things to take care of. Particularly, using
+stock musl is out of the question and will likely never work. I will elaborate
+on each thing.</p>
+<p>The GLVND library was created by NVIDIA to allow for vendor-neutral OpenGL
+dispatch. It provides the libraries that applications link and exposes the
+OpenGL (and other) API. It then dispatches the calls to the implementations,
+which may be e.g. Mesa or the proprietary driver.</p>
+<p>Most distributions nowadays use GLVND. Mesa comes with its own builtin dispatch
+code and does not necessarily require GLVND if you don’t build it with it.
+Musl distributions in general use this. Chimera at this point does not, and
+Void Linux on musl does not as it shares packaging with the glibc branch.</p>
+<p>Chimera switched to GLVND on November 5 2026.
+Switching is rather straightforward and does not need much documentation.
+One just has to package GLVND, rebuild Mesa with it (to avoid using its
+builtin dispatch libraries) and take care of packages that have dependencies
+on mesa-devel.</p>
+<p>GLVND is not only useful for NVIDIA drivers, but in general it is the primary
+thing users will find useful. There are also some vendor drivers on ARM and
+elsewhere but those are niche. The proprietary drivers mandate GLVND since
+many years back (this is also very useful on laptops with hybrid graphics,
+because then you may still want to keep Mesa for the iGPU).</p>
+<p>The gcompat project provides
+a compatibility shim to allow for limited usage of programs linked with glibc.</p>
+<p>Unfortunately for us, the latest tagged release of gcompat does not provide
+all the symbols the proprietary drivers require to resolve. Fortunately for us,
+the latest Git branch does. The development nowadays is very slow so we just
+bumped it up to the latest revision.</p>
+<p>You can see how the packaging works in the pull request, and that part is
+rather unimportant for now, and does not require elaboration. It works in
+a similar way to other distros, downloading the .run archive from NVIDIA
+and installing everything to the correct places.</p>
+<p>Of course, in our case, we cannot install it directly, because it depends
+on glibc and other stuff. We also can’t just pull in gcompat as is, because
+most of the driver is libraries that have no interpreter.</p>
+<p>Let’s see what happens if we run ldd on libnvidia-glcore.so.580.196.07,
+which is the core OpenGL library.</p>
+<p>There is a bunch of stuff here. So the libm.so.6, libc.so.6, libdl.so.2
+etc resolve to ldd as they are reserved in the musl ldso:</p>
+<p>The dynamic linker will ignore the suffixes.</p>
+<p>For some reason, some of the libraries also have DT_NEEDED on ld-linux-x86-64.so.2
+which is the glibc dynamic linker. There are also some relocation failures
+that we’ll get to later, for now we take out patchelf.</p>
+<p>So, patchelf is a tool that lets you dynamically patch ELF files for things
+like library dependencies (DT_NEEDED), dynamic linker (DT_INTERP), RPATH,
+and even some funky dynamic symbol remapping.</p>
+<p>We use this to sanitize every library and executable being installed. Let’s
+begin with something like the following:</p>
+<p>What this does is drop all the dependencies we don’t need (this is optional
+as musl ignores them, but why not? And even on glibc since recent versions
+they are just compatibility symlinks that point to the libc itself) as well
+as add a new dependency on libgcompat.so.0 to supply the symbols.</p>
+<p>This clears up the list a lot, and now only one error remains:</p>
+<p>We will get to this below. You now have a rough idea about patchelf.</p>
+<p>Googling for this tells us that it’s a relocation type for GNU indirect
+function (ifunc). Ifunc is a mechanism for dispatching to different versions
+of a function based on a runtime condition. It is done by having a resolver
+function which does the decision logic, and returns the implementation, which
+is then called. A good writeup is here.</p>
+<p>This is intentionally not implemented in musl. In glibc it is used to
+pick different implementations of functions like memcpy based on CPU
+microarchitecture levels for performance reasons. However, indirect functions
+are also a major attack vector,
+bypassing RELRO among other things, and in general there are other ways to
+do runtime dispatch anyway.</p>
+<p>I remembered that there was a project called Alpaquita Linux which is basically
+Alpine with performance patches. It has the musl-perf package which provides
+a patched musl with string functions (and other things) from glibc and for
+this it also has patches for ifunc. We don’t need all of them, particularly
+the one for static linking is useless for us, so we take the one we need
+and its aarch64 counterpart
+for a good measure.</p>
+<p>This just adds handling of the relocation. We then package the patched libc
+as musl-nvidia and poof, unsupported relocation is gone.</p>
+<p>There are now no errors in ldd. That means we’re done, right? Nope :)</p>
+<p>So, about TLS. Normally, when you use OpenGL in an application, the implementation
+is dynamically loaded at runtime, not linked to the application. The OpenGL
+functions you use are then dynamically requested, usually through a portable
+wrapper (e.g. SDL_GL_GetProcAddress).</p>
+<p>There are various TLS models. You can read up on them here.
+Look at the DT_FLAGS for the glcore and tls libraries. See the STATIC_TLS?</p>
+<p>We have initial-exec, and our TLS needs to exist at a fixed offset from the
+thread pointer. This in general precludes dynamic allocation of the TLS memory.
+A quick test:</p>
+<p>When trying to use the driver, we would get the exact same error when trying
+to open the GL implementation. On glibc it works because it reserves some
+extra space in its static TLS at the beginning and gives them out for as long
+as there is space. It is limited, but enough for the driver.</p>
+<p>The correct thing here would be to use TLSDESC (-mtls-dialect=gnu2) which
+is efficient enough and allows for dynamic TLS allocation, but NVIDIA apparently
+uses some rather old toolchains.</p>
+<p>Since we don’t want to globally preload libnvidia-glcore into each process,
+I ended up patching the dynamic linker to handle this scenario with the same
+approach. I will not elaborate on the details of the patch as you can see it
+in the linked pull request and it is commented. It boils down to checking if
+the library has DF_STATIC_TLS in DT_FLAGS during dlopen and if so,
+checking if we have enough space for its whole TLS image in the spare memory,
+and if yes, avoiding allocating dynamic TLS for it.</p>
+<p>That allows the above example to work without LD_PRELOAD.</p>
+<p>(Another approach could be placing the TLS symbol definitions in something
+that is not runtime-loaded, e.g. placed into libGL or something else, and
+interposing the definitions; this could theoretically avoid patching the
+libc for this specific thing, but we have the ifunc thing too).</p>
+<p>I do not have any NVIDIA hardware. Before I could test, I would need to put
+a computer together.</p>
+<p>Fortunately, my girlfriend still had her old computer’s GTX 980 Ti laying
+around. It is only supported by the legacy driver, but good enough for now.
+I then obtained some random old computer hardware (i3-7100, some RAM and a
+board, etc.)</p>
+<p>After this, the packaging was seemingly complete and I went to do some testing
+on the hardware above.</p>
+<p>Well, it turns out trying to start anything graphical would just hang.
+I ran ls with libnvidia-glcore preloaded and saw:</p>
+<p>Hm, pthread_mutex_timedlock in libnvidia-gpucomp?</p>
+<p>Inspecting the assembly revealed that it’s re-entering a lock. That suggested
+that this mutex should be recursive, and for some reason it is not. Then a
+friend remembered that glibc has static initializers for these, particularly
+PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP, while musl does not support static
+initialization, only via pthread_mutex_init, for this case.</p>
+<p>How to deal with this? On glibc, the mutex structure is publicly visible,
+and has roughly this layout:</p>
+<p>That means it’s initializing the structure with the kind field.</p>
+<p>The mutex type is encoded in the first integer:</p>
+<p>In this layout, the kind would look like this, mirroring the glibc structure:</p>
+<p>I found that musl does not use this in any way, however.</p>
+<p>We can use this. The strategy I took was creating a new shim library containing
+the following:</p>
+<p>The patch_mutex_kind fetches the (on musl, unused) kind field and writes
+it into the type field`, atomically, if it’s unset. On statically initialized
+mutexes, it is always unset, as it’s only written once, and the static initializer
+for the default mutex just zeroes everything.</p>
+<p>The actual encoding of the type is the same between both libcs (with the caveat
+that glibc also supports adaptive mutexes, which we map to regular ones), so
+there is not much remapping to be done. You can see the code in the pull request.</p>
+<p>How do we use these symbols? Via patchelf again. It supports --rename-dynamic-symbols,
+which takes a mapping file where each line looks like oldsym newsym. We just
+provide ours like this:</p>
+<p>Then we patch our libnvcompat into NEEDED of all the libraries.</p>
+<p>There are various bits and pieces NVIDIA has released over time as actual
+FOSS code. This includes nvidia-xconfig, nvidia-settings, nvidia-modprobe,
+nvidia-persistenced, and the egl-gbm and egl-wayland external platform
+libraries.</p>
+<p>These come bundled in the driver archive. Since they can be built from source,
+we package them separately, to minimize the amount of stuff that needs to be
+shimmed, and then depend on the from the driver package.</p>
+<p>For the 620 driver, we also had to replace libstdc++.so.6 in a couple places,
+where it was being used for the new operator. This is provided in an way that
+is ABI-compatible by libc++abi.so.1 so we just replace it.</p>
+<p>The packaging will need some more refinement, and more testing will be needed.
+It was reported to me that the 620 driver works with RTX 3070 Ti. It was also
+reported to me that it works at least partially on AArch64.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://amutable.com/blog/amutable-foundations-technical-overview" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://chimera-linux.org/news/2026/11/musl-nvidia.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

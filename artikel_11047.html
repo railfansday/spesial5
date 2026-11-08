@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Binary and Scalar Embedding Quantization for Significantly Faster &amp; Cheaper Retrieval</title>
+    <title>AI Apps in a Flash with Gradio&#x27;s Reload Mode</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11047.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,73 +15,36 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Binary and Scalar Embedding Quantization for Significantly Faster &amp; Cheaper Retrieval</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
+        <h1>AI Apps in a Flash with Gradio&#x27;s Reload Mode</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/embedding-quantization/thumbnail.png" alt="Binary and Scalar Embedding Quantization for Significantly Faster &amp; Cheaper Retrieval" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/gradio-reload/thumbnail_compressed.png" alt="AI Apps in a Flash with Gradio&#x27;s Reload Mode" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/embedding-quantization/thumbnail.png" alt="Binary and Scalar Embedding Quantization for Significantly Faster & Cheaper Retrieval" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-reload/thumbnail_compressed.png" alt="AI Apps in a Flash with Gradio's Reload Mode" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>We introduce the concept of embedding quantization and showcase their impact on retrieval speed, memory usage, disk space, and cost. We'll discuss how embeddings can be quantized in theory and in practice, after which we introduce a demo showing a real-life retrieval scenario of 41 million Wikipedia texts.</p>
-<p>Embeddings are one of the most versatile tools in natural language processing, supporting a wide variety of settings and use cases. In essence, embeddings are numerical representations of more complex objects, like text, images, audio, etc. Specifically, the objects are represented as n-dimensional vectors.</p>
-<p>After transforming the complex objects, you can determine their similarity by calculating the similarity of the respective embeddings! This is crucial for many use cases: it serves as the backbone for recommendation systems, retrieval, one-shot or few-shot learning, outlier detection, similarity search, paraphrase detection, clustering, classification, and much more.</p>
-<p>However, embeddings may be challenging to scale for production use cases, which leads to expensive solutions and high latencies. Currently, many state-of-the-art models produce embeddings with 1024 dimensions, each of which is encoded in float32, i.e., they require 4 bytes per dimension. To perform retrieval over 250 million vectors, you would therefore need around 1TB of memory!</p>
-<p>The table below gives an overview of different models, dimension size, memory requirement, and costs. Costs are computed at an estimated $3.8 per GB/mo with x2gd instances on AWS.</p>
-<p>There are several ways to approach the challenges of scaling embeddings. The most common approach is dimensionality reduction, such as PCA. However, classic dimensionality reduction -- like PCA methods -- tends to perform poorly when used with embeddings.</p>
-<p>In recent news, Matryoshka Representation Learning (blogpost) (MRL) as used by OpenAI also allows for cheaper embeddings. With MRL, only the first n embedding dimensions are used. This approach has already been adopted by some open models like nomic-ai/nomic-embed-text-v1.5 and mixedbread-ai/mxbai-embed-2d-large-v1 (For OpenAIs text-embedding-3-large, we see a performance retention of 93.1% at 12x compression. For nomic's model, we retain 95.8% of performance at 3x compression and 90% at 6x compression.).</p>
-<p>However, there is another new approach to achieve progress on this challenge; it does not entail dimensionality reduction, but rather a reduction in the size of each of the individual values in the embedding: Quantization. Our experiments on quantization will show that we can maintain a large amount of performance while significantly speeding up computation and saving on memory, storage, and costs. Let's dive into it!</p>
-<p>Unlike quantization in models where you reduce the precision of weights, quantization for embeddings refers to a post-processing step for the embeddings themselves. In particular, binary quantization refers to the conversion of the float32 values in an embedding to 1-bit values, resulting in a 32x reduction in memory and storage usage.</p>
-<p>To quantize float32 embeddings to binary, we simply threshold normalized embeddings at 0:</p>
-<p>f(x)={0if x≤01if x>0
-    f(x)= 
-\begin{cases}
-    0 & \text{if } x\leq 0\\
-    1 & \text{if } x \gt 0
-\end{cases}
-f(x)={01​if x≤0if x>0​</p>
-<p>We can use the Hamming Distance to retrieve these binary embeddings efficiently. This is the number of positions at which the bits of two binary embeddings differ. The lower the Hamming Distance, the closer the embeddings; thus, the more relevant the document. A huge advantage of the Hamming Distance is that it can be easily calculated with 2 CPU cycles, allowing for blazingly fast performance.</p>
-<p>Yamada et al. (2021) introduced a rescore step, which they called rerank, to boost the performance. They proposed that the float32 query embedding could be compared with the binary document embeddings using dot-product. In practice, we first retrieve rescore_multiplier * top_k results with the binary query embedding and the binary document embeddings -- i.e., the list of the first k results of the double-binary retrieval --  and then rescore that list of binary document embeddings with the float32 query embedding.</p>
-<p>By applying this novel rescoring step, we are able to preserve up to ~96% of the total retrieval performance, while reducing the memory and disk space usage by 32x and improving the retrieval speed by up to 32x as well. Without the rescoring, we are able to preserve roughly ~92.5% of the total retrieval performance.</p>
-<p>Quantizing an embedding with a dimensionality of 1024 to binary would result in 1024 bits. In practice, it is much more common to store bits as bytes instead, so when we quantize to binary embeddings, we pack the bits into bytes using np.packbits.</p>
-<p>Therefore, quantizing a float32 embedding with a dimensionality of 1024 yields an int8 or uint8 embedding with a dimensionality of 128. See two approaches of how you can produce quantized embeddings using Sentence Transformers below:</p>
-<p>Here, you can see the differences between default float32 embeddings and binary embeddings in terms of shape, size, and numpy dtype:</p>
-<p>Note that you can also choose "ubinary" to quantize to binary using the unsigned uint8 data format. This may be a requirement depending on your vector library/database.</p>
-<p>We use a scalar quantization process to convert the float32 embeddings into int8. This involves mapping the continuous range of float32 values to the discrete set of int8 values, which can represent 256 distinct levels (from -128 to 127), as shown in the image below. This is done by using a large calibration dataset of embeddings. We compute the range of these embeddings, i.e., the min and max of each embedding dimension. From there, we calculate the steps (buckets) to categorize each value.</p>
-<p>To further boost the retrieval performance, you can optionally apply the same rescoring step as for the binary embeddings. It is important to note that the calibration dataset greatly influences performance since it defines the quantization buckets.</p>
-<p>Source: https://qdrant.tech/articles/scalar-quantization/</p>
-<p>With scalar quantization to int8, we reduce the original float32 embeddings' precision so that each value is represented with an 8-bit integer (4x smaller). Note that this differs from the binary quantization case, where each value is represented by a single bit (32x smaller).</p>
-<p>Quantizing an embedding with a dimensionality of 1024 to int8 results in 1024 bytes. In practice, we can choose either uint8 or int8. This choice is usually made depending on what your vector library/database supports.</p>
-<p>In practice, it is recommended to provide the scalar quantization with either:</p>
-<p>If none of these are the case, you will be given a warning like this:
-Computing int8 quantization buckets based on 2 embeddings. int8 quantization is more stable with 'ranges' calculated from more embeddings or a 'calibration_embeddings' that can be used to calculate the buckets.</p>
-<p>See how you can produce scalar quantized embeddings using Sentence Transformers below:</p>
-<p>Here you can see the differences between default float32 embeddings and int8 scalar embeddings in terms of shape, size, and numpy dtype:</p>
-<p>Combining binary and scalar quantization is possible to get the best of both worlds: the extreme speed from binary embeddings and the great performance preservation of scalar embeddings with rescoring. See the demo below for a real-life implementation of this approach involving 41 million texts from Wikipedia. The pipeline for that setup is as follows:</p>
-<p>Through this approach, we use 5.2GB of memory and 52GB of disk space for the indices. This is considerably less than normal retrieval, requiring 200GB of memory and 200GB of disk space. Especially as you scale up even further, this will result in notable reductions in latency and costs.</p>
-<p>We conducted our experiments on the retrieval subset of the MTEB containing 15 benchmarks. First, we retrieved the top k (k=100) search results with a rescore_multiplier of 4. Therefore, we retrieved 400 results in total and performed the rescoring on these top 400. For the int8 performance, we directly used the dot-product without any rescoring.</p>
-<p>Several key trends and benefits can be identified from the results of our quantization experiments. As expected, embedding models with higher dimension size typically generate higher storage costs per computation but achieve the best performance. Surprisingly, however, quantization to int8 already helps mxbai-embed-large-v1 and Cohere-embed-english-v3.0 achieve higher performance with lower storage usage than that of the smaller dimension size base models.</p>
-<p>The benefits of quantization are, if anything, even more clearly visible when looking at the results obtained with binary models. In that scenario, the 1024 dimension models still outperform a now 10x more storage intensive base model, and the mxbai-embed-large-v1 even manages to hold more than 96% of performance after a 32x reduction in resource requirements. The further quantization from int8 to binary barely results in any additional loss of performance for this model.</p>
-<p>Interestingly, we can also see that all-MiniLM-L6-v2 exhibits stronger performance on binary than on int8 quantization. A possible explanation for this could be the selection of calibration data. On e5-base-v2, we observe the effect of dimension collapse, which causes the model to only use a subspace of the latent space; when performing the quantization, the whole space collapses further, leading to high performance losses.</p>
-<p>This shows that quantization doesn't universally work with all embedding models. It remains crucial to consider exisiting benchmark outcomes and conduct experiments to determine a given model's compatibility with quantization.</p>
-<p>In this section we look at the influence of rescoring on retrieval performance. We evaluate the results based on mxbai-embed-large-v1.</p>
-<p>With binary embeddings, mxbai-embed-large-v1 retains 92.53% of performance on MTEB Retrieval. Just doing the rescoring without retrieving more samples pushes the performance to 96.45%. We experimented with setting therescore_multiplier from 1 to 10, but observe no further boost in performance. This indicates that the top_k search already retrieved the top candidates and the rescoring reordered these good candidates appropriately.</p>
-<p>We also evaluated the mxbai-embed-large-v1 model with int8 rescoring, as Cohere showed that Cohere-embed-english-v3.0 reached up to 100% of the performance of the float32 model with int8 quantization. For this experiment, we set the rescore_multiplier to [1, 4, 10] and got the following results:</p>
-<p>As we can see from the diagram, a higher rescore multiplier implies better retention of performance after quantization. Extrapolating from our results, we assume the relation is likely hyperbolical with performance approaching 100% as the rescore multiplier continues to rise. A rescore multiplier of 4-5 already leads to a remarkable performance retention of 99% using int8.</p>
-<p>We measured retrieval speed on a Google Cloud Platform a2-highgpu-4g instance using the mxbai-embed-large-v1 embeddings with 1024 dimension on the whole MTEB Retrieval. For int8 we used USearch (Version 2.9.2) and binary quantization Faiss (Version 1.8.0). Everything was computed on CPU using exact search.</p>
-<p>As shown in the table, applying int8 scalar quantization results in an average speedup of 3.66x compared to full-size float32 embeddings. Additionally, binary quantization achieves a speedup of 24.76x on average. For both scalar and binary quantization, even the worst case scenario resulted in very notable speedups.</p>
-<p>The experimental results, effects on resource use, retrieval speed, and retrieval performance by using quantization can be summarized as follows:</p>
-<p>The following demo showcases the retrieval efficiency using exact or approximate search by combining binary search with scalar (int8) rescoring. The solution requires 5GB of memory for the binary index and 50GB of disk space for the binary and scalar indices, considerably less than the 200GB of memory and disk space which would be required for regular float32 retrieval. Additionally, retrieval is much faster.</p>
-<p>The following scripts can be used to experiment with embedding quantization for retrieval & beyond. There are three categories:</p>
-<p>We are looking forward to further advancements of binary quantization. To name a few potential improvements, we suspect that there may be room for scalar quantization smaller than int8, i.e. with 128 or 64 buckets instead of 256.</p>
-<p>Additionally, we are excited that embedding quantization is fully perpendicular to Matryoshka Representation Learning (MRL). In other words, it is possible to shrink MRL embeddings from e.g. 1024 to 128 (which usually corresponds with a 2% reduction in performance) and then apply binary or scalar quantization. We suspect this could speed up retrieval up to 32x for a ~3% reduction in quality, or up to 256x for a ~10% reduction in quality.</p>
-<p>Lastly, we recognize that retrieval using embedding quantization can also be combined with a separate reranker model. We imagine that a 3-step pipeline of binary search, scalar (int8) rescoring, and cross-encoder reranking allows for state-of-the-art retrieval performance at low latencies, memory usage, disk space, and costs.</p>
-<p>This project is possible thanks to our collaboration with mixedbread.ai and the SentenceTransformers library, which allows you to easily create sentence embeddings and quantize them. If you want to use quantized embeddings in your project, now you know how!</p>
-<p>To train the embedding models you're quantizing, or to stack quantization with other efficiency techniques:</p>
-<p>Efficient quantized retrieval over Wikipedia</p>
-<p>Efficient quantized retrieval over Wikipedia</p>
+                <p>In this post, I will show you how you can build a functional AI application quickly with Gradio's reload mode. But before we get to that, I want to explain what reload mode does and why Gradio implements its own auto-reloading logic. If you are already familiar with Gradio and want to get to building, please skip to the third section.</p>
+<p>To put it simply, it pulls in the latest changes from your source files without restarting the Gradio server. If that does not make sense yet, please continue reading.</p>
+<p>Gradio is a popular Python library for creating interactive machine learning apps.
+Gradio developers declare their UI layout entirely in Python and add some Python logic that triggers whenever a UI event happens. It's easy to learn if you know basic Python. Check out this quickstart if you are not familiar with Gradio yet.</p>
+<p>Gradio applications are launched like any other Python script, just run python app.py (the file with the Gradio code can be called anything). This will start an HTTP server that renders your app's UI and responds to user actions. If you want to make changes to your app, you stop the server (typically with Ctrl + C), edit your source file, and then re-run the script.</p>
+<p>Having to stop and relaunch the server can introduce a lot of latency while you are developing your app. It would be better if there was a way to pull in the latest code changes automatically so you can test new ideas instantly.</p>
+<p>That's exactly what Gradio's reload mode does. Simply run gradio app.py instead of python app.py to launch your app in reload mode!</p>
+<p>Gradio applications are run with uvicorn, an asynchronous server for Python web frameworks. Uvicorn already offers auto-reloading but Gradio implements its own logic for the following reasons:</p>
+<p>I will now show you how you can use Gradio reload mode to quickly build an AI App.</p>
+<p>Our application will allow users to upload pictures of documents and ask questions about them. They will receive answers in natural language. We will use the free Hugging Face Inference API so you should be able to follow along from your computer. No GPU required!</p>
+<p>To get started, let's create a barebones gr.Interface. Enter the following code in a file called app.py and launch it in reload mode with gradio app.py:</p>
+<p>Since I want to let users upload image files along with their questions, I will switch the input component to be a gr.MultimodalTextbox(). Notice how the UI updates instantly!</p>
+<p>This UI works but, I think it would be better if the input textbox was below the output textbox. I can do this with the Blocks API. I'm also customizing the input textbox by adding a placeholder text to guide users.</p>
+<p>Now that I'm satisfied with the UI, I will start implementing the logic of the chat_fn.</p>
+<p>Since I'll be using Hugging Face's Inference API, I will import the InferenceClient from the huggingface_hub package (it comes pre-installed with Gradio). I'll be using the impira/layouylm-document-qa model to answer the user's question. I will then use the HuggingFaceH4/zephyr-7b-beta LLM to provide a response in natural language.</p>
+<p>I will also provide a system message so that the LLM keeps answers short and doesn't include the raw confidence scores. To avoid re-instantiating the InferenceClient on every change, I will place it inside a no reload code block.</p>
+<p>Here is our demo in action now! The system message really helped keep the bot's answers short and free of long decimals.</p>
+<p>As a final improvement, I will add a markdown header to the page:</p>
+<p>In this post, I developed a working AI application with Gradio and the Hugging Face Inference API. When I started developing this, I didn't know what the final product would look like so having the UI and server logic reload instanty let me iterate on different ideas very quickly. It took me about an hour to develop this entire app!</p>
+<p>If you'd like to see the entire code for this demo, please check out this space!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/embedding-quantization" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/gradio-reload" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

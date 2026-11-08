@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Interactively explore your Huggingface dataset with one line of code</title>
+    <title>PatchTSMixer in HuggingFace</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11106.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,55 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Interactively explore your Huggingface dataset with one line of code</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
+        <h1>PatchTSMixer in HuggingFace</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/patchtsmixer/thumbnail.jpeg" alt="PatchTSMixer in HuggingFace" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/patchtsmixer/thumbnail.jpeg" alt="PatchTSMixer in HuggingFace" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>PatchTSMixer is a lightweight time-series modeling approach based on the MLP-Mixer architecture. It is proposed in TSMixer: Lightweight MLP-Mixer Model for Multivariate Time Series Forecasting by IBM Research authors Vijay Ekambaram, Arindam Jati, Nam Nguyen, Phanwadee Sinthong and Jayant Kalagnanam.</p>
+<p>For effective mindshare and to promote open-sourcing - IBM Research joins hands with the HuggingFace team to release this model in the Transformers library.</p>
+<p>In the Hugging Face implementation, we provide PatchTSMixer’s capabilities to effortlessly facilitate lightweight mixing across patches, channels, and hidden features for effective multivariate time-series modeling. It also supports various attention mechanisms starting from simple gated attention to more complex self-attention blocks that can be customized accordingly. The model can be pretrained and subsequently used for various downstream tasks such as forecasting, classification, and regression.</p>
+<p>PatchTSMixer outperforms state-of-the-art MLP and Transformer models in forecasting by a considerable margin of 8-60%. It also outperforms the latest strong benchmarks of Patch-Transformer models (by 1-2%) with a significant reduction in memory and runtime (2-3X). For more details, refer to the paper.</p>
+<p>In this blog, we will demonstrate examples of getting started with PatchTSMixer. We will first demonstrate the forecasting capability of PatchTSMixer on the Electricity dataset. We will then demonstrate the transfer learning capability of PatchTSMixer by using the model trained on Electricity to do zero-shot forecasting on the ETTH2 dataset.</p>
+<p>PatchTSMixer splits a given input multivariate time series into a sequence of patches or windows. Subsequently, it passes the series to an embedding layer, which generates a multi-dimensional tensor.</p>
+<p>The multi-dimensional tensor is subsequently passed to the PatchTSMixer backbone, which is composed of a sequence of MLP Mixer layers. Each MLP Mixer layer learns inter-patch, intra-patch, and inter-channel correlations through a series of permutation and MLP operations.</p>
+<p>PatchTSMixer also employs residual connections and gated attentions to prioritize important features.</p>
+<p>Hence, a sequence of MLP Mixer layers creates the following PatchTSMixer backbone.</p>
+<p>PatchTSMixer has a modular design to seamlessly support masked time series pretraining as well as direct time series forecasting.</p>
+<p>This demo requires Hugging Face Transformers for the model and the IBM tsfm package for auxiliary data pre-processing.
+Both can be installed by following the steps below.</p>
+<p>Here we train a PatchTSMixer model directly on the Electricity dataset, and evaluate its performance.</p>
+<p>In the next cell, please adjust the following parameters to suit your application:</p>
+<p>Next, we instantiate a randomly initialized PatchTSMixer model with a configuration. The settings below control the different hyperparameters related to the architecture.</p>
+<p>For full details on the parameters, we refer to the documentation.</p>
+<p>We recommend that you only adjust the values in the next cell.</p>
+<p>Next, we can leverage the Hugging Face Trainer class to train the model based on the direct forecasting strategy. We first define the TrainingArguments which lists various hyperparameters regarding training such as the number of epochs, learning rate, and so on.</p>
+<p>Note that the training and evaluation loss for PatchTSMixer is the Mean Squared Error (MSE) loss. Hence, we do not separately compute the MSE metric in any of the following evaluation experiments.</p>
+<p>We get an MSE score of 0.128 which is the SOTA result on the Electricity data.</p>
+<p>In this section, we will demonstrate the transfer learning capability of the PatchTSMixer model.
+We use the model pre-trained on the Electricity dataset to do zero-shot forecasting on the ETTh2 dataset.</p>
+<p>By Transfer Learning, we mean that we first pretrain the model for a forecasting task on a source dataset (which we did above on the Electricity dataset). Then, we will use the
+ pretrained model for zero-shot forecasting on a target dataset. By zero-shot, we mean that we test the performance in the target domain without any additional training. We hope that the model gained enough knowledge from pretraining which can be transferred to a different dataset.</p>
+<p>Subsequently, we will do linear probing and (then) finetuning of the pretrained model on the train split of the target data, and will validate the forecasting performance on the test split of the target data. In this example, the source dataset is the Electricity dataset and the target dataset is ETTh2.</p>
+<p>All evaluations are on the test part of the ETTh2 data:
+Step 1: Directly evaluate the electricity-pretrained model. This is the zero-shot performance.Step 2: Evalute after doing linear probing.Step 3: Evaluate after doing full finetuning.</p>
+<p>Below, we load the ETTh2 dataset as a Pandas dataframe. Next, we create 3 splits for training, validation and testing. We then leverage the TimeSeriesPreprocessor class to prepare each split for the model.</p>
+<p>As we are going to test forecasting performance out-of-the-box, we load the model which we pretrained above.</p>
+<p>As can be seen, we get a mean-squared error (MSE) of 0.3 zero-shot which is near to the state-of-the-art result.</p>
+<p>Next, let's see how we can do by performing linear probing, which involves training a linear classifier on top of a frozen pre-trained model. Linear probing is often done to test the performance of features of a pretrained model.</p>
+<p>We can do a quick linear probing on the train part of the target data to see any possible test performance improvement.</p>
+<p>As can be seen, by training a simple linear layer on top of the frozen backbone, the MSE decreased from 0.3 to 0.271 achieving state-of-the-art results.</p>
+<p>Finally, let's see if we get any more improvements by doing a full finetune of the model on the target dataset.</p>
+<p>We can do a full model finetune (instead of probing the last linear layer as shown above) on the train part of the target data to see a possible test performance improvement. The code looks similar to the linear probing task above, except that we are not freezing any parameters.</p>
+<p>In this case, there is not much improvement by doing full finetuning. Let's save the model anyway.</p>
+<p>In this blog, we presented a step-by-step guide on leveraging PatchTSMixer for tasks related to forecasting and transfer learning. We intend to facilitate the seamless integration of the PatchTSMixer HF model for your forecasting use cases. We trust that this content serves as a useful resource to expedite your adoption of PatchTSMixer. Thank you for tuning in to our blog, and we hope you find this information beneficial for your projects.</p>
+<p>This is a pretty good model. In fact, I've been running some forecasting experiments with different models, such as statistical and traditional ML. This model was able to overcome all the previous ones.</p>
+<p>My only suggestion is to create a unique blog focused on finetuning.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/scalable-data-inspection" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/patchtsmixer" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Comment osFoundry garde une session Claude Code chaude compatible avec le cache pendant que les messages du canal continuent d&#x27;arriver</title>
+    <title>Plainmail</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9755.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,38 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Comment osFoundry garde une session Claude Code chaude compatible avec le cache pendant que les messages du canal continuent d&#x27;arriver</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
+        <h1>Plainmail</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fm56w33iqdpb0fiug328h.png" alt="Comment osFoundry garde une session Claude Code chaude compatible avec le cache pendant que les messages du canal continuent d&#x27;arriver" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fm56w33iqdpb0fiug328h.png" alt="Comment osFoundry garde une session Claude Code chaude compatible avec le cache pendant que les messages du canal continuent d'arriver" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Voici la deuxième mention que reçoit une session Claude Code résidente dans un canal Message d'osFoundry. C'est le tour utilisateur complet, sans les paragraphes du milieu du brief :</p>
-<p>Les champs du payload sont ceux que l'application desktop lit dans agent_session_runtime.rs, avec des valeurs de démo. Le bloc de contexte a été généré par mon portage Python de channel_delivery::render. Ce qu'il laisse de côté compte plus que ce qu'il contient. Pas de system prompt, parce que le processus l'a déjà. Pas de rejeu des tours précédents, parce que le processus s'en souvient. Et aucune ligne du canal que la session a déjà reçue. Ce sont ces trois omissions qui gardent une session de longue durée peu coûteuse. Voici comment chacune fonctionne dans l'application desktop, avec une simulation qui mesure ce qu'elles rapportent.</p>
-<p>La résidence se trouve dans runtime/resident.rs. Un processus ACP est maintenu en vie par clé (channel, binding), 4 au maximum en même temps, et tué après 30 minutes d'inactivité. Chaque tour prend un Lease, et Lease::cold est la seule information qui décide de ce qui est envoyé. La branche dans providers/agent_cli.rs se résume à ceci :</p>
-<p>prompt vient de build_prompt, qui aplatit toute la conversation en lignes User:/Assistant:. prompt_warm vient de latest_user_turn : le dernier message qui ne vient ni de l'assistant, ni du système, ni d'un outil. Le commentaire dans resident.rs explique pourquoi cet ordre ne se règle pas. Rejouer l'historique dans un processus chaud donnerait à l'agent ses propres réponses passées comme une nouvelle entrée utilisateur à chaque tour, et ça croît de façon quadratique.</p>
-<p>Côté prompt caching, c'est la règle du préfixe stable qui fait son travail. Le cadrage système arrive une seule fois, en tête, et ne change jamais. Tout ce qui change d'un tour à l'autre arrive sous forme d'un nouveau tour utilisateur ajouté à la fin.</p>
-<p>Dans ce dernier tour utilisateur, après le brief. mention_context récupère les 30 dernières lignes (channel_rows(..., 30)) et les passe à channel_delivery::render avec une limite de 12. La fonction parcourt les lignes dans l'ordre :</p>
-<p>Un premier contact reçoit l'en-tête "Recent messages in this channel …". Une session avec watermark reçoit "New messages in this channel since you last heard from it …". S'il n'y a rien de nouveau, aucun bloc n'est envoyé.</p>
-<p>Seulement après la réussite du run. render renvoie ce qu'il a affiché, stage() le met de côté sous le canal du run, et le chemin de sortie du run appelle commit() en cas de succès ou discard() en cas d'échec. Le commentaire en donne la raison : un run qui échoue n'a peut-être rien montré à l'agent, et un watermark placé au-delà de ce qu'il a vu masquerait ces messages pour de bon.</p>
-<p>Un watermark appartient aussi à une seule session native. L'enregistrement stocké est {native, last_at, ids}, indexé par clé de session, canal et fil, avec 200 ids au maximum, et persisté dans channel-watermarks.json. watermark_for ne le renvoie que si native correspond à l'id du processus qui va répondre maintenant. Après une éviction, un crash ou un Start fresh, le nouveau processus a un nouvel id. Il reçoit donc un nouveau snapshot de 12 messages au lieu d'un trou. Seuls les bindings qui conservent une session ont un watermark : supervisé plus résident, ou une session sauvegardée exacte. Un binding qui repart de zéro à chaque fois reçoit le snapshot à chaque fois, et c'est la seule chose correcte à donner à un processus sans mémoire.</p>
-<p>Aucun binaire claude n'est installé sur ce Mac, donc rien ici n'appelle de modèle. sim.py, environ 190 lignes, construit la requête que verrait le fournisseur d'une session chaude à chaque mention :</p>
-<p>Le canal contient 200 messages de cinq personnes et d'un agent. 30 d'entre eux mentionnent @claude. Huit sont des logs collés de plus de 600 caractères. Les mentions arrivent par rafales : entre deux, il y a de 1 à 21 messages, avec une médiane de 4. Le brief est le vrai texte de channel_task_brief avec sa partie CLI, soit 466 tokens. PREFIX représente le system prompt d'un CLI plus 20 définitions d'outils, soit 2,120 tokens. C'est plus petit qu'un vrai, mais ce qui compte, c'est qu'il est identique octet pour octet à chaque tour.</p>
-<p>Trois stratégies, toutes avec le render / advance porté :</p>
-<p>Les tokens sont comptés avec tiktoken cl100k_base, via uv run --with tiktoken. C'est le tokenizer d'OpenAI, pas celui de Claude, donc les valeurs absolues sont approximatives et ce sont les ratios qui comptent. "En cache" désigne le plus long préfixe de tokens commun avec la requête précédente de la même session. Cela suppose que le fournisseur met en cache toute la requête précédente, ce qui est le meilleur cas pour n'importe quelle stratégie. Claude Code place ses propres points de rupture de cache, et ce modèle ne les reproduit pas. "Dupliqués" compte les tokens des lignes du canal que la session avait déjà vues lors d'un tour précédent.</p>
-<p>L'exécution complète prend 1.23 s en temps réel sur un Apple M1, surtout pour la tokenisation.</p>
-<p>Le watermark ne change pas le ratio de cache. window et watermark restent tous les deux à 0.94. Les lignes du canal répétées se trouvent dans le suffixe de chaque tour, et ce suffixe n'allait de toute façon jamais être en cache. La duplication coûte autre chose. Chaque tour chaud envoie 943 nouveaux tokens au lieu de 766, soit 23% de plus. Et chaque répétition reste ensuite pour toujours dans l'historique de la session, donc la conversation que transporte le CLI grossit plus vite. Sur 30 mentions, la stratégie window a fait passer 516k tokens d'entrée par le fournisseur, contre 417k pour le watermark. L'écart se creuse à chaque tour, parce que chaque requête suivante relit les doublons depuis le cache. Et ça rapproche aussi la compaction.</p>
-<p>C'est le préfixe qui décide du cache. Une seule ligne d'état devant le system prompt, 28 tokens qui changent à chaque tour, fait passer la part cacheable de 0.94 à 0.00. Chaque tour chaud devient 14k tokens non cachés au lieu de 766. C'est pour ça qu'osFoundry garde la liste des participants, l'état et les lignes du canal hors du cadrage. La liste des participants et l'activité du projet sont des outils (channel_roster, project_activity), et le texte du canal se trouve dans le tour utilisateur.</p>
-<p>Tour par tour, la différence ressemble à ça. À partir de la deuxième mention, window envoie environ 460 tokens de texte du canal, dont 420 à 440 que la session a déjà lus. Le watermark envoie de 21 à 44 tokens.</p>
-<p>La façon dont les canaux Message et les agents s'articulent dans l'application est décrite sur la page de détail du canal. Pour comprendre pourquoi un contexte borné compte, voir l'entrée du glossaire sur la fenêtre de contexte.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            Real email on every domain you own, for $5 a month flat
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/plainmail?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1305826?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/bbt-fr/comment-osfoundry-garde-une-session-claude-code-chaude-compatible-avec-le-cache-pendant-que-les-42fo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/plainmail" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

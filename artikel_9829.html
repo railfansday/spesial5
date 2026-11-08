@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPS in PyTorch 2.15</title>
+    <title>Welcome Le Chonk: Mistral Large 4 on Hugging Face</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9829.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>MPS in PyTorch 2.15</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-07</p>
+        <h1>Welcome Le Chonk: Mistral Large 4 on Hugging Face</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/ml4/thumbnail.png" alt="Welcome Le Chonk: Mistral Large 4 on Hugging Face" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/ml4/thumbnail.png" alt="Welcome Le Chonk: Mistral Large 4 on Hugging Face" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
-<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
-<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
-<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
-<p>To try the release candidate in a separate environment:</p>
-<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
-<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
-<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
-<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
-<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
-<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
-<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
-<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
-<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
-<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
-<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
-<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
-<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
-<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
-<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
-<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
-<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
-<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
-<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
-<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
-<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
-<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
-<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
-<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
-<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
-<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
+                <p>Mistral Large 4 (aka Le Chonk) is a multimodal, multilingual, Mixture-of-Experts (MoE) model from Mistral. It takes text and images as input and generates text. It has about 1T total, 49B active parameter, and a context window of 1M tokens.</p>
+<p>The model is released in two official variants:</p>
+<p>There are also GGUFs created by Unsloth and the llama.cpp team. It’s distributed under the Mistral Ecosystem Open-Weight License (an MIT derivative that establishes limitations for model-as-a-service offerings).</p>
+<p>Mistral Large 4 is particularly strong for cybersecurity, coding agents, and multimodality. In this post, we look at how the model works, its capabilities, architecture and more!</p>
+<p>Mistral Large 4 combines a large pool of experts with sparse attention and a Pixtral vision encoder. The language model selects a small group of experts for each token, while its attention indexer selects which earlier token positions to attend to. These are two different forms of sparsity, where one selects feed-forward networks, the other selects context positions.</p>
+<p>You can find all the checkpoints in the Mistral Large 4 collection.</p>
+<p>Mistral Large 4 scores 82% on the Artificial Analysis Cyber Index test that asks a model to reproduce a real vulnerability in open-source software and then patch the software. Mistral reports that several closed frontier models score near zero on the same test because they refuse to attempt the work. This is super important for defenders, because fixing a vulnerability usually requires reproducing the vulnerability. In Mistral’s internal testing, Mistral Large 4 was also useful for malware analysis, vulnerability prioritisation and writing detection rules, which the model was not explicitly trained for.</p>
+<p>Mistral mainly positions the model for defensive security work. Vulnerability research and incident response often appear like attacks in model input, so closed source filters can block them. A team that depends on an API can also lose access in the middle of an incident. Crucially, open weight models put both the usage policy and the deployment under the user’s control. That said, the model still declines harmful requests: on cyber prompts from JailbreakBench, StrongREJECT and AgentHarm, its average refusal rate is higher than any other open weight model.</p>
+<p>For community builders, an open weight model like Mistral Large 4 unlocks a load of downstream use cases. You could build your own cyber system around your code base, crash logs, and malware samples. For example, with TRL you could fine-tune smaller models from Mistral Large 4 traces patching your code base. In fact, reproduce-then-patch tasks use a verifiable reward, so it fits with RL environments that could be used to further RL smaller security models. Open weights also let researchers measure the model’s refusal behaviour directly instead of relying on the provider’s description.</p>
+<p>In short, cyber capabilities like ML4’s in the open are a huge boost for the community.</p>
+<p>We have interviewed Pierre Stock about the cyber capabilities of the model, you can watch it here.</p>
+<p>Mistral Large 4’s text decoder has 72 layers, a hidden dimension of 6,144, and 64 attention heads. Its attention blocks combine Multi-head Latent Attention (MLA) with a DeepSeek Sparse Attention (DSA) indexer (a direction in other models such as GLM 5.3). MLA keeps a compressed KV representation, and DSA selects up to 2,048 key positions for each query.</p>
+<p>For each decoder block, there’s a 3:1 RoPE to NoPE pattern, i.e. 3 decoder layers employ RoPE and every fourth layer uses NoPE. The model also shares KV state across layers.The first decoder layer uses a dense feed-forward network. The other 71 layers use MoE blocks, in which a softmax router selects four of the 128 experts for each token. One shared expert always runs alongside the selected experts, for a total of 5 active experts per token.</p>
+<p>Regarding RoPE, Mistral uses LeRope, a YaRN-scaled RoPE with one learned multiplier per frequency.</p>
+<p>Mistral Large 4 employs a 1.6B Pixtral encoder. Pixtral has 30 layers, a hidden dimension of 2,048, and 16 attention heads. It uses 14 × 14 patches and a patch-merge projector with spatial merge size 2. You can see the encoder pipeline below.</p>
+<p>Mistral Large 4 delivers strong benchmark performance across coding, cybersecurity, multimodal understanding, and agentic workflows, positioning it as a competitive addition to the open-weight ecosystem. As of October 29, 2026, the model is the fifth best open weights model on Artificial Analysis Intelligence index.</p>
+<p>On coding, ML4 achieves 61.7% on DeepSWE v1.1, 59.4% on SWE-Atlas-QnA, and 28.3% on Terminal-Bench 4. Its combined Coding Agent Index score of 49.8% places it ahead of DeepSeek V4 Pro 0813 and Qwen3.8 Max.</p>
+<p>Coding capabilities of ML4 extend to knowledge work, with 59.9% on AutomationBench and 1,393 Elo on AA-Briefcase, which evaluate business workflows and long-horizon professional tasks.</p>
+<p>Cybersecurity is one of Mistral Large 4’s standout capabilities, with strong results across real-world vulnerability assessment and security competition tasks. Three benchmarks highlight the model’s cyber performance:</p>
+<p>Mistral Large 4 also demonstrates 93.3% attack resistance on Lakera’s B3 benchmark, adding evidence of robustness against prompt-injection attacks. Beyond benchmarks, internal testing showed promising results in malware analysis, vulnerability prioritization, and detection-rule generation.</p>
+<p>Mistral Large 4 is shipped with day-0 support for transformers, vLLM and llama.cpp. GGUF quants are available from GGUF and the llama.cpp team. We provide options to deploy remotely with Inference Endpoints, and use serverless inference through Inference Providers.</p>
+<p>The Transformers implementation provides AutoModelForMultimodalLM, with AutoProcessor preparing the conversation and image inputs. Mistral Large 4 can take low, medium, high as reasoning effort. The default is high, and note that reasoning cannot be disabled, so using reasoning_effort: none would still use high.</p>
+<p>To run the model, upgrade the transformers package</p>
+<p>You can run the script above by saving it in a python file script.py and then run</p>
+<p>vLLM supports the high-quality NVFP4 Mistral Large 4 checkpoint, which has a smaller memory footprint and requires NVIDIA Blackwell GPUs. The model also ships with a DSpark drafter for additional speed-ups with vLLM. Launch the server like this:</p>
+<p>Once the server is up and running, you can run the following.</p>
+<p>Llama.cpp and Llama App already support Mistral Large 4.</p>
+<p>You can install Llama App with the following command:</p>
+<p>Then you can start the server as follows, indicating the quant suffix after the model ID:</p>
+<p>Here’s the repository with the  quants derived from the FP8 checkpoint, and this is the NVFP4 one, converted from the official NVFP4 repo.</p>
+<p>Once the server has started, you can head to localhost:9931 to chat using the built-in WebUI. From the web UI you can add images for inference and adjust the reasoning lever.You can also query the server as follows. Feel free to check out the API reference for multimodality, tool calls and more.</p>
+<p>You can run image-text inference as follows.</p>
+<p>The llama.cpp team ships the following quants: IQ2_XXS, Q2_K, Q4_K_M, NVFP4, Q8_0, and BF16 for further conversions. The 2-bit quants run on a single Apple Silicon Ultra computer with 512 GB of unified RAM. The others require distributed inference. You can also run on multiple NVIDIA or AMD cards.</p>
+<p>Running Q2_K on a single M3 Ultra, we got a prefill throughput of about 90 tokens per second, and a generation speed of 15 tok/s. On 4 x RTX6000 Pro, we observed the following results:</p>
+<p>We also ship day 0 support of fine tuning Mistral Large 4 using TRL. All you have to do is upgrade to the latest version of transformers, trl and peft.</p>
+<p>In the following example we train the model to perform multilingual thinking. The fine tuned model would be able to reason in the language the system prompt asks for!</p>
+<p>The script runs on the FP8 variant on a node of 8xB300s. The full example, with a Slurm launcher, is in TRL's examples.</p>
+<p>Mistral Large 4 is also available on Inference Endpoints, with a ready-to-deploy recipe on 8 x NVIDIA H200 GPUs. The recipe runs vLLM with the FP8 weights split across all eight GPUs using tensor and expert parallelism, and uses the model's built-in DSpark draft head for faster generation through speculative decoding. It serves up to 131K tokens of context and processes up to 16 requests at a time, and we observed the following results:</p>
+<p>You can deploy it with the hf CLI as follows:</p>
+<p>Once the endpoint is running, you can query its OpenAI-compatible API, using the endpoint URL and your Hugging Face token. The reasoning_effort field controls how much the model reasons before answering, and can be set to low, medium, or high (default).</p>
+<p>The answer comes back in choices[0].message.content, and the reasoning in choices[0].message.reasoning. The endpoint also supports tool calls, structured outputs, image inputs, and streaming through the standard Chat Completions fields.</p>
+<p>The easiest way to get up and running with your Dell AI Servers (NVIDIA H200, B200, GB200 or GB300) is by installing the dell-ai CLI:</p>
+<p>And use it to run an optimized recipe for Mistral Large 4 on e.g., a NVIDIA B300 node.</p>
+<p>You can find more about this release in the Dell Enterprise Hub (DEH).</p>
+<p>Grab the weights from the Mistral Large 4 collection, run them locally with the GGUFs, or deploy them with Inference Endpoints. We can't wait to see what you build with Le Chonk. Share your fine-tunes, quants and other artefacts on the Hub!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/mistral-large4" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
