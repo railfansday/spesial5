@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Bringing Nunchaku 4-bit Diffusion Inference to Diffusers</title>
+    <title>Salon, One of the Web&#x27;s Pioneering News Outlets, Shuts Down After 31 Years</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9982.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,62 +15,92 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Bringing Nunchaku 4-bit Diffusion Inference to Diffusers</h1>
+        <h1>Salon, One of the Web&#x27;s Pioneering News Outlets, Shuts Down After 31 Years</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/nunchaku-diffusers/thumbnail.png" alt="Bringing Nunchaku 4-bit Diffusion Inference to Diffusers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/themedia_64.png" alt="Salon, One of the Web&#x27;s Pioneering News Outlets, Shuts Down After 31 Years" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/nunchaku-diffusers/thumbnail.png" alt="Bringing Nunchaku 4-bit Diffusion Inference to Diffusers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/themedia_64.png" alt="Salon, One of the Web's Pioneering News Outlets, Shuts Down After 31 Years" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Large diffusion transformers can create stunning images (or even videos, audio snippets, and now text), but loading a modern text-to-image model in BF16 precision often requires 20-30 GB of VRAM, which puts these models out of reach of most consumer GPUs. Quantization is a powerful solution to this problem, and Diffusers already integrates several quantization backends such as bitsandbytes, GGUF, torchao, and Quanto, which we covered in Exploring Quantization Backends in Diffusers.</p>
-<p>Most of these backends are weight-only. This means that they store the weights in low precision and dequantize them back to high precision at compute time. This reduces memory usage significantly, but it usually does not make inference faster, and can even add a small latency overhead.</p>
-<p>SVDQuant, the quantization method behind the popular Nunchaku inference engine, takes a different approach. It runs the main transformer layers with 4-bit weights and activations (W4A4), reducing memory while also speeding up the denoising loop. The details are covered below, but until now, using these checkpoints required a separate inference library.</p>
-<p>With current Diffusers, loading a Nunchaku checkpoint is as simple as calling from_pretrained(), with no local CUDA compilation required thanks to the kernels package. In addition, the companion diffuse-compressor toolkit lets you quantize new architectures yourself and publish them as regular Diffusers repositories.</p>
-<p>First, install the requirements. You need a recent version of Diffusers and the Hugging Face kernels package:</p>
-<p>Then load a pre-quantized pipeline like any other Diffusers model:</p>
-<p>No custom pipeline class or separate inference engine is needed, and there is nothing to compile locally. The NVFP4 kernels are downloaded from the Hub through the Nunchaku Lite kernels page the first time they are used. This checkpoint pairs a Nunchaku NVFP4 transformer with a bitsandbytes NF4 text encoder, and generates a 1024x1024 image in about 1.7 seconds on an RTX 5090 with a peak memory usage of about 12 GB, compared with about 24 GB for the BF16 pipeline. You can find more details about the Nunchaku Lite checkpoint format in the official Diffusers documentation.</p>
-<p>NVFP4 checkpoints require an NVIDIA Blackwell GPU (RTX 50 series, RTX PRO 6000, B200). For earlier generations, use the INT4 variants. See the hardware support table below for details.</p>
-<p>SVDQuant is the quantization method behind Nunchaku, its reference CUDA inference engine. Standard 4-bit quantization is difficult for diffusion transformers because both weights and activations contain large outliers. SVDQuant handles this by moving activation outliers into the weights, representing the hardest part of each weight matrix with a small 16-bit low-rank branch, and quantizing the remaining residual to 4 bits. Nunchaku makes this fast with fused kernels for the 4-bit path and the low-rank branch.</p>
-<p>The original Nunchaku engine gets much of its speed from model-specific fused execution paths, such as fused QKV projections and fused GELU/MLP kernels. Those optimizations are tied to each architecture's module layout and checkpoint format, so supporting a new model family usually requires model-specific integration work.</p>
-<p>Nunchaku Lite is the new integration path in Diffusers. With it, Diffusers can load Nunchaku-style checkpoints without a custom pipeline or a separate inference engine. Under the hood, Nunchaku Lite patches the relevant nn.Linear modules of a stock Diffusers model with runtime SVDQ/AWQ linear layers before the checkpoint is loaded. The CUDA kernels come from the Hub through the kernels package. Two kernel families are used:</p>
-<p>The trade-off is that, without architecture-specific fused kernels and modules, Nunchaku Lite cannot match the speedup of the original Nunchaku engine. However, the bare-bones implementation still delivers around 30% speedup while retaining the same level of VRAM reduction.</p>
-<p>If you have used bitsandbytes or torchao in Diffusers, the mechanics will feel familiar. A Nunchaku Lite model repository is an ordinary Diffusers repository. The only special part is a quantization_config block inside the transformer's config.json:</p>
-<p>This config tells Diffusers which modules were quantized, which scheme they use, and which Nunchaku Lite runtime layer to instantiate (SVDQW4A4Linear or AWQW4A16Linear).</p>
-<p>Because the quantized model keeps the exact module structure of the dense one, everything downstream (schedulers, LoRA loading hooks, offloading, torch.compile) sees a normal Diffusers model.</p>
-<p>Nunchaku Lite uses different kernel variants depending on the GPU generation and checkpoint precision:</p>
-<p>Volta and Hopper GPUs are currently not supported by the 4-bit kernels. The quantizer validates the GPU's CUDA capability at load time and raises a clear error instead of producing incorrect outputs.</p>
-<p>Nunchaku Lite can be combined with other Diffusers memory and speed optimizations.</p>
-<p>torch.compile. Compiling the transformer improves the end-to-end speedup from 1.35x to 1.8x:</p>
-<p>Quantized text encoders. The transformer is not the only component with a large memory footprint. Text encoders such as T5 or Qwen3 can occupy several gigabytes on their own. Further quantizing the text encoder with bitsandbytes NF4 reduces peak VRAM by about 22% in our benchmark.</p>
-<p>Offloading. Diffusers offloading helpers such as enable_model_cpu_offload() and enable_sequential_cpu_offload() work as usual if you need to fit the pipeline onto a smaller GPU.</p>
-<p>All numbers below were measured on an NVIDIA RTX PRO 6000 (Blackwell) at 1024x1024 using rootonchair/ERNIE-Image-Turbo-nunchaku-lite-int4-bnb4-text-encoder.</p>
-<p>As shown above, Nunchaku reduces peak VRAM by up to 50% while still improving latency by roughly 30%. The remaining overhead comes largely from extra kernel launches, which torch.compile can mitigate, bringing the full pipeline down to 1.68 s, or 1.8x faster than the BF16 baseline.</p>
-<p>Nunchaku Lite support in Diffusers is architecture-agnostic, and the diffuse-compressor toolkit provides an end-to-end SVDQuant workflow for Diffusers models: calibrate, quantize, package, and publish.</p>
-<p>Below, we walk through quantizing FLUX.2 Klein 4B as an example. It covers the main steps: inspect the model, calibrate and quantize the transformer, package the result as a Diffusers pipeline, then verify and push it to the Hub. The full tutorial covers every flag in detail.</p>
-<p>The generic scanner walks the model and decides what to target: compatible linears inside the repeated transformer-block stack become SVDQ W4A4 targets, recognized modulation linears become AWQ W4A16 targets, and everything else stays dense.</p>
-<p>Always read this report before quantizing. For FLUX.2 Klein 4B, the expected result is 100 SVDQ targets, 3 AWQ targets, and 6 dense outer linears, with no missing patterns or duplicate names.</p>
-<p>The following command runs SVDQuant on the transformer and writes the quantized checkpoint to outputs/checkpoints/svdq-int4_r32-flux-2-klein-4b.safetensors:</p>
-<p>Replace --precision int4 with nvfp4 to build Blackwell-native weights.</p>
-<p>The converter combines the quantized transformer with the base pipeline's other components, writes the compact nunchaku_lite configuration into transformer/config.json, and can optionally convert text encoders to NF4:</p>
-<p>Once the outputs look good, run pipe.push_to_hub("your-name/your-model-nunchaku-lite-int4"). Other users can then load it with the same from_pretrained() pattern shown above.</p>
-<p>Note that the generic path assumes the architecture can be quantized without structural rewrites. For additional speedup, the original Nunchaku engine rewrites groups of Diffusers layers as fused modules. The generic path cannot infer these changes on its own, such as combining separate Q, K, and V projections into one module or splitting a fused projection across several modules.</p>
-<p>FLUX.1-dev's QKV projection is a concrete example. Diffusers defines three separate modules:</p>
-<p>The Nunchaku FLUX module combines those layers into one quantized to_qkv module:</p>
-<p>This grouped module is required because Nunchaku's fused operator consumes the QKV projection, Q/K normalization, and rotary embeddings together. By comparison, the default Diffusers path executes them separately:</p>
-<p>The Nunchaku path supplies the grouped projection, normalization modules, and rotary embeddings to one fused operator:</p>
-<p>This is the structural rewrite that the generic path cannot infer. Diffusers has three destination modules with to_q, to_k, and to_v parameter prefixes, while Nunchaku has one grouped module under to_qkv. A model-specific target config or adapter must state that the Q, K, and V parameters should be concatenated along the output dimension, in that order, and loaded into to_qkv.</p>
-<p>Structural rewrites like these are described by a model-specific target config during quantization and handled by a small runtime adapter when the checkpoint is loaded.
-The FLUX.2 Klein 4B quantization script provides a concrete target-config example for producing a structurally rewritten checkpoint, while rootonchair/nunchaku-lite provides the runtime adapters needed to load grouped QKV tensors, split fused projections, and other fused operations.
-For the complete workflow, you can check the Adding A New Model guide.</p>
-<p>To get started right away, check out the following repositories:</p>
-<p>Nunchaku's SVDQuant kernels are one of the most effective ways to run diffusion transformers efficiently on consumer hardware, and they are now natively supported in Diffusers. Pre-quantized checkpoints load with from_pretrained(), and the diffuse-compressor toolkit makes it possible to quantize new architectures without waiting for engine support. By quantizing both weights and activations, the W4A4 path lowers memory use while improving denoising latency, keeping image quality close to the BF16 original.</p>
-<p>If you quantize and publish a new model, we would love to hear about it. Share it on the Hub and let us know! If you have any questions about this feature, feel free to join our Discord.</p>
-<p>To learn more, check out the following resources:</p>
-<p>Thanks to the Diffusers maintainers for reviews and guidance throughout the integration, and to the MIT HAN Lab / Nunchaku team for the original SVDQuant work. Thanks to Marc Sun for providing feedback on the blog post. Thanks to Álvaro Somoza for trying out nunchaku-lite and for providing feedback.</p>
-<p>rootonchair is also grateful to SilverAI for supporting this work and providing the environment in which much of this development took place.</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>I WANT THE FACTS OF THE NEWS, PERIOD.Can you name a news outlet which has only facts?</p>
+<p>Can you name a news outlet which has only facts?</p>
+<p>I WANT THE FACTS OF THE NEWS, PERIOD.Can you name a news outlet which has only facts?I can't either.Which is why the parent wants an unbiased source, and I'm with him.News has become an unregulated sewer of rage bait propaganda.</p>
+<p>I WANT THE FACTS OF THE NEWS, PERIOD.Can you name a news outlet which has only facts?</p>
+<p>Can you name a news outlet which has only facts?</p>
+<p>Which is why the parent wants an unbiased source, and I'm with him.</p>
+<p>News has become an unregulated sewer of rage bait propaganda.</p>
+<p>There has never been and possibly never will be a source of only facts.</p>
+<p>Even if there were, which facts were covered and which were not would itself be a form of bias.</p>
+<p>I am very in favor of facts, and outlets with just facts existing, that's a great idea. But how are they going to pay the bills? And what do you think most people will be able to do with raw, contextless facts? Or, how much factual context do you think they should provide? And down the rabbit hole we go!</p>
+<p>"Even if there were, which facts were covered and which were not would itself be a form of bias."</p>
+<p>Bingo.  It is impossible to report *all* the facts, nor is it possible to be informed of all the facts.  There are far, far too many facts.  This means that any source, and any consumer, of news must choose *which* facts.  And when you start choosing, there is bias.  Bias is not avoidable.</p>
+<p>I'm sympathetic to the issue and not averse to the stories but salon.com actually ceased to function as a general news and politics site.What a coincidence! Our nation has ceased to function as it has turned its focus to abuse of minorities as a distraction from enriching the worst people on the planet!</p>
+<p>I'm sympathetic to the issue and not averse to the stories but salon.com actually ceased to function as a general news and politics site.</p>
+<p>What a coincidence! Our nation has ceased to function as it has turned its focus to abuse of minorities as a distraction from enriching the worst people on the planet!</p>
+<p>Unfortunately IMO large percentages of both the right and the left only want to hear "news" that reaffirms what they already think. They don't want to hear anything contrarian or even nuanced.</p>
+<p>and supporting the cult is just icing on the cake.</p>
+<p>I will admit, the Moonie connection kept me away for a long while.  But they're not all that big these days, and the direct influence seems limited to the occasional (maybe one a month) pro-Moonie article.</p>
+<p>News has become an unregulated sewer of rage bait propaganda.Become? When was it not? [wikipedia.org] The only thing that changed is that technology has made the cheaper. [wikipedia.org]</p>
+<p>News has become an unregulated sewer of rage bait propaganda.</p>
+<p>Become? When was it not? [wikipedia.org] The only thing that changed is that technology has made the cheaper. [wikipedia.org]</p>
+<p>I WANT THE FACTS OF THE NEWS, PERIOD.Can you name a news outlet which has only facts?Keep in mind that would be yours included.Let society, see how good that mind is.</p>
+<p>I WANT THE FACTS OF THE NEWS, PERIOD.Can you name a news outlet which has only facts?</p>
+<p>Can you name a news outlet which has only facts?</p>
+<p>Keep in mind that would be yours included.</p>
+<p>I don't have any illusions about whether the media should be unbiased. If someone is a child rapist then the media should call them a child rapist, even if they are the president.</p>
+<p>Why don't you put in your sig that you support terroristsBecause I want to abolish ICE, not fund it. I also want the J6 traitors locked back up. Rapist felons shouldn't be allowed to issue pardons to terrorist traitors.</p>
+<p>Why don't you put in your sig that you support terrorists</p>
+<p>Because I want to abolish ICE, not fund it. I also want the J6 traitors locked back up. Rapist felons shouldn't be allowed to issue pardons to terrorist traitors.</p>
+<p>... And you prove that you don't actually want facts, merely to reinforce salacious things someone else told you.</p>
+<p>You are the "news consumer" that's the problem.</p>
+<p>Tell us more about how you protect child rapists because you are in favor of child rape.</p>
+<p>C-SPAN is the closest I can think of. I do like C-SPAN.Sure, that makes sense, they provide a lot of raw footage. But most people don't have time to stay informed by watching all of that, there's too much content. They need someone to interpret it for them.</p>
+<p>C-SPAN is the closest I can think of. I do like C-SPAN.</p>
+<p>Sure, that makes sense, they provide a lot of raw footage. But most people don't have time to stay informed by watching all of that, there's too much content. They need someone to interpret it for them.</p>
+<p>The AP seems pretty nuetral and fact based to me.</p>
+<p>Covert Russian network exploited French riots on social media, EU report says</p>
+<p>Covert Russian network exploited French riots on social media, EU report claims</p>
+<p>Covert Russian network exploited French riots on social media, EU report alleges</p>
+<p>Which of these is a real Reuters headline? They're all uncontroversially true statements, but you can steer things a lot without actually lying.</p>
+<p>(This type of manipulation is so obvious, Reuters has taken steps to curb it - it's always "says" now from them. But the papers that</p>
+<p>The humanities,arts and social "sciences" have always been left wing, theres nothing new in that. But before social media they were limited to demonstrations in the street, plastering posters no one ever read on walls and lectures that only blue hairs ever attended. Now they have a far wider audience of dim suckers who they can brainwash. And yes, this applies to the far right too who fish in a different but equally stupid pool.</p>
+<p>If thats what you think then I'm not sure you've ever had much in the way of actual education.</p>
+<p>because trans girls make you feel icky?Not at all.  In fact my wife is trans.  And I do know a bit about the subject 
+And of course there are outliers.  The question is what we (society) do with that.  They used to be marginalized, then we went completely the other way.  In particular, not only trying to convince kids that they might be one of those outliers, but offer them gender affirming care (or whatever we're supposed to call it these days), with far-reaching lifelong consequences.  In the past, the incidence of regret after the surgery use</p>
+<p>Not at all.  In fact my wife is trans.  And I do know a bit about the subject 
+And of course there are outliers.  The question is what we (society) do with that.  They used to be marginalized, then we went completely the other way.  In particular, not only trying to convince kids that they might be one of those outliers, but offer them gender affirming care (or whatever we're supposed to call it these days), with far-reaching lifelong consequences.  In the past, the incidence of regret after the surgery use</p>
+<p>And when someone eventually asks me why slashdot stopped publishing, I'll explain it's because the normals  all departed in the face of relentless leftist screeds & waves of bot posting.</p>
+<p>I'll save this little gem for them and explain how an Indonesian pedophile with a bot legion cosplayed as an American.</p>
+<p>No you don't.  Part of journalism is to connect the dots and make some conjectures.  There are definitely some sources that will lend a more left or right wing view of the facts, but there's not really any way to have "just the facts" without some sort of leaning, especially as a lot of people view the facts as having a lean to the left</p>
+<p>Salon?  "a strong left wing voice"???  When did that happen?  It's pretty much always been the voice of the conservative Clinton Democrats, no actual progressives allowed.  IIRC I was banned from the site when I pointed out how in any civilized country the US Democratic Party would be considered 'center right' (at best), ever since Terry McAuliffe and the Clintons sold the Party to the financial industry in the 1990s.  No actual progressive positions are allowed in the Party platform, progressives and socialists are buried under mountains of propaganda and false accusations and a deluge of advertising no non-millionaire could overcome, and any reasonable progressive proposal like socialized medicine or forcing mines to clean up their tailings piles are perverted into corporate-friendly programs like Romeycare or buried and blamed on Republican "obstruction".</p>
+<p>We don't have a right and a left party in the Untied States.  We have far-right and moderate-right parties instead.</p>
+<p>The real question is why you think about those people so much.</p>
+<p>Oh, so racism and gender ideology isn't a big deal for the left then? Thanks for proving you're just another brainwashed grunt.</p>
+<p>Are you referring to Stephen Colbert's jibe from the 2006 White House Correspondent's Dinner that "reality has a well-known liberal bias"?  Why act like a left-wing parodist would say something fundamentally true, and yet still misquote it?  Are you rejecting a liberal world view in favor of a left-wing world view?</p>
+<p>(Those are rhetorical questions: the answers are obviously "yes", "because slivergrunt is a dishonest hack", and "yes".)</p>
+<p>The article gives a definition of activist journalist in the article that what  you report on matters, voices you platform matter, and the purpose of your publication was to exclude free discussion of ideas.</p>
+<p>- an idea about what journalism could be- a publication with a strong voice,- Our writers and editors helped shape conversations- the sense that there was a place on the internet where ideas mattered</p>
+<p>The concept of a news media reporting a lead story of a singe house fire every day of the</p>
+<p>After 31 years, most of my hair has fallen out. So I won't be needing them any longer.</p>
+<p>One of the Web's Pioneering News Outlets, Shuts Down After 31 Years..After XX years, is Salon dead, or human publishing as a whole?It's practically cute that we're broadcasting this as anything but a terrorist takeover of publishing. I'm just wondering who or what is taking it over.  Because the audience is that fucking stupid now. Don't worry.  It'll be posts like mine that humanity will reference regarding the "early" days of warning.  Before AGI put Soylent Green on the menu by force and necessity, and made humans realize politics has fuck-all to do with the "answer" to humans.</p>
+<p>One of the Web's Pioneering News Outlets, Shuts Down After 31 Years..</p>
+<p>After XX years, is Salon dead, or human publishing as a whole?</p>
+<p>It's practically cute that we're broadcasting this as anything but a terrorist takeover of publishing. I'm just wondering who or what is taking it over.  Because the audience is that fucking stupid now.</p>
+<p>Don't worry.  It'll be posts like mine that humanity will reference regarding the "early" days of warning.  Before AGI put Soylent Green on the menu by force and necessity, and made humans realize politics has fuck-all to do with the "answer" to humans.</p>
+<p>AI publishing will be dead along with it. Nobody wants to read AI slop, and AI slop is a commodity item that you can get from anywhere.</p>
+<p>AI publishing will be dead along with it. Nobody wants to read AI slop, and AI slop is a commodity item that you can get from anywhere.Given the state of education today, no one will be smart enough to tell the difference in 10 years.No one will care either.  Just keep the doom-scrolling drip going.  The heroin addict, doesn't stop to ask how vegan those needle ingredients are.</p>
+<p>AI publishing will be dead along with it. Nobody wants to read AI slop, and AI slop is a commodity item that you can get from anywhere.</p>
+<p>Given the state of education today, no one will be smart enough to tell the difference in 10 years.</p>
+<p>No one will care either.  Just keep the doom-scrolling drip going.  The heroin addict, doesn't stop to ask how vegan those needle ingredients are.</p>
+<p>These days, cogent analysis and literate writing have become devalued. It's hard to make those the selling points of a website any longer. Enshittification reigns supreme.</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Parents Sue Google Over AI Safety Risks On School Chromebooks</p>
+<p>Claude Code's 'Don't Ask Again' File Exposes Passwords and Keys in 1,122 Public Copies on GitHub</p>
+<p>System going down at 5 this afternoon to install scheduler bug.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/nunchaku-diffusers" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://news.slashdot.org/story/26/11/08/1849210/salon-one-of-the-webs-pioneering-news-outlets-shuts-down-after-31-years?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

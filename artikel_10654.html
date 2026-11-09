@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fast LoRA inference for Flux with Diffusers and PEFT</title>
+    <title>Jupyter Agents: training LLMs to reason with notebooks</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10654.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,52 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fast LoRA inference for Flux with Diffusers and PEFT</h1>
+        <h1>Jupyter Agents: training LLMs to reason with notebooks</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/lora-fast/thumbnail.png" alt="Fast LoRA inference for Flux with Diffusers and PEFT" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/lora-fast/thumbnail.png" alt="Fast LoRA inference for Flux with Diffusers and PEFT" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>LoRA adapters provide a great deal of customization for models of all shapes and sizes. When it comes to image generation, they can empower the models with different styles, different characters, and much more. Sometimes, they can also be leveraged to reduce inference latency. Hence, their importance is paramount, particularly when it comes to customizing and fine-tuning models.</p>
-<p>In this post, we take the Flux.1-Dev model for text-to-image generation because of its widespread popularity and adoption, and how to optimize its inference speed when using LoRAs (~2.3x). It has over 30k adapters trained with it (as reported on the Hugging Face Hub platform). Therefore, its importance to the community is significant.</p>
-<p>Note that even though we demonstrate speedups with Flux, our belief is that our recipe is generic enough to be applied to other models as well.</p>
-<p>If you cannot wait to get started with the code, please check out the accompanying code repository.</p>
-<p>When serving LoRAs, it is common to hotswap (swap in and swap out different LoRAs) them. A LoRA changes the base model architecture. Additionally, LoRAs can be different from one another – each one of them could have varying ranks and different layers they target for adaptation. To account for these dynamic properties of LoRAs, we must take necessary steps to ensure the optimizations we apply are robust.</p>
-<p>For example, we can apply torch.compile on a model loaded with a particular LoRA to obtain speedups on inference latency. However, the moment we swap out the LoRA with a different one (with a potentially different configuration), we will run into recompilation issues, causing slowdowns in inference.</p>
-<p>One can also fuse the LoRA parameters into the base model parameters, run compilation, and unfuse the LoRA parameters when loading new ones. However, this approach will again encounter the problem of recompilation whenever inference is run, due to potential architecture-level changes.</p>
-<p>Our optimization recipe takes into account the above-mentioned situations to be as realistic as possible. Below are the key components of our optimization recipe:</p>
-<p>Note that amongst the above-mentioned, FP8 quantization is lossy but often provides the most formidable speed-memory trade-off. Even though we tested the recipe primarily using NVIDIA GPUs, it should work on AMD GPUs, too.</p>
-<p>In our previous blog posts (post 1 and post 2), we have already discussed the benefits of using the first three components of our optimization recipe. Applying them one by one is just a few lines of code:</p>
-<p>The problems start surfacing when we try to swap in and swap out LoRAs into a compiled diffusion transformer (pipe.transformer) without triggering recompilation.</p>
-<p>Normally, loading and unloading LoRAs will require recompilation, which defeats any speed advantage gained from compilation. Thankfully, there is a way to avoid the need for recompilation. By passing hotswap=True, diffusers will leave the model architecture unchanged and only exchange the weights of the LoRA adapter itself, which does not necessitate recompilation.</p>
-<p>(As a reminder, the first call to pipe will be slow as torch.compile is a just-in-time compiler. However, the subsequent calls should be significantly faster.)</p>
-<p>This generally allows for swapping LoRAs without recompilation, but there are limitations:</p>
-<p>For more information on hotswapping in Diffusers and its limitations, visit the hotswapping section of the documentation.</p>
-<p>The benefits of this workflow become evident when we look at the inference latency without using compilation with hotswapping.</p>
-<p>The optimization recipe we have discussed so far assumes access to a powerful GPU like H100. However, what can we do when we’re limited to using consumer GPUs such as RTX 4090? Let’s find out.</p>
-<p>Flux.1-Dev (without any LoRA), using the Bfloat16 data-type, takes ~33GB of memory to run. Depending on the size of the LoRA module, and without using any optimization, this memory footprint can increase even further. Many consumer GPUs like the RTX 4090 only have 24GB. Throughout the rest of this section, we will consider an RTX 4090 machine as our testbed.</p>
-<p>First, to enable end-to-end execution of Flux.1-Dev, we can apply CPU offloading wherein components that are not needed to execute the current computation are offloaded to the CPU to free more accelerator memory. Doing so allows us to run the entire pipeline in ~22GB in 35.403 seconds on an RTX 4090. Enabling compilation can reduce the latency down to 31.205 seconds (1.12x speedup). In terms of code, it’s just a few lines:</p>
-<p>Notice that we didn’t apply the FP8 quantization here because it’s not supported with CPU offloading and compilation (supporting issue thread). Therefore, just applying FP8 quantization to the Flux Transformer isn’t enough to mitigate the memory exhaustion problem, either. In this instance, we decided to remove it.</p>
-<p>Therefore, to take advantage of the FP8 quantization scheme, we need to find a way to do it without CPU offloading. For Flux.1-Dev, if we additionally apply quantization to the T5 text encoder, we should be able to load and run the complete pipeline in 24GB. Below is a comparison of the results with and without the T5 text encoder being quantized (NF4 quantization from bitsandbytes).</p>
-<p>As we can notice in the figure above, quantizing the T5 text encoder doesn’t incur too much of a quality loss. Combining the quantized T5 text encoder and FP8-quantized Flux Transformer with torch.compile  gives us somewhat reasonable results – 9.668 seconds from 32.27 seconds (a massive ~3.3x speedup) without a noticeable quality drop.</p>
-<p>It is possible to generate images with 24 GB of VRAM even without quantizing the T5 text encoder, but that would have made our generation pipeline slightly more complicated.</p>
-<p>We now have a way to run the entire Flux.1-Dev pipeline with FP8 quantization on an RTX 4090. We can apply the previously established optimization recipe for optimizing LoRA inference on the same hardware. Since FA3 isn’t supported on RTX 4090, we will stick to the following optimization recipe with T5 quantization newly added to the mix:</p>
-<p>In the table below, we show the inference latency numbers with different combinations of the above components applied.</p>
-<p>To enable hotswapping without triggering recompilation, two hurdles have to be overcome. First, the LoRA scaling factor has to be converted into torch tensors from floats, which is achieved fairly easily. Second, the shape of the LoRA weights needs to padded to the largest required shape. That way, the data in the weights can be replaced without the need to reassign the whole attribute. This is why the max_rank argument discussed above is crucial. As we pad the values with zeros, the results remain unchanged, although the computation is slowed down a bit depending on how large the padding is.</p>
-<p>Since no new LoRA attributes are added, this also requires that each LoRA after the first one can only target the same layers, or a subset of layers, that the first one targets. Thus, choose the order of loading wisely. If LoRAs target disjoint layers, there is the possibility to create a dummy LoRA that targets the union of all target layers.</p>
-<p>To see the nitty-gritty of this implementation, visit the hotswap.py file in PEFT.</p>
-<p>This post outlined an optimization recipe for fast LoRA inference with Flux, demonstrating significant speedups. Our approach combines Flash Attention 3, torch.compile, and FP8 quantization while ensuring hotswapping capabilities without recompilation issues. On high-end GPUs like the H100, this optimized setup provides a 2.23x speedup over the baseline.</p>
-<p>For consumer GPUs, specifically the RTX 4090, we tackled memory limitations by introducing T5 text encoder quantization (NF4) and leveraging regional compilation. This comprehensive recipe achieved a substantial 2.04x speedup, making LoRA inference on Flux viable and performant even with limited VRAM. The key insight is that by carefully managing compilation and quantization, the benefits of LoRA can be fully realized across different hardware configurations.</p>
-<p>Hopefully, the recipes from this post will inspire you to optimize your
-LoRA-based use cases, benefitting from speedy inference.</p>
-<p>Below is a list of the important resources that we cited throughout this post:</p>
-<p>Generate custom images with FLUX LoRA adapters</p>
-<p>I enjoyed your post! May I ask what version of PyTorch you used for the test results?</p>
-<p>Generate custom images with FLUX LoRA adapters</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/lora-fast" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/jupyter-agent-2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
