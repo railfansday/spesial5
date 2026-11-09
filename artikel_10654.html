@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse</title>
+    <title>Fast LoRA inference for Flux with Diffusers and PEFT</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10654.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,93 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
+        <h1>Fast LoRA inference for Flux with Diffusers and PEFT</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_banncyh_1fb6d2c246.png" alt="Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/lora-fast/thumbnail.png" alt="Fast LoRA inference for Flux with Diffusers and PEFT" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_banncyh_1fb6d2c246.png" alt="Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/lora-fast/thumbnail.png" alt="Fast LoRA inference for Flux with Diffusers and PEFT" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Category: Databases / Back-End Development</p>
-<p>Meta description: Build a reliable analytics pipeline with SQL. Learn to handle duplicate records, late updates, data quality tests, and reporting before warehouse migration.</p>
-<p>A dashboard can load quickly and still report the wrong number. A retried import might count an order twice. An update might arrive after the daily report has run. A join might multiply rows without producing a database error.</p>
-<p>For developers moving application data into analytics, these problems deserve attention before platform selection. A larger warehouse can process an incorrect query faster, but it cannot decide what your metrics should mean.</p>
-<p>This tutorial walks through a small order-reporting pipeline. You will define the grain of a dataset, handle repeated deliveries, select the latest record version, and test the output before exposing it to a dashboard.</p>
-<p>“Show daily sales” sounds specific until someone asks which date, currency, or order status counts.</p>
-<p>What is the current total value of paid orders, grouped by order date?</p>
-<p>Orders whose latest version has a paid status</p>
-<p>Integer minor units; the sample uses USD cents</p>
-<p>Later order versions can revise earlier dates</p>
-<p>Current-state reporting, not an as-of ledger</p>
-<p>That final distinction matters. If an order changes from paid to refunded, this report removes it from the paid-order total on its original order date. It does not record a refund event on the refund date.</p>
-<p>An accounting-style report would need a different model, usually based on transactions or adjustments. A table of current order states cannot answer every historical question.</p>
-<p>A useful pipeline has three responsibilities:</p>
-<p>●     Raw storage preserves incoming records and ingestion metadata.</p>
-<p>●     Staging models normalize types, identify duplicates, and apply source ordering rules.</p>
-<p>●     Reporting models express business definitions at a documented grain.</p>
-<p>Keep these responsibilities distinct even if they initially live in one database.</p>
-<p>For example, raw data might contain five deliveries of an order update. Staging resolves those deliveries to one current order. Reporting then groups qualifying orders into daily totals.</p>
-<p>This separation gives failures a location. If the raw layer is missing an update, changing the dashboard query will not fix the extraction process.</p>
-<p>For a refresher on the statements used to create, populate, and query these layers, see SitePoint’s guide to SQL commands.</p>
-<p>The following SQL uses PostgreSQL-compatible syntax and fictional records. Run it in a disposable development database.</p>
-<p>The dataset contains three deliberate challenges:</p>
-<p>●     Order 101 moves from pending to paid.</p>
-<p>●     Its paid version is delivered twice.</p>
-<p>●     Order 102 changes from paid to refunded.</p>
-<p>A naive sum of every row marked paid returns 27,500 cents. Under our metric contract, the correct result is 12,500 cents: the latest paid versions of orders 101 and 103.</p>
-<p>The difference comes from record semantics, not query performance.</p>
-<p>Use a window function to select the newest version of each order:</p>
-<p>The order of operations is essential. If you filter for paid records before ranking versions, order 102’s refunded version disappears before the query can consider it. The earlier paid version then looks current.</p>
-<p>This example assumes the source supplies a monotonically increasing version per order. The ingestion identifier breaks ties between repeated deliveries; it does not establish which business update is newest.</p>
-<p>If two deliveries share an order ID and source version but contain different values, treat that as a source-contract violation. A deterministic tie-breaker makes the result repeatable, but it cannot determine which conflicting payload is correct.</p>
-<p>A successful SQL execution only proves that the database accepted the query. Add checks for the assumptions the report depends on.</p>
-<p>For example, this query identifies conflicting payloads for the same source version:</p>
-<p>When the project grows, dbt data tests provide a way to organize assertions about uniqueness, nulls, relationships, accepted values, and custom business rules. Custom tests can return the records that violate an assumption.</p>
-<p>Tests should also cover behavior, not only table shape. Extend the fixture with a late-arriving older version and confirm that it does not replace the latest state. Add an exact repeated delivery and confirm that the totals remain unchanged.</p>
-<p>The views above recompute their results from all available raw records. That makes the demonstration easy to understand, but repeatedly scanning the full history may become expensive.</p>
-<p>An incremental pipeline needs additional rules:</p>
-<p>●     Track which order IDs changed in the incoming batch.</p>
-<p>●     Recompute current state for those IDs using their available history.</p>
-<p>●     Replace or merge their modeled rows instead of blindly appending.</p>
-<p>●     Rebuild the affected reporting groups.</p>
-<p>If an update changes an order’s date or currency, both the old and new reporting groups need attention. Refreshing only the new group leaves a stale amount behind.</p>
-<p>Do not assume that “yesterday’s partition” contains every record that changed yesterday. An update received today can affect an order created months ago.</p>
-<p>Apache Airflow’s best-practice guidance discusses designing tasks for retries and repeatable inputs. Regardless of scheduler, make the batch boundary explicit and advance checkpoints only after the required output has been committed successfully.</p>
-<p>Hard deletes need their own policy too. If a source silently removes a record, a pipeline that only imports changed rows will not discover the deletion. Use deletion events, tombstones, or periodic reconciliation according to the source’s capabilities.</p>
-<p>You do not need an orchestration platform, transformation framework, and new warehouse to validate one metric.</p>
-<p>Prototype schemas, transformations, and reporting queries</p>
-<p>When a separate development or analytics database is sufficient</p>
-<p>Organize SQL models, dependencies, documentation, and tests</p>
-<p>When transformations become a maintained project</p>
-<p>Schedule dependent jobs and manage retries</p>
-<p>When several pipeline steps require coordinated execution</p>
-<p>Lint SQL using the project’s configured dialect</p>
-<p>When shared SQL needs consistent review standards</p>
-<p>Choose storage separately from orchestration. A scheduler does not decide how facts should be modeled, and a transformation framework does not guarantee source completeness.</p>
-<p>Before adopting a warehouse, measure query duration, concurrency, freshness requirements, and interference with application traffic. For some workloads, precomputed results are enough to improve reporting responsiveness; SitePoint’s materialized-view tutorial explains that approach in PostgreSQL. Refresh behavior and acceptable staleness still need an explicit policy.</p>
-<p>A migration becomes easier to evaluate when the team can show a small working pipeline, documented metrics, representative queries, and known failure cases.</p>
-<p>For teams evaluating data warehouse consulting services, those artifacts make a useful review brief. Ask for concrete decisions about source ordering, historical changes, reconciliation, access controls, and recovery procedures, together with the assumptions behind any cost estimate.</p>
-<p>Keep the review focused on observable outcomes. For example:</p>
-<p>●     Can a failed batch be replayed without changing correct totals?</p>
-<p>●     How are conflicting source versions detected?</p>
-<p>●     Which reports change when an old order is updated?</p>
-<p>●     Can a dashboard total be traced back to source records?</p>
-<p>●     Who owns freshness alerts and recovery?</p>
-<p>These questions also help an internal team review its own design. The important deliverable is a system whose behavior can be explained and tested.</p>
-<p>A dashboard total needs context about when its underlying data became usable.</p>
-<p>Track the latest successful ingestion, transformation, and validation separately. A recent extraction timestamp does not prove that downstream models finished building.</p>
-<p>Likewise, a quiet source can make an event timestamp look old even when ingestion is healthy. Combine source activity with pipeline execution metadata before deciding that the data is stale.</p>
-<p>Define the serving behavior when checks fail. You might keep the last validated result available with a visible freshness warning rather than replace it with an unverified total. Store the successful version if that is the policy: a live view over changing raw data does not preserve a previous validated snapshot.</p>
-<p>A trustworthy analytics pipeline begins with a precise question and a testable data model.</p>
-<p>Define the reporting grain, preserve incoming records, resolve source versions before filtering, and verify that retries do not alter correct results. Then measure whether the workload needs a different storage platform.</p>
-<p>Those foundations make a future warehouse migration easier to reason about and make the dashboard useful before that migration begins.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>LoRA adapters provide a great deal of customization for models of all shapes and sizes. When it comes to image generation, they can empower the models with different styles, different characters, and much more. Sometimes, they can also be leveraged to reduce inference latency. Hence, their importance is paramount, particularly when it comes to customizing and fine-tuning models.</p>
+<p>In this post, we take the Flux.1-Dev model for text-to-image generation because of its widespread popularity and adoption, and how to optimize its inference speed when using LoRAs (~2.3x). It has over 30k adapters trained with it (as reported on the Hugging Face Hub platform). Therefore, its importance to the community is significant.</p>
+<p>Note that even though we demonstrate speedups with Flux, our belief is that our recipe is generic enough to be applied to other models as well.</p>
+<p>If you cannot wait to get started with the code, please check out the accompanying code repository.</p>
+<p>When serving LoRAs, it is common to hotswap (swap in and swap out different LoRAs) them. A LoRA changes the base model architecture. Additionally, LoRAs can be different from one another – each one of them could have varying ranks and different layers they target for adaptation. To account for these dynamic properties of LoRAs, we must take necessary steps to ensure the optimizations we apply are robust.</p>
+<p>For example, we can apply torch.compile on a model loaded with a particular LoRA to obtain speedups on inference latency. However, the moment we swap out the LoRA with a different one (with a potentially different configuration), we will run into recompilation issues, causing slowdowns in inference.</p>
+<p>One can also fuse the LoRA parameters into the base model parameters, run compilation, and unfuse the LoRA parameters when loading new ones. However, this approach will again encounter the problem of recompilation whenever inference is run, due to potential architecture-level changes.</p>
+<p>Our optimization recipe takes into account the above-mentioned situations to be as realistic as possible. Below are the key components of our optimization recipe:</p>
+<p>Note that amongst the above-mentioned, FP8 quantization is lossy but often provides the most formidable speed-memory trade-off. Even though we tested the recipe primarily using NVIDIA GPUs, it should work on AMD GPUs, too.</p>
+<p>In our previous blog posts (post 1 and post 2), we have already discussed the benefits of using the first three components of our optimization recipe. Applying them one by one is just a few lines of code:</p>
+<p>The problems start surfacing when we try to swap in and swap out LoRAs into a compiled diffusion transformer (pipe.transformer) without triggering recompilation.</p>
+<p>Normally, loading and unloading LoRAs will require recompilation, which defeats any speed advantage gained from compilation. Thankfully, there is a way to avoid the need for recompilation. By passing hotswap=True, diffusers will leave the model architecture unchanged and only exchange the weights of the LoRA adapter itself, which does not necessitate recompilation.</p>
+<p>(As a reminder, the first call to pipe will be slow as torch.compile is a just-in-time compiler. However, the subsequent calls should be significantly faster.)</p>
+<p>This generally allows for swapping LoRAs without recompilation, but there are limitations:</p>
+<p>For more information on hotswapping in Diffusers and its limitations, visit the hotswapping section of the documentation.</p>
+<p>The benefits of this workflow become evident when we look at the inference latency without using compilation with hotswapping.</p>
+<p>The optimization recipe we have discussed so far assumes access to a powerful GPU like H100. However, what can we do when we’re limited to using consumer GPUs such as RTX 4090? Let’s find out.</p>
+<p>Flux.1-Dev (without any LoRA), using the Bfloat16 data-type, takes ~33GB of memory to run. Depending on the size of the LoRA module, and without using any optimization, this memory footprint can increase even further. Many consumer GPUs like the RTX 4090 only have 24GB. Throughout the rest of this section, we will consider an RTX 4090 machine as our testbed.</p>
+<p>First, to enable end-to-end execution of Flux.1-Dev, we can apply CPU offloading wherein components that are not needed to execute the current computation are offloaded to the CPU to free more accelerator memory. Doing so allows us to run the entire pipeline in ~22GB in 35.403 seconds on an RTX 4090. Enabling compilation can reduce the latency down to 31.205 seconds (1.12x speedup). In terms of code, it’s just a few lines:</p>
+<p>Notice that we didn’t apply the FP8 quantization here because it’s not supported with CPU offloading and compilation (supporting issue thread). Therefore, just applying FP8 quantization to the Flux Transformer isn’t enough to mitigate the memory exhaustion problem, either. In this instance, we decided to remove it.</p>
+<p>Therefore, to take advantage of the FP8 quantization scheme, we need to find a way to do it without CPU offloading. For Flux.1-Dev, if we additionally apply quantization to the T5 text encoder, we should be able to load and run the complete pipeline in 24GB. Below is a comparison of the results with and without the T5 text encoder being quantized (NF4 quantization from bitsandbytes).</p>
+<p>As we can notice in the figure above, quantizing the T5 text encoder doesn’t incur too much of a quality loss. Combining the quantized T5 text encoder and FP8-quantized Flux Transformer with torch.compile  gives us somewhat reasonable results – 9.668 seconds from 32.27 seconds (a massive ~3.3x speedup) without a noticeable quality drop.</p>
+<p>It is possible to generate images with 24 GB of VRAM even without quantizing the T5 text encoder, but that would have made our generation pipeline slightly more complicated.</p>
+<p>We now have a way to run the entire Flux.1-Dev pipeline with FP8 quantization on an RTX 4090. We can apply the previously established optimization recipe for optimizing LoRA inference on the same hardware. Since FA3 isn’t supported on RTX 4090, we will stick to the following optimization recipe with T5 quantization newly added to the mix:</p>
+<p>In the table below, we show the inference latency numbers with different combinations of the above components applied.</p>
+<p>To enable hotswapping without triggering recompilation, two hurdles have to be overcome. First, the LoRA scaling factor has to be converted into torch tensors from floats, which is achieved fairly easily. Second, the shape of the LoRA weights needs to padded to the largest required shape. That way, the data in the weights can be replaced without the need to reassign the whole attribute. This is why the max_rank argument discussed above is crucial. As we pad the values with zeros, the results remain unchanged, although the computation is slowed down a bit depending on how large the padding is.</p>
+<p>Since no new LoRA attributes are added, this also requires that each LoRA after the first one can only target the same layers, or a subset of layers, that the first one targets. Thus, choose the order of loading wisely. If LoRAs target disjoint layers, there is the possibility to create a dummy LoRA that targets the union of all target layers.</p>
+<p>To see the nitty-gritty of this implementation, visit the hotswap.py file in PEFT.</p>
+<p>This post outlined an optimization recipe for fast LoRA inference with Flux, demonstrating significant speedups. Our approach combines Flash Attention 3, torch.compile, and FP8 quantization while ensuring hotswapping capabilities without recompilation issues. On high-end GPUs like the H100, this optimized setup provides a 2.23x speedup over the baseline.</p>
+<p>For consumer GPUs, specifically the RTX 4090, we tackled memory limitations by introducing T5 text encoder quantization (NF4) and leveraging regional compilation. This comprehensive recipe achieved a substantial 2.04x speedup, making LoRA inference on Flux viable and performant even with limited VRAM. The key insight is that by carefully managing compilation and quantization, the benefits of LoRA can be fully realized across different hardware configurations.</p>
+<p>Hopefully, the recipes from this post will inspire you to optimize your
+LoRA-based use cases, benefitting from speedy inference.</p>
+<p>Below is a list of the important resources that we cited throughout this post:</p>
+<p>Generate custom images with FLUX LoRA adapters</p>
+<p>I enjoyed your post! May I ask what version of PyTorch you used for the test results?</p>
+<p>Generate custom images with FLUX LoRA adapters</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/build-a-reliable-analytics-pipeline-before-moving-to-a-data-warehouse/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/lora-fast" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

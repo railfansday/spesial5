@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Easily Build and Share ROCm Kernels with Hugging Face</title>
+    <title>How to Build a Typed AI Pipeline With Jev and Clairic.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10320.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,67 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Easily Build and Share ROCm Kernels with Hugging Face</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-08</p>
+        <h1>How to Build a Typed AI Pipeline With Jev and Clairic.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/build-rocm-kernels/thumbnail.png" alt="Easily Build and Share ROCm Kernels with Hugging Face" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_clairic_jev_how_to_cc4d3f1b56.png" alt="How to Build a Typed AI Pipeline With Jev and Clairic." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/build-rocm-kernels/thumbnail.png" alt="Easily Build and Share ROCm Kernels with Hugging Face" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_clairic_jev_how_to_cc4d3f1b56.png" alt="How to Build a Typed AI Pipeline With Jev and Clairic." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Custom kernels are the backbone of high-performance deep learning, enabling GPU operations tailored precisely to your workload; whether that’s image processing, tensor transformations, or other compute-heavy tasks. But compiling these kernels for the right architectures, wiring all the build flags, and integrating them cleanly into PyTorch extensions can quickly become a mess of CMake/Nix, compiler errors, and ABI issues, which is not fun. Hugging Face’s kernels library makes it easy to build (with kernel-builder) and share these kernels with the kernels-community, with support for multiple GPU and accelerator backends, including CUDA, ROCm, Metal, and XPU. This ensures your kernels are fast, portable, and seamlessly integrated with PyTorch.</p>
-<p>In this guide, we focus exclusively on ROCm-compatible kernels and show how to build, test, and share them using kernels. You’ll learn how to create kernels that run efficiently on AMD GPUs, along with best practices for reproducibility, packaging, and deployment.</p>
-<p>This ROCm-specific walkthrough is a streamlined version of the original kernel-builder guide. If you’re looking for the broader CUDA-focused version, you can find it here: A Guide to Building and Scaling Production-Ready CUDA Kernels.</p>
-<p>We will use the GEMM kernel from RadeonFlow_Kernels as an example. If you want to go straight to the guide, click here.</p>
-<p>This section was written by the RadeonFlow GEMM kernel authors to introduce the kernel.Authors: ColorsWind, Zesen Liu, and Andy</p>
-<p>The RadeonFlow GEMM kernel is a high-performance, FP8 block-wise matrix multiplication implementation optimized for the AMD Instinct MI300X GPU. GEMM (General Matrix Multiplication) is the core building block behind most deep learning workloads: given two matrices A and B, you compute their product C = A × B. Here it’s implemented in FP8, a low-precision floating-point format that trades a bit of accuracy for much higher throughput and lower memory bandwidth. This kernel was developed for the AMD Developer Challenge 2025, it was awarded the 🏆 Grand Prize in June 2025, recognizing its excellence in performance and innovation on AMD hardware.</p>
-<p>The kernel operates on quantized inputs using the e4m3fnuz floating-point format and applies per-block scaling to preserve accuracy during low-precision computation. The e4m3fnuz format is an FP8 variant with 4 exponent bits and 3 mantissa bits, designed to be efficient for neural network workloads. Because FP8 has a much smaller dynamic range than FP16/FP32, we apply per-block scaling factors (a_scale and b_scale) so that each block of values is rescaled into a numerically “comfortable” range before and after computation, which helps preserve accuracy despite the low precision. It takes the following arguments:</p>
-<p>where a and b are the input matrices, a_scale and b_scale are the scaling factors for a and b respectively,
-and c is the output matrix:</p>
-<p>The kernel is precompiled for specific matrix shapes and assumes a transposed memory layout (as required by the competition). To support additional shapes or alternative memory layouts, you must modify the kernel launcher.</p>
-<p>So now that we have a high-performance ROCm kernel, the natural question is: how do we integrate it into a real PyTorch workflow and share it with others? That’s exactly what we’ll cover next, using kernels to structure, build, and publish the ROCm kernel.</p>
-<p>This is a fairly technical guide, but you can still follow it step by step without understanding every detail and everything will work fine. If you’re curious, you can always come back later to dig deeper into the concepts.</p>
-<p>The Hugging Face Kernel Builder expects your files to be organized like this:</p>
-<p>Sometimes your project might depend on other files, like tests or helper scripts, and you can add them without any issues.
-In our case, our project will be structured like this:</p>
-<p>If you look at the original files of the gemm kernel in the RadeonFlow Kernels, they are HIP source files with .cpp  extensions. As a first step, you need to change these extensions to either .h or .hip depending on their content and usage:</p>
-<p>In our example, gemm_kernel.h, gemm_kernel_legacy.h, and transpose_kernel.h are header files, while gemm_launcher.hip is a HIP implementation file. This naming convention helps the kernel-builder (kernels/builder) correctly identify and compile each file type.</p>
-<p>This file orchestrates the entire build. It tells the kernel-builder what to compile and how everything connects.</p>
-<p>This section contains general project configuration settings.</p>
-<p>This section describes the Torch extension configuration. It defines the Python bindings that will expose your kernel to PyTorch.</p>
-<p>Specification of a kernel named "gemm". You can define multiple kernel sections in the same build.toml file if you have multiple kernels.</p>
-<p>To ensure anyone can build your kernel on any machine, we use a flake.nix file. It locks the exact version of the kernel-builder and its dependencies. (You can just copy and paste this example and change the description)</p>
-<p>Now for the GPU code. Inside gemm/gemm_launcher.hip, we define how the GEMM kernel is launched.
-Depending on the configuration, we either call the new optimized gemm/gemm_kernel or fall back to the legacy implementation (gemm/gemm_kernel_legacy).</p>
-<p>This step is key. We’re not just making the function available in Python; we’re turning it into a native PyTorch operator. That means it becomes a first-class part of PyTorch itself, accessible through torch.ops.</p>
-<p>The file torch-ext/torch_binding.cpp handles this registration.</p>
-<p>The torch_binding.h file contains function declarations. For instance, the gemm kernel has the following declaration in torch_binding.h:</p>
-<p>In torch-ext/gemm/ we need an __init__.py file to make this directory a Python package and to expose our custom operator in a user-friendly way.</p>
-<p>The kernel builder uses Nix for building kernels. You can build or run the kernels directly if you have Nix installed on your system. We recommend installing Nix in the following way:</p>
-<p>This generates a flake.lock file that pins the kernel builder and all its transitive dependencies. Commit both flake.nix and flake.lock to your repository to ensure that kernel builds are reproducible.</p>
-<p>Since the kernel builder depends on many packages (e.g., every supported PyTorch version), it is recommended to enable the Hugging Face cache to avoid expensive rebuilds:</p>
-<p>Or run it once without installing cachix permanently:</p>
-<p>A kernel that has a flake.nix file can be built with the build-and-copy command:</p>
-<p>The compiled kernel will then be in the local build/ directory.</p>
-<p>The kernel-builder provides shells for developing kernels. In such a shell, all required dependencies are available, as well as build2cmake for generating project files:</p>
-<p>If you want to test the kernel as a Python package, you can do so. nix develop will automatically create a virtual environment in .venv and activate it:</p>
-<p>Development shells are available for every build configuration. For instance, you can get a Torch 2.7 development shell with ROCm 6.3 using:</p>
-<p>Now that we built our kernel, we can test it and upload it to the Hub.</p>
-<p>One small thing we'll want to do before we share is clean up all of the development artifacts that were generated during the build process to avoid uploading unnecessary files.</p>
-<p>To build the kernel for all supported versions of PyTorch and ROCm, the kernel-builder tool automates the process:</p>
-<p>Note:This process may take a while, as it will build the kernel for all supported versions of PyTorch and ROCm.The output will be in the result directory.</p>
-<p>The last step is to move the results into the expected build directory (this is where the kernels library will look for them).</p>
-<p>Pushing the build artifacts to the Hub will make it straightforward for other developers to use your kernel.  We can use the kernels upload command for this:</p>
-<p>Make sure you are logged in to the Hugging Face Hub using huggingface-cli login.</p>
-<p>Now, in your project directory, connect your project to the new repository and push your code:</p>
-<p>Fantastic! Your kernel is now on the Hugging Face Hub, ready for others to use and fully compliant with the kernels library.</p>
-<p>With the kernels library, you don't "install" the kernel in the traditional sense. You load it directly from its Hub repository, which automatically registers the new operator.</p>
-<p>That's it! Your ROCm kernel is now ready to use from the Hugging Face Hub.</p>
-<p>Building and sharing ROCm kernels with the Hugging Face is now easier than ever. With a clean, reproducible workflow powered by Nix and seamless integration into PyTorch, developers can focus on optimizing performance rather than setup. Once built, your custom kernel can be shared on the Hugging Face Hub; making it instantly accessible to the community and usable across projects with just a few lines of code. 🚀</p>
-<p>really cool stuff. Can i build kernels for Apple Silicon as well?</p>
-<p>Yes, absolutely!You can find the documentation for Apple Silicon (Metal) here: https://github.com/huggingface/kernel-builder/blob/main/docs/metal.mdAnd here’s an example of a kernel built for Metal: https://huggingface.co/kernels-community/gpt-oss-metal-kernels</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>A support email lands: "Order NW-47790, the tent poles snapped on the first night, I paid $389 and I want every cent back today or I'm disputing the charge."</p>
+<p>To act on that, your code needs answers to a handful of small questions. Is it a refund request? How urgent is it? Should a person handle it? What's the order number? How much money is involved? It's the same problem whether you're sorting a support inbox or building a custom chatbot that has to work out what each customer is asking for.</p>
+<p>The usual move is to send the whole email to a chat model with a prompt that ends "respond in JSON", then validate whatever comes back. It works, but you're paying a model built to write essays to fill in five fields, and you're parsing its guess at a schema.</p>
+<p>System One models are built for exactly this kind of job. In this tutorial we'll build a small support inbox pipeline with two of them: Jev from TypeSafe makes the decisions, and Clairic from Cloudflare reads the values. Plain TypeScript then turns their answers into an action. No prompt engineering for output formats, and no JSON repair.</p>
+<p>The name comes from Daniel Kahneman's Thinking, Fast and Slow. System 1 is the fast, intuitive kind of thinking you use to read a face or a sign. System 2 is the slow, deliberate kind you use for long division.</p>
+<p>A System One model is an AI model that understands natural language but doesn't generate text. You give it some input (the state) and a set of typed questions, and it gives back typed answers with probabilities. There's no free text to parse, because the model can only answer in the shape you asked for.</p>
+<p>That's different from asking a chat model for structured output. SitePoint's guide to LLM structured output with JSON Schema shows how to constrain a chat model and validate its JSON with Zod. With a System One model, the type is the interface: a yes/no question comes back as a probability, a pick-one question comes back as one of your options, and a date comes back as a date.</p>
+<p>Jev and Clairic are both System One models, but they do different jobs, and that's what makes them a good pair.</p>
+<p>Jev can't hand you an order number, and Clairic has no way to pick from a list of options or answer yes or no. Give each one the job it's built for.</p>
+<p>If you've read SitePoint's Jev and LangChain tutorial, you've seen Jev deciding which model handles an agent's request. Here we'll use it on the incoming text itself.</p>
+<p>Five made-up emails for a made-up outdoor gear store go in. For each one:</p>
+<p>Both models read the same email, so they run at the same time.</p>
+<p>Put the three values in your environment:</p>
+<p>No SDKs are needed. Both models are a single fetch call.</p>
+<p>Here's the test inbox. Each email is there to test a different path through the rules:</p>
+<p>Jev takes a state (the email) and a set of named questions. We'll ask three, one of each type:</p>
+<p>All three questions go in one request. Jev reads the email once and answers every question in parallel, so adding a question costs very little:</p>
+<p>We pin jev-1.14.0 rather than the jev-latest alias. Your thresholds get tuned against one version's probabilities, so you want to choose when that version changes.</p>
+<p>For the angry tent email, Jev came back with:</p>
+<p>(Trimmed: the real response also includes the probability of every option and level.)</p>
+<p>Clairic takes the same state, plus a set of typed fields instead of questions:</p>
+<p>reference_date anchors relative dates like "the 14th" or "last Monday". In production, pass the date the email arrived.</p>
+<p>Each answer comes back with three things worth using:</p>
+<p>For the "where is it?" email, Clairic read the deadline like this:</p>
+<p>"The 14th" became a full date, worked out from the reference date. Text fields like order_number also come back as character spans of the original email. The value is copied from the input, not generated, so it can't invent an order number that isn't there.</p>
+<p>The two models don't depend on each other, so send both requests together:</p>
+<p>The time for each email is whichever model is slower, not the two added together.</p>
+<p>This is the part a chat model usually ends up doing badly: the business rules. Here they're ordinary code you can read, test, and change without touching a prompt:</p>
+<p>Notice that the model's confidence sits right next to the business rule. A $18.95 refund is only automatic if Clairic is sure about both the order number and the amount. Raising the refund limit or the confidence bar is a one-line change, and you don't need to call either model again to see what it would do. Save the answers and replay them.</p>
+<p>Every email went where it should. The whole run used 2,703 input tokens on Jev and 2,292 on Clairic, about US$0.0003 in total. At that rate, 10,000 support emails would cost roughly US$0.70.</p>
+<p>The interesting part of the run wasn't the right answers. It was the two wrong ones.</p>
+<p>"From last Monday." The run used 2 November 2026 as the reference date, which is a Monday. "Last Monday" means 26 October, but Clairic answered 2026-11-02, the reference date itself. Its confidence on that answer was 0.54, compared with 0.99 or higher on almost every other value in the run.</p>
+<p>"A couple of weeks ago." Clairic turned this into 2026-10-19, which is a fair reading but still a guess. Its confidence was 0.43.</p>
+<p>Neither date changed any action, because the rules only trust values at 0.9 or above. That's the habit to build: a value under your bar counts as unknown. A chat model returning JSON would have handed you "2026-11-02" with the same certainty as everything else.</p>
+<p>One more catch: Clairic copied the order number as #NW-48213, hash included, because that's how the customer wrote it. Text values are spans of the input, so normalising them is your code's job. That's one line of code.</p>
+<p>System One models handle the reading and the routing. They don't hold a conversation. Once an email is routed, something still has to write the reply, ask a follow-up question, or explain a returns policy in the customer's own words. That's where a chat model earns its cost.</p>
+<p>The split that works is: System One models decide, code applies the rules, and a chat model only gets the cases where words matter.</p>
+<p>We built a support inbox triage pipeline from two small models and some ordinary code:</p>
+<p>Each email took about half a second and cost less than a hundredth of a cent. Most importantly, the two answers that would have been wrong came back flagged as unsure.</p>
+<p>The full code is about 160 lines with no dependencies. Try adding a fourth Jev question (does the customer mention a photo?) or an estimate field in Clairic (how many days until the trip?), and see how little the rest of the pipeline has to change.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/build-rocm-kernels" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/how-to-build-a-typed-ai-pipeline-with-jev-and-clairic/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
