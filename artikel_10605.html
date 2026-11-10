@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accelerating Qwen3-8B Agent on Intel® Core™ Ultra with Depth-Pruned Draft Models</title>
+    <title>Training and Finetuning Sparse Embedding Models with Sentence Transformers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10605.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,104 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Accelerating Qwen3-8B Agent on Intel® Core™ Ultra with Depth-Pruned Draft Models</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>Training and Finetuning Sparse Embedding Models with Sentence Transformers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Sparse Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Sparse Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Sentence Transformers is a Python library for using and training dense embedding, reranker (cross encoder), and sparse embedding models for a wide range of applications, such as retrieval augmented generation, semantic search, semantic textual similarity, paraphrase mining, and more. In this blogpost, I'll show you how to use it to finetune a sparse encoder/embedding model and explain why you might want to do so. This results in sparse-encoder/example-inference-free-splade-distilbert-base-uncased-nq, a cheap model that works especially well in hybrid search or retrieve and rerank scenarios.</p>
+<p>Finetuning sparse embedding models involves several components: the model, datasets, loss functions, training arguments, evaluators, and the trainer class. I'll have a look at each of these components, accompanied by practical examples of how they can be used for finetuning strong sparse embedding models.</p>
+<p>In addition to training your own models, you can choose from a wide range of pretrained sparse encoders available on the Hugging Face Hub. To help navigate this growing space, we’ve curated a SPLADE Models collection highlighting some of the most relevant models.We list the most prominent ones along with their benchmark results in Pretrained Models in the documentation.</p>
+<p>The broader term "embedding models" refer to models that convert some input, usually text, into a vector representation (embedding) that captures the semantic meaning of the input. Unlike with the raw inputs, you can perform mathematical operations on these embeddings, resulting in similarity scores that can be used for various tasks, such as search, clustering, or classification.</p>
+<p>With dense embedding models, i.e. the common variety, the embeddings are typically low-dimensional vectors (e.g., 384, 768, or 1024 dimensions) where most values are non-zero. Sparse embedding models, on the other hand, produce high-dimensional vectors (e.g., 30,000+ dimensions) where most values are zero. Usually, each active dimension (i.e. the dimension with a non-zero value) in a sparse embedding corresponds to a specific token in the model's vocabulary, allowing for interpretability.</p>
+<p>Let's have a look at naver/splade-v3, a state-of-the-art sparse embedding model, as an example:</p>
+<p>In this example, the embeddings are 30,522-dimensional vectors, where each dimension corresponds to a token in the model's vocabulary. The decode method returned the top 10 tokens with the highest values in the embedding, allowing us to interpret which tokens contribute most to the embedding.</p>
+<p>We can even determine the intersection or overlap between embeddings, very useful for determining why two texts are deemed similar or dissimilar:</p>
+<p>A key component of neural sparse embedding models is query/document expansion. Unlike traditional lexical methods like BM25, which only match exact tokens, neural sparse models generally automatically expand the original text with semantically related terms:</p>
+<p>For example, in the code output above, the sentence "The weather is lovely today" is expanded to include terms like "beautiful", "cool", "pretty", and "nice" which weren't in the original text. Similarly, "It's so sunny outside!" is expanded to include "weather", "summer", and "sun".</p>
+<p>This expansion allows neural sparse models to match semantically related content or synonyms even without exact token matches, handle misspellings, and overcome vocabulary mismatch problems. This is why neural sparse models like SPLADE often outperform traditional lexical search methods while maintaining the efficiency benefits of sparse representations.</p>
+<p>However, expansion has its risks. For example, query expansion for "What is the weather on Tuesday?" will likely also expand to "monday", "wednesday", etc., which may not be desired.</p>
+<p>In short, neural sparse embedding models fall in a valuable niche between traditional lexical methods like BM25 and dense embedding models like Sentence Transformers. They have the following advantages:</p>
+<p>Throughout this blogpost, I'll use "sparse embedding model" and "sparse encoder model" interchangeably.</p>
+<p>The majority of (neural) sparse embedding models employ the aforementioned query/document expansion so that you can match texts with nearly identical meaning, even if they don't share any words. In short, the model has to recognize synonyms so those tokens can be placed in the final embedding.</p>
+<p>Most out-of-the-box sparse embedding models will easily recognize that "supermarket", "food", and "market" are useful expansions of a text containing "grocery", but for example:</p>
+<p>whereas we wish for it to expand to "headache", the common word for "cephalalgia". This example expands to many domains, e.g. not recognizing that "Java" is a programming language, that "Audi" makes cars, or that "NVIDIA" is a company that makes graphics cards.</p>
+<p>Through finetuning, the model can learn to focus exclusively on the domain and/or language that matters to you.</p>
+<p>Training Sentence Transformer models involves the following components:</p>
+<p>Now, let's dive into each of these components in more detail.</p>
+<p>Sparse Encoder models consist of a sequence of Modules, Sparse Encoder specific Modules or Custom Modules, allowing for a lot of flexibility. If you want to further finetune a Sparse Encoder model (e.g. it has a modules.json file), then you don't have to worry about which modules are used:</p>
+<p>But if instead you want to train from another checkpoint, or from scratch, then these are the most common architectures you can use:</p>
+<p>Splade models use the MLMTransformer followed by a SpladePooling modules. The former loads a pretrained Masked Language Modeling transformer model (e.g. BERT, RoBERTa, DistilBERT, ModernBERT, etc.) and the latter pools the output of the MLMHead to produce a single sparse embedding of the size of the vocabulary.</p>
+<p>This architecture is the default if you provide a fill-mask model architecture to SparseEncoder, so it's easier to use the shortcut:</p>
+<p>Inference-free Splade uses a Router module with different modules for queries and documents. Usually for this type of architecture, the documents part is a traditional Splade architecture (a MLMTransformer followed by a SpladePooling module) and the query part is an SparseStaticEmbedding module, which just returns a pre-computed score for every token in the query.</p>
+<p>This architecture allows for fast query-time processing using the lightweight SparseStaticEmbedding approach, that can be trained and seen as a linear weights, while documents are processed with the full MLM transformer and SpladePooling.</p>
+<p>Inference-free Splade is particularly useful for search applications where query latency is critical, as it shifts the computational complexity to the document indexing phase which can be done offline.</p>
+<p>When training models with the Router module, you must use the router_mapping argument in the SparseEncoderTrainingArguments to map the training dataset columns to the correct route ("query" or "document"). For example, if your dataset(s) have ["question", "answer"] columns, then you can use the following mapping:</p>
+<p>Additionally, it is recommended to use a much higher learning rate for the SparseStaticEmbedding module than for the rest of the model. For this, you should use the learning_rate_mapping argument in the SparseEncoderTrainingArguments to map parameter patterns to their learning rates. For example, if you want to use a learning rate of 1e-3 for the SparseStaticEmbedding module and 2e-5 for the rest of the model, you can do this:</p>
+<p>Contrastive Sparse Representation (CSR) models, introduced in Beyond Matryoshka: Revisiting Sparse Coding for Adaptive Representation, apply a SparseAutoEncoder module on top of a dense Sentence Transformer model, which usually consist of a Transformer followed by a Pooling module. You can initialize one from scratch like so:</p>
+<p>Or if your base model is 1) a dense Sentence Transformer model or 2) a non-MLM Transformer model (those are loaded as Splade models by default), then this shortcut will automatically initialize the CSR model for you:</p>
+<p>Unlike (Inference-free) Splade models, sparse embeddings by CSR models don't have the same size as the vocabulary of the base model. This means you can't directly interpret which words are activated in your embedding like you can with Splade models, where each dimension corresponds to a specific token in the vocabulary.</p>
+<p>Beyond that, CSR models are most effective on dense encoder models that use high-dimensional representations (e.g. 1024-4096 dimensions).</p>
+<p>If you're unsure which architecture to use, here's a quick guide:</p>
+<p>The SparseEncoderTrainer uses datasets.Dataset or datasets.DatasetDict instances for training and evaluation. You can load data from the Hugging Face Datasets Hub or use local data in various formats such as CSV, JSON, Parquet, Arrow, or SQL.</p>
+<p>Note: Lots of public datasets that work out of the box with Sentence Transformers have been tagged with sentence-transformers on the Hugging Face Hub, so you can easily find them on https://huggingface.co/datasets?other=sentence-transformers. Consider browsing through these to find ready-to-go datasets that might be useful for your tasks, domains, or languages.</p>
+<p>You can use the load_dataset function to load data from datasets in the Hugging Face Hub</p>
+<p>Some datasets, like nthakur/swim-ir-monolingual, have multiple subsets with different data formats. You need to specify the subset name along with the dataset name, e.g. dataset = load_dataset("nthakur/swim-ir-monolingual", "de", split="train").</p>
+<p>You can also use load_dataset for loading local data in certain file formats:</p>
+<p>You can use datasets.Dataset.from_dict if your local data requires pre-processing. This allows you to initialize your dataset with a dictionary of lists:</p>
+<p>Each key in the dictionary becomes a column in the resulting dataset.</p>
+<p>It's crucial to ensure that your dataset format matches your chosen loss function. This involves checking two things:</p>
+<p>For example, if your loss function accepts (anchor, positive, negative) triplets, then your first, second, and third dataset columns correspond with anchor, positive, and negative, respectively. This means that your first and second column must contain texts that should embed closely, and that your first and third column must contain texts that should embed far apart. That is why depending on your loss function, your dataset column order matters.</p>
+<p>Consider a dataset with columns ["text1", "text2", "label"], where the "label" column contains floating point similarity scores. This dataset can be used with SparseCoSENTLoss, SparseAnglELoss, and SparseCosineSimilarityLoss because:</p>
+<p>If the columns in your dataset are not ordered correctly, use Dataset.select_columns to reorder them. Additionally, remove any extraneous columns (e.g., sample_id, metadata, source, type) using Dataset.remove_columns, as they will be treated as inputs otherwise.</p>
+<p>Loss functions measure how well a model performs on a given batch of data and guide the optimization process. The choice of loss function depends on your available data and target task. Refer to the Loss Overview for a comprehensive list of options.</p>
+<p>To train a SparseEncoder, you either need a SpladeLoss or CSRLoss, depending on the architecture. These are wrapper losses that add sparsity regularization on top of a main loss function, which must be provided as a parameter. The only loss that can be used independently is SparseMSELoss, as it performs embedding-level distillation, ensuring sparsity by directly copying the teacher's sparse embedding.</p>
+<p>Most loss functions can be initialized with just the SparseEncoder that you're training, alongside some optional parameters, e.g.:</p>
+<p>The SparseEncoderTrainingArguments class allows you to specify parameters that influence training performance and tracking/debugging. While optional, experimenting with these arguments can help improve training efficiency and provide insights into the training process.</p>
+<p>In the Sentence Transformers documentation, I've outlined some of the most useful training arguments. I would recommend reading it in Training Overview > Training Arguments.</p>
+<p>Here's an example of how to initialize SparseEncoderTrainingArguments:</p>
+<p>Note that eval_strategy was introduced in transformers version 4.41.0. Prior versions should use evaluation_strategy instead.</p>
+<p>You can provide the SparseEncoderTrainer with an eval_dataset to get the evaluation loss during training, but it may be useful to get more concrete metrics during training, too. For this, you can use evaluators to assess the model's performance with useful metrics before, during, or after training. You can use both an eval_dataset and an evaluator, one or the other, or neither. They evaluate based on the eval_strategy and eval_steps Training Arguments.</p>
+<p>Here are the implemented Evaluators that come with Sentence Transformers for Sparse Encoder models:</p>
+<p>Additionally, SequentialEvaluator should be used to combine multiple evaluators into one Evaluator that can be passed to the SparseEncoderTrainer.</p>
+<p>Sometimes you don't have the required evaluation data to prepare one of these evaluators on your own, but you still want to track how well the model performs on some common benchmarks. In that case, you can use these evaluators with data from Hugging Face.</p>
+<p>When evaluating frequently during training with a small eval_steps, consider using a tiny eval_dataset to minimize evaluation overhead. If you're concerned about the evaluation set size, a 90-1-9 train-eval-test split can provide a balance, reserving a reasonably sized test set for final evaluations. After training, you can assess your model's performance using trainer.evaluate(test_dataset) for test loss or initialize a testing evaluator with test_evaluator(model) for detailed test metrics.</p>
+<p>If you evaluate after training, but before saving the model, your automatically generated model card will still include the test results.</p>
+<p>When using Distributed Training, the evaluator only runs on the first device, unlike the training and evaluation datasets, which are shared across all devices.</p>
+<p>The SparseEncoderTrainer is where all previous components come together. We only have to specify the trainer with the model, training arguments (optional), training dataset, evaluation dataset (optional), loss function, evaluator (optional) and we can start training. Let’s have a look at a script where all of these components come together:</p>
+<p>In this example I'm finetuning from distilbert/distilbert-base-uncased, a base model that is not yet a Sparse Encoder model. This requires more training data than finetuning an existing Sparse Encoder model, like naver/splade-cocondenser-ensembledistil.</p>
+<p>After running this script, the sparse-encoder/example-inference-free-splade-distilbert-base-uncased-nq model was uploaded for me. The model scores 0.5241 NDCG@10 on NanoMSMARCO, 0.3299 NDCG@10 on NanoNFCorpus and 0.5357 NDCG@10 NanoNQ, which is a good result for an inference-free distilbert-based model trained on just 100k pairs from the Natural Questions dataset.</p>
+<p>The model uses an average of 184 active dimensions in the sparse embeddings for the documents, compared to 7.7 active dimensions for the queries (i.e. the average number of tokens in the query). This corresponds to a sparsity of 99.39% and 99.97%, respectively.</p>
+<p>All of this information is stored in the automatically generated model card, including the base model, language, license, evaluation results, training & evaluation dataset info, hyperparameters, training logs, and more. Without any effort, your uploaded models should contain all the information that your potential users would need to determine whether your model is suitable for them.</p>
+<p>The Sentence Transformers trainer supports various transformers.TrainerCallback subclasses, including:</p>
+<p>These are automatically used without you having to specify anything, as long as the required dependency is installed.</p>
+<p>Refer to the Transformers Callbacks documentation for more information on these callbacks and how to create your own.</p>
+<p>Top-performing models are often trained using multiple datasets simultaneously. The SparseEncoderTrainer simplifies this process by allowing you to train with multiple datasets without converting them to the same format. You can even apply different loss functions to each dataset. Here are the steps for multi-dataset training:</p>
+<p>Each training/evaluation batch will contain samples from only one of the datasets. The order in which batches are sampled from the multiple datasets is determined by the MultiDatasetBatchSamplers enum, which can be passed to the SparseEncoderTrainingArguments via multi_dataset_batch_sampler. The valid options are:</p>
+<p>Let's evaluate our newly trained inference-free SPLADE model using the NanoMSMARCO dataset, and see how it compares to dense retrieval approaches. We'll also explore hybrid retrieval methods that combine sparse and dense vectors, as well as reranking to further improve search quality.</p>
+<p>After running a slightly modified version of our hybrid_search.py script, we get the following results for the NanoMSMARCO dataset, using these models:</p>
+<p>The Sparse and Dense rankings can be combined using Reciprocal Rank Fusion (RRF), which is a simple way to combine the results of multiple rankings. If a Reranker is applied, it will rerank the results of the prior retrieval step.</p>
+<p>The results indicate that for this dataset, combining Dense and Sparse rankings is very performant, resulting in 12.3% and 18.7% increases over the Dense and Sparse baselines, respectively. In short, combining Sparse and Dense retrieval methods is a very effective way to improve search performance.</p>
+<p>Furthermore, applying a reranker on any of the rankings improved the performance to approximately 66.3 NDCG@10, showing that either Sparse, Dense, or Hybrid (Dense + Sparse) found the relevant documents in their top 100, which the reranker then ranked to the top 10. So, replacing a Dense -> Reranker pipeline with a Sparse -> Reranker pipeline might improve both latency and costs:</p>
+<p>Sparse Encoder models have a few quirks that you should be aware of when training them:</p>
+<p>After training sparse embedding models, the next crucial step is deploying them effectively in production environments. Vector databases provide the essential infrastructure for storing, indexing, and retrieving sparse embeddings at scale. Popular options include Qdrant, OpenSearch, Elasticsearch, and Seismic, among others.</p>
+<p>For comprehensive examples covering vector databases mentioned above, refer to the semantic search with vector database documentation or below for the Qdrant example.</p>
+<p>Qdrant offers excellent support for sparse vectors with efficient storage and fast retrieval capabilities. Below is a comprehensive implementation example:</p>
+<p>This example demonstrates how to set up Qdrant for sparse vector search by showing how to efficiently encode and index documents with sparse encoders, formulating search queries with sparse vectors, and providing an interactive query interface. See below:</p>
+<p>The following pages contain training examples with explanations as well as links to code. We recommend that you browse through these to familiarize yourself with the training loop:</p>
+<p>Additionally, the following pages may be useful to learn more about Sentence Transformers:</p>
+<p>And lastly, here are some advanced pages that might interest you:</p>
+<p>For training other Sentence Transformers model types, or techniques that complement sparse retrieval:</p>
+<p>Great work . Best part is interpretability and speed ..  @tomaarsen   -  I am planning to fine tune a model for text to code retrieval with below setup .. please guide if this setting seems fine for start or anything I can tune to do better .. Idea is to do decent on text to code and eval on (https://github.com/CoIR-team/coir)Training dataset - claudios/code_search_net  .. filter on Python code .. query is doc string of code and passage  is code ...                   loss - SparseMultipleNegativesRankingLoss.. not able to think of  decent dev evaluation .. shall I use SparseTripletEvaluator .. also , just query and positive passage is fine because I believe negative options will be all other data in that batch or we have to explicitly prepare data ( mine negative data ) .. please guide ..</p>
+<p>Hello!I think that's a fine setup. I would personally recommend COIR via MTEB (https://github.com/CoIR-team/coir#coconut-mteb-usage), the rest sounds solid. Mine hard negatives is obviously possible, but personally I would recommend starting with a simple setup as a baseline before trying to make it too complex/time-consuming.</p>
+<p>Here's a python package that you can use to index, query, and rank your documents with SPLADE models from sentence-transformers.</p>
+<p>splade-index: https://github.com/rasyosef/splade-index</p>
+<p>Here is a simple example of how to use splade-index:</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/intel-qwen3-agent" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/train-sparse-encoder" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

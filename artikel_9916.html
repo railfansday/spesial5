@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A Critique of GPUI</title>
+    <title>NeoMME: an efficient Multimodal-native and Multilingual Encoder</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9916.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,306 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>A Critique of GPUI</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>NeoMME: an efficient Multimodal-native and Multilingual Encoder</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/6264f9655f6f2e14d6ac981c/GJ6FUbgFpq1x8RNOqzmz-.webp" alt="NeoMME: an efficient Multimodal-native and Multilingual Encoder" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6264f9655f6f2e14d6ac981c/GJ6FUbgFpq1x8RNOqzmz-.webp" alt="NeoMME: an efficient Multimodal-native and Multilingual Encoder" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Recently, there has been a trend of more desktop GUI apps being built using
-native rust GUI frameworks. And there are now even well known electron apps
-getting official rewrites: Discord announced their app is being rewritten using
-GPUI.1 Meanwhile, a lot of the LLM-clones being published seem to choose
-egui. In this post, I want to explain why I am not sure those frameworks are a
-good foundation to build on.</p>
-<p>To put it plainly: I believe both GPUI’s and egui’s state models are dead
-ends for complex desktop applications. Both are impressive projects, and they
-have their place. Zed genuinely feels fast and nice to use, and I use egui
-myself for debug interfaces in bevy games. But I don’t think those frameworks
-should be the default choice for native desktop apps.</p>
-<p>Disclosure: I ported GPUI’s current Linux renderer to wgpu2, I built the
-benchmark harness used below, and I work on
-zgui, a signal-based Rust framework that
-appears in the charts.</p>
-<p>Raph Levien quotes Ron Minsky: “hidden inside of every UI framework is some
-kind of incrementalization framework.”3 A UI is a function of state, and
-state changes a little at a time. But if that function becomes expensive, you
-might want to start looking for ways to derive a faster way to update pixels on
-the screen from an incremental state change. So every framework has to answer
-one question: when one value changes, what runs?</p>
-<p>I understand why people like the first three. No state to synchronize, one
-place where state lives, a render function that is plain Rust, no macros or
-separate compiler. I’m gonna make the argument that these approaches don’t
-scale, and fixing the underlying problem defeats what makes these models
-simple and easy to reason about.</p>
-<p>GPUI calls itself “a hybrid immediate and retained mode” framework.4 It
-retains state in entities. The UI is defined in render functions, changing
-state must trigger a rerun.</p>
-<p>It is ordinary Rust. You can use if, for and local variables, and there
-aren’t any weird wrappers. State changes require an explicit notification:</p>
-<p>notify carries the entity id.5 Since Rust doesn’t have a write barrier on
-&mut, GPUI cannot see which field changed (or whether anything changed at
-all). The Angular team wrote this about zone.js in 2023: it “is only capable of
-notifying us when something might have happened”, and “This approach has not
-scaled well.”6 notify is more precise than a zone, since it names an
-entity, but ultimately it makes the same kind of statement. Below that id, GPUI
-knows nothing, so it re-renders every view that is not behind a valid
-.cached() boundary. And in practice, GPUI often rerender every view, because
-.cached() is rarely used by application authors, and imposes certain
-restrictions on layout semantics.</p>
-<p>GPUI has a reputation of being “fast”. And while constants might be relatively
-low, asymptotically, it is leaving a lot on the table. So I ran a few benchmarks,
-that specifically test how much a sparse state change in a large UI actually costs.</p>
-<p>At 3,000 live rows with a cached view per row, changing one label takes 8.4 ms.
-A hover, a keystroke and writing a value equal to the old one all cost about
-the same, because the cost follows the tree and not the change. It grows by
-about 3 ms per 1,000 live rows. Write the rows as plain elements, as in the
-code above, and the same label takes 92 ms. A hand-written equality guard takes
-the equal write from 7.9 ms to 0.9 µs (demonstrating how much is left for each
-call site to find).</p>
-<p>This doesn’t mean that every GPUI app is slow, but it shows the limit of the
-state model. Especially with more expensive layout, you do hit this wall
-in practice. Zed might feel fast, but the truth is that Zed is a relatively
-simple app, UI wise. The app’s chrome contains a few buttons, in a simple
-layout, a sidebar and a text editor, and the text editor is implemented as a
-custom element, completely bypassing GPUI’s layout and view semantics. By their
-own account, a window “has tens of nodes and a few thousand elements”.7</p>
-<p>The obvious fix is to retain more. Zed has experimental branches for this, and
-Longbridge’s gpui-fast is a fork that keeps every view’s subtree between
-frames.8 9 It works, within a limit: the smallest thing either one can
-reuse is a view. So to update one label without rebuilding the sidebar, the
-label has to be a view:</p>
-<p>Its owner then has to create it and keep the handle:</p>
-<p>That is an entity, a Render impl, a subscription, a stored copy of the value,
-a hand-written guard and an owner, all to express that one label depends on one
-count. In a signal framework it is this:</p>
-<p>The rest of GPUI’s API works against this too. Render takes no props, so
-parents push values into child entities during their own render. RenderOnce
-components, which is what buttons and rows are, draw inside their parent’s view
-and are no boundary at all. List rows are closures, so a row view means
-managing a keyed map of entities by hand.</p>
-<p>And it only helps where state happens to line up with views. I reran gpui-fast’s
-own 60-panel benchmark, drew each frame once, and then moved the state:</p>
-<p>With state owned by each panel, one change saves 83%. With a shared model,
-retention makes the same frame 11% slower. The window and the edit are
-identical. In real Zed, the Zed team measured retention “1–3% slower than off
-on ordinary workloads”, found that “Most of the real-Zed win” came from other
-work, and warned that “microbenchmark wins didn’t predict real-Zed
-results”.8 gpui-fast is real progress and costs little to adopt: it takes
-the 3,000-row label from 8.4 to 3.4 ms. But that frame renders three views and
-lays out one element, and still spends 3.4 ms, because the frame is still a
-walk over the whole tree.</p>
-<p>This is the part I find hardest to get past. People choose GPUI because render
-is a plain function of state. A UI where each projection is a separately owned
-entity with a subscription and a guard is no longer that. It is a signal graph
-built by hand from much heavier parts, where a missed edge is silent. Zed’s own
-design note says “Missing notifications are application bugs”.12 Keep the
-pleasant API and you get view-sized updates. Take the precision and you lose the
-pleasant API. A signals crate on top would not change the trade, because its
-smallest sink is still a view. Reaching one node with no render running needs
-writes the framework can see and nodes that outlive a frame, and that means a
-new state model and a new element contract.</p>
-<p>At the size it is usually shown, the Elm architecture is a deceptively simple
-UI model: one state value, one update, one view, and every change has a
-name. While large applications do use it successully,13 14 I do want to
-make the point that this clarity belongs to the small case, and in a complex
-application signals and stores are arguably easier to reason about.</p>
-<p>Take the same unread count. It has to be right after every message, so either
-view recomputes it on every update or update maintains it:</p>
-<p>The definition of unread is now nowhere in particular. It is spread across
-every arm that touches a thread, and each new message has to remember it. The
-compiler checks that the match is exhaustive, but it does not check the
-arithmetic. The memo above has one definition, and a new writer cannot forget
-it.</p>
-<p>The same thing happens with location. Where does a hover state or a half-typed
-draft live? Single source of truth says in the model, with a message type
-routed down and an outcome routed back up. Elm’s guide: “Actively trying to
-make components is a recipe for disaster in Elm.”15. Iced recommends
-returning an Action to the parent.16 Iced’s maintainer says components in
-this architecture always end “with pain”, and also makes the best case for the
-discipline: avoiding them “forces you to think hard about your data
-model”.17 Okay, I guess that’s a fair argument. But cosmic-files has 136
-top-level message variants and 73 more for a tab, plus a Tab::update that
-returns commands for the parent to interpret.18 Everything in that is
-explicit, and none of it is simple.</p>
-<p>The architecture also has the same issue GPUI has. The update implementation
-tells you what a message writes, it cannot tell you what read the field.
-Anything inside the view might. Elm’s architecture doesn’t answer “what
-changed?”, it answers “what happened?”. Session export might be useful in some
-scenarios, but it is not useful for scalable performance characteristics.19</p>
-<p>This is what I read in the web’s history. Redux is the best-known relative of
-this design, and its docs read like a field report. Treat a portion of your
-store “as if it were a database”.20 Selectors “will be re-run after every
-dispatched action”.21 The core package is “obsolete”, replaced by a toolkit
-made to remove boilerplate.22 Outside React, the mainstream has moved to
-tracked reads. Angular, Vue, Svelte and Solid build on signals or something
-equivalent, Preact offers them, and Svelte’s team put it this way: “we’ve come
-to the realisation that Knockout was right all along.”23 Inside React, Jotai
-and MobX bring tracking in as libraries, and Legend-State even offers a “render
-once” style.24 Most applications are still on React, and React’s team
-disagrees, which I come back to below. So the convergence is on the state model,
-outside one large exception.</p>
-<p>Performance follows the same line. Since Iced rebuilds all of view after
-every batch of messages, one label at 3,000 rows builds 39,023 widgets and
-takes 7.3 ms. Lazy on every row only gets that to 5.7 ms, because view
-still has to visit each row to hash its key. The official lazy example keys
-on a version: u8 that four update arms bump by hand.25 That is a dirty
-flag with a nicer name. In fairness, cosmic-files and Halloy use no lazy at
-all, and on a virtualized list Iced is one of the fastest frameworks I
-measured, at 0.19 ms. A bounded screen rebuilds cheaply. But asymptotic
-complexity is clear. And similar to GPUI, the API semantics simply can’t
-express the necessary information.</p>
-<p>There is actually precedence for this: Vizia shows what happens when you add
-precision to this model. It moved from lenses to signals in March 2026 and kept
-its Model and event dispatch.26 This is its counter, shortened:27</p>
-<p>The label reads the signal directly, and the same closure that builds the
-button created it. The enum, the dispatch and the handler exist to carry one
-call to update. Vizia was never strict Elm, since its views are built once,
-and signals were a sensible move: it got per-field writes. But look at what
-remains of Elm’s reasons. State is a graph of mutable cells, Model is a bag
-of handles, and event is a &mut self side effect. You now have two systems
-for saying that something changed. So my objection to adding signals to the Elm
-architecture really is the same as with GPUI: they work, and they remove what
-you came for.</p>
-<p>egui’s pitch is the best in the field: “You don’t have to worry about app state
-and GUI state being out-of-sync”.28 For a tool, this is hard to beat:</p>
-<p>The price is that a frame costs the size of the UI, independent of what
-changed. At 3,000 rows every small edit takes about 32 ms, or about 19 ms with
-accessibility off. egui’s author is candid about the trade: immediate mode is
-“easier to use, but less powerful”.28</p>
-<p>As the application grows, the original attraction goes. The layout paradox is “a
-fundamental shortcoming”.28 Long lists need show_rows, which takes one
-fixed row height. Rerun, the largest egui application I know of, clamps queries
-by “inspecting egui state from the previous frame”.29 Anything expensive goes
-behind a cache keyed on your data. A cache that has to agree with your data is
-the synchronization problem immediate mode set out to remove, now in application
-code, one frame late.</p>
-<p>The harness can show this directly, because some frameworks can be wired
-coarsely and finely on the same engine:</p>
-<p>I benchmarked some of the engines in two ways, once in the most fine grained
-way they can be used, and once in a coarser way. The results show how much there
-is to gain with fine-grained reactivity.</p>
-<p>Two things stand out. Iced’s factor is small because the view function still
-runs. And Floem’s coarse case is worth a look: every cell reads one global
-revision signal, which is notify in signal clothing. It is the slowest result
-on the chart. So signals do not rescue coarse state. The React team found the
-same thing from the other side: on a benchmark with “one giant input”, a
-signals-style runtime disappointed, and Joe Savona concluded the data model “is
-just as important, maybe more so” than the algorithm.30 The state has to be
-shaped like the reads. That is why I call this a state model problem. A good
-API should make it easy to align the data model with its UI projection.</p>
-<p>Suppose you accept all of that. You want the framework to track reads, and you
-want state shaped to match. What is the simplest API?</p>
-<p>That is the whole thing. The body runs once. The closures you hand to the
-framework run again when something they read changes. A local variable is a
-local variable. There are no hook rules, no dependency arrays, no stale
-closures and no PartialEq on props. Nothing reconstructs a row’s identity,
-because the row is still there.</p>
-<p>Compare signals with re-running components, which is Freya’s model. It works
-well: one keystroke at 3,000 rows costs 1.2 ms. But look at a counter:31</p>
-<p>use_state exists because that line runs again. You now hold both models: read
-tracking decides which scope re-runs, and then re-render semantics apply inside
-it, with hooks, prop equality and a diff. Finer updates need smaller components,
-which is GPUI’s problem at a much lower price. What the re-running body buys is
-ordinary control flow, and that is the serious objection.</p>
-<p>Dan Abramov makes a compelling argument.32 Run-once puts your rendering
-logic in closures, so top-level control flow stops working, and you group code
-around values and not around logic. “The beauty of React is that making things
-‘computed’ is an optimization, not a requirement.” He is right about it. This
-compiles, but the first line never updates:</p>
-<p>A reactive if has to become a dyn_container, and a for a dyn_stack.
-Solid 2.0 had to add dev warnings for top-level reads.33</p>
-<p>But the same comment contains the reason I land the other way. He says Solid’s
-regrouping is “Similar to how you have to restructure your code around the
-values when you optimize it with useMemo.” Exactly. If your application never
-needs that, React’s model may be simpler. If it does, you pay for the
-regrouping either way, and the only choice is when: from the start, or later
-under a profiler. Ryan Carniato’s reply is the one I agree with: “In Solid you
-always write as if the data is derived so you don’t refactor to optimize.”32
-Once you know you want this precision, run-once is the API that stops
-pretending otherwise. The failure modes also favour it. A forgotten hole goes
-stale on the first update, in the place you wrote it. A forgotten notify
-depends on what else happened to redraw.</p>
-<p>To be perfectly honest, the ecosystem’s wider convergence is on read tracking
-in general, and not on run-once specifically. Angular considered per-binding
-updates and chose per-view, in writing, and it lands within about 1 ms of Solid
-on a partial update.6 34 Apple and Google, who control their languages,
-kept re-running bodies with @Observable and Compose.35 36 A hole is
-itself a re-run scope, so what differs is how big the default scope is. Two things
-I want to note on this though:</p>
-<p>View-level rerun and fine-grained signals can have the same performance
-ceiling. But signals encourage fine-grained state projections and memoization
-from the beginning, for view-level rerun its an explicit choice that often
-leads to more boilerplate.</p>
-<p>Fine-grained reactivity does not make an app fast on its own.</p>
-<p>Floem’s reactivity does exactly what it promises. Changing a label runs 5
-effects and spends 0.01 ms in reactive work, then about 14 ms in layout, because
-Taffy does not know that one leaf moved. (Floem also has a known bug where that
-edit never repaints, so treat this as a floor.) Vizia runs 4 bindings, then
-walks all 120,091 entities, for 46 ms. Slint writes an equal value in 4 µs, and
-takes 172 ms for a label, in a pass that walks about 30,000 items. Freya
-produces 5 mutations, then visits 57,050 layout nodes to recompute 14. GPUI
-beats most of them on this edit.</p>
-<p>This is the distinction the argument depends on. All of those linear costs are
-in the engine respectively. Nothing in the application’s code requires them, so
-they can be fixed behind the same API without changing an application. zgui
-shows how far that goes: 0.69 ms for the label at 3,000 rows and about 0.26 ms
-per 1,000 rows, around 12 times flatter than GPUI. It is still not flat, and it
-is my framework and was tuned on this harness, so take these numbers with a
-grain of salt. In Iced and egui the linear cost is in the contract: the API
-says your code runs. No engine work can remove that, and app code has to
-change. GPUI probably sits somewhere in between, which is why gpui-fast can
-improve the situation to some extent.</p>
-<p>At this point, I wan’t to share a more detailed benchmark matrix. Read the
-re-running columns down the first five rows and they barely move, because they
-do not depend on the edit. The signal columns move a lot, because the
-underlying implementations differ.</p>
-<p>The bottom of that grid is also where the cost signals have becomes visible.</p>
-<p>GPUI makes a full frame realitively cheap, and that makes it probably good
-enough for many use-cases. It is certainly enough for an editor whose
-expensive surface is handled by hand. For a large application it leaves a
-choice: keep the API people like and pay per view, or get precision by writing
-a signal graph out of entities. Elm and immediate mode have the same problem.
-Each is clearest in the small, and each loses the thing it was chosen for as
-precision becomes necessary, and, from my personal experience, that happens faster
-than people expect.</p>
-<p>Tracked reads are where most of the field has ended up, whatever it started
-from. If that is where we are going, I think we should start there, and make
-the component a function that runs once.</p>
-<p>Stanislav Vishnevskiy (Discord CTO), post on X, 2026-11-04.</p>
-<p>zed#46758, gpui: Remove blade, reimplement linux renderer with wgpu, merged 2026-02-13.</p>
-<p>Raph Levien, Xilem: an architecture for UI in Rust, 2022-05-07.</p>
-<p>GPUI source, commit ddc9eda925: crates/gpui/src/app/context.rs:216.</p>
-<p>Angular, Sub-RFC 1: Signals for Angular Reactivity, 2023-04-03.</p>
-<p>zed#63800, gpui: Incremental view rendering with a view tree, draft, closed 2026-09-24.</p>
-<p>crates/gpui/docs/retained_extraction_plan.md, Zed branch gpui-retained-plan, commit 312a04c83, 2026-10-30.</p>
-<p>gpui-fast README, Longbridge, commit 86a8228229.</p>
-<p>MobX, Optimizing React component rendering.</p>
-<p>crates/gpui/docs/view_tree.md, Zed branch gpui-retained-node-engine, commit c15d4b8e4b.</p>
-<p>Richard Feldman on The Changelog #319, 2018-10-17.</p>
-<p>Michael Murphy (System76), Hacker News comment, 2024-04-25.</p>
-<p>An Elm guide, Structure, webapps chapter.</p>
-<p>Iced source, commit 8b8e6198: src/lib.rs, Scaling Applications.</p>
-<p>cosmic-files at 3868a8e: src/app.rs and src/tab.rs. Counts are approximate.</p>
-<p>Evan Czaplicki, The Perfect Bug Report, 2016-11-14.</p>
-<p>Redux, Why Redux Toolkit is How To Use Redux Today.</p>
-<p>Svelte team, Introducing runes, 2023-09-20.</p>
-<p>Iced source, commit 8b8e6198: examples/lazy/src/main.rs, lines 12, 127-143, 155.</p>
-<p>Vizia, Migration Guide: Lens-Based State to Signals, commit 426d2e7b.</p>
-<p>Vizia, examples/7GUIs/counter.rs, commit 426d2e7b.</p>
-<p>Joe Savona, Exploring React Performance, React Conf 2025.</p>
-<p>Freya, crates/freya/src/_docs/state_management.rs, commit bf825f73.</p>
-<p>Dan Abramov and Ryan Carniato, comments on React vs Signals: 10 Years Later, 2023-03-01.</p>
-<p>js-framework-benchmark, results of 2026-11-02, partial update. Fixture is a flat list.</p>
-<p>Apple, Discover Observation in SwiftUI, WWDC23.</p>
-<p>Android Developers, Lifecycle of composables.</p>
-<p>Android Developers, Compose performance best practices.</p>
-<p>Apple, Optimize SwiftUI performance with Instruments, WWDC25.</p>
-<p>Facebook, Flux in-depth overview (archived).</p>
+                <p>We introduce NeoMME, a family of 260M and 800M multilingual multimodal encoders. Unlike many generative visual language models, NeoMME does not use a separate pretrained vision tower or a causal language model. A single bidirectional Transformer processes both text tokens and raw image patches, and we train the entire model from scratch with a masked discrete-diffusion objective.</p>
+<p>We fine-tuned NeoMME for visual document retrieval using ColPali's page-image approach. NeoMME-Retriever returns dense and late-interaction embeddings in one forward pass. Both model sizes lie on the ViDoRe v3 Pareto frontier for nDCG@10 and model size. At a matched 2048×2048 image input size on an NVIDIA L40S GPU, the 260M model encodes about 51 pages per second, or about twice ColModernVBERT's throughput. Hierarchical token pooling and asymmetric quantization reduce late-interaction index storage from roughly 1.5 MB to 6 kB per page (255× smaller) while retaining more than 95% of baseline nDCG@10.</p>
+<p>NeoMME is available in Hugging Face Transformers. We release all model checkpoints under the Apache 2.0 license.</p>
+<p>Many recent visual document retrievers are adapted from pretrained generative visual language models. A separately pretrained vision encoder produces visual features, which a projector maps into the language model's input space. A causal decoder then processes the combined image and text representations. Retrieval, classification, and token labeling do not generate text autoregressively, so they do not require a causal decoder or the parameter and compute overhead of this architecture.</p>
+<p>ModernBERT brought efficient architecture and training improvements to bidirectional encoders. For visual document retrieval, ModernVBERT applied a bidirectional ModernBERT-style text encoder while retaining a separate pretrained SigLIP2 vision tower. We wanted to push this even further by designing and training a multimodal encoder without having to carry over the parameter and compute overhead of a VLM.</p>
+<p>NeoMME (pronounced "nee-oh-me", IPA /ˈniː.oʊ.mi/) is a multilingual, multimodal foundation encoder that generates vector representations for input text and/or images using a single Transformer encoder. It is not based on an existing pretrained vision tower, text encoder, or text decoder.</p>
+<p>Images and text use the same computational path, so NeoMME can more easily support pretraining, fine-tuning, parallelization, and serving across both modalities.</p>
+<p>NeoMME comes in two sizes, 260M and 800M. Both variants share the same architecture:</p>
+<p>We pretrain NeoMME from scratch as a discrete masked-diffusion text denoiser. For each text-only example, we sample a corruption rate uniformly between 0 and 1. Each eligible text token is then independently masked at that rate.</p>
+<p>Multimodal examples use corruption rates between 0.3 and 1. The image patches remain visible while NeoMME reconstructs masked text. With light masking, the model can often recover a missing word from the surrounding text alone. For example, "cat" is a plausible completion of "The [MASK] sat on the mat," even without an image. But high masking forces the model to learn image-grounded descriptions with little to no signal from the non-masked input text tokens.</p>
+<p>Pretraining mixes multilingual text, code, mathematics, natural images, and document images. Each model processes about 524 billion packed input tokens, including 290 billion tokens from text-only examples. This text budget is relatively small compared with ModernBERT's 2 trillion training token budget. Hence, we chose the NorMuon optimizer to improve data efficiency during training.</p>
+<p>To get a meaningful downstream evaluation of the backbone, we fine-tune NeoMME for visual document retrieval using the page-image methodology introduced by ColPali. While traditional text-based retrieval consists of retrieving text chunks, NeoMME-Retriever ranks document page screenshots and bypasses all the preprocessing OCR steps necessary to extract text from PDFs. Treating the pages as images preserves layout, charts, tables, font type and size, and other visual clues that cannot be captured even by a perfect OCR model.</p>
+<p>NeoMME-Retriever reuses the NeoMME backbone but adds two jointly trained heads on top of it for retrieval:</p>
+<p>Omar Khattab, who introduced late-interaction in ColBERT, explains why the term is more precise than "multi-vector." It describes the granularity and learnability of the scoring function, not simply the number of stored vectors.</p>
+<p>To learn more about late-interaction, we recommend reading this crash course by Amélie Chatelain.</p>
+<p>One NeoMME-Retriever forward pass returns both representations, which gives you flexibility no matter your use case and infrastructure. We recommend using late-interaction embeddings in general since they are more powerful and can be used easily with open-source libraries like NextPlaid. However, if you have a very large corpora, you can run a single forward pass with NeoMME-Retriever to get the dense embedding, retrieve a small number of documents through an ANN index, and then use late-interaction to rerank the retrieved candidates.</p>
+<p>We report nDCG@10 on ViDoRe v3. NeoMME-Retriever-260M reaches 0.523, the highest score among evaluated models strictly below 800M parameters. It is within 0.002 nDCG@10 of ColQwen2.5 while using about 14× fewer parameters. NeoMME-Retriever-800M reaches 0.556, within 0.009 nDCG@10 of the similarly sized Vultron Retriever Flash (0.8B). Both NeoMME-Retriever models lie on the model-size Pareto frontier.</p>
+<p>ViDoRe v1 and v2 use nDCG@5. On both benchmarks, NeoMME-Retriever-260M outperforms ColModernVBERT and the twice-larger ColSmol-500M. NeoMME-Retriever-800M outperforms ColPali v1.3 while using 3.6 times fewer parameters.</p>
+<p>† Scores from MTEB. ‡ Results from our own evaluations.</p>
+<p>Late-interaction storage scales linearly with the number of vectors in the output embedding. Higher-resolution images contain more patches, so they produce larger embeddings. For example, a 2048×2048 square page produces embeddings containing 4,200 vectors with NeoMME-Retriever, or about 2.1 MB in float32. Across the ViDoRe v3 benchmark, the measured average is about 1.5 MB per document.</p>
+<p>To reduce the storage footprint of the late-interaction index, we combine two complementary compression methods:</p>
+<p>We tested this setup on ViDoRe v3. With a pooling factor 10 and int8 queries and documents, storage decreased from about 1.5 MB to 39 kB per page, a 39× reduction, while keeping more than 99% of the baseline nDCG@10. A more aggressive configuration uses pooling factor 8, int8 queries, and binary documents. That version uses 6 kB per page (255× smaller) and keeps more than 95% of the original retrieval quality.</p>
+<p>Users can pick a compression setting from that frontier based on storage budget and required retrieval quality.</p>
+<p>Before you can search a corpus, a retriever model must turn your documents into embeddings, which will be stored in a vector store like Qdrant, Weaviate, or Milvus. Faster encoding makes building and adding new documents to the index faster, thus reducing the GPU uptime and compute cost required.</p>
+<p>So we measured image encoding speeds for NeoMME-Retriever against other multimodal document retrievers. We used preprocessed image tensors and calibrated the batch size separately for each model and image size. At a matched 2048×2048 input size on one NVIDIA L40S, NeoMME-Retriever-260M encodes about 51 pages per second, nearly twice ColModernVBERT's 26 pages per second. Both 260M and 800M NeoMME-Retriever models are also faster than the other models we compared on smaller input images.</p>
+<p>NeoMME-Retriever (260M and 800M) returns dense and multi-vector embeddings together. The example below scores two text queries against two document-page images with MeanMaxSim late interaction and dense cosine similarity.</p>
+<p>We provide separate dense and late-interaction checkpoints for fine-tuning with Sentence Transformers v6. Following the same pattern as text encoders such as ModernBERT, Sentence Transformers loads the backbone through NeoMMEModel rather than the dual-head NeoMMEForRetrieval class. Sentence Transformers currently supports one retrieval head per model, so each checkpoint lets you fine-tune the dense or late-interaction head independently. To train both heads together, use NeoMMEForRetrieval with a custom Trainer.</p>
+<p>Visual document retrieval can be used as the first stage of a visual retrieval-augmented generation (RAG) system. Unlike text RAG, which retrieves extracted text chunks, visual RAG retrieves the original page images and sends them to a visual language model. The model can then use tables, plots, diagrams, and page layout that text extraction may flatten or omit. Here is how visual RAG works:</p>
+<p>You can test visual RAG directly with NeoMME-Retriever in our HF Space: 🤗 tonywu71/neomme-retriever-demo.</p>
+<p>NeoMME replaces separate pretrained image and text encoders with one long-context bidirectional Transformer. We train it from scratch to process both multilingual text tokens and raw 32×32 image patches.</p>
+<p>NeoMME-Retriever is a fine-tuned version of NeoMME for visual document retrieval. One forward pass produces both dense and late-interaction representations. The 260M model outperforms all evaluated models strictly below 800M parameters and, at a matched 2048×2048 input size, encodes pages at about 2× ColModernVBERT's throughput. To reduce the large storage footprint of late-interaction embeddings for high-resolution documents, we experimented with hierarchical token pooling and asymmetric quantization and managed to reduce the late-interaction embeddings from roughly 1.5 MB to 6 kB per page, a 255× compression, while retaining more than 95% of the baseline nDCG@10.</p>
+<p>We release all NeoMME model checkpoints and a day-zero Hugging Face Transformers implementation to allow practitioners to build efficient multimodal and multilingual representation models on top of our work.</p>
+<p>NeoMME began as a side quest between two good friends. We worked with limited time and compute, and we decided to share the results so the community can build on them. We thank H Company for supporting the work and providing the compute used to train NeoMME.</p>
+<p>Visual document retrieval and RAG with NeoMME-Retriever</p>
+<p>Visual document retrieval and RAG with NeoMME-Retriever</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://blog.zortax.de/posts/a-critique-of-gpui" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/Hcompany/neomme" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

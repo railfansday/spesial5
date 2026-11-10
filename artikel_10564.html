@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What’s new in Android Nov. 2026 Google System Updates: Android photo backup with Quick Share for Windows</title>
+    <title>Migrating the Hub from Git LFS to Xet</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10564.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,22 +15,48 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What’s new in Android Nov. 2026 Google System Updates: Android photo backup with Quick Share for Windows</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>Migrating the Hub from Git LFS to Xet</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://9to5google.com/wp-content/uploads/sites/4/2025/01/google-play-services-1.jpg?quality=82&amp;strip=all&amp;resize=1200,628" alt="What’s new in Android Nov. 2026 Google System Updates: Android photo backup with Quick Share for Windows" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/migrating-the-hub-to-xet/thumbnail.png" alt="Migrating the Hub from Git LFS to Xet" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://9to5google.com/wp-content/uploads/sites/4/2025/01/google-play-services-1.jpg?quality=82&strip=all&resize=1200,628" alt="What’s new in Android Nov. 2026 Google System Updates: Android photo backup with Quick Share for Windows" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/migrating-the-hub-to-xet/thumbnail.png" alt="Migrating the Hub from Git LFS to Xet" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The monthly “Google System Release Notes” primarily detail what’s new in Play services, Play Store, and Play system update across Android phones/tablets, Wear OS, Google/Android TV, Auto, and PC. Some features apply to end users, while others are aimed at developers.</p>
-<p>The following first-party apps comprise the “Google System”:</p>
-<p>A feature appearing in the changelog does not mean it’s widely available. Some capabilities take months to fully launch.</p>
-<p>FTC: We use income earning auto affiliate links. More.</p>
-<p>Check out 9to5Google on YouTube for more news:</p>
-<p>Editor-in-chief. Interested in the minutiae of Google and Alphabet. Tips/talk: abner@9to5g.com</p>
+                <p>In January of this year, Hugging Face's Xet Team deployed a new storage backend, and shortly after shifted ~6% of Hub downloads through the infrastructure. This represented a significant milestone, but it was just the beginning. In 6 months, 500,000 repositories holding 20 PB joined the move to Xet as the Hub outgrows Git LFS and transitions to a storage system that scales with the workloads of AI builders.</p>
+<p>Today, more than 1 million people on the Hub are using Xet. In May, it became the default on the Hub for new users and organizations. With only a few dozen GitHub issues, forum threads, and Discord messages, this is perhaps the quietest migration of this magnitude.</p>
+<p>How? For one, the team came prepared with years of experience building and supporting the content addressed store (CAS) and Rust client that provide the system's foundation. Without these pieces, Git LFS may still be the future on the Hub. However, the unsung heroes of this migration are:</p>
+<p>Together, these components have allowed us to aggressively migrate PBs in the span of days without worrying about the impact to the Hub or the community. They're giving us the peace of mind to move even faster in the coming weeks and months (skip to the end 👇 to see what's coming).</p>
+<p>In the early days of planning the migration to Xet, we made a few key design decisions:</p>
+<p>Driven by our commitment to the community, these seemingly straightforward decisions had significant implications. Most importantly, we did not believe users and teams should have to immediately alter their workflow or download a new client to interact with Xet-enabled repositories.</p>
+<p>If you have a Xet-aware client (e.g., hf-xet, the Xet integration with huggingface_hub), uploads and downloads pass through the entire Xet stack. The client either breaks up files into chunks using content defined chunking while uploading, or requests file reconstruction information when downloading. On upload, chunks are passed to CAS and stored in S3. During downloads, CAS provides the chunk ranges the client needs to request from S3 to reconstruct the file locally.</p>
+<p>For older versions of huggingface_hub or huggingface.js, which do not support chunk-based file transfers, you can still download and upload to Xet repos, but these bytes take a different route.  When a Xet-backed file is requested from the Hub along the resolve endpoint, the Git LFS Bridge constructs and returns a single presigned URL, mimicking the LFS protocol. The Bridge then does the work of reconstructing the file from the content held in S3 and returns it to the requester.</p>
+<p>To see this in action, right click on the image above and open it in a new tab. The URL redirects from
+https://huggingface.co/datasets/huggingface/documentation-images/resolve/main/blog/migrating-the-hub-to-xet/bridge.png to one that begins with https://cas-bridge.xethub.hf.co/xet-bridge-us/.... You can also use curl -vL on the same URL to see the redirects in your terminal.</p>
+<p>Meanwhile, when a non-Xet-aware client uploads a file, it is sent first to LFS storage then migrated to Xet. This “background migration process,” only briefly mentioned in our docs, powers both the migrations to Xet and upload backward compatibility. It is behind the migration of well over a dozen PBs of models and datasets and is keeping 500,000 repos in sync with Xet storage all without missing a beat.</p>
+<p>Every time a file needs to be migrated from LFS to Xet, a webhook is triggered, pushing the event to a distributed queue where it is processed by an orchestrator. The orchestrator:</p>
+<p>These migration workers then pick up the jobs and each pod:</p>
+<p>In April, we tested this system's limits by reaching out to bartowski and asking if they wanted to test out Xet. With nearly 500 TB across 2,000 repos, bartowski's migration uncovered a few weak links:</p>
+<p>Fixing this three-headed monster meant touching every layer - patching xet-core, resizing CAS, and beefing up the worker node specs. Fortunately, bartowski was game to work with us while every repo made its way to Xet. These same lessons powered the moves of the biggest storage users on the Hub like RichardErkhov (1.7PB and 25,000 repos) and mradermacher (6.1PB and 42,000 repos 🤯).</p>
+<p>CAS throughput, meanwhile, has grown by an order of magnitude between the first and latest large-scale migrations:</p>
+<p>When we began replacing LFS, we had two goals in mind:</p>
+<p>Designing with our initial constraints and these goals allowed us to:</p>
+<p>Instead of waiting for all upload paths to become Xet-aware, forcing a hard cut-over, or pushing the community to adopt a specific workflow, we could begin migrating the Hub to Xet immediately with minimal user impact. In short, let teams keep their workflows and organically transition to Xet with infrastructure supporting the long-term goal of a unified storage system.</p>
+<p>In January and February, we onboarded power users to provide feedback and pressure-test the infrastructure. To get community feedback, we launched a waitlist to preview Xet-enabled repositories. Soon after, Xet became the default for new users on the Hub.</p>
+<p>We now support some of the largest creators on the Hub (Meta Llama, Google, OpenAI, and Qwen) while the community keeps working uninterrupted.</p>
+<p>Starting this month, we're bringing Xet to everyone. Watch for an email providing access to Xet and once you have it, update to the latest huggingface_hub (pip install -U huggingface_hub) to unlock faster transfers right away. This will also mean:</p>
+<p>If you upload or download from the Hub using your browser or use Git, that's fine. Chunk-based support for both is coming soon. In the meantime use whichever workflow you already have; no restrictions.</p>
+<p>Next up: open-sourcing the Xet protocol and the entire infrastructure stack. The future of storing and moving bytes that scale to AI workloads is on the Hub, and we're aiming to bring it to everyone.</p>
+<p>If you have any questions, drop us a line in the comments 👇, open a discussion on the Xet team page.</p>
+<p>Perhaps a dumb question: Xet is supposed to not only drive some speed ups but also provide a significant storage advantage in that only the diffs of a given object need to be uploaded/stored right?</p>
+<p>I ask as my account migrated to xet, but I don’t see any reduction in the amount of storage quota anything created after migration. For example, as far as I’ve seen, if I create a dataset repo that is 1 GB, change a handful of rows and re-push, the storage usage is going to say 2+ GB. Am I missing something?</p>
+<p>Not a dumb question at all. The Hub reports storage based on the logical size of each new object; what you're seeing is expected.</p>
+<p>For the use-case that you're describing, Xet still provides faster file transfers as there is less to push and pull, so changes finish faster and uses less bandwidth/compute.</p>
+<p>This enables and strengthens our commitment to provide free public storage to the open source community. Of course, we're always evaluating ways to surface this transparently and support the community, so let me know if any of this is confusing.</p>
+<p>Gotcha, didn’t realize it was global deduplication, that makes sense (btw - is the deduplication done after upload then, or xet somehow compares diffs vs 20+ PB of data prior to upload?).</p>
+<p>I’m not in the position where this impacts me at the moment (thankfully 🙏) and not my call but if the private storage is handled the same way it has some interesting.. implications. For example if people are paying for extra private storage, and their storage is being counted “full size” against limits whilst being deduplicated against the rest of the hub and therefore a fraction of that in reality, is that fair? Etc</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://9to5google.com/2026/11/02/november-2026-google-system-updates/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/migrating-the-hub-to-xet" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

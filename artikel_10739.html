@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training and Finetuning Sparse Embedding Models with Sentence Transformers</title>
+    <title>PipelineRL</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10739.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Training and Finetuning Sparse Embedding Models with Sentence Transformers</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>PipelineRL</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/ServiceNow/pipelinerl.png" alt="PipelineRL" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/ServiceNow/pipelinerl.png" alt="PipelineRL" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>We are excited to open-source PipelineRL, an experimental RL implementation that tackles a fundamental challenge in large-scale Reinforcement Learning with LLMs: the trade-off between inference throughput and on-policy data collection. PipelineRL's key innovation is inflight weight updates during RL training (see Figure 1 below). This allows PipelineRL to achieve constantly high inference throughput and minimize the lag between the weights used for rollouts and the most recently updated model weights. The result: fast and stable RL training for large language models.</p>
+<p>In this blog post, we show that 1) inflight weight updates do not harm the training process and 2) PipelineRL achieves competitive results compared to Open-Reasoner-Zero, while using a simpler RL algorithm. We also present the modular PipelineRL architecture that facilitates trying new inference / trainer combinations.</p>
+<p>In conventional RL approaches (Figure 1a), there is a trade-off between high throughput inference and on-policy data collection. To explain this trade-off let us first define conventional RL algorithmically:</p>
+<p>To achieve high throughput, the inference servers must use large batch sizes and, therefore, generate data for multiple policy optimization steps. However, each optimization step increases the lag between the current policy and the data collected using the inference policy, progressively making collected data more off-policy and less effective for training. On-policy learning requires data for a single optimization step. But producing small amounts of data with many GPUs is inefficient because this means the per-GPU batch size is small. Furthermore the batch size goes down as the inference server finishes the short sequences and has only the few longest sequences in progress.</p>
+<p>PipelineRL (Figure 1b) remediates this trade-off through inflight weight updates. We update the weights in inference servers after each optimizer step without ever stopping inference. We only pause the inference at all inference servers for just the time needed to receive the new weights. Inflight weight updates allow the inference server to constantly maintain the optimal batch size while simultaneously ensuring data remains on-policy or near on-policy, which leads to better GPU utilization and more effective learning, respectively.</p>
+<p>To demonstrate the effectiveness of PipelineRL and the benefits of inflight weight updates, we trained a 7B model and 32B model on the Open-Reasoner-Zero dataset. Looking at the learning curves we see that PipelineRL matches or exceeds the performance of Open-Reasoner on the popular reasoning test benchmarks: AIME 2024 and MATH 500 (see Figure 2 above).</p>
+<p>Notably, our RL implementation is much simpler than Open-Reasoner-Zero. While Open-Reasoner-Zero uses a value function, our implementation is a simplified version of GRPO. In particular, we found that the trust region importance weight clamping is not needed for stable training. Neither was overlong sequence filtering or reward shaping from the DAPO paper. For normalizing the loss we just use the number of sequences in the batch as the denominator, giving equal weights to all tokens. We used no KL penalty and no entropy bonus (though our implementation does support reference model KL). Despite the simplicity of our implementation, or perhaps thanks to it, training is very stable as you can see in this wandb report.</p>
+<p>One might expect that inflight weight updates would result in an unstable training process, since sequence generation proceeds with stale keys and values in the KV cache that was computed with a previous model version. However, our experiments indicate this does not adversely affect stability.</p>
+<p>PipelineRL is built to be modular and take advantage of rapid improvements in highly-specialized inference and training software (SGLang, vLLM, Nvidia Dynamo, DeepSpeed, FSDP, TorchTitan, FastLLM, etc.). We propose clear contracts between the inference and
+training components, allowing easy integration of new inference and training solutions as they become available.</p>
+<p>The inference software must expose the following APIs to PipelineRL[1]:</p>
+<p>If init_process_group and request_weight_update APIs become the industry standard, one will be able to plug-and-play try using difference inference implementations with PipelineRL.</p>
+<p>PipelineRL training code feeds freshly-generated training data to trainer workers as soon as the right number of training tokens has accumulated for each of them. One can make any training software that exposes these Python APIs work with PipelineRL:</p>
+<p>PipelineRL currently uses the HuggingFace accelerate library to give the user a choice between DeepSpeed and FSDP. But we found that accelerate contract is too flexible and can be confusing. We will be moving to the stricter contract as described above that will make using other trainers easier.</p>
+<p>Upcoming features. Our implementation is still experimental and lacks some important functionality. Top priorities for us include using coroutines for more precise inference batch size control, multi-modal support and sequence parallel training. We would also welcome contributions of more inference server and trainer integrations. We will not, however, try to make the pipeline-rl repo a framework that supports all possible algorithms and reward functions. Our take is that pipeline-rl should be a hackable and fast reference implementation of GRPO with easily verifiable rewards. If you'd like to do a research project using PipelineRL, you can just fork the repo and have fun hacking the code!</p>
+<p>More research coming soon. More analysis is needed to understand how inflight weight updates affect the training dynamics, and to carefully measure the speed-ups that PipelineRL brings. Also, much can be said about the similarities between PipelineRL and
+highly relevant prior work on asynchronous Reinforcement Learning for LLMs. For all this and more please stay tuned for our upcoming research paper!</p>
+<p>Alexandre Piché wrote the first synchronous version of our RL code while working on TapeAgents. Dzmitry Bahdanau refactored the code to be asynchronous and distributed, and implemented inflight weight updates. Rafael Pardinas implemented sequence packing. Ehsan Kamaloo helped with running the experiments. Xiaoyin Chen helped with debugging the framework.</p>
+<p>We acknowledge the prior RL for LLM implementations such as TRL, OpenRLHF and veRL for the many tricks we borrowed from them. Artifacts from other open-source reasoning projects, such as Simple-RL, Deepscaler, DAPO and OpenReasoner were instrumental for stabilizing PipelineRL. We would like to recognize Christopher Manning, Michael Noukhovitch for their thoughtful comments. Finally, we thank the broader ServiceNow Research team and ServiceNow CoreLLM teams for being amazing colleagues.</p>
+<p>[1] The current contract in the code is slightly different, but we are refactoring it as described above.</p>
+<p>We used the same hyperparameters for both 7B and 32B experiments we report here:</p>
+<p>The compute that we used for the reported experiments</p>
+<p>Very nice, cc @qgallouedec  you will probably like this 🤗</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/train-sparse-encoder" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ServiceNow/pipelinerl" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>YouTuber JinsTravel’s final video released after fatal Bolivia hit-and-run as driver gets house arrest</title>
+    <title>Efficient MultiModal Data Pipeline</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10599.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,29 +15,55 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>YouTuber JinsTravel’s final video released after fatal Bolivia hit-and-run as driver gets house arrest</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>Efficient MultiModal Data Pipeline</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://www.dexerto.com/cdn-image/wp-content/uploads/2026/11/07/jinstravels-last-youtube-video.jpg" alt="YouTuber JinsTravel’s final video released after fatal Bolivia hit-and-run as driver gets house arrest" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/mmdp/thumbnail.png" alt="Efficient MultiModal Data Pipeline" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.dexerto.com/cdn-image/wp-content/uploads/2026/11/07/jinstravels-last-youtube-video.jpg" alt="YouTuber JinsTravel’s final video released after fatal Bolivia hit-and-run as driver gets house arrest" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mmdp/thumbnail.png" alt="Efficient MultiModal Data Pipeline" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Travel YouTuber JinsTravel’s final pre-recorded video has been released days after he died when a truck struck him while cycling through El Alto, Bolivia. The driver involved has since been placed under house arrest while authorities investigate the fatal collision.</p>
-<p>His latest journey began in Mexico before taking him through Peru and into Bolivia. Cho was riding through El Alto on November 4 when he was struck by a large cargo truck. Witnesses said the driver initially fled, but he was later apprehended.</p>
-<p>Cho’s older brother announced that the family discovered a completed video while checking the late YouTuber’s official account. It had been scheduled to upload at 6:15 p.m. Korea Standard Time on November 7.</p>
-<p>The family described the video as a final gift to JinsTravel’s viewers. His brother wrote that he hoped fans would “share in the final gift he left behind” and remember Cho for the journeys he documented.</p>
-<p>The video, titled “A Healing-Filled Bicycle Journey into Bolivia, Made Possible by Chance,” follows Cho as he travels through the country by bicycle. Fans reportedly flooded the upload with messages of grief after realizing it would be his final journey published on the channel.</p>
-<p>Travel YouTuber dies after being struck by truck in hit-and-run during overseas trip</p>
-<p>Travel YouTuber shot by gunmen and then by police during Ethiopia road trip</p>
-<p>Travel YouTuber Hlun Solo found dead at 27 two weeks after going missing</p>
-<p>Cho’s family has been traveling to Bolivia with assistance from the South Korean Embassy to arrange the repatriation of his remains. They have also asked viewers not to spread unverified speculation or footage related to the crash.</p>
-<p>According to El Diario, a judge ordered the 54-year-old truck driver to remain under house arrest following a pretrial hearing.</p>
-<p>The crash happened on Avenida 6 de Marzo near El Alto’s Zona Franca. Local reports say the driver attempted to leave the scene before other transport workers pursued and stopped the truck, later handing him over to police.</p>
-<p>The case remains under investigation as authorities work to establish exactly how the collision happened. Earlier reports said the driver claimed he did not see Cho’s bicycle, while police confirmed that a breathalyzer test found no alcohol in his system.</p>
-<p>Sign up to Dexerto for the latest news, views & reviews</p>
+                <p>You've got everything ready - data, model, a beefy GPU setup. You hit "run" and... wait. And wait some more. Your GPUs are barely breaking a sweat while your wallet's getting lighter by the hour.</p>
+<p>Sound familiar? We've been there. After some detective work on our nanoVLM project, we discovered the real culprit wasn't our model or hardware, it was our data pipeline being incredibly wasteful.</p>
+<p>In this post we build an efficient pipeline in five stages. In each stage we add or remove from the previous step and comment on what went right and what did not.</p>
+<p>To make it easier to follow the data preparation tasks, we created a separate repo laser-focused on the data pipeline only. We hope this will be much easier to understand that reading the code once integrated with the nanoVLM repository. In addition, this could be useful to bootstrap other data pipelines!</p>
+<p>Repository: https://github.com/ariG23498/mmdp</p>
+<p>To follow along, all you need to do is clone the repository. It contains the final data preparation tasks, but it's designed to showcase each step of the way.</p>
+<p>Before optimizing anything, we need to understand what we are working with. Our multimodal dataset has images, text prompts, and responses.</p>
+<p>Getting familiar with your training data is crucial for success. The previous script shows a random sample each time you run it; you may want to copy the snippet to a notebook and run it multiple times to get a feeling about the data.</p>
+<p>Our first training attempt used the obvious (and very frequent) approach:</p>
+<p>The results were painful. Look at this visualization:</p>
+<p>See all that gray? That's padding. That's the GPU processing absolutely nothing while you pay for compute time. We were wasting roughly 60% of our batch on empty tokens.</p>
+<p>Our next move was simple. Set a global maximum length and stick to it. If a sample was too long, we'd just drop it.</p>
+<p>As you might have noticed that the batch now has one sample less. This is due to the filtering process. This helped, but we were still padding everything to the same fixed length regardless of actual content. Better than before, but still wasteful.</p>
+<p>Now we’re ready to rethink batching entirely. Padding is the enemy, and we need a strategy to minimize it while maximizing how much data we can fit into each batch. Enter the knapsack problem, a classic from computer science that’s perfect for this.</p>
+<p>Imagine you’re packing a backpack for a hike. It can only hold so much weight, and you want to cram in as many useful items as possible. In our case:</p>
+<p>To test this idea, we start with a toy dataset: just a list of numbers from 1 to 25, each representing a sequence length. This lets us experiment without the complexity of images and text.</p>
+<p>Most PyTorch datasets are map-style (you access them with dataset[i]). But for dynamic batching, we need something more flexible. So, we built an iterable-style dataset by subclassing torch.utils.data.IterableDataset. This lets us generate batches on the fly and handle tricks like sharding data across multiple workers:</p>
+<p>Packing sequences can be slow, especially if we’re sorting or shuffling. To keep things moving, we use a producer-consumer pattern using Python queues:</p>
+<p>The producer thread packs batches and puts them in a queue, while the main thread pulls them out as needed. This overlap keeps the pipeline flowing smoothly.</p>
+<p>First, we try a simple greedy packing strategy:</p>
+<p>This walks through the data sequentially, adding items to a pack until it’s full, then starting a new one. It’s fast but not perfect. Here’s what the batches look like:</p>
+<p>Notice how later batches get sparse? We’re leaving gaps.</p>
+<p>Let’s try a smarter approach: bin-packing (specifically, First Fit Decreasing):</p>
+<p>This sorts sequences by length (longest first) and tries to fit each one into the first pack that has room. If none fits, it starts a new pack. The result?</p>
+<p>These batches are much tighter, with less wasted space. It’s like playing Tetris with your data, fitting pieces together snugly.</p>
+<p>Now for the real deal, applying knapsack packing to our multimodal dataset.</p>
+<p>We’re back to images, prompts, and responses, and we need to pack them efficiently while respecting both token limits and image budgets. Image budgeting is done so that images per sample are balanced. We would like to avoid the case where one GPU needs to process way more images than another.</p>
+<p>Our new ConstantLengthDataset class handles the heavy lifting. Here’s how it works, compared to Stage 4:</p>
+<p>Look at that! The gray (padding) is minimal, and the batches are dense with useful data. It’s like packing a suitcase so well you can still zip it up without sitting on it.</p>
+<p>The image might seem unintuive at the first glance, but let us look at the image side by side with constrained padding.</p>
+<p>Here you will notice that the samples in knapsack are more evenly distributed. We also do not run into the issue of having
+less samples in the batch due to filtering.</p>
+<p>What started as a simple "why is training so slow?" investigation led to a complete rethink of how we handle multimodal data.</p>
+<p>The balanced knapsack strategy for data pipeline comes from the Eagle 2: Building Post-Training Data Strategies from Scratch for Frontier Vision-Language Models paper from NVIDIA.</p>
+<p>Happy training (and may your GPUs stay busy)!</p>
+<p>Thank you for the great work! Can I suggest a few things? 🤗</p>
+<p>But again, really nice work on this blog post and on Picotron guys!</p>
+<p>These are absolutely great pointer. Would you like to add your suggestions to the blog post directly? That way we could have you as one of the authors of the blog post (with due credits.)</p>
+<p>You can edit this page: https://github.com/huggingface/blog/blob/main/mmdp.md</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.dexerto.com/youtube/youtuber-jinstravels-final-video-released-after-fatal-bolivia-hit-and-run-as-driver-gets-house-arrest-3425672/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/mmdp" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

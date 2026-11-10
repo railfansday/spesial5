@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>I’m not a fan of Deno’s security model (2024)</title>
+    <title>Featuring Every Eval Ever Results on Hugging Face Model Pages</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10077.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,126 +15,41 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>I’m not a fan of Deno’s security model (2024)</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>Featuring Every Eval Ever Results on Hugging Face Model Pages</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/eee_commevals/eee_commevals_banner.png" alt="Featuring Every Eval Ever Results on Hugging Face Model Pages" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/eee_commevals/eee_commevals_banner.png" alt="Featuring Every Eval Ever Results on Hugging Face Model Pages" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>this has been bothering me for a while now, so I want to write down my thoughts
-so I can get it out of my head and move on. weâre gonna talk about how Deno approaches
-security, specifically with its permissions system, and why I think this approach
-is fundamentally insecure and misleading.</p>
-<p>Deno is a language runtime for JavaScript. it consists of a standard library, a package manager,
-a TypeScript transpiler and a bunch of other stuff thatâs not important for our story. itâs not
-a JavaScript implementation, so it does not interpret or compile JavaScript, it reuses V8 for that.</p>
-<p>one of the flagship features of Deno is its permission system
-(itâs under the âSecure by defaultâ header on their landing page).
-the idea is simple: as JS code running in Deno needs the standard library to access the outside world,
-Deno can choose which accesses it allows or disallows, so when you run</p>
-<p>the standard library will only allow code.ts to read /tmp/dir and run uname.</p>
-<p>additionally, a program can request permissions at runtime, so code like</p>
-<p>will display a nice little prompt in the terminal:</p>
-<p>(aside: I really miss this feature in browser extensions. currently, if your extension needs potential
-access to any website, it needs to request actual access to all the websites, which is less than ideal)</p>
-<p>if you like puzzles, this is the point where you can stop and think about what could go wrong with this system.</p>
-<p>of the two specific issues I want to point out this is the less severe one.
-weâll discuss it first because this was the first thing I noticed and it kinda immediately irked me when I first read
-about this.</p>
-<p>(if youâre only interested in the more juicy part, you can skip to the next section).</p>
-<p>so, this nice little prompt is displayed in the terminal. itâs not, like, a PolKit GUI window or anything,
-itâs just text on stdout waiting for input from stdin. this is a wild thing to do.</p>
-<p>you see, terminal has a somewhat weird API. most of the commands / requests application can send to the terminal
-are sent in-band, by printing them to stdout. terminal can then reply by sending data to stdin.
-as Deno allows programs to print arbitrary data to stdout and read from stdin without requiring any permissions
-or doing any filtering, malicious code can send arbitrary commands to the terminal. itâs usually okay,
-because terminals wonât, like, execute shell commands just because stdout told them to, youâre supposed
-to be able to freely cat files without risking arbitrary code execution. itâs markedly less okay if
-you allow malicious code to do whatever with the terminal and then print a prompt on the same exact terminal.</p>
-<p>you could, like, hide the prompt by messing with terminal colors.
-(this one got closed in 2026 because the permission prompt is âpartially visibleâ
-(you can see an emoji) and âAI agents tend toâ change terminal colors, so thatâs a âvalid use-caseâ)</p>
-<p>or trick the user into pre-feeding approval into stdin.</p>
-<p>or trick the terminal into feeding approval into stdin as a response to some request.
-(terminal wonât ever send Enter to stdin to avoid executing commands, but âpress Enter to continueâ
-is common enough to not be suspicious; the user never sees the actual prompt).
-hereâs an asciicast of that,
-I think it looks quite cool.</p>
-<p>the specific issue on the screencast is long patched; the issue with terminal colors is not.
-that doesnât really matter because the real issue is using an attacker-controlled channel for
-security-sensitive information. itâs like executing attacker-controlled JS code on a webpage
-and then asking for password on the same page. you canât know that the page is in a safe state,
-so you canât trust any input.</p>
-<p>even if Deno manages to patch every single issue with the âstandardâ escape codes, you never know
-which non-standard codes even exist out there. many terminals have some, itâs impossible to predict
-how they will interact with your prompt.</p>
-<p>(aside: how come sudo can do it then? the difference is that sudo asks for the password first,
-before running any other code. to trick sudo that way youâd need to fuck up terminal state before
-you even type sudo, and do it quietly enough that you donât notice it while you type it.
-if some terminal allows it, Iâd consider it a bug in the terminal)</p>
-<p>so, thereâs a weird thing with this command I wrote above (Iâll copy it here for reference):</p>
-<p>what does --allow-run=uname even mean? itâs not like programs have canonical names, itâs not org.gnu.coreutils.uname,
-itâs not even /nix/store/8k1dmzr3gwzqdgw45nzj76902ca7g1is-coreutils-full-9.5/bin/uname. itâs just a shortcut for
-âlook at all the directories in PATH one-by-one to see if you can find uname thereâ.</p>
-<p>you can set environment variables for the child process without needing any extra permissions, so what if we just</p>
-<p>once again, we have a pretty and convenient interface that doesnât really make sense from the security standpoint.
-it would be nice if programs were uniquely identified by their names, but theyâre not, and pretending they are
-leads to security holes.</p>
-<p>funnily enough, I didnât even think that this issue would be there when I poked at Deno for the first time,
-so I havenât reported it until now (spoiler alert: this is a comment on a GitHub issue
-that I created for the problem Iâll explain below).</p>
-<p>so letâs imagine we fixed that. itâs not that hard, we can force PATH to be whatever it was when the runtime started,
-or always require fully-qualified paths, or prompt with a fully-qualified path before running. are we safe now?</p>
-<p>lol no of course weâre not. while PATH decides which executable gets run, dynamically-linked executables (so, like, most executables)
-require dynamic loader to actually start. dynamic loader is a program that, well, loads the executable into memory, finds its
-dependencies and does a bunch of other fun stuff we wonât get into. the important part is that dynamic loader is configurable
-via environment variables. you can probably see where this is going now.</p>
-<p>LD_PRELOAD instructs the dynamic loader to load specific dynamic library when loading executables.
-dynamic libraries can execute arbitrary code on load.
-we can just pass LD_PRELOAD and weâve completely escaped the sandbox once again:</p>
-<p>I reported this some time ago and now they patched it by disallowing to set
-environment variables starting with LD_. this, once again, fixes a specific issue while ignoring the larger
-problem: âpermission to run a single commandâ is mostly not a useful concept.
-(you can do secure interfaces by allowing to run a single command, like git-over-SSH does,
-but generally both the environment and the command need to be prepared to handle it)</p>
-<p>say, for example, our script wants to invoke the $EDITOR so user can edit some data (think git commit messages).
-thatâs a very natural permission request, and itâs also an unmitigated disaster because most editors are
-configurable enough for running one to be a full sandbox escape. itâs easy for user to absent-mindedly
-grant --allow-run=vim (âwell, sure, I want to edit this file!â), but then the script can just set
-VIMINIT='!rm -rf /*' and oops, all my files are gone. most programs are configurable, often in some
-ways you wonât think about (like LD_PRELOAD), and attacker controls the execution enviornment.
-âpatch some specific ways to configure programsâ is not the solution, the solution is to sandbox all the code,
-not just JS code.</p>
-<p>when we discussed all this stuff in GitHub issues, a Deno developer wrote:</p>
-<p>The main thing it protects you against is malicious code that isn't smart enough.</p>
-<p>deno tries really hard to do what the operating system should be doing. it emulates syscall filtering by
-filtering standard library calls. unfortunately, this breaks down the second you need to run code
-that doesnât use Deno standard library. it also uses somewhat flawed approach to permission management
-that looks good (wow, runtime prompts! omg, I can just --allow-run=uname!), but introduces security
-risks. in doing this, it implicitly requires user to understand all the implications of various permissions
-and their combinations, which can be really hard.</p>
-<p>Deno process is not actually sandboxed, it only pretends it is. I didnât mention some more boring issues like
-âDeno doesnât prevent you from following symlinks that lead outside of the sandboxâ because they all just boil
-down to this simple one: the process is not sandboxed.</p>
-<p>one can argue that this pseudo-sandboxing is better than nothing: after all, not all the malicious code is smart enough.
-I disagree: Deno permissions give a false sense of security and can lure someone into running untrusted code without proper sandboxing.</p>
-<p>itâs possible that you can use Deno sandboxing safely if you:</p>
-<p>in particular, you may be safe if youâre running untrusted code with no permissions at all
-in a non-interactive context and use some other mechanism to control resource consumption.</p>
-<p>I still donât think you should do it. this path is riddled with footguns because youâre
-executing untrusted code in a fully-privileged process, and the moment you need some OS interactions
-youâre no longer running code âwith no permissions at allâ. you should not try to figure out which
-stdlib APIs can lead to a sandbox escape when combined. you should just use a proper sandbox.</p>
-<p>Iâm not a fan of Denoâs security model.</p>
-<p>also, please: donât harass Deno developers.
-we have a technical disagreement, but no technical disagreement was ever solved by harassment.
-this post is explicitly not an invitation to do it.
-Iâve already explained my point of view to them, they disagreed, and thatâs okay.
-you donât need to reiterate it, it wonât help anybody.</p>
+                <p>Every Eval Ever (EEE) and Hugging Face Community Evals are now intercompatible. We enable cross-posting and interpreting evaluation results, while linking to open models, leaderboards, and a unified standardized metadata store.</p>
+<p>EEE launched in February 2026 as a project of the EvalEval Coalition, the first cross-institutional effort to improve how AI evaluation results get reported by both first and third party evaluators. Hugging Face launched Community Evals in February 2026 to decentralize how benchmark scores get reported on the Hub. Combined, they patch gaps in how users, researchers, and policymakers trust, understand, and choose evaluations and models.</p>
+<p>Evaluation results are how we measure model capabilities, compare models against each other, and reason about safety and governance, and yet they are scattered and hard to compare. They live in papers, leaderboards, blog posts, and harness logs, among others, each in its own format. The same model on the same benchmark often returns different scores depending on who ran it and how; LLaMA 65B, for one, has been reported at both 63.7 and 48.8 on MMLU. These gaps can arise from evaluation settings that we found are commonly unreported.</p>
+<p>EEE is our fix for the reporting side. It's one JSON schema for an evaluation result that records:</p>
+<p>The schema was built with feedback from researchers and policy researchers, and it takes in results from any source, so harness logs, leaderboard scrapes, and paper numbers all end up in the same shape. The GitHub repository has the converters, examples, and a contributor guide. Since launching, the datastore on Hugging Face has grown to around 229,000 evaluation results across more than 22,000 models and 2,200 benchmarks, pulled from 31 different reporting formats. Reproducing just those runs from scratch would cost somewhere in the hundreds of thousands of dollars, which is a reasonable argument for not letting the data scatter once someone has paid to generate it.</p>
+<p>Learn more about the schema and how to contribute here.</p>
+<p>Now, it comes with better integration and attribution. Contributors can now send EEE results to Hugging Face Community Evals. We built a converter that takes your EEE records and writes the small YAML files Hugging Face expects, so you don't have to keep the same result in two formats by hand.</p>
+<p>This is new functionality for everyone who reports or reads evaluations, not only existing EEE contributors. First-party evaluators reporting on their own models and third-party evaluators reporting on someone else's can both submit to Community Evals and to EEE, and anyone browsing the Hub gets results that trace back to a full record. When you submit your data through your organization's official Hugging Face account, your results show up with a verified checkmark on EvalEval, a signal to readers that the numbers come straight from the source. The rest of this post walks through what Community Evals are and what the converter does.</p>
+<p>Hugging Face Community Evals has two sides.</p>
+<p>A benchmark lives in a dataset repo that registers itself by adding an eval.yaml. Once registered, that dataset page collects and displays a leaderboard of every score reported against it across the Hub. The list of official benchmarks grows over time.</p>
+<p>A model's scores live in .eval_results/*.yaml inside the model repo. They show up on the model card and feed into the matching benchmark leaderboard. Both the model author's own results and results submitted by anyone else through a pull request get aggregated, and each score carries a badge saying whether it was author-submitted, community-submitted, or independently verified. Anyone can add a score to any model by opening a PR with the right YAML file, and the model author can close PRs or hide results on their own repo.</p>
+<p>Here is what one of these leaderboards looks like:</p>
+<p>Community Evals Leaderboard for Humanity's Last Exam on the Hub</p>
+<p>This is where EEE and Community Evals fit together. When you send a result to both, two things happen: First, your score appears on the Hugging Face model page and gets pulled into the benchmark's leaderboard. And second, it carries a source badge that links straight back to the full EEE record, where the generation config, the harness version, the reproducibility notes, and any instance-level data live.</p>
+<p>An Evaluation (MMLU-Pro) from EEE Datastore (a) cross-linked at the file level to a Hugging Face model card (b). The Source EvalEval badge links to the full JSON record.</p>
+<p>The two destinations do different jobs toward the same goal. Hugging Face puts your result where people look at models, with a link back to the source. EEE keeps the full structured record that makes the result interpretable, and powers Eval Cards on top of it. Send your data to both and the same evaluation ends up visible and legible at once, which is the point of reporting one at all.</p>
+<p>You can see that cross-compatibility below. The same GPQA scores that surface on the model card above also render in Eval Cards, which composes the EEE run data with benchmark and model metadata into one interpretable record. Same evaluation, a different surface:</p>
+<p>Hugging Face stores eval scores in the model repo as a YAML under .eval_results/. The required fields are just the benchmark dataset, the task, and the value. The source block is the part that creates the backlink to EEE.</p>
+<p>The converter fills this in from your existing records. It maps source_data.hf_repo to dataset.id, evaluation_name to task_id, score_details.score to value, and evaluation_timestamp to date, then drops in the datastore object URL as the source link to the per-record EEE JSON. It currently handles four of the official benchmarks: MMLU-Pro, GPQA, HLE, and GSM8K.</p>
+<p>The converter does more than reshape fields. You point it at one EEE datastore collection and it downloads that collection along with the records it references, checks the object hashes, and finds the scores that map to a supported benchmark. Before it writes anything live it audits what already exists: it reads every .eval_results YAML on the model's main branch and in open PRs, and compares by dataset and task rather than by filename. If a score is already there it is marked already_present, if a different score is there it is flagged as a score_conflict, and if the model repo doesn't resolve on the Hub it is marked missing_hf_model. Everything else is marked ready.</p>
+<p>Nothing gets pushed without your sign-off. The tool writes local YAML previews and a review file you can inspect, shows a report of what is ready and what needs attention, and only opens PRs after you type OPEN PRS and enter a commit message. Reruns reuse the cached results for a collection unless you pass --force.</p>
+<p>The converter's review step. Excluded entries (here, models with no matching Hub repo) are listed with their EEE source URLs, and the ready PRs wait on an explicit OPEN PRS confirmation.</p>
+<p>Submit your full records to the EEE datastore.</p>
+<p>Utilizing EEE requires only one additional step, which the converter largely automates. The community eval converter tool can be found in the GitHub repository. To process a collection, execute the following:</p>
+<p>Review the previews and the report it generates, then type OPEN PRS when you're ready to submit. Full documentation for the schema, CLI, and converters is at evalevalai.com/every_eval_ever/hf-community-evals.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://goldstein.lol/posts/deno-security/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/eee-community-evals" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

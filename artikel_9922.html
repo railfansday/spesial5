@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Shadowy AI Relay Disables OpenAI Codex, Claude Code Sandboxes</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9922.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-09</p>
+        <h1>Shadowy AI Relay Disables OpenAI Codex, Claude Code Sandboxes</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt036489a36358dea1/6a971529de036c92b216129d/aicoding-AreeSarak-Getty-2252848921.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="Shadowy AI Relay Disables OpenAI Codex, Claude Code Sandboxes" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt036489a36358dea1/6a971529de036c92b216129d/aicoding-AreeSarak-Getty-2252848921.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="Shadowy AI Relay Disables OpenAI Codex, Claude Code Sandboxes" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>The enigmatic service is providing popular AI coding tools to mainland China and other regions where OpenAI and Anthropic products are not officially for sale — but with key security features turned off.</p>
+<p>A mysterious relay service is installing authentic but unauthorized OpenAI Codex and Anthropic Claude Code tools for enterprise users overseas, and making dangerous configuration changes that put those organizations at risk.</p>
+<p>The AI relay, first spotted by the Symantec Threat Hunter Team, appears to be designed to bypass regional restrictions that prevent certain countries and regions from using AI tools and platforms of US companies. According to Symantec's report published Thursday, the relay service installs genuine versions of the command-line interfaces (CLIs) for Codex and Claude Code on enterprise systems, but reconfigures them to route requests through the relay's infrastructure rather than OpenAI's or Anthropic's networks.</p>
+<p>On the surface, this appears to be the case of a gray market provider or unauthorized reseller providing the AI tools to markets where they are not officially sold. Symantec researchers noted that the service, which has been active since early 2026, has installed the tools on systems at a dozen organizations, primarily in mainland China but also in South Korea, Taiwan, and Malaysia.</p>
+<p>Related:Researchers Infiltrate Microsoft Tech Support Scam Operation</p>
+<p>But the relay service also disables security safeguards for the tools, and the research team said it's unclear why it's being done (no malware or malicious activity has been observed thus far). One thing is for certain, according to Symantec: the relay service is creating enormous cyber-risk for the organizations using it.</p>
+<p>Brigid O Gorman, senior intelligence analyst at the Symantec Threat Hunter Team, tells Dark Reading that researchers found a suspicious PowerShell downloader that they later determined to be "an AI-agent hijack script." After investigating further, the team found similar activity on other networks and traced it to the unauthorized relay service.</p>
+<p>According to Symantec's report, when a user of the AI relay installs a legitimate Codex or Claude Code CLI through npm, the fileless PowerShell or bash script is fetched from "a lookalike domain by a one-line command that the user appears to run themselves. While this evokes the specter of attack techniques like ClickFix and InstallFix, the research team noted that the CLI clients aren't modified or Trojanized in any way.</p>
+<p>And yet, the tools perform suspicious actions that heighten risks for enterprises. For example, the reconfigurations turn off the CLIs' execution sandbox, which is a key security feature because it limits what the AI coding tools can do.</p>
+<p>Related:F-Secure Launches Victim-First Scam Encyclopedia Covering 50+ Types of Consumer Fraud</p>
+<p>Additionally, the relay service enables network access for the write sandbox, turns off telemetry and error reporting features, and replaces the user's API credentials with relay-issued tokens. In one case observed by the Symantec Threat Hunter Team, the script logged a user out of their Anthropic session and deleted their authentication variables before reissuing credentials controlled by the relay service.</p>
+<p>"Bypassing the regional restrictions that keep Western AI vendors from selling directly into certain markets is the simplest explanation, but it does not require disabling a CLI's sandbox or establishing persistent credentials that survive a reboot," the report stated.</p>
+<p>The relay service activity is something of an enigma. The Symantec Threat Hunter Team said it's unclear why the operators of the client-side relay would need this level of control over users' systems, though the researchers did not observe any evidence of the operators abusing the access. The report noted that the architecture of the service would support malicious exploitation of the access if the operator's intentions were to change.</p>
+<p>Furthermore, the Claude Code keys issued by the relay service are formatted with the prefix that Anthropic reserves for subscription-based OAuth tokens, "which is consistent with, though not proof of, a relay pooling flat-rate subscriptions and splitting the capacity across many customers," the team wrote.</p>
+<p>Related:AI Slop Isn't Just for Social Media; It's Ruining Cyberattacks, Too</p>
+<p>On the other hand, disabling security features hints at a potential fraud operation involving stolen credentials or payment cards, or even the malicious resale of prompts and files that run through the relay infrastructure. Gorman says it's "certainly notable" that the relay disables execution sandboxes and establishes its own persistent credentials.</p>
+<p>"We did not see any malicious activity being carried out using these relay services, so any commentary on the potential intended goals of those using it are speculative," Gorman says. "However, a relay in this position can see every prompt, file, and secret an employee sends to the agent, and can alter or fabricate every response it returns. With the sandbox disabled and network access enabled, a malicious or compromised response could execute with the full privileges of the user's account."</p>
+<p>Symantec provided indicators of compromise (IoCs) in the report, even though technically speaking there have been no compromises at this stage. "The organizations affected here look less like chosen targets and more like workplaces where individual employees found and used such a service to get access to tools they wanted," the report stated.</p>
+<p>Nevertheless, the research team warned that using the service presents serious risk to corporate networks. And while the relay appears to be aimed at regions where Codex and Claude Code tools aren't officially offered, organizations looking for cheaper alternatives and users engaging in shadow AI activity could potentially find their way to such a service.</p>
+<p>Rob Wright is a longtime reporter with more than 25 years of experience as a technology journalist. Prior to joining Dark Reading as senior news director, he spent more than a decade at TechTarget's SearchSecurity in various roles, including senior news director, executive editor and editorial director. Before that, he worked for several years at CRN, Tom's Hardware Guide, and VARBusiness Magazine covering a variety of technology beats and trends.</p>
+<p>Prior to becoming a technology journalist in 2000, he worked as a weekly and daily newspaper reporter in Virginia, where he won three Virginia Press Association awards in 1998 and 1999. At TechTarget and Dark Reading, he has won several Azbee awards, including the 2026 National Silver Award for a series on vibe coding.</p>
+<p>At Dark Reading, Rob currently covers security operations, cloud security, and Internet infrastructure. He has a keen interest in malvertising activity and the certificate authority industry, and has written extensively on both topics. He graduated from the University of Richmond in 1997 with a degree in journalism and English. A native of Massachusetts, he lives in the Boston area.</p>
+<p>2026 State of Cybersecurity Report: Bridging the Divide</p>
+<p>The Autonomous Endpoint Management Advantage</p>
+<p>The State of Cloud Security: The Latest Challenges</p>
+<p>How Organizations Are Managing Incident Response</p>
+<p>How Enterprises Are Developing Secure Applications</p>
+<p>LLM Security Architecture: Building Secure AI Systems from the Ground Up</p>
+<p>Resilient Architecture: Designing Systems That Survive Compromise</p>
+<p>Prompt Injection 101: What It Is and How to Stay Ahead</p>
+<p>The Long Tail Is Now the Front Line: Reducing Frontier-AI & Third-Party App Risk</p>
+<p>How to Harness your Security Operations Data for Enterprise Defense</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/threat-intelligence/ai-relay-service-openai-codex-claude-code-sandboxes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
