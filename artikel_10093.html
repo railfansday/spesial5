@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Next-Level Benchmarking Overfitting</title>
+    <title>Fast, reliable A2UI, with swappable inference formats</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10093.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,81 +15,46 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Next-Level Benchmarking Overfitting</h1>
+        <h1>Fast, reliable A2UI, with swappable inference formats</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/00-header-1600x900.2e16d0ba.fill-1200x600.png" alt="Fast, reliable A2UI, with swappable inference formats" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/00-header-1600x900.2e16d0ba.fill-1200x600.png" alt="Fast, reliable A2UI, with swappable inference formats" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In my recent
-blog post I remarked that database benchmarking is in a crisis
-because AI agents start to overfit on individual benchmarks with
-questionable techniques, which drives execution times towards zero. This
-has happened with TPC-D in the past, and
-broke the benchmark. TPC-H tries to fight
-that with rules, but most people who publish (unofficial) TPC-H results
-simply ignore the rules. In combination with overly eager AI agents,
-this leads to brutal overfitting.</p>
-<p>We are seeing the next level of that with the GenDB-V system. The
-corresponding paper commands “Stop Handcrafting Your Engine!
-GenDB-V: Towards AI-Generated and Formally Verified Database
-Systems”, and reports speedups of 22× to 61× over Umbra and DuckDB,
-and all that in a fully verified system. These are indeed impressive
-claims, and would suggest that traditional database engines are in
-trouble.</p>
-<p>Taking a step back, though, it should be clear that a performance
-improvement of a factor of 22 over Umbra is infeasible, at least if we
-are talking about traditional query processing. At SF10, the 22 TPC-H
-queries read roughly 15GB of (compressed) base data, and on a 9950X3D
-Umbra runs all queries in a total of roughly 540ms. On that machine the
-memory touched for data divided by the memory bandwidth (54GB/s) alone
-is about 280ms; anything below that is infeasible. Better compression
-might bring that down a bit, but not by an order of magnitude.</p>
-<p>Unsurprisingly, the most dramatic gains of GenDB-V come from
-precomputation. The agents have carefully handcrafted auxiliary data
-structures for each query, which are computed at load time, and which
-avoid most of the work. The physical design is heavily tuned to the
-queries, too, for example, there is an extra structure that lists the
-supplier rows in s_acctbal DESC order, which
-makes Q2 trivial. Similar per-query data structures are
-built for most queries. And we see that in the performance numbers:
-Several queries already run in near-constant time at SF100: Q2 in 0.7
-ms, Q17 in about 15 ms and Q4 in about 17 ms on one thread. That is the
-TPC-D symptom, without stored aggregates.</p>
-<p>There is also a “plain-array” mode, which, at first glance, is more
-fair, as it avoids these excessive preparations and also reports
-performance improvements of just roughly a factor of 3, which seems
-achievable. But when looking closely, we see that here the agents did
-something even more insane: They hard-coded
-their knowledge about the data generator. They “know” that each customer
-k will be at row k-1. And they know that dbgen
-numbers the i-th order 32·(i/8) + i%8, so key
-k should be at row 8·(k/32) + k%32 − 1. Which
-makes the join in query Q18 super cheap.</p>
-<p>How does all this fit together with the claim of a fully verified
-database engine? Well, the code does check if the hard-coded
-knowledge about the data generator holds in practice, e.g., by checking
-if the guessed join partner row is correct. If not, it falls back to a
-super slow generic nested loop implementation, but as that never happens
-with the official TPC-H data generator, that code path is irrelevant in
-the reported experiments.</p>
-<p>Which brings me back to my original blog post claim: Letting AI
-agents optimize for a given database benchmark makes the benchmark
-useless. They will do their best to find insane tricks to speed up this
-particular benchmark, but none of that would work in a real system. The
-high tuning and synthesis time aside, deleting a single tuple (or
-inserting one in the middle) can most likely cause the whole approach to
-fall off a cliff, as it forces the slow fallback path. Which is not
-something you want in a production system.</p>
-<p>Stop handcrafting your engine. Start reverse-engineering dbgen!</p>
-<p>Thank you, Thomas, for reading our paper and code so carefully. I am Jiale, one of the authors of GenDB-V. Your observations are correct, and I would like to add my view on the setting.Two settings. Umbra and DuckDB are general-purpose engines: fast for any query on any data. GenDB-V, like Bespoke OLAP and JetStream, builds a specialized engine for one customer: their schema, data, hot query templates, and even hardware. Here, using knowledge of the workload is the purpose. For ad-hoc queries, such a system should hand over to the best general-purpose engines, such as Umbra and DuckDB. So I see the two approaches as partners, not competitors. I do not claim that agents can build an engine that is fast on many workloads: just for a very specific setting, specialized for the customer. Verification is the main point. The key feature of GenDB-V is that instead of trusting agents for correctness, we can formally verify it independently. Every synthesized package is formally proved correct for every database of the schema. So each assumption must be checked in the code, and a failed check never gives a wrong answer silently: the code takes a general path. Today that path is GenDB-V's own slow proven code, but it can be easily extended to be Umbra or DuckDB.Fair and unfair specialization. I agree that guessing where dbgen puts each key is fitting to the generator, not to a customer. A property that the storage creates, or that the customer declares and the system checks, is fair. An accident of the generator is not. I will constrain the agents to the first kind.Agents also find good ideas. One example is TPC-H Q21 with agent-designed storage. The storage keeps each order's lineitems next to each other, for any input order. The EXISTS and NOT EXISTS conditions are then checked inside each order's own lineitems, in place of a semi-join and an anti-join on lineitem. No part of the query result is computed at load time. It is a classic physical-design idea that any engine could use.I fully agree that the database community needs new kinds of benchmarks, and I made one attempt in this direction in my earlier work, SQLBarber (SIGMOD 2026). I am excited to see more great benchmarks in the future. Benchmarks drove the development of today's great engines, and they can do the same in the LLM era 🙂Best,Jiale</p>
-<p>You see I have two problems here: One is, you literally tell us to "stop handcrafting (our) engine". Which mean you are marketing your approach as a general solution and as a replacement for existing database engines, which it is clearly not. It might be an additional enhancement, like, e.g., physical design wizards did in the past. But you will always need a fallback engine, at the very least for ad-hoc queries.And second, I am pretty sure that I could build a program that computes a secure hash over the input at load time to identify that it is the canonical TPC-H data, e.g., by hard-coding all relevant scale factors, and then produces the answers to all queries purely from the knowledge about the data generator, without ever looking at the data. That would have near zero runtime for all relevant scale factors. And it would still be "correct", because I could fall back to, e.g., an embedded DuckDB/Postgres/sqlite, the performance of which would then be totally irrelevant because it would never trigger in practice.Which is clearly absurd, of course. But where do you draw the line? Why is recognizing the data set + scale factor "bad" when the other optimizations you do are not? TPC-H tries to codify this, which works to varying degrees _if_ people follow the rules (which many don't). I think we can only fight this if a) the benchmark is unknown to the engine developer before execution, and b) the data changes over time, which rules out the most extreme precomputations.</p>
-<p>If formal verification is the main contribution, why are the headline results dominated by 20–60× speedups? Verification establishes correctness, but what does it tell us about the validity of those performance comparisons?</p>
-<p>It is an honour to discuss this with you here. As a PhD student, I admire your work, and Umbra is one of my favourite systems and papers. I am sorry for the title: it describes a possible future as if it were a present fact. I will discuss changing it with my co-authors.GenDB-V has two modes. Template synthesis builds specialized code for hot templates. That mode is an addition to a general-purpose engine, as physical design wizards were. Engine synthesis builds one general engine, proved correct for any schema, data and query in the supported SQL subset. In coverage and correctness it is a complete query engine for that subset. In performance it is not there yet: agents improved it over many versions, first on TPC-H and then on a second benchmark, but on manually created unseen queries it is still slower than Umbra. I will put its code and results in our repository.My next step is an adversarial loop. Agents optimize the engine on all the benchmarks I have. Then the engine is frozen, and a separate adversarial agent writes new workloads against it: new queries on the known benchmarks, and completely new benchmarks. I report the frozen engine's result. After that, the agents may optimize on the queries where it lost, and the next round brings a new attack. The open question is whether the gap on unseen workloads shrinks over the rounds, that is, whether agents can build an engine that truly generalizes. This is in the spirit of your proposal of fresh workloads for each round.On the line: your example is a good test. The proof checker ensures correctness for every possible database, and nothing more. Your program would not pass it. A hash has a fixed size, so different databases can share a hash value; a secure hash is good enough in practice, but a mathematical proof must hold for all databases. Falling back to a production SQL engine cannot pass either, because none comes with proofs today; so currently GenDB-V falls back to its own engine, which is verified but slow. But I agree that the proof says nothing about performance: an optimization is correct for every database, and fast only for some. So the proof does not draw the whole line. Your (a) fits general-purpose engines; in the specialized setting the hot templates are known by design. Your (b) applies to both: a customer's data also changes, so the speed should hold on data the agent has never seen.What I want to suggest is a direction: agents write code and proofs together, checked against a formal specification of SQL. Our proofs are only as good as our SQLSpec, which is our own reading of SQL. So I would like to invite the community to work on a shared, standard formal semantics for SQL. With it, verified engines and verified optimizations become possible for everyone, and maybe one day agents can bring a verified engine close to hand-built ones.</p>
+                <p>We've heard your concerns about the speed of A2UI and generative UI experiences: people wait while the model generates each screen. This release gives you levers to make that faster, so you can choose the trade-off that fits each screen.</p>
+<p>With this release, we’re happy to introduce swappable inference formats and share examples on leveraging decision models with A2UI, which help building faster and more reliable generative UI experiences. Using our new A2UI Express as an inference format you can reduce latency by up to 3x, and up-to 80x using decision models like Jev to make layout decisions. Express requires up to 3x fewer tokens to generate the same kinds of UI compared to Direct JSON. We'll dive into the details in this blog post.</p>
+<p>A2UI is an agent-optimized protocol for generative UI, where a client advertises a catalog of trusted components as a contract, an agent sends A2UI messages describing a bespoke user interface composed from that catalog, and the client's renderer draws the UI (see Introducing A2UI).</p>
+<p>Initially agents generated A2UI JSON transport messages directly, every curly brace and nested element. It turns out that generating JSON trees constrained by a complex JSON schema is slow and error-prone for LLMs. This coupled A2UI to LLMs, which output text, and made it difficult to integrate faster System One decision models.</p>
+<p>Now agents can generate A2UI Express, an intermediate format optimized for inference speed and accuracy, and rely on deterministic code in A2UI's Agent SDKs to translate it into the JSON-based transport protocol. Agent builders are also free to swap in any other DSL and its associated compiler for any special use-cases, and our A2UI Agent SDK(s) make it compatible with transports and renders.</p>
+<p>The format the model generates is what we call inference_format. You set it with one argument when you create the generator. The SDK generates the prompt instructions for that format and compiles the model's reply into standard A2UI messages. This post covers how the swap works, why we developed A2UI Express as the new default inference format, and how a decision model can build screens from layouts you define in advance.</p>
+<p>An inference format has two parts, and the SDK generates both from your catalog's JSON schema. A prompt section teaches the model the format's syntax, and a compiler compiles the model's reply into validated A2UI messages. Because both come from the schema, a format can't describe a component or property that your catalog lacks.</p>
+<p>You choose the format with one argument when you create the generator:</p>
+<p>A2UI Express is available in the Python agent SDK (a2ui-agent-sdk 0.9.0 on PyPI), in the TypeScript agent SDK (@a2ui/agent on npm), and in the Dart SDK (a2ui_agent 0.0.1-wip004 on pub.dev). In TypeScript, you pass new ExpressFormatFactory() as the generator's third argument. The Python and TypeScript SDKs can both stream Direct JSON chunk by chunk, and they compile Express from the complete reply.</p>
+<p>Express writes one statement per line, in a style close to Python. Each line assigns a component to a variable, and the variable name becomes the component ID. Arguments are positional: the compiler maps them to property names in the order your catalog schema declares them, and _ skips one. $/title binds a value to the data model, and Event("accept") declares a server action. This is the A2UI gallery's notification card in Express:</p>
+<p>Swappable Inference formats including A2UI Express also work with macros in the Python agent SDK, which help when a screen shows data your systems already hold. The model writes a call with only an ID, such as OrderStatus("ord_42"), and your macro fetches the order and fills in the values, so every value on screen comes straight from your data. The macros README shows the setup.</p>
+<p>Customer feedback uncovered latency and accuracy issues with direct JSON generation. To fix this, we started devising a new inference format. We experimented with four options:</p>
+<p>We ran all four formats through the same 51-task eval on gemini-3.5-flash and compared them for thinking modes: on and off.</p>
+<p>A2UI Express follows python like syntax and was inspired in part by OpenUI Lang, the language of the open-source OpenUI project, which also writes each component as a name = Component(...) statement with positional arguments. OpenUI Lang adds its own built-in functions and state, and the two languages aren’t yet interchangeable. The OpenUI team has proposed working toward a shared syntax in #3214. Comment if you're interested.</p>
+<p>Based on our tests; we observed that Express inference format works just as well even with thinking off; which can give you the fastest inference times when working with full expressivity of A2UI.</p>
+<p>Some screens have a known shape, such as a settings page, a checkout or a confirmation. For those, the model doesn't need to design a layout. It needs to choose among layouts you have already defined, and a different kind of model is built for that. For this, you would not need the full expressivity provided by A2UI Express.</p>
+<p>Jev, from TypeSafe, is what is called a System One model, built to make fast, structured decisions that code can use directly. Jev doesn't generate text or JSON. You send it a state and a set of typed questions, and it answers each one with calibrated probabilities. A question can ask whether a statement is true (Noul), which option from a list fits (Choice), or how something scores on a rubric (Score). Jev answers many questions in one request, in roughly 100 to 300 ms.</p>
+<p>Apparite(jev2ui), an open-source design tool, shows one way to connect a System One model to A2UI. Jev decides the structure of each screen, code builds the A2UI components from those decisions, and a small model, gemini-3.5-flash-lite, writes only the text. The questions live in a Markdown grammar written ahead of time. A blockquote asks a question, and the bullets are its options, each with criteria. This block from grammar/screen.md decides which control a settings row gets:</p>
+<p>On a podcast app's settings screen, Jev answers Skip forward → value, Auto-download → switch and Log out → danger, each at p ≈ 1.00. Apparite builds a whole screen in three steps:</p>
+<p>In one run of 11 prompts, the component tree was on screen in 92 to 298 ms and each screen was complete in 0.8 to 1.7 s. The text writer generated 101 to 341 tokens per screen, and both of Apparite's Jev pipelines produced valid A2UI on all 11 prompts. The project treats these numbers as a first look, since the sample is small.</p>
+<p>Controlled generation can only produce the layouts its grammar describes. Apparite's grammar covers nine screen archetypes and twelve blocks, so screens without a known shape are a better fit for Express. A2UI Agent SDKs, don’t include a decision model inference format yet; apparite(jev2ui) project is an example on how A2UI messages could be assembled given a batch of independent decisions from a decision model.</p>
+<p>A2UI Express is fast and keeps the full expressivity of A2UI, but a decision model making multiple independent decisions is still faster. Choose by how much of the screen you can define ahead of time:</p>
+<p>Use Express in your agent. Install the Python SDK with pip install a2ui-agent-sdk or the TypeScript SDK with npm install @a2ui/agent, pass ExpressFormatFactory() when you create the generator, and run the model with thinking off. Your catalog and renderers stay as they are, and the Express specification documents the syntax.</p>
+<p>To teach Gemini, or any other model that loads skills, to write Express with only your components, generate skills from your catalog with the Python SDK's SkillGenerator:</p>
+<p>Try controlled generation. Clone the example jev2ui repository, and follow the instructions there to get started. A hosted version of Apparite(jev2ui) runs at apparite.cnfg.ai.</p>
+<p>Earlier A2UI posts: Introducing A2UI (December 2025), A2UI v0.9 (April 2026) and A2UI + MCP Apps (June 2026).</p>
+<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
+<p>From prompt to app: Build with Google Maps in AI Studio</p>
+<p>Hill-Climbing Agent Quality with Agents CLI Evaluation</p>
+<p>On-Device Speech Recognition and Text-to-Speech in Google AI Edge Gallery</p>
                 <p style="margin-top: 25px;">
-                    <a href="http://databasearchitects.blogspot.com/2026/11/next-level-benchmarking-overfitting.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/fast-reliable-a2ui/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

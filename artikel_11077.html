@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Benchmarking Text Generation Inference</title>
+    <title>Large-scale Near-deduplication Behind BigCode</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11077.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Benchmarking Text Generation Inference</h1>
+        <h1>Large-scale Near-deduplication Behind BigCode</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tgi-benchmarking/tgi-benchmarking-thumbnail.png" alt="Benchmarking Text Generation Inference" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tgi-benchmarking/tgi-benchmarking-thumbnail.png" alt="Benchmarking Text Generation Inference" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In this blog we will be exploring Text Generation Inference’s (TGI) little brother, the TGI Benchmarking tool. It will help us understand how to profile TGI beyond simple throughput to better understand the tradeoffs to make decisions on how to tune your deployment for your needs. If you have ever felt like LLM deployments cost too much or if you want to tune your deployment to improve performance this blog is for you!</p>
-<p>I’ll show you how to do this in a convenient Hugging Face Space. You can take the results and use it on an Inference Endpoint or other copy of the same hardware.</p>
-<p>To get a better understanding of the need to profile, let's discuss some background information first.</p>
-<p>Large Language Models (LLMs) are fundamentally inefficient. Based on the way decoders work, generation requires a new forward pass for each decoded token. As LLMs increase in size, and adoption rates surge across enterprises, the AI industry has done a great job of creating new optimizations and performance enhancing techniques.</p>
-<p>There have been dozens of improvements in many aspects of serving LLMs. We have seen Flash Attention, Paged Attention, streaming responses, improvements in batching, speculation, quantization of many kinds, improvements in web servers, adoptions of faster languages (sorry python 🐍), and many more. There are also use-case improvements like structured generation and watermarking that now have a place in the LLM inference world. The problem is that fast and efficient implementations require more and more niche skills to implement [1].</p>
-<p>Text Generation Inference is a high-performance LLM inference server from Hugging Face designed to embrace and develop the latest techniques in improving the deployment and consumption of LLMs. Due to Hugging Face’s open-source partnerships, most (if not all) major Open Source LLMs are available in TGI on release day.</p>
-<p>Oftentimes users will have very different needs depending on their use-case requirements. Consider prompt and generation in a RAG use-case:</p>
-<p>In RAG it's important to have the right document to get a quality response, you increase this chance by increasing N which includes more documents. This means that RAG will often try to max out an LLM’s context window to increase task performance. In contrast, think about basic chat. Typical chat scenarios have significantly fewer tokens than RAG:</p>
-<p>Given that we have such different scenarios, we need to make sure that we configure our LLM server accordingly depending on which one is more relevant. Hugging Face has a benchmarking tool that can help us explore what configurations make the most sense and I'll explain how you can do this on a Hugging Face Space.</p>
-<p>Let’s make sure we have a common understanding of a few key concepts before we dive into the tool.</p>
-<p>Latency is a tricky measurement because it doesn’t tell you the whole picture. You might have a long generation or a short one which won't tell you much regarding your actual server performance.</p>
-<p>It’s important to understand that Throughput and Latency are orthogonal measurements, and depending on how we configure our server, we can optimize for one or the other. Our benchmarking tool will help us understand the trade-off via a data visualization.</p>
-<p>Here is a simplified view of how an LLM generates text. The model (typically) generates a single token for each forward pass. For the pre-filling stage in orange, the full prompt (What is.. of the US?)  is sent to the model and one token (Washington) is generated.  In the decoding stage in blue, the generated token is appended to the previous input and then this (... the capital of the US? Washington) is sent through the model for another forward pass. Until the model generates the end-of-sequence-token (<EOS>), this process will continue: send input through the model, generate a token, append the token to input.</p>
-<p>I only included a short example for illustration purposes, but consider that pre-filling only needs 1 forward pass through the model, but decoding can take hundreds or more. Even in our short example we can see more blue arrows than orange. We can see now why it takes so much time to get output from an LLM! Decoding is usually where we spend more time thinking through due to the many passes.</p>
-<p>We have all seen comparisons of tools, new algorithms, or models that show throughput. While this is an important part of the LLM inference story, it's missing some key information. At a minimum (you can of course go more in-depth) we need to know what the throughput AND what the latency is to make good decisions. One of the primary benefits of the TGI benchmarking tool is that it has this capability.</p>
-<p>Another important line of thought is considering what experience you want the user to have. Do you care more about serving to many users, or do you want each user once engaged with your system to have a fast response? Do you want to have a better Time To First Token (TTFT) or do you want blazing fast tokens to appear once they get their first token even if the first one is delayed?</p>
-<p>Here are some ideas on how that can play out. Remember there is no free lunch. But with enough GPUs and a proper configuration, you can have almost any meal you want.</p>
-<p>The benchmarking tool is installed with TGI, but you need access to the server to run it. With that in mind I’ve provided this space derek-thomas/tgi-benchmark-space to combine a TGI docker image (pinned to latest) and a jupyter lab working space. It's designed to be duplicated, so dont be alarmed if it's sleeping. It will allow us to deploy a model of our choosing and easily run the benchmarking tool via a CLI. I’ve added some notebooks that will allow you to easily follow along. Feel free to dive into the Dockerfile to get a feel for how it’s built, especially if you want to tweak it.</p>
-<p>Please note that it's much better to run the benchmarking tool in a jupyter lab terminal rather than a notebook due to its interactive nature, but I'll put the commands in a notebook so I can annotate and it's easy to follow along.</p>
-<p>If you used the same HW and settings I did, you should have a really similar chart to Figure 4. The benchmarking tool is showing us the throughput and latency for different batch sizes (amounts of user requests, slightly different than the language when we are launching TGI) for the current settings and HW given when we launched TGI. This is important to understand as we should update the settings in how we launch TGI based on our findings with the benchmarking tool.</p>
-<p>The chart in Component 3 tends to be more interesting as we get longer pre-fills like in RAG. It does impact TTFT (shown on the X-axis) which is a big part of the user experience. Remember we get to push our input tokens through in one forward pass even if we do have to build the KV cache from scratch. So it does tend to be faster in many cases per token than decoding.</p>
-<p>The chart in Component 5 is when we are decoding. Let's take a look at the shape the data points make. We can see that for batch sizes of 1-32 the shape is mostly vertical at ~5.3s. This is really good. This means that for no degradation in latency we can improve throughput significantly! What happens at 64 and 128? We can see that while our throughput is increasing, we are starting to tradeoff latency.</p>
-<p>For these same values let's check out what is happening on the chart in Component 3. For batch size 32 we can see that we are still about 1 second for our TTFT. But we do start to see linear growth from 32 -> 64 -> 128, 2x the batch size has 2x the latency. Further there is no throughput gain! This means that we don't really get much benefit from the tradeoff.</p>
-<p>If your batch size is in a vertical area, this is great, you can get more throughput and handle more users for free. If your batch size is in a horizontal area, this means you are compute bound and increasing users just delays everyone with no benefit of throughput. You should improve your TGI configuration or scale your hardware.</p>
-<p>Now that we learned a bit about TGI’s behavior in various scenarios we can try different settings for TGI and benchmark again. It's good to go through this cycle a few times before deciding on a good configuration. If there is enough interest maybe we can have a part 2 which dives into the optimization for a use-case like chat or RAG.</p>
-<p>It's important to keep track of actual user behavior. When we estimate user behavior we have to start somewhere and make educated guesses. These number choices will make a big impact on how we are able to profile. Luckily TGI can tell us this information in the logs, so be sure to check that out as well.</p>
-<p>Once you are done with your exploration, be sure to stop running everything so you won't incur further charges.</p>
-<p>LLMs are bulky and expensive, but there are a number of ways to reduce that cost. LLM inference servers like TGI have done most of the work for us as long as we leverage their capabilities properly. The first step is to understand what is going on and what trade-offs you can make. We’ve seen how to do that with the TGI Benchmarking tool. We can take these results and use them on any equivalent HW in AWS, GCP, or Inference Endpoints.</p>
-<p>Thanks to Nicolas Patry and Olivier Dehaene for creating TGI and its benchmarking tool. Also special thanks to Nicholas Patry, Moritz Laurer, Nicholas Broad, Diego Maniloff, and Erik Rignér for their very helpful proofreading.</p>
-<p>[1] : Sara Hooker, The Hardware Lottery, 2020</p>
-<p>[2] : Pierre Lienhart, LLM Inference Series: 2. The two-phase process behind LLMs’ responses, 2023</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tgi-benchmarking" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/dedup" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

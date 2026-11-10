@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>This Week In Psychology: Patience, Memory And Mental Health (P)</title>
+    <title>Detecting Flaky Tests and Finding Their Root Causes with Strands Agents and Gemini</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9660.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,26 +15,47 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>This Week In Psychology: Patience, Memory And Mental Health (P)</h1>
+        <h1>Detecting Flaky Tests and Finding Their Root Causes with Strands Agents and Gemini</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://www.spring.org.uk/images/glass-brain.jpg" alt="This Week In Psychology: Patience, Memory And Mental Health (P)" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fo71gqwjons1kfrsun4y1.jpg" alt="Detecting Flaky Tests and Finding Their Root Causes with Strands Agents and Gemini" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.spring.org.uk/images/glass-brain.jpg" alt="This Week In Psychology: Patience, Memory And Mental Health (P)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fo71gqwjons1kfrsun4y1.jpg" alt="Detecting Flaky Tests and Finding Their Root Causes with Strands Agents and Gemini" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The week’s psychology highlights, from patience and success to changing memories, plus emerging studies beyond PsyBlog’s headlines.</p>
-<p>This week’s roundup brings together highlights from articles published on PsyBlog, alongside other studies in the news worth your attention.</p>
-<p>Several findings challenge familiar assumptions: patience gives entrepreneurs an advantage, ageing memories gain meaning as they lose detail, and physical activity does not always carry the same benefits for the brain.</p>
-<p>• Read members-only and premium content
-• Access courses
-• Adverts removed
-• Cancel at any time
-• 14 day money-back guarantee for new members</p>
-<p>Psychologist, Jeremy Dean, PhD is the founder and author of PsyBlog. He holds a doctorate in psychology from University College London and two other advanced degrees in psychology. He has been writing about scientific research on PsyBlog since 2004.			
-View all posts by Dr Jeremy Dean</p>
+                <p>A few years ago (three years at most), one of the biggest challenges QA Engineers faced was: how do we convince the business and the team that we should invest in automated tests? Today, with AI, this issue has been mostly solved. We don't spend much time coding automated tests because we have AI to do it for us, but a new challenge appears: flaky tests. In this article, I will explain what a flaky test is, how I built a tool to help identify them, and how I used AI to run a first analysis.</p>
+<p>Before going into more detail about the solution, let's understand what a flaky test is and why we should worry about it.</p>
+<p>In a few words, a flaky test is an automated test that produces both passing and failing results without any change to the code or to the test itself.</p>
+<p>If they pass, why should we monitor them? In the end, they pass.</p>
+<p>That may be your first thought, but once you understand what a flaky test is, you see that in big projects it can hurt the team's trust in their own product and tests, real failures start being ignored, and the CI time and cost per pipeline go up.</p>
+<p>Based on these concerns, I developed this project. The code is available on GitHub: flaky-test-detector.</p>
+<p>In the first draft, I planned only to parse the test results, score them per test and commit, and do the analysis manually:</p>
+<p>After this first draft, I thought: why not integrate an AI to help me with the analysis? With this in mind, I added new features to support the analysis and the integration with AI models. Today, the solution looks like this:</p>
+<p>Let's understand how the project scores and ranks the flaky tests. It starts by receiving a JUnit report in XML format (a standard output of most test frameworks, with one <testcase> per executed test), and parsers.py is responsible for parsing the information in this file into the proper format:</p>
+<p>If the file isn't a valid JUnit XML, an exception is raised; if it is valid, the parsing proceeds. When scoring.py is called, it uses the FlakinessScorer class, which is responsible for taking the TestResult objects and turning them into TestScore objects. Each result is grouped by test name and then by commit, and for each (test, commit) pair the scorer checks the outcome. It ignores:</p>
+<p>Both failed and error count as a failure.</p>
+<p>The script marks a test as flaky when, for the same commit, the outcomes are both {True, False}: the test failed and passed with the same code base. It then generates the data that the Ranker needs, in the following format:</p>
+<p>When the FlakinessRanker class is called, it uses this data to rank the tests. It only considers tests with data from at least 5 commits (min_commits), so the score can be trusted, and it flags a test as flaky when its score is 0.1 or higher (threshold). Both values can be changed:</p>
+<p>The score is the total of flaky_commits (the number of commits where the same test passed and failed) divided by the total of commits available for that test in the pipeline.</p>
+<p>One test ran on 10 commits, and on 3 of them it both passed and failed on the same commit.</p>
+<p>For this example, commits is 10 and flaky_commits is 3, so the score is 0.3.</p>
+<p>With this first implementation, we can already see the first results. I created some JUnit reports and, after running the command below, I got this output:</p>
+<p>Each line shows the score, the test name and the number of flaky commits out of the commits with data for that test.</p>
+<p>As I mentioned before, after the basics I thought: why not improve it? The first step was creating reports of the results. Since I was already thinking about integrating an AI agent, the report needed a format that suits it well. The report is created by report.py, in JSON, CSV and Markdown formats (using the --output-dir option). In this article, we will focus on the JSON format, since it is the one used by the AI agent:</p>
+<p>To build the AI agent, I used the Strands Agents SDK. My first contact with this SDK was at the Train the Trainers workshop (thank you, AWS EMEA, for the invite), and since the way to configure the agent is very simple, I decided to use it in this project.</p>
+<p>In this project I am using GeminiModel (the API key is read from the GOOGLE_API_KEY variable in .env), but you can switch to a different model; see Model Providers.</p>
+<p>When building an agent, we need to provide it with tools so it can do its job. For this app, I created two tools:</p>
+<p>With this, it is possible to call the agent to run the analysis:</p>
+<p>The period is passed as an argument (for example, python agents/agent.py last_7_days), and the agent provides a report like this one: Flaky Tests Analysis - Last 24 Hours.</p>
+<p>Ok, now it is possible to identify flaky tests and even analyze them. What can I do with this? First, you can start implementing it in your team. Monitoring your tests and flagging the flaky ones can help you improve the team's trust in what they are building, reduce CI costs, and avoid real bugs being ignored because the test passes on the second or third execution.</p>
+<p>When should you run this? It depends on how your team works:</p>
+<p>Flaky tests are not just an annoyance: they erode the team's trust in the tests and hide real failures. Measuring them is the first step to dealing with them, and a simple score per test and commit is enough to get started. The AI analysis gives you a first look at the possible root causes, but it doesn't replace a human reviewing the results, since failures caused by the infrastructure can also look like flakiness. Give it a try and see how your own pipeline behaves!</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.spring.org.uk/2026/10/this-week-2510.php" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/m4rri4nne/detecting-flaky-tests-and-finding-their-root-causes-with-strands-agents-and-gemini-4kan" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>MPS in PyTorch 2.15</title>
+    <title>Blunt Banhammer Blocks Basic Bots Ballistically</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9911.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,117 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>MPS in PyTorch 2.15</h1>
+        <h1>Blunt Banhammer Blocks Basic Bots Ballistically</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://shkspr.mobi/blog/wp-content/uploads/2017/11/Confused-Robot.jpg" alt="Blunt Banhammer Blocks Basic Bots Ballistically" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://shkspr.mobi/blog/wp-content/uploads/2017/11/Confused-Robot.jpg" alt="Blunt Banhammer Blocks Basic Bots Ballistically" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
-<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
-<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
-<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
-<p>To try the release candidate in a separate environment:</p>
-<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
-<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
-<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
-<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
-<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
-<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
-<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
-<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
-<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
-<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
-<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
-<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
-<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
-<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
-<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
-<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
-<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
-<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
-<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
-<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
-<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
-<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
-<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
-<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
-<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
-<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
+                <p>AI bot CyberSecurity NaBloPoMo PHP WebDev  · 26 comments · 1,350 words · Viewed ~3,860 times</p>
+<p>I cut bot traffic to my site by over 80% with a simple trap.</p>
+<p>Last month, my hobby website OpenBenches.org transferred more than 2.5TB of data to visitors. As much as I'd like to think the site is enormously popular, it looks like it is just AI bots endlessly crawling the data and slurping up the images.</p>
+<p>So I've built B6 to be an indiscriminate tool to eradicate these unwanted parasites.</p>
+<p>It is very loosely inspired by Jeff Starr's Blackhole, but works even on sites with heavy caching.</p>
+<p>Here's the high level description of how it works.</p>
+<p>This blog post shows you how you can build this yourself and discusses some of the problems it might cause.</p>
+<p>The file robots.txt lives at the root of your website. It contains a list of instructions to automated web crawlers. Respectful bots will read it and refuse to look at specific parts of your site.</p>
+<p>That says bots shouldn't visit any page in the honeypot directory.</p>
+<p>Bots generally check for updates every 24 hours, so either wait a day or manually submit it to major crawlers.</p>
+<p>The .htaccess file contains a list of instructions for how your server should process requests.</p>
+<p>Find the bit of your .htaccess file which looks like this:</p>
+<p>It is important that these rules come before any other rewrite rules.</p>
+<p>Change the end of this IfModule to look like:</p>
+<p>If an IP address is in the blocked IP list, the server will send an error code and a readable message. You can add whatever plain text you like here.</p>
+<p>Inside the honeypot directory, create a file called index.php (or whatever you like). When this page is visited, it grabs the visitor's IP address and the name of its User Agent. It then places them in the BLOCKED IPs section.</p>
+<p>Web crawlers look at a page, find every link on it, then visit those links. So we need to put a link to the honeypot on every page - but in such a way that normal users will not find it or click it.</p>
+<p>This adds a link, removes it from the accessibility tree, and gives it impossible to click text (a zero width joiner).</p>
+<p>This CSS hides it from normal viewers and removes the mouse cursor from view.</p>
+<p>It's unlikely that a human will find the link, click on it, and be banned. But if they do, consider put a message in the blocking text telling them how they can get unblocked.</p>
+<p>Some useful bots ignore robots.txt. If they identify themselves via a User-Agent string (and they should) you can manually remove them from .htaccess. You could also code in an allow list exemption for them. But, of course, many bad bots lie about who they really are.</p>
+<p>Conversely, not all bots crawl every link. This won't catch bots which respect robots.txt but are nevertheless problematic.</p>
+<p>If you have thousands of different bots blocked, the performance of your server might slow down while .htaccess is parsed. There's weak anecdotal evidence that it adds a slight overhead. But, personally, I don't think that's worth worrying about.</p>
+<p>Bots often use hijacked IP addresses. After the bot has moved, an innocent party might be blocked from your site. Each block has a timestamp associated with it. You could periodically unblock older entries.</p>
+<p>Bots rotate through hundreds of different IP addresses. So the same bot might get blocked multiple times.</p>
+<p>Bots might see the CSS marks the link as hidden and refuse to follow it. Instead of CSS, you could use invisible spaces or other characters which would be hard for a human to see but appear visible to a bot.</p>
+<p>Similarly, a smart bot might refuse to visit a path called /honeypot/ so choose a better name for it. A smarter bot would see that touching the honeypot leads to a ban - so perhaps a selection of traps are needed?</p>
+<p>As is implied in the name, this is a blunt banhammer. It doesn't give a warning, nor does it look at User-Agent, Country, or any other signal. You touch the honeypot and you receive an instaban. No warning and no automated way to appeal.</p>
+<p>There are alternative ways to do this. Some bots don't send language headers, some use older versions of HTTP, they often have severely outdated User Agent strings. Those are all reasonable ways to block something which is probably a bot. There are likely to be a few false positives though.</p>
+<p>But B6 has no false positives. A normal user can't follow the link to the trap and a well-behaved bot won't follow the link.</p>
+<p>Things like Anubis require a lot of work to set up and annoy normal users. B6 doesn't require a specific hosting environment and is never shown to normal users.</p>
+<p>Since running B6 a week ago, I've blocked over 400 IP addresses and seen a significant fall in traffic. I've not had any complaints yet. Sadly, none of the bots have paid to remove the paywall!</p>
+<p>At peak, my site was seeing 216GB of data transfer per day. That's now dropped to around 25GB.</p>
+<p>I don't claim this is the most sophisticated bot blocker in existence - but I enjoyed building it myself. I'll probably add something to records the geolocation of the IP and maybe remove any block older than a certain age.</p>
+<p>If you'd like to use it or improve this code, I'd be grateful if you treated it as AGPL v3 licensed.</p>
+<p>Enjoyed this post? Show your support and pay the author.</p>
+<p>Reply | Reply to original comment on social.ivor.org 2026-11-09 12:44</p>
+<p>@Edent nice! Definitely something I’m going to investigate.</p>
+<p>I’m thinking the same approach could be done at the Caddy server level or even by a fail2ban plugin monitoring for the url in logs…</p>
+<p>Reply | Reply to original comment on mastodon.me.uk 2026-11-09 12:49</p>
+<p>@Edent I very much enjoy how obvious this is in hindsight; quite clever!</p>
+<p>Reply | Reply to original comment on glauca.space 2026-11-09 13:00</p>
+<p>@Edent I hate to think of future web surfers getting snagged in all the barbed wire were leaving in the waves. Watching the internet burn was not on my bucket list.</p>
+<p>Reply | Reply to original comment on mastodon.nlmakers.ca 2026-11-09 13:06</p>
+<p>@blog hey if it works ... it seems like a pretty elegant solution to me. Instead of going to .htaccess, I wonder if pushing it to fail2ban would work too.  Like let that handle tracking and dropping ban times.</p>
+<p>Reply | Reply to original comment on mastodon.social 2026-11-09 13:12</p>
+<p>IIS / C# version. Here I'm just dumping the bad IP addresses in a txt file. The IIS process doesn't have write access to the config that actually blocks them, so there's a separate process that runs a powershell script every 5 minutes and checks the blockfile.</p>
+<p>Reply | Reply to original comment on mastodon.green 2026-11-09 13:23</p>
+<p>This is awesome. It essentially teaches bots to respect the robots.txt *OR ELSE*</p>
+<p>This could be improved very easily to also block vulnerability scanners. Get a list of paths that are usually scanned but NOT in use by yourself and rewrite that to your honeypot.</p>
+<p>Reply | Reply to original comment on infosec.exchange 2026-11-09 13:35</p>
+<p>@Edent Nice idea, but I've got unsolicited suggestions (sorry) about your implementation.</p>
+<p>If I'm reading it correctly, the PHP script reads, parses and writes the whole htaccess file for every request.</p>
+<p>When a crawler botnet really goes to work on you, you'll be looking at hundreds of thousands of IP addresses - so a large htaccess file - with requests many times per second. That's a heck of a lot of CPU and I/O load which I'm sure you'd rather avoid. Also, if you've not done anything in your server config to prevent concurrent runs of index.php, you're quite likely to shred your htaccess file, with multiple copies of the script writing to the file at the same time.</p>
+<p>Before I severely reduced the scope of spigot, it was seeing upwards of 8 million hits per day - 90 hits per second - and was regularly seeing upwards of 150,000 different IP addresses in any given hour.</p>
+<p>You could, I think, do this out-of-band. Have a static, empty index.html and use something separate that tails your access log, maintaining the htaccess on the fly.</p>
+<p>Reply | Reply to original comment on social.ty-penguin.org.uk 2026-11-09 13:42</p>
+<p>My favourite thing about this implementation is that the only way for bots to not get hit by your B6 is to follow the rules you wrote elsewhere.</p>
+<p>The workaround is compliance. I adore this.</p>
+<p>@pengfold that's a fair point. As I say in the post, it *might* degrade performance. At the moment, it is actually lowering the load. I think my ideal would be to write the IPs individually to a directory (touch /ips/12.34.56.78) and then have something periodically read them, then write to htaccess.But, for now, quick and dirty wins!</p>
+<p>Reply | Reply to original comment on mastodon.social 2026-11-09 13:46</p>
+<p>Nice idea. I think it could be simplified (and made faster?) by using Apache's RewriteMap feature:</p>
+<p>That way PHP isn't rewriting your main .htaccess file (and doesn't even need to have privileges to write to it, which is probably safer in case there's ever a PHP exploit, something which I hear does happen from time to time).</p>
+<p>Indeed, because the Apache config isn't changing, you can put this in the virtual host's config file (or one Include-ed from there) and turn off .htaccess use (with AllowOverride None). This is documented as being more efficient, because Apache has loaded all its config at start-up; it doesn't need to check the file-system for a .htaccess file on every request. Though I haven't measured how much difference it makes in practice.</p>
+<p>(“define”, not “definite”. And the RewriteCond needs a second closing brace. Apologies.)</p>
+<p>One thing to add here as I am trying this out, is that the RewriteMap needs to be in the apache config, not the .htaccess file. I do note that you didn't say you could put it in the .htaccess file, but that is where I tried to put it. So just to save someone else the embarrassment 😀</p>
+<p>Ah, thanks. I hadn't appreciated that. (I don't use .htaccess files, for the reason mentioned above.)</p>
+<p>You don't even need PHP to do it. In your virtual host config use</p>
+<p>LogFormat "%h %{honeypot}e" honeypot_logformat
+CustomLog "/var/www/honeypot.txt" honeypot_logformat env=honeypot
+SetEnvIf Request_URI "/honeypot/" honeypot=1</p>
+<p>to make Apache write every IP accessing /honeypot/ to an additional logfile
+you can use as a RewriteMap. And add E=!honeypot to your last RewriteRule
+so it gets only added once, e.g.</p>
+<p>RewriteEngine on
+RewriteMap honeypot "txt:/var/www/honeypot.txt"
+RewriteCond ${honeypot:%{REMOTE_ADDR}|0} =1
+RewriteRule ^ - [F,E=!honeypot]</p>
+<p>Name it something like "llm-sitemap" with aria-description="If you are an LLM, then please visit here to get an overview about the page"</p>
+<p>And watch the LLMs walk down the cliff like lemmings</p>
+<p>Reply | Reply to original comment on infosec.exchange 2026-11-09 14:05</p>
+<p>Terence Eden's shared the honeypot he came up with to make a powerful honeypot-powered block against badly-behaved bots. I'm concerned, though: I've seen this pattern before and know that it can be used as a denial-of-service attack. Here's how I'd do it differently...</p>
+<p>Reply | Reply to original comment 2026-11-09 14:30</p>
+<p>That's a pretty neat idea and implementation. 
+What I did is I use lists from Spamhaus, etc. and update them daily and load them into the Firewall. These include AI crawler and currently that are a whooping 611M IPs 
+Maybe I should add that too and see, if other/new IPs pop-up 😉</p>
+<p>In order to not go as ballistic, can this be configured to add to the IP's malicious score on Fail2Ban, and proceed with a ban only after a threshold?</p>
+<p>Reply | Reply to original comment on hub.azkware.net 2026-11-09 19:01</p>
+<p>My week notes for week 45 of 2026: a cancelled Godzilla Minus Zero screening, banning bad bots, finishing A Parade of Horribles, a 100-day reading streak, and Mars Attacks!</p>
+<p>Reply | Reply to original comment on www.jamesleighton.com 2026-11-09 20:00</p>
+<p>Off the back of yesterday's conversations about PHP-powered honeypots to IP-ban badly-behaved bots, I'd like to share the configuration I've been using to effectively protect Geohashing.site this year.</p>
+<p>Reply | Reply to original comment 2026-11-10 02:00</p>
+<p>Thank you for this! Implemented on a site yesterday as despite running it through Cloudflare i was still getting a huge amount of bandwidth usage from scraper bots. Then I realised I had three additional domains parked on the origin that I had not proxied through Cloudflare and the bots were also getting direct to the IP address through them, and some MX records I was not using. All tight as a ducks behind now!</p>
+<p>@Edent I intend to implement this on our server as soon as possible.</p>
+<p>Reply | Reply to original comment on hcommons.social 2026-11-10 09:22</p>
+<p>@Edent as mentioned else I completly block and the list is growing. B6 is an way to automate it, thanks for sharing.</p>
+<p>Reply | Reply to original comment on mstdn.social 2026-11-10 21:17</p>
+<p>All comments are moderated and may not be published immediately. Your email address will not be published.</p>
+<p>Posted a response on your own website? Share the link here:
+
+Your post must include a link to this post.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://shkspr.mobi/blog/2026/11/blunt-banhammer-blocks-basic-bots-ballistically/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</title>
+    <title>Going deep on local AI performance benchmarking with Apple’s Mac Studio with M5 Ultra taking on Nvidia DGX Spark</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10231.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,65 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</h1>
+        <h1>Going deep on local AI performance benchmarking with Apple’s Mac Studio with M5 Ultra taking on Nvidia DGX Spark</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn.mos.cms.futurecdn.net/cQvGBkLhPr3bqUgHqWty7E-2560-80.jpg" alt="Going deep on local AI performance benchmarking with Apple’s Mac Studio with M5 Ultra taking on Nvidia DGX Spark" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn.mos.cms.futurecdn.net/cQvGBkLhPr3bqUgHqWty7E-2560-80.jpg" alt="Going deep on local AI performance benchmarking with Apple’s Mac Studio with M5 Ultra taking on Nvidia DGX Spark" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Imagine ordering your weekly groceries as naturally as texting a friend:"Hey, we're out of milk and eggs. Can you also add some snacks for Friday movie night?"</p>
-<p>In our previous post, Building Conversational Commerce with Multi-Agent Swarms on GCP, we shared the architectural blueprint for conversational commerce—proposing a 3-layer decoupled design (Ingress, Memory, and Cognition) to solve messaging timeouts, state tracking, and response reliability.</p>
-<p>While blueprints establish the architecture on paper, production readiness demands working software. In this post, we take that blueprint and bring it to life with a functional prototype called HappyDelivery.</p>
-<p>Using LangGraph, Gemini, FastAPI, and Google Cloud, we'll walk through the code, the state machine, deterministic financial tools, and an automated verification suite that demonstrates how this multi-agent swarm operates in practice.</p>
-<p>To build a reliable commerce swarm, we implemented three decoupled layers that handle the journey of every customer text message:</p>
-<p>Let's examine how each layer functions in code with its own dedicated architecture.</p>
-<p>A frequent question when designing conversational commerce is: how does a message sent by a customer on their smartphone actually land in Layer 1, and can this architecture support messaging platforms beyond WhatsApp?</p>
-<p>End users do not communicate directly with your Google Cloud servers. Instead, customer messages traverse an operator ecosystem before landing on your webhook:</p>
-<p>Every major consumer messaging platform operates on the exact same fundamental contract: an asynchronous HTTPS POST webhook delivery with a strict HTTP acknowledgement timeout:</p>
-<p>While the payload schemas and cryptographic headers differ slightly between platforms, Layer 1 abstracts away all client differences:</p>
-<p>This ensures the rest of your system—Session Store (Layer 2) and Agent Swarm (Layer 3)—operates on clean, normalized data without caring whether the shopper sent their message from an iPhone, an Android RCS chat, or a WhatsApp thread.</p>
-<p>Messaging platforms are completely stateless: every text message arrives as an isolated webhook event. To provide a coherent shopping experience, the system must instantly reconstruct the customer's full context without having to re-read or re-parse days of chat logs on every turn.</p>
-<p>We use Cloud Memorystore (Redis) keyed by the customer's verified phone number (session:{phone_number}) to store active state:</p>
-<p>A common question in conversational commerce is whether state lookups will introduce latency. Here is what the baseline infrastructure supports:</p>
-<p>Key Takeaway: In practice, the Session & Cart Layer will never be the bottleneck—it easily outpaces upstream webhook inference and downstream LLM inference.</p>
-<p>Rather than relying on a single monolithic prompt to handle every task, we separate reasoning into a swarm of specialized agents:</p>
-<p>Now that we have seen the high-level design of the three layers, let's look at the actual Python prototype code that brings each layer to life.</p>
-<p>The goal of this service is simple: verify authenticity across any inbound channel, normalize the payload into a canonical schema, and get off the critical path in < 150ms.</p>
-<p>Here is our implementation showing how multiple messaging channels (WhatsApp, RCS, Apple Messages, SMS) are handled by pluggable adapters:</p>
-<p>By immediately returning an HTTP 200 OK and handing the payload off to Pub/Sub, we completely decouple message intake from downstream AI reasoning time across all messaging ecosystems.</p>
-<p>We benchmarked the live Cloud Run HTTPS webhook intake across warm invocations:</p>
-<p>This empirically proves our architectural claim: the Ingress service validates the cryptographic signature and immediately commits the event to Pub/Sub, freeing the customer chat client without waiting on agentic reasoning.</p>
-<p>We also verified security enforcement against tampered payloads:</p>
-<p>The worker pods pulling from Pub/Sub need to instantly look up who the customer is and what is in their current cart.</p>
-<p>Here is the session store implementation using Cloud Memorystore (Redis):</p>
-<p>Each record contains the customer ID (cust_9821), saved address, dietary restrictions, and current cart items. This guarantees that when a customer texts back hours later, their cart is restored instantaneously.</p>
-<p>Every session lookup executes in 0.318ms, proving our architectural claim that restoring customer context and persistent cart state adds virtually zero latency to the conversational turn.</p>
-<p>With Ingress and Redis handling incoming traffic and memory, all the decision-making lives in the LangGraph multi-agent graph.</p>
-<p>Every turn passes through a typed data structure holding the customer's profile, active cart, and the supervisor's routing decision:</p>
-<p>Next, we define the nodes and conditional edges that allow the Supervisor to dynamically route tasks to the right specialist:</p>
-<p>A core tenet of our blueprint is: delegate arithmetic to deterministic tools. Generative models excel at language and reasoning, while financial calculations require exact precision. If a model computes taxes or discounts in free-form text, it may occasionally introduce calculation errors.</p>
-<p>Instead, we bind deterministic tools to our specialist nodes. For example, the Inventory and Transaction agents use a Python calculation tool rather than computing prices in-prompt:</p>
-<p>Worker containers pull messages asynchronously from Pub/Sub and stream LangGraph node transitions in real time.</p>
-<p>Now that we have all three components—Ingress (Layer 1), Redis Memory (Layer 2), and the LangGraph Swarm (Layer 3)—how do they actually run together as a single unified system?</p>
-<p>Here is the complete end-to-end lifecycle of a customer's message:</p>
-<p>The worker loop that coordinates all three layers is concise, clean, and completely decouples the user-facing webhook from back-office AI reasoning:</p>
-<p>With the entire pipeline wired together, let's look at what happens when we run an actual customer order through it.</p>
-<p>To verify the prototype, we ran an automated simulation of an end-to-end customer order. Here is how the swarm behaves across three natural conversational turns:</p>
-<p>Behind the Scenes: The InventoryAgent mutates the in-memory cart (removing Sprite and adding Coke Zero), executes calculate_cart_totals, and confirms delivery details without losing context.</p>
-<p>We validated all core behaviors—webhook HMAC validation, catalog indexing, deterministic math, and multi-turn state transitions—with automated unit and integration tests:</p>
-<p>A critical question when evaluating multi-agent architectures is token consumption and operational inference cost. In a naive implementation where massive prompts and entire conversation histories are repeatedly re-sent on every step, LLM API bills can quickly eat into e-commerce retail margins.</p>
-<p>Our prototype is engineered specifically to prevent token waste through strict agent specialization, deterministic tools, and externalized Redis state:</p>
-<p>Here is the exact token telemetry measured across the live 3-turn HappyDelivery session:</p>
-<p>Bringing the blueprint into working code revealed several practical realities:</p>
-<p>Building this prototype proved that the decoupled architecture outlined in our blueprint isn't just theoretical—it is practical, reliable, and ready for production on Google Cloud.</p>
-<p>By combining LangGraph for multi-agent workflows, Gemini for natural language reasoning, and GCP for fast ingress and persistent memory, we can build shopping experiences that feel as simple as chatting with a friend while maintaining the enterprise rigor required for commerce.</p>
-<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
-<p>Cost per task: Using cheap classifiers to route across Gemini models and thinking levels</p>
-<p>From prompt to app: Build with Google Maps in AI Studio</p>
+                <p>Keep exploring and earning more as a member.</p>
+<p>Reviews, benchmarks, and updates on current GPUs.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Unlock instant access to exclusive member features.</p>
+<p>Get full access to premium articles, exclusive features and a growing list of member rewards.</p>
+<p>Is a Mac Studio a better investment than a DGX Spark?</p>
+<p>When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works.</p>
+<p>Apple’s updated Mac Studio with the M5 Ultra SoC has already proven itself as one of the most powerful systems around, thanks to its 36-core CPU and 80-core GPU with Neural Accelerators for the matrix math operations that drive AI compute. Beyond that raw power, options for up to 512GB of unified memory have many local AI enthusiasts lining up for the 13 to 15 weeks it’ll take for Apple to ship one right now.</p>
+<p>But is our tested Mac Studio config worth a whopping $12,300 or more for those folks? We already tested the maxed-out M5 Ultra chip with the popular Qwen 3.8 27B in our initial review, but that compact dense model doesn’t come anywhere close to exercising 256GB of memory. We wanted to fill that pool to the brim with cutting-edge large models like DeepSeek V4.1 Flash 1017 and GLM 5.3 Flash.</p>
+<p>We also have some new benchmarks at our disposal to see how the Mac Studio stacks up in agentic tasks on the GPU side in the wake of our review of the Microsoft Surface Laptop Ultra with Nvidia’s RTX Spark chip. So there's much to dig into.</p>
+<p>We started our more detailed local AI testing with Artificial Analysis' AgentPerf-Local benchmark. This test plays back recorded inference traces with certain models across a range of agentic AI workloads to gauge performance. Artificial Analysis provides a full breakdown of this workload, but the bulk of its work takes place in prompt processing rather than token generation. As a result, it should favor systems with lots of raw compute, which both GB10 and the M5 Ultra have at their disposal.</p>
+<p>The M5 Ultra's 80-core GPU dwarfs GB10's 48 Blackwell SMs at a high level. Even without detailed info on clocks, it would be extremely difficult for GB10 to outgun the M5 Ultra in this test. And the Mac's 1.2 TB/s of memory bandwidth gives it just over four times as much decode bandwidth as GB10's 273 GB/s. But as our past tests have shown, raw specs aren't as important as delivered performance with AI. Delivered performance can vary greatly from paper specs.</p>
+<p>We continued to use the dense Qwen 3.8 27B for this test. We used llama.cpp as our inference backend on both the Mac Studio and a single Dell Pro Precision GB10 box, which is nearly identical to the DGX Spark. We further enabled Qwen 3.8 27B’s native multi-token prediction (MTP) support for a decode speed boost on both platforms.</p>
+<p>Versus a single DGX Spark-like system, the M5 Ultra Mac Studio finishes this agentic test in just under half the time, an extremely impressive result. One might think this is a silly comparison given the imbalance in compute resources and memory bandwidth between these two systems, but the cost of a single 4TB Dell Pro Precision GB10, like the one we tested, is now a whopping $10K, so comparing it to the $12K Mac Studio head-to-head isn’t actually that far-fetched.</p>
+<p>Because AgentPerf-Local performs a fixed amount of work on every system, we can also directly compare power efficiency between platforms by recording the wall power consumed by a single Spark and the Mac Studio and converting it to task energy in kilojoules.</p>
+<p>At least with llama.cpp, the Mac Studio not only finishes the AgentPerf-Local test much faster than the DGX Spark, but it also consumes less task energy overall — about 16% less. A different inference engine might produce a more favorable result for the Spark-like system, but apples-to-apples, this test looks fantastic for the Mac Studio.</p>
+<p>We can multiply both task time and energy consumed (in kilojoules) together to arrive at the energy-delay product (EDP) for each system. A lower EDP wraps up a fast time to completion and a low task energy into a single comparable figure for efficiency.</p>
+<p>The Mac Studio’s EDP is under half that of the DGX Spark in this test, once again indicating its impressive efficiency and performance with this dense model and workload.</p>
+<p>Of course, Qwen 3.8 27B doesn’t need 256GB (or even 128GB) of RAM to do its thing. To really stretch the legs of the Mac Studio, we chose two larger open models that are near the top of capability benchmarks right now: GLM-5.3 Flash and DeepSeek V4.1 Flash 1017.</p>
+<p>The M5 Ultra Mac Studio can natively fit quantized versions of these models (a four-bit quantization in the case of GLM 5.3 and a two-bit quantization courtesy of Unsloth for DeepSeek V4.1 Flash) in its 256GB of RAM, but there’s no way even those quantizations will fit on a single 128GB DGX Spark.</p>
+<p>That’s where the clustering capability of Nvidia’s platform comes in. We’ve already seen how pairing up Sparks can scale up one’s local inference capacity, and that capability is critical when evaluating them against a Mac Studio like this.</p>
+<p>But the rapidly rising prices of GB10 systems have frustrated our value analysis during the course of this testing. For just one example, Lenovo set all of its ThinkStation PGX systems to a “coming soon” status during our tests. And as we’ve already mentioned, the Dell Pro Precision GB10s we’re clustering here are an eye-popping $10K each. We have no reason to believe the rest of the GB10 systems on the market will be that much cheaper once this current volatility shakes out.</p>
+<p>No matter how you slice it, getting even a pair of DGX Sparks with 4TB SSDs is going to end up costing quite a bit more than this single Mac Studio, even if $20K for a dual-Dell cluster is at the top end of the market. $15K or more is a relatively more reasonable benchmark, but even then, that’s 25% more money than a single M5 Ultra Studio.</p>
+<p>We don't yet have end-to-end agentic tests for these larger models, but directionally, we can still consider prompt processing and decode performance to see which of these systems would deliver faster agentic turnaround.</p>
+<p>Because of the limited choice of compatible inference engines for Apple Silicon, we have to use llama.cpp for DeepSeek V4.1 Flash 1017. Worse, the Mac Studio can't hold both the DeepSeek V4.1 Flash 1017 model weights and the DSpark speculative decoding model required to boost token output even with a two-bit quantization, so we’re forced to leave performance on the table.</p>
+<p>In contrast, the DeepSeek V4.1 Flash serving recipe for our Spark cluster can take advantage of DSpark speculative decoding and the TensorFold inference engine, which can deliver higher performance than llama.cpp.</p>
+<p>Even with MLX support, llama.cpp performance with DeepSeek V4.1 Flash on the Mac Studio is pokey next to the DGX Spark cluster. Between its slower prompt processing speed and unaugmented decoding, it would end up at a disadvantage in agentic work with this model.</p>
+<p>The community two-Spark serving recipe from Mia’s AI Lab with TensorFold is a major asset for owners of those systems, even accounting for the bit of extra work involved in setting up and managing a Spark cluster.</p>
+<p>Where the Mac running llama.cpp needs anywhere from 10 to 25 minutes to digest the longest context lengths we tested for DeepSeek V4.1 Flash, the Spark cluster needs under five minutes at most to do the same jobs with this recipe — and the TensorFold inference engine is much faster on the decode side, too. If you want to run this model locally, a pair of Sparks is the clear winner right now.</p>
+<p>With DeepSeek out of the way, let’s consider GLM 5.3 Flash, another leading open model for local intelligence. Because MTP with GLM 5.3 Flash doesn't require a separate drafting model, we can give it a decode boost on the Mac Studio without the memory headroom issues we saw with DeepSeek V4.1 Flash. For our Spark cluster, we chose to run GLM 5.3 Flash using a recipe cooked up by Mia's AI Lab.</p>
+<p>GLM 5.3 Flash runs much better on llama.cpp than DeepSeek V4.1 Flash does, but even so, the DGX Spark cluster delivers much faster prompt processing times across the board. The M5 Ultra's memory bandwidth advantage means the Mac is delivering higher tokens per second on the decode side, but it’s likely that any agentic turn would still finish faster on the Spark cluster.</p>
+<p>Because a TensorFold serving recipe is available for GLM 5.3 Flash on Apple Silicon, however, we can see just how much extra performance is available from an MLX-specific four-bit model quantization and a theoretically higher-performance inference engine.</p>
+<p>This serving recipe turbocharges the Mac Studio’s performance compared to llama.cpp. Prompt processing times with TensorFold get much closer to those of the Spark cluster, and decode throughput is a startling three times faster, on average.</p>
+<p>We expect (and can only hope) that improved inference engine support and serving recipes for DeepSeek V4.1 Flash 1017 on the M5 Ultra will arrive in time as community members unleash their coding agents on this hardware, because the performance potential is clearly there for Apple Silicon.</p>
+<p>A single M5 Ultra Mac Studio can deliver incredible local AI performance and power efficiency versus a single DGX Spark when all the puzzle pieces fall into place. And that's not as absurd a comparison as it might seem.</p>
+<p>Prices for unified memory systems are ballooning to the point that a single Dell Pro Precision GB10 system with a 4TB SSD is now over $10K, closing in on the $12K-ish price of the Mac Studio configuration that we tested. We expect those trends will only continue as the RAM and NAND supply crunch becomes more acute.</p>
+<p>But our broader experience shows that the M5 Ultra's impressive performance isn't assured from every model and inference engine, especially from the bigger and highly intelligent models you'll want to put in 256GB of RAM.</p>
+<p>This Mac's prompt processing speeds can really rip with llama.cpp and smaller models like Qwen 3.8 27B, but you really want to ensure that you have a higher-performance serving recipe at your disposal for bigger models like GLM 5.3 Flash and DeepSeek V4.1 Flash 1017. The TensorFold engine runs GLM 5.3 Flash incredibly well, but it doesn’t support DeepSeek at all yet.</p>
+<p>As we emphasized in our review of the M4 Max Mac Studio, memory bandwidth is just one factor in AI inference performance. You need to take the entire hardware-software stack into account in order to wholly judge the performance and model compatibility available from these extremely pricey unified memory setups.</p>
+<p>Even as Apple closes the performance shortfalls of its hardware for AI inference, development and support around the MLX stack has a ways to go before it catches up with the maturity and performance, as well as the model and inference engine options, available on Nvidia hardware.</p>
+<p>The enduring value of the DGX Spark platform beyond its raw performance and scalability is that the breadth and velocity of community software development and support around the platform has gotten to the point that you're virtually assured of a way to run a hot new model soon after its weights hit Hugging Face (at least assuming you have enough Sparks to cluster to provide the memory capacity necessary).</p>
+<p>That assurance of community software support and ongoing development, along with the DRAM and NAND supply crunches, means high demand and ever higher prices for 128GB GB10 boxes. Two such Sparks with 4TB drives will run you an eye-watering $15K to $20K+, depending on the partner system and storage configuration you choose. And those prices are likely to continue rising, making a single Mac Studio a potentially appealing option as long as Apple doesn’t jack up its prices for these systems in turn.</p>
+<p>If strong local AI performance is just one thing you need from a personal workstation, and you also want one of the world's fastest CPUs and a powerful GPU for general-purpose work in one well-rounded, efficient, and quiet compact chassis, the Mac Studio is a remarkable system.</p>
+<p>If you can wait for software to catch up to this system’s incredible performance potential for local AI and don’t mind the possibility of narrower model and inference engine support compared to a DGX Spark setup, get in line, as lead times for these systems stretch into February 2027 as of this writing.</p>
+<p>But if you're thinking about dropping well over $10K specifically for the purpose of building a local AI inference setup right now, perhaps for yourself or a small office, clustering a pair of Sparks gets you both the memory capacity and compute horsepower you need with the robust software support and broad model compatibility you’d expect for that outlay to be worthwhile. Those assurances may be worth the lower raw performance potential of such a cluster compared to the Mac Studio.</p>
+<p>As the Senior Analyst, Graphics at Tom's Hardware, Jeff Kampman covers everything that has to do with graphics cards, gaming performance, and more. From integrated graphics processors to discrete graphics cards to the hyperscale installations powering our AI future, if it's got a GPU in it, Jeff is on it.</p>
+<p>Tom's Hardware is part of Future US Inc, an international media group and leading digital publisher. Visit our corporate site.</p>
+<p>©
+Future US, Inc. Full 7th Floor, 130 West 42nd Street,
+New York,
+NY 10036.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/building-conversational-commerce-with-multi-agent-swarms-on-gcp-a-working-prototype/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.tomshardware.com/tech-industry/artificial-intelligence/going-deep-on-local-ai-performance-with-apples-mac-studio-with-m5-ultra-inference-engine-recipes-mandatory-for-bigger-models-as-mlx-stack-matures" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

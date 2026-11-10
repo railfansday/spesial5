@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Test Location-Aware APIs with FastAPI and PostGIS</title>
+    <title>Debugging CSS Layout Issues: A Practical Guide to Browser DevTools</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10972.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,46 +15,75 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How to Test Location-Aware APIs with FastAPI and PostGIS</h1>
+        <h1>Debugging CSS Layout Issues: A Practical Guide to Browser DevTools</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_sitepoint_location_aware_api_cover_realistic_102ecb9804.png" alt="How to Test Location-Aware APIs with FastAPI and PostGIS" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Debugging_CSS_Layout_Issues_fba90e6109.png" alt="Debugging CSS Layout Issues: A Practical Guide to Browser DevTools" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_sitepoint_location_aware_api_cover_realistic_102ecb9804.png" alt="How to Test Location-Aware APIs with FastAPI and PostGIS" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Debugging_CSS_Layout_Issues_fba90e6109.png" alt="Debugging CSS Layout Issues: A Practical Guide to Browser DevTools" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
                 <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
 <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
 <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Catch coordinate-order bugs, distance mistakes, boundary cases, and bad spatial assumptions before they reach production.</p>
-<p>A location endpoint can return HTTP 200 and still be wrong by kilometers. That is the uncomfortable part of testing geospatial APIs: ordinary API checks tell you whether the request worked, not whether the geography is correct.</p>
-<p>Spatial bugs can look harmless in code review. Latitude and longitude get reversed. A radius value is treated as degrees instead of meters. A query works near one city but behaves differently elsewhere because the geometry column uses the wrong type. The JSON is valid, the tests are green, and the map is still wrong.</p>
-<p>In this tutorial, you will build a small FastAPI endpoint backed by PostGIS and then test the spatial behavior directly. The examples use deterministic fixtures positioned at known distances, so the tests verify geography rather than only response structure.</p>
-<p>The API exposes one endpoint: GET /places/nearby. A client sends longitude, latitude, and a radius in meters. The service returns nearby places as GeoJSON features, ordered by distance.</p>
-<p>The useful part is not the endpoint itself. The useful part is the test strategy. We will check coordinate validation, exact distance boundaries, GeoJSON coordinate order, and the database query that turns a radius into a spatial filter.</p>
-<p>Use a geography column when the API is answering human-scale distance questions in meters. PostGIS can then calculate on the ellipsoid instead of treating longitude and latitude as flat Cartesian coordinates.</p>
-<p>The endpoint below validates longitude, latitude, and radius with Pydantic, then sends a parameterized query to PostgreSQL. The SQL uses ST_DWithin to filter candidates and ST_Distance to return the measured distance.</p>
-<p>The API accepts lon and lat as separate named parameters. That removes ambiguity at the HTTP boundary. GeoJSON still uses [longitude, latitude] when the response is created.</p>
-<p>Hard-coding two real businesses and hoping their distance is approximately right makes a fragile test. A better approach is to create test points at exact distances from a fixed origin.</p>
-<p>PostGIS can generate those fixtures with ST_Project. In the test database, create one point 500 meters away, one 950 meters away, and one 1,500 meters away. Now a 1,000-meter query has an unambiguous expected result: the first two belong in the response and the third does not.</p>
-<p>This is the first test that actually proves something spatial. It is not checking that the endpoint returns a list. It is checking that the 1-kilometer contract means what the API says it means.</p>
-<p>GeoJSON coordinates are longitude first, latitude second. Many developers naturally think latitude first because that is how coordinates are commonly spoken. A validation layer can catch the most obvious reversal before the database ever sees it.</p>
-<p>Longitude must be between -180 and 180. Latitude must be between -90 and 90. That will not catch every reversal, because both numbers may sometimes fall inside both ranges, but it catches a large class of failures and gives clients a useful error instead of a misleading map.</p>
-<p>A response can be syntactically valid JSON and still violate the GeoJSON contract. Assert the geometry type and the coordinate order. For a known query point, longitude should appear in element zero and latitude in element one.</p>
-<p>Spatial boundaries deserve their own tests. A place at 999 meters should be included in a 1,000-meter search. A place at 1,001 meters should not. A place exactly at the boundary should behave consistently with the predicate you chose.</p>
-<p>ST_DWithin includes features whose distance is less than or equal to the supplied threshold, so document that behavior and test it explicitly.</p>
-<p>Unit tests are useful for request validation, but mocking the repository layer removes the most important part of this API: PostGIS itself. Keep a small integration-test database and run at least a few tests against the real extension.</p>
-<p>That catches mistakes that mocks cannot: geography versus geometry behavior, SRID mismatches, spatial indexes, units, and changes to SQL functions. A location API is one of the cases where a cheap database integration test buys a lot of confidence.</p>
-<p>Correctness is only half the story. A radius endpoint that scans every feature will work in development and become painful at production scale. Add a GiST index and inspect the query plan.</p>
-<p>The exact plan depends on your data and PostgreSQL version, but you should see the spatial index participating in candidate filtering. Treat an accidental sequential scan on a large production table as a regression worth investigating.</p>
-<p>For a real project, I would split the tests into two groups. Fast validation tests run on every commit. PostGIS integration tests run in CI with a temporary PostgreSQL/PostGIS service.</p>
-<p>The CI gate should cover invalid coordinates, zero or negative radius values, known-distance fixtures, boundary behavior, GeoJSON output, and at least one query-plan or performance sanity check for larger datasets.</p>
-<p>This is more work than asserting status_code == 200, but it tests the thing users actually care about: whether the API's answer is geographically true.</p>
-<p>Location APIs fail in ways ordinary web tests are not designed to notice. The response can have the right schema, the database call can succeed, and every field can look reasonable while the location itself is wrong.</p>
-<p>The fix is not a giant testing framework. Start with a few spatial invariants you can prove: known distances, valid coordinate ranges, correct GeoJSON order, deterministic boundary behavior, and real PostGIS integration tests. Those checks turn geography from an assumption into something your CI pipeline can verify.</p>
+<p>CSS makes it possible to build flexible, responsive, and visually engaging websites. However, even a small styling change can produce unexpected results. An element may appear outside its container, a navigation bar may wrap incorrectly, or a layout that works on desktop may break on mobile devices.</p>
+<p>Instead of randomly changing CSS properties until the page looks right, developers can use browser developer tools to identify the underlying cause. Understanding how to inspect elements, trace conflicting styles, and diagnose layout behavior makes debugging faster and helps prevent similar problems in future projects.</p>
+<p>This tutorial explores practical techniques for debugging common CSS layout issues using browser DevTools.</p>
+<p>One of the most useful debugging habits is to inspect the affected element before modifying its styles.</p>
+<p>In Chrome, Edge, and Firefox, you can open developer tools by right-clicking an element and selecting Inspect. The Elements or Inspector panel displays the HTML structure alongside the CSS rules applied to the selected element.</p>
+<p>At first glance, each card appears to fit within the container because its declared width is 300 pixels. However, the default box-sizing: content-box means padding and borders are added outside the declared width.</p>
+<p>Two cards require 688 pixels, exceeding the container's 600-pixel width.</p>
+<p>A straightforward solution is to use border-box sizing:</p>
+<p>Now the declared width includes padding and borders.</p>
+<p>Debugging tip: When an element appears wider than expected, inspect its computed width, padding, borders, and box-sizing property before reducing its dimensions.</p>
+<p>A CSS declaration in your stylesheet does not always determine an element's final appearance. Other rules may override it because of specificity, source order, inheritance, or the cascade.</p>
+<p>Both selectors have the same specificity. Because .primary-button appears later, the button receives a green background.</p>
+<p>If another stylesheet introduces a more specific selector, the result may change again.</p>
+<p>Browser DevTools helps distinguish between the styles you wrote and the values the browser actually uses. In the Styles panel, overridden declarations are usually crossed out. The Computed panel shows the final calculated values for properties such as color, width, margin, and display.</p>
+<p>You can also temporarily disable a declaration by unchecking it in the Styles panel. This lets you test whether a property is responsible for the problem without editing the original file immediately.</p>
+<p>The selector responsible for the winning declaration.</p>
+<p>Whether a property is inherited from a parent.</p>
+<p>Whether a media query changes the property at a particular viewport width.</p>
+<p>Whether a shorthand declaration resets other properties.</p>
+<p>Whether a CSS custom property resolves to the expected value.</p>
+<p>This approach is more reliable than adding !important whenever a style does not behave as expected.</p>
+<p>Flexbox and CSS Grid simplify many layout tasks, but their behavior depends on the available space, sizing constraints, and alignment properties.</p>
+<p>Consider a navigation bar that should display links in one row:</p>
+<p>If the links overflow on a narrow screen, the first step is to inspect the container's dimensions and the space required by its children.</p>
+<p>Alternatively, if the navigation must remain on one line, you may need a different responsive strategy, such as a compact menu.</p>
+<p>Grid layouts have similar debugging tools. Consider:</p>
+<p>This creates three equal fractional columns. On smaller screens, those columns may become too narrow for their content.</p>
+<p>This allows the browser to fit as many columns as the available space permits, while keeping each column near or above the preferred minimum when space allows.</p>
+<p>In Chrome and Firefox, layout inspection tools can highlight Grid tracks, Flexbox alignment, gaps, and container boundaries. These overlays help reveal whether the issue comes from the layout algorithm, the container's dimensions, or the content itself.</p>
+<p>A layout that works at 1440 pixels wide may fail at 390 pixels. Responsive debugging should therefore include more than checking whether the page fits on a phone-sized screen.</p>
+<p>Open the device toolbar in browser DevTools and test several viewport widths. Pay particular attention to:</p>
+<p>Cards that become too narrow for their content.</p>
+<p>Fixed-width elements that prevent horizontal scrolling from disappearing.</p>
+<p>For example, this rule may cause problems on small screens:</p>
+<p>A more flexible approach uses a fluid font size with reasonable limits:</p>
+<p>The clamp() function defines a minimum size, a preferred fluid size, and a maximum size. This allows the heading to scale with the viewport without becoming excessively small or large.</p>
+<p>Remember that browser emulation does not reproduce every aspect of a physical device. Real-device testing remains valuable for checking touch interactions, font rendering, and browser-specific behavior.</p>
+<p>Spacing issues are another common source of CSS bugs. Two elements may appear to have too much space between them even when neither has an obviously incorrect margin.</p>
+<p>Use the box-model visualization in DevTools to inspect the selected element's content, padding, border, and margin.</p>
+<p>If the global box-sizing rule is missing, the padding can cause the element to extend beyond a constrained parent.</p>
+<p>Overflow can also originate from a child element rather than the container itself. Long unbroken strings, large images, and fixed-width code blocks are common causes.</p>
+<p>The image rule keeps images within their containing block, while the code block can scroll horizontally when its contents require more space.</p>
+<p>Avoid applying overflow: hidden to every container as a quick fix. Although it can conceal unwanted content, it may also clip focus indicators, dropdown menus, and other important interface elements.</p>
+<p>A consistent debugging process helps you identify causes rather than accumulate temporary fixes.</p>
+<p>Reproduce the issue. Identify the viewport size, browser, and interaction that trigger the problem.</p>
+<p>Inspect the affected element. Examine its HTML structure and surrounding containers.</p>
+<p>Check computed styles. Look for overridden declarations, unexpected dimensions, and inherited values.</p>
+<p>Test one change at a time. Temporarily disable or modify a property to determine whether it affects the result.</p>
+<p>Check related elements. A child's overflow may originate from a parent, or a parent's dimensions may be affected by its contents.</p>
+<p>Verify the fix. Test nearby viewport widths and check that the change has not introduced another layout problem.</p>
+<p>Update the stylesheet. Move the confirmed fix into the appropriate source file and remove temporary debugging declarations.</p>
+<p>This workflow makes CSS problems easier to reproduce and explain, especially when several developers are working on the same interface.</p>
+<p>Effective CSS debugging starts with understanding what the browser is actually rendering. Developer tools provide visibility into computed styles, the box model, layout behavior, and responsive changes, making it easier to identify the source of unexpected results.</p>
+<p>By inspecting elements before changing code, testing one property at a time, and verifying fixes across different viewport sizes, developers can avoid unnecessary overrides and build more maintainable stylesheets.</p>
+<p>The goal is not simply to make a layout look correct once. It is to understand why the problem occurred and implement a fix that remains reliable as the rest of the website evolves.</p>
 <p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/how-to-test-location-aware-apis-with-fastapi-and-postgis/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/debugging-css-layout-issues-a-practical-guide-to-browser-devtools/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
