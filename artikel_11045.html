@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LoRA training scripts of the world, unite!</title>
+    <title>Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11045.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,93 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>LoRA training scripts of the world, unite!</h1>
+        <h1>Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_banncyh_1fb6d2c246.png" alt="Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_banncyh_1fb6d2c246.png" alt="Build a Reliable Analytics Pipeline Before Moving to a Data Warehouse" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Category: Databases / Back-End Development</p>
+<p>Meta description: Build a reliable analytics pipeline with SQL. Learn to handle duplicate records, late updates, data quality tests, and reporting before warehouse migration.</p>
+<p>A dashboard can load quickly and still report the wrong number. A retried import might count an order twice. An update might arrive after the daily report has run. A join might multiply rows without producing a database error.</p>
+<p>For developers moving application data into analytics, these problems deserve attention before platform selection. A larger warehouse can process an incorrect query faster, but it cannot decide what your metrics should mean.</p>
+<p>This tutorial walks through a small order-reporting pipeline. You will define the grain of a dataset, handle repeated deliveries, select the latest record version, and test the output before exposing it to a dashboard.</p>
+<p>“Show daily sales” sounds specific until someone asks which date, currency, or order status counts.</p>
+<p>What is the current total value of paid orders, grouped by order date?</p>
+<p>Orders whose latest version has a paid status</p>
+<p>Integer minor units; the sample uses USD cents</p>
+<p>Later order versions can revise earlier dates</p>
+<p>Current-state reporting, not an as-of ledger</p>
+<p>That final distinction matters. If an order changes from paid to refunded, this report removes it from the paid-order total on its original order date. It does not record a refund event on the refund date.</p>
+<p>An accounting-style report would need a different model, usually based on transactions or adjustments. A table of current order states cannot answer every historical question.</p>
+<p>A useful pipeline has three responsibilities:</p>
+<p>●     Raw storage preserves incoming records and ingestion metadata.</p>
+<p>●     Staging models normalize types, identify duplicates, and apply source ordering rules.</p>
+<p>●     Reporting models express business definitions at a documented grain.</p>
+<p>Keep these responsibilities distinct even if they initially live in one database.</p>
+<p>For example, raw data might contain five deliveries of an order update. Staging resolves those deliveries to one current order. Reporting then groups qualifying orders into daily totals.</p>
+<p>This separation gives failures a location. If the raw layer is missing an update, changing the dashboard query will not fix the extraction process.</p>
+<p>For a refresher on the statements used to create, populate, and query these layers, see SitePoint’s guide to SQL commands.</p>
+<p>The following SQL uses PostgreSQL-compatible syntax and fictional records. Run it in a disposable development database.</p>
+<p>The dataset contains three deliberate challenges:</p>
+<p>●     Order 101 moves from pending to paid.</p>
+<p>●     Its paid version is delivered twice.</p>
+<p>●     Order 102 changes from paid to refunded.</p>
+<p>A naive sum of every row marked paid returns 27,500 cents. Under our metric contract, the correct result is 12,500 cents: the latest paid versions of orders 101 and 103.</p>
+<p>The difference comes from record semantics, not query performance.</p>
+<p>Use a window function to select the newest version of each order:</p>
+<p>The order of operations is essential. If you filter for paid records before ranking versions, order 102’s refunded version disappears before the query can consider it. The earlier paid version then looks current.</p>
+<p>This example assumes the source supplies a monotonically increasing version per order. The ingestion identifier breaks ties between repeated deliveries; it does not establish which business update is newest.</p>
+<p>If two deliveries share an order ID and source version but contain different values, treat that as a source-contract violation. A deterministic tie-breaker makes the result repeatable, but it cannot determine which conflicting payload is correct.</p>
+<p>A successful SQL execution only proves that the database accepted the query. Add checks for the assumptions the report depends on.</p>
+<p>For example, this query identifies conflicting payloads for the same source version:</p>
+<p>When the project grows, dbt data tests provide a way to organize assertions about uniqueness, nulls, relationships, accepted values, and custom business rules. Custom tests can return the records that violate an assumption.</p>
+<p>Tests should also cover behavior, not only table shape. Extend the fixture with a late-arriving older version and confirm that it does not replace the latest state. Add an exact repeated delivery and confirm that the totals remain unchanged.</p>
+<p>The views above recompute their results from all available raw records. That makes the demonstration easy to understand, but repeatedly scanning the full history may become expensive.</p>
+<p>An incremental pipeline needs additional rules:</p>
+<p>●     Track which order IDs changed in the incoming batch.</p>
+<p>●     Recompute current state for those IDs using their available history.</p>
+<p>●     Replace or merge their modeled rows instead of blindly appending.</p>
+<p>●     Rebuild the affected reporting groups.</p>
+<p>If an update changes an order’s date or currency, both the old and new reporting groups need attention. Refreshing only the new group leaves a stale amount behind.</p>
+<p>Do not assume that “yesterday’s partition” contains every record that changed yesterday. An update received today can affect an order created months ago.</p>
+<p>Apache Airflow’s best-practice guidance discusses designing tasks for retries and repeatable inputs. Regardless of scheduler, make the batch boundary explicit and advance checkpoints only after the required output has been committed successfully.</p>
+<p>Hard deletes need their own policy too. If a source silently removes a record, a pipeline that only imports changed rows will not discover the deletion. Use deletion events, tombstones, or periodic reconciliation according to the source’s capabilities.</p>
+<p>You do not need an orchestration platform, transformation framework, and new warehouse to validate one metric.</p>
+<p>Prototype schemas, transformations, and reporting queries</p>
+<p>When a separate development or analytics database is sufficient</p>
+<p>Organize SQL models, dependencies, documentation, and tests</p>
+<p>When transformations become a maintained project</p>
+<p>Schedule dependent jobs and manage retries</p>
+<p>When several pipeline steps require coordinated execution</p>
+<p>Lint SQL using the project’s configured dialect</p>
+<p>When shared SQL needs consistent review standards</p>
+<p>Choose storage separately from orchestration. A scheduler does not decide how facts should be modeled, and a transformation framework does not guarantee source completeness.</p>
+<p>Before adopting a warehouse, measure query duration, concurrency, freshness requirements, and interference with application traffic. For some workloads, precomputed results are enough to improve reporting responsiveness; SitePoint’s materialized-view tutorial explains that approach in PostgreSQL. Refresh behavior and acceptable staleness still need an explicit policy.</p>
+<p>A migration becomes easier to evaluate when the team can show a small working pipeline, documented metrics, representative queries, and known failure cases.</p>
+<p>For teams evaluating data warehouse consulting services, those artifacts make a useful review brief. Ask for concrete decisions about source ordering, historical changes, reconciliation, access controls, and recovery procedures, together with the assumptions behind any cost estimate.</p>
+<p>Keep the review focused on observable outcomes. For example:</p>
+<p>●     Can a failed batch be replayed without changing correct totals?</p>
+<p>●     How are conflicting source versions detected?</p>
+<p>●     Which reports change when an old order is updated?</p>
+<p>●     Can a dashboard total be traced back to source records?</p>
+<p>●     Who owns freshness alerts and recovery?</p>
+<p>These questions also help an internal team review its own design. The important deliverable is a system whose behavior can be explained and tested.</p>
+<p>A dashboard total needs context about when its underlying data became usable.</p>
+<p>Track the latest successful ingestion, transformation, and validation separately. A recent extraction timestamp does not prove that downstream models finished building.</p>
+<p>Likewise, a quiet source can make an event timestamp look old even when ingestion is healthy. Combine source activity with pipeline execution metadata before deciding that the data is stale.</p>
+<p>Define the serving behavior when checks fail. You might keep the last validated result available with a visible freshness warning rather than replace it with an unverified total. Store the successful version if that is the policy: a live view over changing raw data does not preserve a previous validated snapshot.</p>
+<p>A trustworthy analytics pipeline begins with a precise question and a testable data model.</p>
+<p>Define the reporting grain, preserve incoming records, resolve source versions before filtering, and verify that retries do not alter correct results. Then measure whether the workload needs a different storage platform.</p>
+<p>Those foundations make a future warehouse migration easier to reason about and make the dashboard useful before that migration begins.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/sdxl_lora_advanced_script" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/build-a-reliable-analytics-pipeline-before-moving-to-a-data-warehouse/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

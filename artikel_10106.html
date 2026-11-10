@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>We got local models to triage the OpenClaw repo for FREE!*</title>
+    <title>GitHub Universe 2026: Evolving every layer of the stack</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10106.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,118 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>We got local models to triage the OpenClaw repo for FREE!*</h1>
+        <h1>GitHub Universe 2026: Evolving every layer of the stack</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/local-models-pr-triage/thumbnail.png" alt="We got local models to triage the OpenClaw repo for FREE!*" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2026/10/686528641-0e20e617-dc8d-4bb3-bd66-70d248ba125f.png" alt="GitHub Universe 2026: Evolving every layer of the stack" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/local-models-pr-triage/thumbnail.png" alt="We got local models to triage the OpenClaw repo for FREE!*" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2026/10/686528641-0e20e617-dc8d-4bb3-bd66-70d248ba125f.png" alt="GitHub Universe 2026: Evolving every layer of the stack" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>*Free as in beer, excluding the cost of electricity, and assuming you already own the hardware</p>
-<p>June 2026 will go down as the moment that people realized closed models can be taken away. With the removal of Anthropic's latest flagship model Claude Fable 5 fresh in memory, one can see why it is more important than ever to own your AI stack and be able to run models locally, especially if you are building your business on top of AI.</p>
-<p>In that light, we wanted to share how we use local models like Gemma and Qwen in an agent harness, to run classification tasks[1]. This approach is different from using a model like BERT for classification. A local model in an agent harness like Pi can be used in tandem with structured outputs, to assign labels. We chose this approach because we already had local models and the harness on hand, and have conviction that similar setups will increase in popularity as local models improve in capability.[2]</p>
-<p>Our starting point was open source contributions in the OpenClaw repo. OpenClaw gets hundreds of issues and PRs every day, which need to be triaged, prioritized and routed to maintainers. I, Onur, am working to make local models work well with OpenClaw. Being a maintainer of this specific vertical, I need to react quickly to any P0 issues.</p>
-<p>With SOTA closed models like GPT-5, Opus, or Sonnet, this is a pretty straightforward task. But I happen to sit on 128 GB of unified memory, namely an NVIDIA GB10. So I took on the task:</p>
-<p>Can I build a real-time notification system that filters and notifies me for only the issues that I am responsible for... with local open-weight models?</p>
-<p>If I set up my OpenClaw main agent running on a $200/mo ChatGPT Pro plan to trigger a job on every new issue or PR, that would use up my quota. I might instead set it to run every 2 hours, or 6 hours. This would batch issues over longer periods, so we would be trading real-time notifications for delayed processing.</p>
-<p>If I were to run this on a local model on the hardware I already have up and running, I would not only have near-instantaneous notifications, I would also be able to do it for free (or rather, for the cost of electricity).</p>
-<p>We came up with a finite set of labels representing the categories of issues we need to triage, and then use a local model to classify each issue into one of those categories, like local_models, self_hosted_inference, acp, agent_runtime, codex, ui_tui and so on.[3]</p>
-<p>But how do we classify pull requests? A simple single request to a Chat Completions endpoint with a tool JSON schema, with the topics as an enum?</p>
-<p>Kind of. But this is 2026, not 2023, and we have AGENTS. We can do better!</p>
-<p>For the local model choices, we tested gemma-4-26b-a4b and qwen3.6-35b-a3b. With performance optimizations, both can generate hundreds of tokens per second locally.</p>
-<p>We use an agent harness to drive the classification run. For this, we bundle pi as a harness that can call local model endpoints.</p>
-<p>The agent by default receives the PR title, body and a truncated excerpt of the PR diff in the first prompt. Then, it can choose to use the bash tool to perform read-only operations on the OpenClaw repo (in case it needs to look at the codebase), or the final_json tool to submit the final classification result.</p>
-<p>You wouldn't want to give full bash access to a local model running in this high-throughput setting, because a prompt-injected issue or PR could otherwise steer the model into doing something unrelated to classification.</p>
-<p>For that reason, we use reposhell instead of bash: a restricted bash-like shell that only allows read-only operations (ls, find, cat, grep, etc.) on the OpenClaw repo. The model thinks it is using bash, but any operation that is not allowed is rejected:</p>
-<p>Here is a concrete example where this mattered. In one saved session example, qwen3.6-35b-a3b was classifying openclaw/openclaw#84621, titled Fix Kimi tool-call rewriting stop reason handling. The thinking block shows the model initially considering coding_agent_integrations because the changed path extensions/kimi-coding made it look plausible. The model used reposhell to inspect the local repo with simple read-only commands like ls extensions, ls extensions/kimi-coding, and cat extensions/kimi-coding/package.json. That package metadata showed the extension was actually @openclaw/kimi-provider, an OpenClaw Kimi provider plugin. So the model corrected the final labels to inference_api and tool_calling, and explicitly excluded coding_agent_integrations.</p>
-<p>We have mentioned earlier that we bundle a specific pi configuration that can only perform read-only operations and return classification output. We call it localpager-agent, named after localpager, the main project here. Each PR and issue generates a prompt, which is then passed to the CLI like below, alongside other args:</p>
-<p>So then what orchestrates everything in between the incoming PR/issue and the final notification on Discord?</p>
-<p>The orchestration around this is very simple; only the classification step involves an LLM:</p>
-<p>Below is a figure showing the overall architecture of localpager:</p>
-<p>The architecture is semi-agentic. Labeling is done agentically, while sending a notification is handled by deterministic rules. This is to make the notification pipeline faster by removing the need for inference for the most straightforward parts of the task. Local inference is free but each task has a resource contention cost: GPU bandwidth should be reserved for tasks where inference is absolutely needed. This also reduces chance of errors from notification.</p>
-<p>Let's be frank: the first local versions of this system were noisy. The first model tested - gemma-4-e4b-it was useful for getting the end-to-end local pipeline working, but it also had a tendency to put too many unrelated labels on a PR or issue. False positive labels make the Discord feed noisy and don't focus my attention on the right issues. That pushed us toward testing larger local models, including gemma-4-26b-a4b and qwen3.6-35b-a3b, on the 330-row evaluation set below.</p>
-<p>For early prompt work, we also used DeepSeek-V4-Flash through the antirez DS4 implementation[4] to create the earlier dataset labels. That setup used the DS4 server over CUDA. We eventually gave up on DS4 as the labeler because it was not labeling consistently across runs. We also did not consider it as the main localpager-agent model because it was too big to get enough throughput on our hardware: the DS4 server gave us around 14 tokens per second, with maximum concurrency of 1.</p>
-<p>To test model performance, we selected and generated labels for 330 GitHub issues and PRs. Each item was labelled five times (3x GPT-5.5 and 2x Opus 4.8) with the models needing to be in agreement to be accepted. This process involved hand adjudicating, improving label definitions and highlighting internal product design choices for the models. This gave us a set of stable, reproducible labels to compare our smaller models against.</p>
-<p>We did not need to do prompt optimization for gemma-4-26b-a4b or qwen3.6-35b-a3b before getting useful results on this evaluation set. Using the same routing prompt, Gemma had higher recall and lower wall-clock time per row, while Qwen had higher precision, higher exact match, and fewer false positives. We also ran DeepSeek-V4-Flash on the same set as a reference. It had the fewest false positives, but the model size and throughput make it impractical for executing these tasks in real time on the NVIDIA GB10. Since each row can have multiple labels, false positives and false negatives are total label counts across all rows. The Qwen results below are after retrying structured-output failures where the model ran out of output tokens before calling final_json. For Gemma and Qwen, repeated-run metrics report mean ± sample standard deviation across three runs. DeepSeek-V4-Flash was run once as a reference.</p>
-<p>The throughput and wall-clock numbers here are not definitive maximum performance numbers for these models on this hardware. They are the settings we used at the time with the optimizations we had available. For example, in a separate probe, gemma-4-26b-a4b also supported concurrency 32 and reached over 700 aggregate output tokens per second.</p>
-<p>For the Gemma benchmark, we served gemma-4-26b-a4b with vLLM using the optimizations we found available for this setup. A big part of that is the NVFP4 quantization: on GB10-class Blackwell hardware, it is not just a smaller model file, but a hardware-friendly format that can use the NVIDIA/vLLM execution path more directly than a portable GGUF quantization like Q4_K_M. In practice, that means less memory traffic and more room for batching. We also enabled prefix caching, FP8 KV cache, the CUTLASS MoE backend, and language-model-only mode. The full 330-row run finished in about 7.5 minutes at concurrency 16.</p>
-<p>We have mentioned earlier that instead of running a job with a local model for every new issue or PR, we can run a batch job with a SOTA cloud model, like GPT-5.5 running in OpenClaw, every n hours (e.g. every 2 hours) to achieve the same end.[5]</p>
-<p>In that case, we would need a ChatGPT Pro plan. Since the model is SOTA, we can still expect it to perform reasonably well, despite batching 2 hours of issues/PRs together.</p>
-<p>Because we want to see how well the local classifier performs against GPT-5.5, we run both simultaneously, and let GPT-5.5 be the judge of false positives and negatives, every 2 hours.</p>
-<p>To be safe, we run the OpenClaw job in a sandbox, with only access to the public repo we report results to. In our case, we let the OpenClaw job update a machine-readable file, then a simple script reads the Codex-assigned labels and computes the false positive/negative status. Example output:</p>
-<p>The instructions on how to classify, edit the machine-readable file, get the false positives and false negatives using a script are present in an agent skill which is referenced in an OpenClaw cron job that runs every 2 hours. The OpenClaw agent then ingests any new issues or PRs, adds them to the JSON file with appropriate labels, runs the scripts and reports back in the same Discord channel. This way, we can observe the local model's performance every few hours, and get notified of the misses.</p>
-<p>We think that the issue/PR triage task is a specific case of a broader set of tasks which we call "high throughput triage". This post explored the idea of using a local model to filter out information in real time in only one domain, that is, open source contributions. The ability of medium-sized local models like gemma-4-26b-a4b and qwen3.6-35b-a3b to zero-shot classify with good accuracy without any need for fine-tuning makes them a good first choice for quick prototyping, before one moves on to more cost-efficient traditional classifier models.</p>
-<p>However, the same approach can be applied to other domains as well:</p>
-<p>The list can be extended, but we think that the idea should be clear.</p>
-<p>Besides triaging, we have also explored how classification can be performed with agent harnesses running fast local models in a secure manner. A good naming for the approach would be agentic classification: the model is not fed the entire body of information upfront, but can search for more context before returning structured data. While we cannot exactly call this a novel approach, we hope for this blog post to be a good reference for the specific Pi+a restricted shell+final_json recipe.</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Today, we laid out our vision for GitHub as the most comprehensive, end-to-end software delivery system in the world.</p>
+<p>Our jobs as developers are changing. In a couple of years, we’ve gone from writing every line of code to working with AI assistants to orchestrating fleets of agents. But the goal hasn’t changed: ship completed software work. A feature, a bug fix, a security fix. Completed work, not more code, is the output that matters.</p>
+<p>Today at GitHub Universe, we shared our vision for GitHub as the most comprehensive software delivery system in the world. We introduced products that bring that vision to life and showed how we’re rebuilding the infrastructure underneath it.</p>
+<p>The SDLC is no longer a linear path from planning to coding to testing to deployment. A code change, a request from a colleague, or a production metric can trigger work anywhere in the system. Most of us (and our agents) jump between different stages, depending on the task at hand. Developers set the direction, make decisions, and stay accountable for what ships. Agents implement and verify changes. And everything feeds into and out of a continuous learning machine that makes the next cycle better.</p>
+<p>This agentic software delivery system solves for three things:</p>
+<p>GitHub is built for developers and their agents. We’re also making the underlying primitives available, so you can build your own bespoke solutions. You stay in control of the work, the tools, and the cost.</p>
+<p>Today at Universe, we showed some of the latest products and features in action, starting with the GitHub Copilot app.</p>
+<p>The GitHub Copilot app is designed from the ground up for agentic software delivery. It connects your agents and tools across projects, so you can direct the work without making every handoff. And it’s for more than producing code: you can write specs, present design discussions, or analyze telemetry in one agent-first surface.</p>
+<p>Different tasks need different models. Developers shouldn’t have to manage every model choice to get the right result at the right price. Copilot Fusion evaluates what a task needs across reasoning, code generation, debugging, and tool use, then chooses how to execute across one or more models. In the Artificial Analysis Coding Agent Index, Fusion Max scored within two points of Opus 5.5 Max at half the cost and 40% less time per task.</p>
+<p>Available natively in the GitHub Copilot app starting today, Copilot projects let you run agent work across multiple repos in fully managed, parallel sessions. You have one place to track progress, make decisions, and direct what happens next. That means you can spend less time managing execution and more time deciding what’s worth building.</p>
+<p>Your work shouldn’t restart when you switch devices or tools. Session continuity lets you start and follow the same cloud agent session across the GitHub app, VS Code, the CLI, and the web. Start from your phone at standup, steer it from VS Code at your desk, and check in on it from github.com at lunch. The agent keeps working in the cloud. Our multi-model harness that enables it is powerful, fast, and cost-efficient.</p>
+<p>Copilot automations let you create AI-powered workflows within your repo. They run in the cloud, and you can kick them off manually or set them up to respond to an event or run on a schedule. That lets you coordinate agents to handle tasks such as issue triage and code review. And now, automations can learn from their outcomes and propose improvements for you to review and approve. That’s the learning engine in practice. Use the results of the completed work to make the next run better.</p>
+<p>More code means more pull requests and more demand for review. Moving faster only helps if we can maintain the quality of what ships. Copilot code review surfaces meaningful, actionable bugs that developers need to catch. Today, we introduced Copilot code review Max, which posted the highest F1 score on ReviewBench for high-severity issues. Lite and Balanced keep everyday reviews fast; the new Max provides a deeper look when a change needs it.</p>
+<p>Starting today, GitHub Enterprise customers can use all Copilot features without buying a separate subscription. That includes GitHub Copilot app, code review, automations, and more. You pay for the AI credits you use.</p>
+<p>This is available through GitHub Sales today, with self-serve coming soon. Existing Copilot Business and Copilot Enterprise customers can keep their current plans or move over when they’re ready. GitHub also remains open and extensible. Keep using the tools your team depends on, including Cloudflare, Datadog, Figma, and more.</p>
+<p>All of this depends on a foundation that’s fast, reliable, and built to scale. Agents are changing the volume and shape of software development. Adding capacity matters, but capacity alone won’t get us there. We’ve also had to change the architecture.</p>
+<p>We’re also migrating to a multi-region deployment in Azure, while continuing to serve incredible levels of traffic from developers around the world. We expect to complete the migration early next year. Those investments give us more room to grow. The next step is building the systems that handle the work.</p>
+<p>We’ve scaled Git for years as activity on GitHub has grown. The agentic era calls for a different ceiling on throughput and reliability. Three principles guide our new Git architecture: simplify the primitives, decouple storage from compute, and minimize coordination.</p>
+<p>Git’s just one example of the work we’re doing to scale the platform. We’ve done a lot of work across GitHub’s AI gateway, the harness, and much more.</p>
+<p>Our jobs are changing, but developers are more important than ever. I think all the software we’ve written to date will amount to less than 1% of the software we’ll write in the next five years. The opportunity isn’t just to produce more code. It’s to solve problems we couldn’t solve before.</p>
+<p>That’s why we’re connecting the full software delivery system, giving developers better ways to work with agents, and evolving the infrastructure for what comes next. And we’re doing it on GitHub, where we can build together.</p>
+<p>Jay Parikh is a seasoned executive, board member, and advisor to some of the world’s fastest growing and most successful consumer, developer, and enterprise technology companies. As Executive Vice President of CoreAI at Microsoft, Parikh leads the organization building the end-to-end agentic system required to build, ship, and run AI agents in the Enterprise. His teams, including GitHub, also build the tools and platforms developers need to create the next generation of software.</p>
+<p>Previously, Parikh was CEO of a cloud security startup and, before that, was Facebook’s global head of engineering and infrastructure. For more than a decade, he led the teams that built and operated the physical infrastructure and software that supported the company’s growth from 300 million people to more than 3 billion. His teams worked across the stack, from data centers, servers, and subsea cables to software, data, AI, and security systems. Through leadership roles in the Open Compute Project and Telecom Infra Project, he helped extend infrastructure innovation beyond a single company to benefit entire industries.</p>
+<p>Earlier in his career, Parikh held leadership roles at Akamai and Ning. He brings a systems thinker’s perspective to a deeply human challenge: how to build teams that keep learning, moving, and delivering as the world changes around them.</p>
+<p>Writing code got faster. The work around it didn’t. See how you can plan, write code, review changes, and investigate production issues with GitHub Copilot, and what work still needs your judgment.</p>
+<p>Louis Erbkamm built the first prototype in his free time. Now GitHub Copilot helps him maintain it alone.</p>
+<p>See how a record year of growth reached every industry, every field, and every kind of builder in the 2026 Octoverse report.</p>
+<p>AI, agents, voice, and physical controls are shifting software development from operating tools to expressing intent—and helping developers stay focused on building.</p>
+<p>In September, we experienced two incidents that resulted in degraded performance across GitHub services.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/local-models-pr-triage" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/news-insights/company-news/github-universe-2026-evolving-every-layer-of-the-stack/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

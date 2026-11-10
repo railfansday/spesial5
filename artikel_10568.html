@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Asynchronous Robot Inference: Decoupling Action Prediction and Execution</title>
+    <title>Granite 4.0 Nano: Just how small can you go?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10568.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,78 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Asynchronous Robot Inference: Decoupling Action Prediction and Execution</h1>
+        <h1>Granite 4.0 Nano: Just how small can you go?</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/async_inference/thumbnail_async_blog.png" alt="Asynchronous Robot Inference: Decoupling Action Prediction and Execution" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/async_inference/thumbnail_async_blog.png" alt="Asynchronous Robot Inference: Decoupling Action Prediction and Execution" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>TL;DR
-Robotic policies are increasingly bulky, and predict chunks of future actions rather than a single next action. This results in the robot being idle while awaiting new actions to perform, introducing noticeable lags at execution, and lacking responsiveness. Asynchronous inference tightens the control loop, removing lags at runtime and resulting in more adaptive control by decoupling action prediction from action execution. In this blog post, we cover the basics behind async inference, and how it can be used to improve the performance of robotic policies in the real-world.</p>
-<p>Get started with async inference by following our tutorial.</p>
-<p>Sequential inference (first) versus async inference (second). Allowing for replanning and a tighter control loop, async inference results in (1) attempts at recovery, and (2) a ~2x speedup in task completion. Sequential inference keeps acting out the current action chunk even after failure to grasp the object, while async inference can replan and act the new action chunk. Both setups use the same policy!</p>
-<p>With async inference, we decouple action execution from action prediction. This is particularly relevant considering the tendency of currently popular models like [ACT], [OpenVLA], [PI0], and [SmolVLA] to be outputting chunks of actions at:t+Ha_{t:t+H}at:t+H​ rather than single actions ata_tat​ given an observation oto_tot​. 
-Convince yourself of this by running all these models using LeRobot.</p>
-<p>Using chunks sequentially results in (1) lags at runtime, impacting task execution time and (2) lack of responsiveness, due to acting widely open-loop.
-Asynchronous inference mitigates both these limitations by decoupling action prediction from action execution. 
-We introduced asynchronous inference in SmolVLA, and found it to result in a ~2x speed-up in task completion time with comparable task success rate.</p>
-<p>In particular, we design a 2-component system where policy inference and action execution are performed in two different processes, possibly on two different machines connected through the network:</p>
-<p>Communication between PolicyServer and RobotClient relies on gRPC, which guarantees ~5× faster performance than a comparable REST API. The result of all of this is a robot that never waits for inference.</p>
-<p>Asynchronous inference, highlighting: (1) The client sending the first observation for inference, receiving the first chunk shortly after; (2) The client sending another observation for processing while it has not yet exhausted the current chunk; (3) The client receiving an updated action chunk, which it aggregates with the remainders of the one it was previously executing.</p>
-<p>Suppose a policy π \pi π maps the current observation ot o_t ot​ to a sequence of H H H future actions.
-Formally, π:O  ↦  A,At=(at,at+1,…at+H)=π(ot)\pi : \mathcal{O} \;\mapsto\; \mathcal{A}, \mathbf{A}_t = \begin{pmatrix} a_{t}, & a_{t+1}, & \dots & a_{t+H} \end{pmatrix} = \pi(o_t)π:O↦A,At​=(at​,​at+1​,​…​at+H​​)=π(ot​).</p>
-<p>A traditional control loop would therefore consist of the following steps:</p>
-<p>During step 2 the robot is idle. The latency grows with the model size (and models tend to be increasingly bulky over time), and can quickly dominate interaction time (which is typically around 1/fps), as shown in the video below (coming from our Discord community 🤗):</p>
-<p>This directly results in (1) reduced performance in terms of task completion time---the robot needs to be waiting for the next action chunk to be computed---and (2) reduced responsiveness, due to (2.1) acting widely open-loop while actions are available and (2.2) complete idleness while waiting for the next action chunk.</p>
-<p>(Left)Sequential inference with highlighted idle periods. (Right)Time to select an action showing spikes when inference is triggered due to local queue exhaustion (inference latency is around ~100ms---~3 frames at 30fps---using an ACT model on a 2021 MacBook Pro).</p>
-<p>Our system removes the idle period by overlapping computation and execution:</p>
-<p>The key idea is that the robot already knows what to do for the next few timesteps, so it can keep moving while fresh actions are being computed on the server.</p>
-<p>Asynchronous inference overlaps in time the execution of the current action chunk with the computation of the next one, by decoupling these two processes, possibly running them on entirely distinct machines connected through the network.</p>
-<p>This results in a tighter control loop, and a robot that never waits for inference. In turn, this results in ~2x speedup in task completion time with comparable task success rate, and more adaptive control coming from a tighter loop (see video below).</p>
-<p>Because gRPC is HTTP/2-based and uses protocol buffers, it achieves low-latency binary messaging and bidirectional streams out of the box, which in turn helps us maintain a tighter control loop and sub-100ms round-trip latency (on our local network, and hosting SmolVLA on a NVIDIA RTX 4090).</p>
-<p>The RobotClient runs on-board, and streams observations to the PolicyServer through gRPC. The PolicyServer prepares the observations received for inference, and sends back to the RobotClient an action chunk.</p>
-<p>From the client's perspective, observations are streamed to the server according to the local queue status. Incoming chunks are aggregated on overlapping portions with the currently available action queue.</p>
-<p>The RobotClient maintains a local action queue and follows a simple yet effective strategy: send a new observation when the queue length drops below a configurable threshold (\(g\) in the SmolVLA paper, chunk_size_threshold in the code). 
-This threshold value, expressed as a fraction of the maximum chunk size, acts as a trigger condition that balances computational load with responsiveness.</p>
-<p>The client streams observations to the server, according to the local queue status.</p>
-<p>From the client's perspective, the process unfolds as follows:</p>
-<p>Queue monitoring: The client continuously monitors its action queue length against a chunk size threshold parameter. When the queue drops below this threshold, it signals that a new observation should be sent for processing.</p>
-<p>Observation streaming: Once the threshold condition is met, the client captures the current observation and streams it to the PolicyServer via gRPC. Crucially, observations are streamed rather than being sent via a unary RPC because they typically exceed the maximum message size of 4MB (multiple camera captures at high resolution result in this).</p>
-<p>Action chunk aggregation: When a new action chunk arrives from the server, the client merges it with any remaining actions in the current queue over the overlapping portion. This is where custom aggregators come into play, handling overlapping sections between the current and incoming chunks differently. As of now, we support flexibly aggregation between the chunks via the specification of a custom aggregate_fn(chunk1: torch.Tensor, chunk2: torch.Tensor) -> torch.Tensor function, which is called for each overlapping timestep and can be user-provided.
-The overlapping portions (shown in light blue in the diagram) require careful handling. We can design different aggregation strategies:</p>
-<p>This system is highly configurable, as the chunk size threshold can be tuned based on network latency, model inference time, and desired responsiveness. 
-A lower threshold means more frequent updates (and higher computational cost), while a higher threshold reduces communication overhead at the expense of potential queue starvation.
-Lastly, we typically receive actions from PolicyServer in a thread, and perform them in another one. This keeps the client listening for incoming chunks in a separate thread, without blocking execution and always consuming the current chunk until a new one becomes fully available.</p>
-<p>Upon receiving observations from the RobotClient, the PolicyServer receives observations from the RobotClient, and performs the necessary observation cleaning to make received observations ready for inference. This process is illustrated in the image below:</p>
-<p>The observation cleaning pipeline running on the server, highlighting the three main steps related to (1) Keys matching (2) Preprocessing and (3) Preparation for inference.</p>
-<p>Once the observation has been prepared, it is compared with the last observation used for inference. 
-This avoids collapsing into a loop whereby very similar observations are processed, thus triggering unnecessary inference and similar actions being executed (which in turn, result in very similar observations being processed again). 
-We compare observations in terms of their joint-space similarity, which provides us an approximate and quick way of measuring changes in the robot. Clearly, this metric is not adaptive to dynamic changes in the environment (an object changing its position, or disturbances being applied), but we found it to be a good trade-off for the majority of the cases, and to be very effective in avoiding unnecessary inference and state collapse.
-Critically, the RobotClient retains control over whether a given observation must be processed, to avoid deadlocks. 
-Observations sent by the client and tagged with must_go=True are processed regardless of the similarity metric.</p>
-<p>The policy workflow, in which incoming observations are compared to the last one used for inference, and processed only if different enough, or `must_go`.</p>
-<p>Lastly, to ensure the PolicyServer always processes the latest available observation, we block incoming observations until the previous one has been successfully processed. In this, we leverage queues on the PolicyServer to ensure incoming observations are not enqueued until the server is ready to process them (see below).</p>
-<p>The client pings the server every 1/fps seconds, but observations are not enqueued for processing until the previous one has been successfully processed.</p>
-<p>For all practical purposes, in async inference there are two time-scales that matter:</p>
-<p>Importantly, the ratio c=environment_dtinference_time
- c = \frac{\texttt{environment\_dt}}{\texttt{inference\_time}}
-c=inference_timeenvironment_dt​
-results in different behaviours:</p>
-<p>Critically, ccc influences the number of available actions in the queue at any given time. To avoid the aforementioned sequential limit control, one can:</p>
-<p>Experiments (see plots below) show that g≈0.7g\approx0.7g≈0.7 offers a good trade-off when observations sent are not filtered out (they are all must-go). We recommend setting g=0.5g=0.5g=0.5 and following our documentation to tune this parameter to your needs.</p>
-<p>The number of available actions in the queue at any given time, as a function of g. Larger values of g result in more frequent updates, and more computational cost. Values of g closer to 0 reproduce sequential inference (empty queue, wait). We found g~0.7 to be a good trade-off in our experiments.</p>
-<p>Async inference is a simple yet effective way to improve the performance of robotic policies. In our experiments using SmolVLA, async inference results in a ~2x speedup in task completion time with comparable task success rate, and more adaptive control coming from a tighter loop.</p>
-<p>To run your policy using async inference, you just need to follow our tutorial with your own custom parameters (e.g., the policy path or the chunk size threshold). Async inference comes with support for policies supporting action chunking!</p>
-<p>We have introduced async inference, a simple yet effective way to improve the performance of robotic policies. In our experiments using SmolVLA, async inference results in a ~2x speedup in task completion time with comparable task success rate, and more adaptive control coming from a tighter loop.</p>
-<p>We are excited to share this work with the community, and to see how it can be used to improve the performance of robotic policies. We welcome PRs to improve and extend the async inference framework at huggingface/lerobot, and are available to discuss this further in our Discord community, 🤗.</p>
-<p>Came across this while I was working on something similar. Good work.</p>
-<p>I built Inferential to handle multi-robot inference orchestration on Ray Serve. Deadline-aware scheduling scores requests across cadence urgency (EMA-tracked), robot-reported priority, anti-starvation age, trajectory progress, and static priority. ZMQ ROUTER/DEALER transport with protobuf+numpy wire format -- under 1ms serialize-transmit-deserialize vs ~100ms over gRPC. Request TTL, overflow policies, automatic disconnect detection, dispatch retry.</p>
-<p>Will try to benchmark Inferential as well.</p>
-<p>Open source. SDKs in Python, C++, and Rust.github.com/nalinraut/inferentialFull writeup: nalinraut.github.io/blog/2026/inferential/</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/async-robot-inference" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ibm-granite/granite-4-nano" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

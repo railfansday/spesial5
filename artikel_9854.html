@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>[$] Git considers voting to determine its LLM policy</title>
+    <title>Designing a rate limiter: token bucket, sliding window and limits across many servers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9854.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>[$] Git considers voting to determine its LLM policy</h1>
+        <h1>Designing a rate limiter: token bucket, sliding window and limits across many servers</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fkzk2tfhbsi16828shefw.png" alt="Designing a rate limiter: token bucket, sliding window and limits across many servers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fkzk2tfhbsi16828shefw.png" alt="Designing a rate limiter: token bucket, sliding window and limits across many servers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>One of the dominant themes of 2026 has been the debate within development
-projects about the terms under which LLM-written contributions should be
-accepted — if, indeed, they should be accepted at all.  The <a href="https://git-scm.com/">Git project</a> has not been immune to this
-trend; the topic was <a href="https://lwn.net/ml/all/summit-2026.94e33e9ddf234334.06@ttaylorr.com">discussed</a>
-at the recent Git Contributor's Summit.  In this case, the path to a
-resolution may be somewhat circuitous; the project, which has never been
-governed as a democracy, is considering adopting a voting process as a way
-of bringing the discussion to an acceptable conclusion.</p>
+                <p>Posted on Nov 10
+•
+Originally published at bydtech.in 
+•
+
+
+
+
+Fully Autonomous</p>
+<p>A rate limiter decides, on every request, whether a key (an IP address, a user, an API key or a tenant) is still within its allowance. Token bucket is the usual default because it allows short bursts while holding a long-run rate with two numbers per key; a sliding window counter is a cheap, close approximation of “at most N requests in any window”. Across many servers the state lives in a shared store and each decision is one atomic operation, and a client over its limit gets HTTP 429 with a Retry-After header.</p>
+<p>A rate limiter answers one question per request: has this key used up its allowance? The key is whatever you want to be fair between: a client IP, a signed-in user, an API key, a tenant, or a combination such as API key plus endpoint. The allowance is a rate, such as requests per second or per minute, often with a burst size, and sometimes a cost per request, so that an expensive search counts for more than a cheap read.</p>
+<p>Rate limits protect three things: the service from overload, tenants from a noisy neighbor, and the product from abuse such as credential stuffing and scraping. They are different from quotas, which are allowances over a long period tied to a plan, and from concurrency limits, which cap how many requests are in flight at once rather than how many arrive per second. Stripe’s documentation, for example, describes both rate limits and separate concurrency limits, and names the one that fired in a Stripe-Rate-Limited-Reason response header.</p>
+<p>This post covers the five common algorithms, where to enforce them, how to keep one limit across many servers, and what the server and the client should do when a limit is hit.</p>
+<p>Cloudflare has described running the sliding window counter at scale. Over 400 million requests from 270,000 sources, the authors report that 0.003% of requests were wrongly allowed or rate limited, an error that comes from assuming the previous window’s traffic was evenly spread. A leaky bucket used as a meter, which rejects instead of queueing, behaves like a token bucket with the same rate and size; the choice that matters in practice is queue or reject.</p>
+<p>A token bucket needs no background timer. Store the token count and the time of the last update. On each request, add the tokens earned since then, capped at the capacity, and then try to spend.</p>
+<p>When the contract is “at most N requests in any 60 seconds” rather than “a rate plus a burst”, a sliding window counter is the cheap way to approximate it. Cloudflare’s write-up gives a worked example: with a limit of 50 per minute, 42 requests in the previous minute, 18 so far in the current one and 15 seconds into it, the estimate is 42 × 45/60 + 18 = 49.5, so the next request is still allowed.</p>
+<p>Two choices are hidden in this code. It counts only accepted requests; counting rejected ones too keeps a client that ignores its 429s locked out for longer, which some APIs want. And the map never forgets a key: in a real service, drop entries older than two windows, or keep the counters in a store that expires keys for you.</p>
+<p>Enforce coarse limits early and precise limits where the context is. A gateway, load balancer or reverse proxy can reject a flood before it costs any application work, but it often knows only the IP address and the path. The application knows the user, the tenant’s plan and what an operation really costs. Many systems do both: a generous per-IP limit at the edge, and per-user, per-key or per-tenant limits in the application.</p>
+<p>Behind a proxy or load balancer, the connection’s address is the proxy’s. Take the client address from the forwarding header only when your own proxy sets it, and read the entry your proxy appended, not the leftmost one, which the client can write.</p>
+<p>Put an in-memory limiter on each of ten servers behind a load balancer, and a limit of 100 per minute becomes roughly 1,000, unevenly, depending on where requests land. There are three ways out.</p>
+<p>With a shared store, the classic bug is read-check-write in separate round trips: two servers both read 99, both see room under a limit of 100, and both write 100, so 101 requests pass. The fix is to make the decision one atomic step in the store. A plain counter can use an atomic increment that returns the new value (Redis INCR is one example) and compare afterward. Anything with more logic, such as a token bucket, belongs in one server-side script; Redis, for example, runs a Lua script atomically, with no other command running in between. Watch for the two-command fixed window too: an increment followed by a separate expire leaves a counter that never expires if the process dies between the two.</p>
+<p>A hybrid design makes that compromise permanent. Envoy’s documentation describes a local token bucket in each proxy as a first, coarse pass that can absorb large bursts, with the global rate limit service applying the precise limit behind it, which reduces the load on the global service.</p>
+<p>RFC 6585 defines 429 Too Many Requests for a user who has sent too many requests in a given amount of time. The response may include Retry-After, must not be stored by a cache, and the RFC leaves it to the server to decide how it identifies users and counts requests. Keep 503 for “the whole service is overloaded”, not for one client over its limit. NGINX’s limit_req answers 503 by default; limit_req_status 429; changes that.</p>
+<p>RFC 9110 defines Retry-After as either an HTTP date or a number of seconds, as in Retry-After: 120. The number of seconds is easier for clients to get right, because it does not depend on their clock agreeing with yours.</p>
+<p>Telling clients how close they are to a limit before they hit it is the job of the IETF draft “RateLimit header fields for HTTP”. As of November 2026 it is at version 11, published in May 2026, an Internet-Draft of the HTTPAPI working group and not an RFC, so names and parameters can still change. It defines two fields:</p>
+<p>Many APIs still send the older, unstandardized X-RateLimit-Limit, X-RateLimit-Remaining and X-RateLimit-Reset headers, and they disagree on whether the reset is a timestamp or a number of seconds. If you publish an API, document which headers you send. Either way, say which limit was hit, as Stripe does with its reason header: a client that knows it hit a per-endpoint limit can slow down just that endpoint.</p>
+<p>A client that retries a 429 at once makes the overload worse, and many clients that back off on the same schedule come back in synchronized waves. The remedy Marc Brooker describes on the AWS Architecture Blog is exponential backoff with jitter: grow the maximum delay exponentially, cap it, and sleep a random time below it, which he calls “full jitter”. Stripe’s rate limit documentation gives the same advice for 429 responses, to avoid a thundering herd.</p>
+<p>A rate limit often sits in front of the same expensive work as a cache; caching strategies covers that side.</p>
+<p>A token bucket allows a burst up to its capacity and then holds the refill rate. A leaky bucket in its queue form accepts a burst into a queue and releases requests at a fixed rate, so it smooths traffic by adding delay. Used as a meter that rejects instead of queueing, a leaky bucket behaves like a token bucket with the same rate and size.</p>
+<p>It depends on what the limit protects. For ordinary user traffic, most teams fail open, often with a conservative local limiter on each node as a fallback. For limits that stop abuse, such as login attempts, or that protect a fragile backend, failing closed is safer. Decide it in advance and test it.</p>
+<p>Return 429 Too Many Requests, defined in RFC 6585, when one client has sent too many requests, ideally with Retry-After. Keep 503 Service Unavailable for when the whole service is overloaded or down. Some proxies default to 503 for rate limiting, so check the setting.</p>
+<p>Read the client address from the forwarding header that your own proxy or load balancer sets, using the entry it appended rather than the leftmost one, which the client controls. Expect many users behind one address on office and mobile networks, and limit IPv6 clients by prefix rather than by single address.</p>
+<p>Not yet. As of November 2026 they are defined in draft-ietf-httpapi-ratelimit-headers, version 11, an Internet-Draft of the IETF HTTPAPI working group. Details can still change before it becomes an RFC, and many APIs still send the older X-RateLimit headers.</p>
+<p>This article was created with the help of AI, and its facts were checked against the sources listed above.</p>
+<p>Originally published on the BYD Tech blog: https://bydtech.in/blog/rate-limiter-system-design</p>
+<p>BYD Tech builds MVPs, AI agents, and web and mobile apps. Your code lives in your GitHub from day one.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lwn.net/Articles/1104195/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/byd_tech/designing-a-rate-limiter-token-bucket-sliding-window-and-limits-across-many-servers-5boo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

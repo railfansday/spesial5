@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training a coding model to paint watercolours with TRL and OpenEnv</title>
+    <title>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9927.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,272 +15,93 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Training a coding model to paint watercolours with TRL and OpenEnv</h1>
+        <h1>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-to-paint-with-code/thumbnail.png" alt="Training a coding model to paint watercolours with TRL and OpenEnv" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-to-paint-with-code/thumbnail.png" alt="Training a coding model to paint watercolours with TRL and OpenEnv" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>On 23 August, Surya
-Narreddi posted a beautiful video
-of watercolours painted by a language model. The model writes JavaScript through
-p5.brush, a library that "adds natural
-drawing tools to p5.js". The video went viral fast, over 1.5M views at the time of
-writing.</p>
-<p>The video came with a blog
-post explaining the training
-behind an earlier and narrower stage of the project, close-up flowers rather than the
-full compositions in the video, sadly without open artifacts yet. His site says a full
-technical report is coming, so ensure you follow him. The original idea is his, coming from the art and design side, where his skills are way beyond mine. My attempt is on the engineering side, reproducing the recipe in the open with every piece published.</p>
-<p>Note: for the context behind the project, told by Surya himself, watch this
-video of his thesis.</p>
-<p>In this article I try and reproduce his idea with TRL and
-OpenEnv. The reference pool dataset, the RL
-environment, the training scripts and the trained models, all open.</p>
-<p>The whole pipeline runs on Hugging Face, end to end:</p>
-<p>Once the two Spaces are up, the recipe is one command. Duplicate the
-environment and the
-scorer model, set two
-environment variables for the reward mix, and launch:</p>
-<p>The rest of this article is the story of getting there, and every piece is in the
-repo.</p>
-<p>I have followed the original blog step by step, and only changed something when strictly needed. Every idea of my own went into a list instead of into the experiment, and that list became "What I would try next" at the end, next to the full list of published artifacts. If you have already read his post, the framing and
-the reward design will be familiar. The new material is the open implementation, the
-hand-rated pool, and three reward mixes trained and compared, and it starts at The RL
-environment you need to build.</p>
-<p>The paintings look loose, imperfect, handmade, at a moment when image models produce perfect (statistically average) pictures. My guess is that this contrast is a big part of why the video went
-viral. It reminded me of the early days of generative AI art, when the point was
-to explore the medium. DeepDream (2015) was a debugging tool that people turned into art, works like Edmond de
-Belamy (2018) came from artists probing
-what a GAN could do, and artists like Mario Klingemann spent those years making dreamy portraits with neural networks.</p>
-<p>This project feels closer to those early days. In his thesis, Surya describes the path
-that led here. He started by prompting text-to-image models, where the prompt is the
-only lever you can pull, and more detail buys more control only up to a point. Training
-the model itself goes further. The
-other half of the idea is the medium. The model writes a program of about 150
-lines of JavaScript that paints the image. That model output is code. You can read it, edit it and run it
-again, and the decision behind each brushstroke is visible. And the style comes from a
-restriction where the model is only allowed ten of the library's methods. More on that below.</p>
-<p>In that same period, Anna Ridler
-photographed thousands of tulips, hand-labelled every one, exhibited the dataset itself
-as the artwork, and later trained a model on it. I found her work through the references
-AI agents brought back while building this project and loved it because this
-project does something very similar by curating a set of images by hand, and then training against them.</p>
-<p>Most of the recent RL work on language models uses rewards you can verify. For example, math problems with a known answer, code that passes tests, or graders that are right or wrong and cheap to run. This project is closer to the older exception, RLHF, where the model learns a reward model from human preferences.</p>
-<p>Here the reward is aesthetic preference. There is no correct answer. The real question
-of the project is whether you can do RL over taste.</p>
-<p>The reward, as his blog defines it and as the RL environment I built implements it:</p>
-<p>HPSv3 is an open 7B preference model. Give it an image and a text description, and it returns
-a score for how much a person would prefer that image. It was trained on a large set of
-human choices between pairs of images, so its score is an average of many people's taste. The pairwise judge is
-Qwen3-VL-30B-A3B-Instruct, a
-general vision model called through HF Inference Providers. The pairwise judge sees the candidate
-painting
-next to four references randomly selected from the pool, guided by a written description of what to weigh (bleeds, translucent washes, soft edges),
-each comparison in both presentation orders, and its score is the share of comparisons
-the candidate wins. Its only standard is the pool, so its score is my taste, as encoded
-in those ratings.</p>
-<p>Those are the weights Narreddi converged on. The pool defines taste here. That moves the work from tuning hyperparameters
-to building the set that decides what is beautiful.</p>
-<p>I trained three runs with this reward. They differ only in how the weight splits between
-the two model judges:</p>
-<p>I started with hps-only to validate that the pipeline could learn at all. Once the reward was going up and the metrics were healthy, there was no reason to run it longer, so I launched the two longer runs instead. The question that the longer runs ask is how much of HPSv3's power can you hand to the pairwise judge? The more weight the judge carries, the more
-the reward means my taste instead of everyone's, and the harder it should be to climb. Incidentally, if you push it far enough or your style is too far from the average, the model could stop entirely.</p>
-<p>Fortunately, it did not stop and both runs with the pairwise judge on learned too. The hand-rated pool
-can steer the policy, at least as far as the metrics and the final paintings show. The
-numbers are below.</p>
-<p>Disclaimer. If we use a frontier model, it can already generate the JavaScript code that paints watercolour from a prompt. That's the starting point. The work here is about teaching a smaller model to do it combined with a person's own artistic preferences.</p>
-<p>The environment wraps everything that sits between the model and the reward, including the JavaScript library that the model uses for painting, the system prompt that restricts it, the headless Chromium that renders each sketch, and the gate that rejects cheats.</p>
-<p>The library does more of the work than it seems.
-p5.brush, by
-@acamposuribe, simulates a medium rather than drawing
-shapes: pigment bleeds past the edges of a fill, paper has texture, strokes have mass,
-flow fields drag brushwork around. When the model calls brush.fillBleed(0.25) it is deciding how far the ink
-runs.</p>
-<p>Note. The author of p5.brush had been trying to teach a machine to paint long
-before any of this. In 2022 he made a generative art series that hides a diary about
-teaching p5.js to draw like a child: "It is barely able to use the crayons [...] It
-cannot follow simple commands. I'm done for today, very infuriating." The series was
-meant to have three pieces, and he made two. When Surya's video went viral, he
-quoted it, sharing that diary
-and saying this work is the third piece arriving on its own.</p>
-<p>p5.brush exposes 47 methods. The prompt allows 10: scaleBrushes, noStroke, fill, noFill, fillBleed, fillTexture, beginShape, vertex, endShape and circle. What the other thirty-seven add, lines, hatching, custom brushes, would break the watercolour look. With these ten the model can only paint filled shapes, and the library adds the bleed to every one of them.</p>
-<p>His blog post saved me a lot of time I could have wasted iterating on the prompt. 
-A long API reference makes the model
-invent methods that do not exist, and his 200 GEPA iterations converged on a strict
-allowlist with no documentation. I saw the same failures and wrote the allowlist by
-hand. My only addition to that recipe is one sentence: paint
-each petal two or three times, a big pass first and a smaller, more opaque one inside
-it. This small change made my outputs a lot more colorful.</p>
-<p>Note. If it's the first time you hear about
-GEPA, it is an automatic prompt optimizer.
-A language model reflects in plain words on where the current prompt failed and
-proposes a better one, and the loop repeats.</p>
-<p>The gate is the final piece. The sketch has to compile, use the library instead of direct p5 calls, put real pigment on the canvas, and not try to trick the scorer, for example by writing text on the canvas.</p>
-<p>The pool consists of 178 paintings divided into
-two tiers based on my personal preferences, love and okay. All of them are actually generated by a model. Four open-weight models,
-called through Inference Providers, wrote p5.brush sketches, each one working from a
-real, openly licensed photo of a hibiscus from iNaturalist. A vision model gave written
-feedback on every sketch, over three refinement iterations. Every final render was then rated one at a time, by me, and 178 made the cut.</p>
-<p>Here I chose four different families of models to test their different styles. These four were the open models that produced a valid sketch every time in a quick reliability check, and two other candidates were dropped for failing it. If you want to produce your own pool, you might choose others.</p>
-<p>The tiers do real work in the reward. When the pairwise judge draws four references,
-half come from love and half from okay, so the policy always faces some rivals it
-can sometimes beat, and a win pays the same against either tier. This is one of my few
-deliberate changes: the original compares against its top tier only, and I kept the
-easier tier in the draw so a weak early policy still gets signal.</p>
-<p>No human-made painting is in there, which is a real limitation. p5.brush is a niche
-library, and the human work that exists in it with accessible code is a handful of pieces, nowhere near what a training corpus
-would need, as his blog also notes.</p>
-<p>The interesting idea here, as I've already discussed previously, is that the model will learn to imitate what the pool contains. If we point the environment at a different dataset, the reward would automatically change without touching a single line of code. For the dataset I generated and openly share, I also include the source sketch.</p>
-<p>If we look closer at the judges, the two of them answer different questions. HPSv3 decides whether it is a flower, and
-the pairwise judge decides whether it is well painted in the style I chose.</p>
-<p>Before anything worked, there was a long stretch of flat reward curves. If you've tried to reproduce a research paper/blog without open artifacts, you probably can relate. Every run
-tested what I thought was a reasonable theory about what was wrong. A run takes a lot
-of time, so I queued the next one while still going through the last one's results. As always, starting from something easier that works and then building on top of that was the answer.
-A simple control task, with no browser and no judges, was the first attempt that learned, and the reason was that my learning rate was just too low.</p>
-<p>Another change that cost me time to find was adjusting the LoRA parameters correctly. The usual target_modules list assumes a dense model, and Qwen/Qwen3.5-35B-A3B is a mixture of experts that names most of its projections differently, so the adapter was training ten layers out of forty. I solved this by changing it to all-linear, which reaches every linear layer. The routed experts in this architecture are fused tensors that even all-linear leaves frozen, but everything else gets an adapter, and that was enough to learn.</p>
-<p>The fix was four changes in TRL's GRPOTrainer:</p>
-<p>These four changes unlocked the first successful run (hps-only), with the reward clearly improving.</p>
-<p>With that configuration, all three runs learn. Both judge runs were launched for 200 steps and stopped at 110, with the reward still climbing slowly. A step takes fifteen to eighteen minutes, and the comparison between mixes was already stable, so I stopped both to save compute. Mean group reward over the first and final third of each run:</p>
-<p>The three curves line up with how much weight my taste carries. The more the judge
-weighs, the lower the start and the noisier the climb. judge-led spent its first thirty steps nearly flat
-before it moved. It is the same move that solved the debugging. Shrink the problem until
-something learns, then add the hard parts back one at a time.</p>
-<p>The pairwise judge term itself climbed in the two runs that used it. The model wins more
-comparisons against the pool as training advances, which is the claim hps-only could
-not make. No group in any run collapsed to identical rewards, the GRPO failure mode that
-kills the gradient. For the curious, the per-metric curves (HPSv3, paint coverage,
-entropy) are in the
-repository as CSV.</p>
-<p>The full launch command, the hardware and the two environment variables that turn this
-into the other two runs are in the
-recipe.</p>
-<p>In every run, the first thing the model learned was to stop producing bad
-paintings, the near-blank canvases and shapeless washes that score under 0.3 in total
-reward. In
-hps-only, three quarters of the rise in the group mean comes from bad paintings
-becoming rare. In the judge runs the collapse is even steeper: rollouts under 0.3 fall
-from 99 to 16 across judge-led's thirds, and from 37 to 4 in hps-led.</p>
-<p>This is why the obvious visual, the best painting of each step, shows almost no difference in
-hps-only. It moves +0.034 across the run while the median moves +0.155. The
-learning is visible in the middle of the distribution.</p>
-<p>What the pairwise judge changes is the top. In hps-only, paintings got more
-reliable without getting better. The quality of the good ones added just +0.03 to the
-group mean, and once HPSv3 saw petals around a centre and a stem, it stopped asking for
-more pigment. With the judge on, the other half of the story appears. Better here means closer to
-the pool, so closer to what I rated as "good" or something I liked more. That added +0.12 in judge-led and +0.16
-in hps-led, the best of each step rose too, and
-paint coverage doubled in both runs (0.11 to 0.23, and 0.13 to 0.30) where hps-only
-barely moved it. With a reference left to beat, a good painting can still get better,
-and the model starts being rewarded for using more pigment.</p>
-<p>One more finding. The model ignores an explicit instruction, and it is right to. The
-system prompt asks for fifteen to thirty filled shapes. If we look at the real mean, it is between 7 and 9, and
-n_shapes barely correlates with reward in any run (+0.000, −0.14, +0.07). The policy
-is not rewarded for obeying that sentence, so it does not obey it.</p>
-<p>There is also a ceiling on the hps-only route. If every rollout matched its good
-ones, that run's mean would sit at 0.771. Whether more steps would break it is
-an open question.</p>
-<p>The paintings also show something that the tables miss. Within each run, they all look
-similar. As training advances, the rewards inside each group get closer together, and the
-median paintings in the opening video look like takes of the same flower. That is GRPO
-doing what it is designed to do with a pool built from one subject. The pool decides
-what counts as variety, the same way it decides what counts as quality. If the reward
-only pays for matching one flower, the model learns to paint that one flower. More diverse output would need a
-more diverse pool, and building one is more curation work. Surya's newer compositions are an example of this. Alex Yango's animal
-paintings are the same recipe with
-different choices in the pool. This is the biggest difference between an aesthetic
-reward and a maths grader. Behind the number there is a very human job, deciding what
-belongs in the reward set. Jason Liu's essay on
-taste says the general version in one
-line. AI shifted the bottleneck from making to noticing.</p>
-<p>Surya closes his blog with some of his favourites. Instead of picking mine, below is a
-wall with the 178 paintings the reward scored highest across the two judge runs, the
-same number the reference pool holds, in no particular order. Open it and pick your own.</p>
-<p>To choose, you looked at many and kept a few, and that is exactly the job that built the
-reward of this project. Every painting of every run, with its sketch and its reward, is
-in the rollouts datasets, and browsable in this gallery.</p>
-<p>Since the reward was partly based on my taste, it is fair to close with my verdict as a viewer. To my
-eye, judge-led is the run that ends up the most diverse and the most artistically
-interesting. hps-led paints convincing watercolours, but its best ones share a soft,
-wet-on-wet look that is almost a style of its own. hps-only converges the hardest, and
-most of its paintings settle on the same colours. You can judge for yourself in the
-gallery, which has every painting of
-every run, sortable by step and by reward.</p>
-<p>This project is mostly infra. A run needs a trainer, two Spaces, an inference router and
-a websocket to stay healthy for hours straight, and every piece that fails quietly turns
-into a wrong number somewhere else. Half the work is checking that the number you read
-matches what actually happened.</p>
-<p>Failures of the infrastructure were entering the reward as zeros. A render that
-timed out or a scorer that did not answer scored the same as a bad painting, 0.0 inside
-the group. Across all my runs that was about 1.5% of rollouts, and in the worst run it
-reached 5.2%. That trains the model on noise, so those paths now
-return None and the rollout is excluded from the group.</p>
-<p>I also found a bug in OpenEnv, and sent the fix upstream. The client keeps one
-persistent websocket, and a socket closed by the far end stayed cached, so every later
-call failed even though the environment was healthy. It cost me two half-finished runs
-to find it. The fix is submitted
-upstream, and the runs launched with
-it have been running clean since.</p>
-<p>The reward of a step depends on which references it drew. The pairwise judge
-samples four references per step, so every step faces a different set of rivals, and
-some draws are simply harder. GRPO itself is mostly safe, because advantages are
-computed inside the group and a hard draw moves the whole group together. The curve I
-was reading was not safe, and some of what looked like a bad step was just a hard draw.
-The image above is one example. Step 12 scored half a point below step 11 mostly because
-it drew the hardest references of the run, while the paintings themselves look close.</p>
-<p>Rounded numbers, and only for the runs that finished.</p>
-<p>A step is eight rollouts and takes fifteen to eighteen minutes, of which 70 to 80% is
-rendering. A single render takes 69 to 96 seconds against a 90 second deadline. Part of that is
-expected, the Space has no GPU, so Chromium renders the WEBGL canvas in software and
-p5.brush's bleeds and textures are heavy pixel work. Even so, I expected it to be
-faster, and I have not found the full cause.</p>
-<p>A scorer can cost more than the training that uses it: HPSv3 has to be up for the whole
-run, so pause the Space, or set its sleep timer, when the run ends.</p>
-<p>Everything runs on HF
-Jobs, with the environment as
-a Docker Space and metrics in
-trackio.</p>
-<p>The rule of this project was to reproduce the recipe with every resource open, not to
-improve it, so a list of untried ideas piled up along the way. These are the ones I
-would actually try, in order of how much evidence there is.</p>
-<p>Multi-step, and letting the model see what it paints. This is the first thing I
-would try. The original blog trains single turn, so I trained single turn, and in this
-setup the model paints with its eyes closed. No image ever goes in, and the only
-feedback it gets is one number. The evidence that a feedback loop works is the pool
-itself. The reference paintings came from models iterating three rounds under a vision
-critic, and the later rounds are better. The material that defines the reward was made
-with a loop the policy never gets.</p>
-<p>Smaller models. There is evidence that 35B is more than needed. In my side
-experiments a 4B already wrote valid sketches that passed the gate. If a 4B can learn
-this, the cost of the experiment drops by an order of magnitude.</p>
-<p>Other ideas on the list are SFT on the pool sources before starting RL, rewarding pigment
-explicitly, moving the judge's reference mix from easy to hard as the run advances until
-only love remains, widening the ten-method allowlist for more visual range (my
-attempts on this crashed more sketches and broke the watercolour look), and checking how consistent the pairwise judge really is by
-scoring the same image twice.</p>
-<p>And the method is not specific to flowers. Alex Yango painted animals with the same
-mechanism, and Brendan Hogan
-trained canvas animations
-against a pool of hand-rated clips. I had also played with something similar before using Simon
-Willison's pelican
-benchmark, where code is
-rendered to an image and scored.</p>
-<p>And underneath all of it sits the question this project cannot close. 178 paintings
-made by models define what this trained model considers beautiful. The pool is the bottleneck,
-and it is the part of the pipeline with no principled answer.</p>
-<p>For anyone reproducing this, there are two deliberate divergences from Narreddi's
-recipe, both argued earlier in the article:</p>
-<p>The rest, all-linear for the LoRA, infrastructure failures returning None instead
-of 0.0, stopping the judge runs at step 110, are decisions I had to make along the way
-because his blog does not specify them. His implementation is not published, so
-I cannot tell whether they match his choices or diverge from them.</p>
-<p>The per-rollout numbers in this article can be recomputed from the published datasets.
-Nothing here depends on any Space staying switched on.</p>
-<p>The method and original idea are Surya Narreddi's. The library is Alejandro Campos Uribe's.</p>
+                <p>Muse Spark Open is an open-weight model from Meta. The mixture of experts model brings text, images, audio, and video into a model with approximately 816 billion parameters, around 42 billion active per token, and a context window of up to one million tokens. It generates text, giving developers a common interface for asking questions about different kinds of input.</p>
+<p>Following Muse Glimmer, Muse Spark Open introduces a mixture-of-experts architecture at a much larger scale, and the most capable US open-weights model to date.</p>
+<p>Meta trained Muse Spark Open for agentic coding: reading a codebase, writing and debugging code, and calling tools. It also takes images, audio, and video as input, so the same model can read a screenshot, listen to a voice note, or watch a screen recording while it works on your code. This post shows you how to run it, how to fine-tune it, and what we built with it. Find all the models here.</p>
+<p>Meta describes Muse Spark Open as a coding-optimized model trained on real developer workflows such as multi-file refactors and long debugging sessions. Muse Spark Open is an agentic focused model that plans, acts, observes, and self-corrects over long tasks, including browsing the web with images.</p>
+<p>The checkpoint repositories are Muse-Spark-Open-816B-A42B and Muse-Spark-Open-816B-A42B-NVFP4.</p>
+<p>Muse Spark Open is the full-size model of the Muse series of models. Muse Glimmer, which Meta released in August, is a small dense model from the same series, ideal for running locally. Both models use the same tokenizer and vocabulary. The chat template follows the Muse Glimmer template, with additions for the new modalities. In Muse Spark Open the input embedding and the output layer are separate matrices of about 1.66B parameters each.</p>
+<p>The language model has 62 layers and a hidden dimension of 8192. Each layer has 128 query heads and 16 key-value heads (grouped-query attention). Each head has 64 dimensions. The attention block has an output gate and an output normalization layer. The model also applies normalization to the queries and the keys (QK-norm). Each block combines its input and its output through a learned residual gate, not through a plain sum.</p>
+<p>Muse Glimmer uses one dense feed-forward network in each layer. Muse Spark Open replaces this dense network with a Mixture-of-Experts (MoE) block. Each MoE block has 256 experts, and a router selects 8 experts for each token. Each expert is a feed-forward network that projects from 8192 to 4096 dimensions and back to 8192, then applies its own normalization to its output. The experts hold ~97% of the total model parameters.</p>
+<p>Only 8 experts run per token, so the model computes each token with about 42B parameters. All 256 experts stay in memory, so deployment needs the memory of an 816B-parameter model, but runs at the much faster speed of a 42B model. The BF16 checkpoint is about 1.5 TB in safetensors format. The NVFP4 checkpoint stores the parameters in 4-bit precision with negligible loss in accuracy, specifically for NVIDIA Blackwell GPUs. In transformers, the BF16 checkpoint runs across 4 nodes of 8 H200 GPUs with tensor parallelism (TP=32) and the NVFP4 runs on a single B200 node. If you want to deploy Muse Spark Open, check out the llama.cpp, vLLM, and SGLang recipes below.</p>
+<p>A perception encoder converts images and video frames into tokens for the language model, just like Muse Glimmer. The encoder has 1.8B parameters, 50 layers, a hidden dimension of 1536, and 16 attention heads. It splits each image into 14×14 patches and produces features with 4096 dimensions. Position information comes from learned absolute embeddings and 2D RoPE. The feed-forward network in each layer uses LayerNorm and GELU. Every fourth layer and the last layer use full attention, and the other layers use sparse attention.</p>
+<p>Muse Glimmer 30B uses an encoder with the same architecture. The design follows the  Perception Encoder work from Meta. Video input goes through the same encoder as images.</p>
+<p>Muse Spark Open accepts audio as input through its audio encoder. An audio tokenizer converts the audio into tokens, and the chat template marks the audio position with <|audio|> tokens. The encoder emits one audio token every 80 ms, which yields 12.5 tokens per second. So let’s say, you have an audio of 10 seconds, the number of input audio tokens would be 125.
+The encoder itself is a convolutional pyramid where each stage consists of a patch embedder of different patch sizes and 2 convolutional blocks of 1d kernels of size 7 with stride of 1. These stages are repeated for patch sizes of [16, 6, 5, 4]. At the end of the final stage, the temporal frames are fed to a final block of RMSNorm → linear projection → RMSNorm.</p>
+<p>The context window is 1M tokens at inference. The configuration sets max_position_embeddings to 1,048,576. This includes image, video, and audio tokens in the same window as text.</p>
+<p>Grouped-query attention keeps the KV cache small for a model of this size. Each token adds 2 × 16 heads × 64 dimensions × 62 layers = 126,976 values to the cache. In BF16, this is about 250 KB per token and about 266 GB for a full 1M-token context.</p>
+<p>The Muse Spark Open implementation provides MuseSparkForConditionalGeneration for text generation from multimodal inputs and MuseSparkProcessor for preparing conversations. The processor combines the tokenizer, image and video processors, audio feature extractor, and chat template.</p>
+<p>Use a DistributedConfig to configure the parallelism settings. tp_size is the number of devices across which the dense layers are sharded, and ep_size is the number of devices across which the experts are distributed.</p>
+<p>You can initialize the model and processor as follows.</p>
+<p>Prepare the conversation, then pass the messages to processor.apply_chat_template, enabling add_generation_prompt=True, tokenize=True, return_dict=True, and return_tensors="pt". Pass the processor output to model.generate and decode the newly generated tokens, excluding the input prefix. The processor has a lever for the reasoning effort, mapping symbolic levels (low/medium/high/xhigh) to the integers the model itself accepts (16, 64, 256, 512). Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task. You can also set a numeric effort by including a line like Reasoning strength: 1 in the system prompt.</p>
+<p>The Muse Spark Open processor expands each image marker into the number of patch tokens required by the processed image, surrounded by image boundary tokens. This expansion keeps the text positions aligned with the visual features passed to the model. The processor also handles multiple images within a single prompt.</p>
+<p>Video prompts include frame timing as well as visual content. The processor handles videos with audios in them (which is an upgrade from Muse Glimmer thanks to the audio encoder). The processor downsamples video frames and audio to align frames together. By default, videos are sampled to 2 FPS, capped at 96 frames. You can modify this by setting the fps of the video processor:</p>
+<p>As a general rule of thumb, videos are frames in temporal sequence, and the more you downsample, the more you will lose frames in between specific events, so you need to keep fps high if you want more accurate generations. However, there’s a trade-off because you will require more memory and increase latency for prefill. The frames are interleaved with text input that states timestamps (e.g. “Time: 3.5s”). To enable passing in videos with audio, pass load_audio_from_video=True to apply_chat_template.</p>
+<p>Preserve the video's metadata when preparing inputs with return_metadata=True so the processor can assign the correct framerate.</p>
+<p>The Muse Spark Open audio tower consumes a raw waveform. The processor expects mono audio at 24 kHz and pads the waveform to a multiple of 1,920 samples, corresponding to one audio embedding per 80 milliseconds. Audio supplied directly to the processor at another sample rate must first be resampled. You can do this by using the load_audio util of transformers. load_audio uses torchcodec, librosa or torchaudio backends, so make sure to have one of these installed locally before running inference.</p>
+<p>If you want to simply use apply_chat_template with messages though, this is all handled for you under the hood:</p>
+<p>The processor inserts the matching number of audio tokens between audio boundary markers. It also returns a mask identifying real samples, allowing the model to exclude padded audio embeddings.</p>
+<p>Muse Spark Open can do text-only and multimodal tool calling. You can make the model call tools as follows.</p>
+<p>Muse Spark Open uses a channel-based chat template (Harmony, first introduced by gpt-oss). Note that you don’t have to know about the internals, but it’s useful to check the channels the model routes to, in case you get low quality outputs. In the input message below:</p>
+<p><|start|>assistant is intentionally left open, it’s the model that chooses recipient with to= . The model has different recipients, e.g. self asks the model to reason,</p>
+<p>self is for reasoning, commentary are comments before and between tool calls visible to the end user, user is the final response.Tool-call routing is parsed as follows (assuming you have passed tools to apply_chat_template:</p>
+<p>Muse Spark Open is integrated in llama.cpp and comes in the prebuilt binaries. You can install this with following command:</p>
+<p>You can start the server as follows with quant suffix attached to model ID:</p>
+<p>The repository containing quants is here. Once the server has started, you can head to localhost:9931 to chat with the built-in WebUI. From the web UI you can add audio and images for inference and adjust the reasoning lever.Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task.We tested quants on Mac M3 Ultra (512GB). An imatrix-calibrated 2-bit quant runs at 18 tokens/s, with plenty of room free for the KV cache (304 GB used by the model).</p>
+<p>You can also query the server as follows. Feel free to check out the API reference for multimodality, tool calls and more.</p>
+<p>llama.cpp team ships different quantized versions. We have tested Q2_K, Q4_K_S and Q_8 on Apple Silicon chips. You can run each quant by adding the quant id as suffix, llama serve -hf ggml-org/Muse-Spark-Open-816B-A42B:Q2_K.</p>
+<p>The Muse Spark Open integration for SGLang supports text, image, audio, and video inputs. The NVFP4 reference configuration runs across four GB300 GPUs.</p>
+<p>From the SGLang integration environment, download the checkpoint from the Hugging Face Hub and start the server:</p>
+<p>The checkpoint includes the chat template, which we pass explicitly. The launcher configures the Muse reasoning and tool-call parsers.</p>
+<p>Send a request through the OpenAI-compatible API:</p>
+<p>The response separates the reasoning trace in reasoning_content from the final answer in content.</p>
+<p>The Muse Spark Open reference integration for vLLM supports text and image inputs with the NVFP4 checkpoint that require blackwell series GPUs.</p>
+<p>After installing the reference plugin and its dependencies, download the checkpoint from the Hugging Face Hub and launch the server:</p>
+<p>This configuration sets a 128K-token serving context. The plugin supplies the model implementation, checkpoint loader, and reasoning and tool-call parsers.</p>
+<p>Send a request using the same Hub model ID:</p>
+<p>Muse Spark Open is available in oMLX and mlx-lm today. oQ quants optimized for oMLX are available in 3-bit and 4-bit, ready to use right away.</p>
+<p>We tested the oQ3e quant on an M3 Ultra (512 GB). The model takes about 344 GB, leaving room for the KV cache, and runs at about 225 tok/s prefill and 21 tok/s generation with a 1024-token prompt and 128 generated tokens.</p>
+<p>Once you download the model through the oMLX interface, you can chat with it in the built-in chat UI. From the chat UI you can add images and adjust the reasoning effort on the fly, from low to xhigh. The model’s reasoning shows up as a collapsible thinking block, separate from the final answer.</p>
+<p>Note that it's not possible to turn reasoning off, and the default (Auto) uses xhigh. Set it to “low” if you want to use fewer tokens on easier tasks.</p>
+<p>The language model is also available in this PR of the official mlx-lm repository. You can run it on the same high-quality oQ3e quant like this:</p>
+<p>This is a big model, even the 3-bit quantization requires more than 256 GB of RAM, as explained above. You can also run distributed inference across multiple computers, please refer to the documentation for details.</p>
+<p>You can deploy Muse Spark Open on Inference Endpoints with a pre-validated SGLang recipe for the NVFP4 variant which runs on either 8 × NVIDIA RTX Pro 6000 98 GB with 131072 context length, or with 8 x NVIDIA H200 141GB if you want 1048576 context length instead.</p>
+<p>To deploy, run one command with the Hugging Face CLI:</p>
+<p>Or open endpoints.huggingface.co/new/meta-models/Muse-Spark-Open-816B-A42B-NVFP4 and select Create Endpoint.</p>
+<p>The endpoint exposes an OpenAI-compatible API with both Chat Completions API at /v1/chat/completions and Responses API at /v1/responses.</p>
+<p>Any OpenAI-compatible client works with the same URL and your Hugging Face token as the API key.</p>
+<p>You can fine-tune the 816B checkpoint with the TRL SFTTrainer. This section shows how we fine-tuned it with TRL on 8 nodes of 8 H100 GPUs. The recipe trains LoRA adapters on the attention layers. The experts stay frozen. The full script is in the TRL examples.</p>
+<p>First, we need to split the model across 64 GPU devices. Given the large size of the model, we need to parallelize it across multiple axes. We shard the model with FSDP and split the experts across GPUs, using DistributedConfig, which tells transformers how to split the model when it loads:</p>
+<p>In the snippet above, fsdp_size=64 shards the model across all 64 GPUs with FSDP2, and ep_size=8 splits the 256 experts of each layer into 8 groups. Transformers sends each token to the GPU that holds its expert, so each GPU trains on its own slice of the batch.</p>
+<p>Now, we can configure the SFTConfig for our training run. We’ve performed a simple task here to adapt the model’s chat template on an open source dataset, but you could apply it to your own use case.</p>
+<p>The core parts here are packing=True which joins examples into 2048-token sequences without padding. A block-diagonal mask keeps the examples separate. save_only_model=True saves the adapter and no optimizer state, because the trainer cannot resume a model that was sharded at load time. LoraConfig targets the four attention projections and the 256 experts of each layer stay frozen.</p>
+<p>Then we can run this command across each node:</p>
+<p>We trained for 500 steps, which took about 2 hours on 64 H100s, at about 8,000 tokens per second. Mean token accuracy rose from 72% to 84% and the loss fell from 1.26 to 0.57, which signals a good fine-tuning run.</p>
+<p>Muse Spark Open is a coding and agentic model. We wanted to see that for ourselves, so we tried a mixture of multi-modal and agentic tasks that use the model's image and audio inputs. Everything below is something you can run or fork.</p>
+<p>We combined 2-bit quantized Muse Spark open (served on llama.cpp) with the Pi coding agent to generate and iteratively improve 3D assets in Three.js. You can find the prompt here, as the model is quantized it requires a bit more steering. We get 18 TPS on llama.cpp on Mac Ultra.</p>
+<p>We initially describe the asset, and Pi uses the model to generate Three.js code for the asset, renders the result in a browser, and captures screenshots from multiple angles. It then sends those images back to the same model on llama server for visual feedback. Pi uses that feedback to edit the code and repeats the process.</p>
+<p>We tested Spark on computer use tasks and were amazed by the performance, so we have built a lean demo that also serves to teach you how a computer use agent works. You can also further customize this for your needs. This is both an educational example and something you can run in a few lines. You can find it here.</p>
+<p>Muse Spark NVFP4 Browser Agent with OpenEnv and HF Sandboxes</p>
+<p>Hugging Face Sandboxes are sandboxes built on Hugging Face Jobs for easy code execution. The demo consists of three components:</p>
+<p>where the remote sandbox contains the environment and the browser as illustrated below.</p>
+<p>You can easily try this with a few steps, described in the example. Start Inference Endpoint with Muse Spark Open (NVFP4 works well too!), add your endpoint URL as environmental variable, publish your OpenEnv server in Spaces and also provide that, then you can run the agent loop.
+Muse Spark Open sees the previous actions, system prompt, url and the screenshot of the browser to take an action, and nothing else (no DOM, no HTML code, nothing) so it’s a truly multimodal browser demo.</p>
+<p>Finally, we wanted to push Spark’s agentic multimodality to the limits, so we set up this space that combines the model’s audio, image, and agentic properties into a browser agent. We give the model a general description of a thing we need and it interacts with the integrated browser to find options on Amazon.</p>
+<p>Muse Spark Open takes the voice input and reasons over the type of product that meets the descriptions, searches for it on Amazon, and selects the most appropriate based on criteria.</p>
+<p>Muse Spark Open is a full-size open-weight model from the Muse series. Start with the BF16 or NVFP4 checkpoint, or try one of the great llama.cpp quants. If you build something with Muse Spark Open, share it, and tell us in the repository’s discussions.</p>
+<p>Talk to Muse Spark and watch a browser work</p>
+<p>i wish if i can run huge models like this on a phone or 4vram</p>
+<p>Talk to Muse Spark and watch a browser work</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/train-to-paint-with-code" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/meta-muse-spark-open" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

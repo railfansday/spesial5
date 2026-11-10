@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Optimizing your LLM in production</title>
+    <title>Training and Finetuning Embedding Models with Sentence Transformers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11078.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Optimizing your LLM in production</h1>
+        <h1>Training and Finetuning Embedding Models with Sentence Transformers</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Sentence Transformers is a Python library for using and training embedding models for a wide range of applications, such as retrieval augmented generation, semantic search, semantic textual similarity, paraphrase mining, and more. In this blogpost, I'll show you how to use it to finetune Sentence Transformer models to improve their performance on specific tasks. You can also use this method to train new Sentence Transformer models from scratch.</p>
+<p>Finetuning Sentence Transformers involves several components, including datasets, loss functions, training arguments, evaluators, and the trainer itself. I'll go through each of these components in detail and provide examples of how to use them to train effective models.</p>
+<p>Finetuning Sentence Transformer models can significantly enhance their performance on specific tasks. This is because each task requires a unique notion of similarity. Let's consider a couple of news article headlines as an example:</p>
+<p>Depending on the use case, we might want similar or dissimilar embeddings for these texts. For instance, a classification model for news articles could treat these texts as similar since they both belong to the Technology category. On the other hand, a semantic textual similarity or retrieval model should consider them dissimilar due to their distinct meanings.</p>
+<p>Training Sentence Transformer models involves the following components:</p>
+<p>Now, let's dive into each of these components in more detail.</p>
+<p>The SentenceTransformerTrainer uses datasets.Dataset or datasets.DatasetDict instances for training and evaluation. You can load data from the Hugging Face Datasets Hub or use local data in various formats such as CSV, JSON, Parquet, Arrow, or SQL.</p>
+<p>Note: Many Hugging Face datasets that work out of the box with Sentence Transformers have been tagged with sentence-transformers, allowing you to easily find them by browsing to https://huggingface.co/datasets?other=sentence-transformers. We strongly recommend that you browse these datasets to find training datasets that might be useful for your tasks.</p>
+<p>To load data from datasets in the Hugging Face Hub, use the load_dataset function:</p>
+<p>Some datasets, like sentence-transformers/all-nli, have multiple subsets with different data formats. You need to specify the subset name along with the dataset name.</p>
+<p>If you have local data in common file formats, you can easily load it using load_dataset too:</p>
+<p>If your local data requires pre-processing, you can use datasets.Dataset.from_dict to initialize your dataset with a dictionary of lists:</p>
+<p>Each key in the dictionary becomes a column in the resulting dataset.</p>
+<p>It's crucial to ensure that your dataset format matches your chosen loss function. This involves checking two things:</p>
+<p>For example, if your loss function accepts (anchor, positive, negative) triplets, then your first, second, and third dataset columns correspond with anchor, positive, and negative, respectively. This means that your first and second column must contain texts that should embed closely, and that your first and third column must contain texts that should embed far apart. That is why depending on your loss function, your dataset column order matters.</p>
+<p>Consider a dataset with columns ["text1", "text2", "label"], where the "label" column contains floating point similarity scores. This dataset can be used with CoSENTLoss, AnglELoss, and CosineSimilarityLoss because:</p>
+<p>If the columns in your dataset are not ordered correctly, use Dataset.select_columns to reorder them. Additionally, remove any extraneous columns (e.g., sample_id, metadata, source, type) using Dataset.remove_columns, as they will be treated as inputs otherwise.</p>
+<p>Loss functions measure how well a model performs on a given batch of data and guide the optimization process. The choice of loss function depends on your available data and target task. Refer to the Loss Overview for a comprehensive list of options.</p>
+<p>Most loss functions can be initialized with just the SentenceTransformer model that you're training:</p>
+<p>The SentenceTransformersTrainingArguments class allows you to specify parameters that influence training performance and tracking/debugging. While optional, experimenting with these arguments can help improve training efficiency and provide insights into the training process.</p>
+<p>In the Sentence Transformers documentation, I've outlined some of the most useful training arguments. I would recommend reading it in Training Overview > Training Arguments.</p>
+<p>Here's an example of how to initialize SentenceTransformersTrainingArguments:</p>
+<p>Note that eval_strategy was introduced in transformers version 4.41.0. Prior versions should use evaluation_strategy instead.</p>
+<p>You can provide the SentenceTransformerTrainer with an eval_dataset to get the evaluation loss during training, but it may be useful to get more concrete metrics during training, too. For this, you can use evaluators to assess the model's performance with useful metrics before, during, or after training. You can both an eval_dataset and an evaluator, one or the other, or neither. They evaluate based on the eval_strategy and eval_steps Training Arguments.</p>
+<p>Here are the implemented Evaluators that come with Sentence Transformers:</p>
+<p>Additionally, you can use SequentialEvaluator to combine multiple evaluators into one, which can then be passed to the SentenceTransformerTrainer.</p>
+<p>If you don't have the necessary evaluation data but still want to track the model's performance on common benchmarks, you can use these evaluators with data from Hugging Face:</p>
+<p>The STS Benchmark (a.k.a. STSb) is a commonly used benchmarking dataset to measure the model's understanding of semantic textual similarity of short texts like "A man is feeding a mouse to a snake.".</p>
+<p>Feel free to browse the sentence-transformers/stsb dataset on Hugging Face.</p>
+<p>AllNLI is a concatenation of the SNLI and MultiNLI datasets, both of which are datasets for Natural Language Inference. This task is traditionally for determining whether two texts are an entailment, contradiction, or neither. It has since been adopted for training embedding models, as the entailing and contradictory sentences make for useful (anchor, positive, negative) triplets: a common format for training embedding models.</p>
+<p>In this snippet, it is used to evaluate how frequently the model considers the anchor text and the entailing text to be more similar than the anchor text and the contradictory text. An example text is "An older man is drinking orange juice at a restaurant.".</p>
+<p>Feel free to browse the sentence-transformers/all-nli dataset on Hugging Face.</p>
+<p>The SentenceTransformerTrainer brings together the model, dataset, loss function, and other components for training:</p>
+<p>In this example I'm finetuning from microsoft/mpnet-base, a base model that is not yet a Sentence Transformer model. This requires more training data than finetuning an existing Sentence Transformer model, like all-mpnet-base-v2.</p>
+<p>After running this script, the tomaarsen/mpnet-base-all-nli-triplet model was uploaded for me. The triplet accuracy using cosine similarity, i.e. what percentage of the time cosine_similarity(anchor, positive) > cosine_similarity(anchor, negative) is 90.04% for the development set and 91.5% for the testing set! For reference, the microsoft/mpnet-base model scored only 68.32% on the dev set before training.</p>
+<p>All of this information is stored in the automatically generated model card, including the base model, language, license, evaluation results, training & evaluation dataset info, hyperparameters, training logs, and more. Without any effort, your uploaded models should contain all the information that your potential users would need to determine whether your model is suitable for them.</p>
+<p>The Sentence Transformers trainer supports various transformers.TrainerCallback subclasses, including:</p>
+<p>These are automatically used without you having to specify anything, as long as the required dependency is installed.</p>
+<p>Refer to the Transformers Callbacks documentation for more information on these callbacks and how to create your own.</p>
+<p>Top-performing models are often trained using multiple datasets simultaneously. The SentenceTransformerTrainer simplifies this process by allowing you to train with multiple datasets without converting them to the same format. You can even apply different loss functions to each dataset. Here are the steps for multi-dataset training:</p>
+<p>Each training/evaluation batch will contain samples from only one of the datasets. The order in which batches are sampled from the multiple datasets is determined by the MultiDatasetBatchSamplers enum, which can be passed to the SentenceTransformersTrainingArguments via multi_dataset_batch_sampler. The valid options are:</p>
+<p>Multi-task training has proven to be highly effective. For instance, Huang et al. 2024 employed MultipleNegativesRankingLoss, CoSENTLoss, and a variation of MultipleNegativesRankingLoss without in-batch negatives and only hard negatives to achieve state-of-the-art performance on Chinese. They also applied MatryoshkaLoss to enable the model to produce Matryoshka Embeddings.</p>
+<p>Here's an example of multi-dataset training:</p>
+<p>Prior to the Sentence Transformer v3 release, all models would be trained using the SentenceTransformer.fit method. Rather than deprecating this method, starting from v3.0, this method will use the SentenceTransformerTrainer behind the scenes. This means that your old training code should still work, and should even be upgraded with the new features such as multi-gpu training, loss logging, etc. That said, the new training approach is much more powerful, so it is recommended to write new training scripts using the new approach.</p>
+<p>The following pages contain training examples with explanations as well as links to code. We recommend that you browse through these to familiarize yourself with the training loop:</p>
+<p>Additionally, the following pages may be useful to learn more about Sentence Transformers:</p>
+<p>And lastly, here are some advanced pages that might interest you:</p>
+<p>For training other Sentence Transformers model types, or techniques that build on top of dense embeddings:</p>
+<p>@tomaarsen  ,kindly let us know how to to carryout finetuning qlora-peft combinations? It helps a lot</p>
+<p>It would be great to close the loop here by showing how to properly load the model and use it for inference later.</p>
+<p>It seems simple, but using the above, and then loading using model = SentenceTransformer(save_dir) I get different results with the model before and after saving and loading.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/optimize-llm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/train-sentence-transformers" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

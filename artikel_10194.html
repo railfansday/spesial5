@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NCPG Names Charles Jeffers Interim Executive Director</title>
+    <title>What is malloc doing, anyway?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10194.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,19 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>NCPG Names Charles Jeffers Interim Executive Director</h1>
+        <h1>What is malloc doing, anyway?</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://benmandrew.com/assets/headers/malloc-card.png" alt="What is malloc doing, anyway?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://benmandrew.com/assets/headers/malloc-card.png" alt="What is malloc doing, anyway?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><div><img alt="Office building in Washington, DC with the District of Columbia flag on the roof" class="attachment-medium size-medium wp-post-image" height="200" src="https://readwrite.com/wp-content/uploads/2026/10/ncpg-interim-executive-director-charles-jeffers-300x200.jpg" style="width: 100%; height: 66.63%; margin-bottom: 15px;" width="300" /></div>
-<p>The National Council on Problem Gambling has named Charles H. Jeffers II interim executive director, with a permanent search set to start in January 2027.</p>
-<p>The post <a href="https://readwrite.com/ncpg-interim-executive-director-charles-jeffers/">NCPG Names Charles Jeffers Interim Executive Director</a> appeared first on <a href="https://readwrite.com">ReadWrite</a>.</p></p>
+                <p>malloc has a very nice and simple interface: you ask for a certain amount of memory, and you’re given a void pointer to your block of contiguous bytes that’s been magicked into existence. Once you’re done with it, you call free with the same pointer and the memory disappears into the ether.</p>
+<p>But what’s actually happening here? Obviously, as we’re running as a userspace program, malloc must be asking the kernel for the memory through syscalls. However, we may be allocating many small blocks, and syscalls are expensive (575 ns for an empty one, as measured below), so some bookkeeping is done in the background. We’ll demonstrate this on GNU libc (glibc) with the program snippet below, which calls malloc(16) a thousand times.</p>
+<p>Using strace, we can see that the whole loop makes only two brk syscalls: the first asks where the program break is (the address where the process’s heap ends), and the second grows the heap by 132 KiB. These are both done in the first malloc call — the other 999 just take from that already allocated memory.</p>
+<p>You may see both brk and sbrk mentioned in discussions. brk is a syscall that sets the program break to the address it is provided, and sbrk is a libc convenience wrapper that takes a delta, increasing the program break by that amount.</p>
+<p>A running process gets its own address space, split into a number of regions. These include text for executable code, data for initialised global variables, and bss for uninitialised global variables, among others. The following program prints one address from each region of the process.</p>
+<p>The addresses rise from the binary’s code up to its stack.</p>
+<p>Some of these regions can change as the program runs. For example, malloc(16) grows the heap and moves the break up. Note that in this run, the break and printf in libc are 23.4 TiB apart, about 1,530 times the machine’s 15.6 GiB of RAM. Nearly all of that range is unmapped, so it costs no physical memory.</p>
+<p>Because we can move the program break directly, we can write a little allocator of our own. This is called a bump allocator, because each call simply bumps up the amount of memory that we are allowed to use.</p>
+<p>This allocator is not very good! It moves the break on every single request, and each move is a syscall. We can time a syscall against malloc to see why malloc requests large blocks from the kernel and cuts them up itself. Each of the following three functions is timed over a million calls.</p>
+<p>sbrk(16) costs only 35 ns more than the empty syscall, whereas malloc(16) runs 22.7 times faster than sbrk(16).</p>
+<p>The bump allocator also has no way to reuse freed memory. Each request lands straight after the one before, so in the following example, d goes after c even though b has been freed.</p>
+<p>The rest of the post improves the allocator one stage at a time.</p>
+<p>malloc actually allocates more memory than you request. This is because each allocation, or chunk, has a size header just before the returned pointer; this is how free works without passing an explicit size. Chunk sizes are always multiples of 16, so the low bits of the size are always zero, and glibc keeps three flags in them.</p>
+<p>Each chunk is the request plus 8 bytes for the header, rounded up to a multiple of 16, with a minimum of 32. The rounding keeps every pointer that malloc returns 16-byte aligned, which is the alignment x86-64 gives max_align_t, so the memory suits any C type. The 32-byte minimum leaves room for the list pointers that a chunk stores once it is freed.</p>
+<p>When we free a chunk, it is put into what’s called a free list to allow reuse. When more data is requested, malloc looks through this free list and splits large chunks to fit small requests, and free merges free neighbours back together. Each chunk in the free list needs two pieces of information: its size (which we already have), and a pointer to the next chunk in the free list. glibc stores the pointer after the size, reusing the memory that the user stored their data in before it was freed!</p>
+<p>The toy allocator stores the same two fields in each chunk.</p>
+<p>We can improve our my_malloc by rounding the request plus its header up to a multiple of 16 bytes, and taking the first chunk in the free list that is big enough. To keep things simple, the toy’s header is the whole chunk_t, so a chunk keeps room for next even while it is in use. That makes the header 16 bytes where glibc’s is 8, and my_malloc(100) takes a 128-byte chunk where malloc(100) takes 112.</p>
+<p>We define take to split that chunk, leaving whatever the request does not need in the free list.</p>
+<p>When no free chunk fits, grow_heap moves the program break up in 64 KiB steps using sbrk and puts the new space on the free list as one chunk.</p>
+<p>With headers, we can now actually implement a proper my_free function! It steps back from the pointer to the header and hands the chunk c to insert_free. That function walks the list to find the free chunks either side of c by address, prev and next, and links c in between them. Then, if c ends where next starts, or starts where prev ends, the two become one chunk.</p>
+<p>A test program allocates a, b and c, frees a and b, allocates d, then frees the rest.</p>
+<p>Each line shows the chunk that the call allocated, if any, and then the free list. Every chunk is an [offset, size] pair counted from the start of the heap, and the offset is where its header starts, 16 bytes before the pointer that my_malloc returns.</p>
+<p>d gets the chunk at offset 0, split from the 352-byte chunk that a and b merged into. The bump allocator put its fourth request after everything else. Freeing c merges three chunks into one, and freeing d leaves the single 64 KiB chunk that grow_heap added.</p>
+<p>my_free reuses memory, but it never returns any to the kernel. Whether a free chunk still costs RAM depends on when the kernel puts physical memory behind an address. Each process sees virtual memory, which the kernel maps onto physical RAM in 4 KiB pages. That separation allows the kernel to hand out address ranges with no physical RAM behind them — a virtual page only needs to be backed by physical memory on its first write.</p>
+<p>The following program moves the break up by 1 GiB, then writes one byte to every page and prints a row after each 256 MiB.</p>
+<p>Virtual size counts the addresses the process has mapped, and resident set size (RSS) counts the pages that are in RAM. Straight after sbrk, virtual size is already just over 1 GiB, while RSS is 1308 KiB. Each 256 MiB written then costs 65,536 page faults, one per 4 KiB page, increasing the RSS.</p>
+<p>Once a chunk’s pages have been written, they stay resident after my_free, until the allocator gives them back to the kernel.</p>
+<p>We give memory back to the kernel by lowering the break. We introduce a new function, trim, that lowers the break once the free chunk at the top of the heap reaches 128 KiB, keeping 64 KiB so that the next few requests don’t move the break straight back up.</p>
+<p>A test program allocates 1 MiB and then a 16-byte chunk above it, then writes to every page of the 1 MiB block. (Anonymous RSS counts resident memory with no backing file, which keeps libc’s code out of the numbers.)</p>
+<p>Freeing the 1 MiB block leaves the break at 1088 KiB and anonymous RSS at 1124 KiB, because the 16-byte chunk above it is still live. Once that chunk goes too, trim lowers the break to 64 KiB, dropping the anonymous RSS to 160 KiB.</p>
+<p>Only the top of the heap can be given back. A live chunk holds the break above it, so every free chunk below it stays resident, as the 1 MiB block did here. Over a long run, many allocations and deallocations leave free gaps between live chunks that later requests rarely fill, which is called fragmentation. These gaps stay resident, so in a long-running program, fragmentation can grow RSS until a memory limit kills the process.</p>
+<p>The mmap syscall usually maps a file into the address space. With the MAP_ANONYMOUS flag there is no backing file, and the kernel creates a zero-filled, page-aligned mapping anywhere in the address space. Like the heap, its resident pages count towards the anonymous RSS. The munmap syscall returns a block with its own mapping to the kernel as soon as it is freed, whatever lies next to it.</p>
+<p>To integrate this into our own allocator, my_malloc chooses between sbrk and mmap by the size of the request. Any request of 128 KiB or more, header included, gets a mapping of its own from map_chunk, rounded up to whole pages; smaller requests take the existing sbrk free list path.</p>
+<p>For mmapped chunks, we use one of the three flags in the size header (M) to record that this chunk has its own mapping. my_free checks this bit to know how to free it. It unmaps a mapped chunk with munmap, and puts any other chunk back on the free list, where trim can release it.</p>
+<p>Running the previous demo again, we see that freeing the 1 MiB block drops the anonymous RSS while the 16-byte chunk is still live.</p>
+<p>The following diagram shows how this might look in the address space.</p>
+<p>Why not mmap everything? Some allocators do! Even glibc creates extra heaps, called arenas, with mmap, and spreads threads across them so that they don’t all contend for the lock on the main heap. However, separate mappings have separate regions with no guarantee of contiguity, and chunks can’t be coalesced across these gaps. On the other hand, allocating with sbrk just bumps up the one contiguous region that you already have. A freed chunk that stays on the heap keeps its pages resident, so reusing it causes no page faults. Each new mapping starts with no physical memory behind it, and faults on every page it writes.</p>
+<p>We compare the performance of our allocators against glibc’s malloc with a workload that repeatedly allocates and deallocates blocks of varying sizes1. To measure the speed, we find the average time of a step: free a random live block, allocate a replacement of random size, and write to each of its pages. At the end of the run, the live blocks hold 10.3 MiB. The last two columns give the anonymous RSS at that point, and again after every block is freed, which is the memory the allocator keeps.</p>
+<p>my-bump-1 never frees or reuses memory, so its RSS is the 1425 MiB that the run allocates in total. Its 1.72 µs per step comes from an sbrk call for every request and page faults on new pages. my-freelist-2 reuses memory, so its RSS of 17.8 MiB is much closer to the 10.3 MiB of live data. However, each step walks the list twice: my_malloc walks it to find a fit, and insert_free walks it to find the chunk’s neighbours. my-trim-3 adds a third walk, because trim looks for the last free chunk on every my_free. my-freelist-2 and my-trim-3 run 65 and 142 times slower than glibc respectively. In return, my-trim-3 keeps only 0.188 MiB once every block is freed. my-mmap-4 calls mmap for large requests, which raises its time per step to 11.8 µs but gives it the lowest RSS with blocks live, at 11.2 MiB.</p>
+<p>Why is glibc so fast? The slowdowns in our allocators are due to having to walk a long free list of chunks multiple times. glibc instead keeps free chunks in bins, separate lists by size, so a request can walk a list of appropriately sized chunks directly. It also keeps up to seven freed chunks of each small size in a thread-local cache (tcache) and hands them straight back to the next request of that size.</p>
+<p>The tcache also explains the last column, where glibc keeps 19.0 MiB after every block is freed. The heap counts a cached chunk as in use, so one near the top stops glibc from lowering the break. The GLIBC_TUNABLES environment variable can turn the tcache off with GLIBC_TUNABLES=glibc.malloc.tcache_count=0, or fix the mmap threshold at 128 KiB with GLIBC_TUNABLES=glibc.malloc.mmap_threshold=131072.</p>
+<p>With the tcache off, freeing everything leaves 0.250 MiB, and each step takes 1.5 times as long as before.</p>
+<p>glibc makes 51 mmap calls in the whole run, against the 5040 that my-mmap-4 makes. Freeing a mapped chunk raises glibc’s threshold to that chunk’s size, so later large requests come from the heap. With the threshold fixed at 128 KiB, every large request pays for its syscalls and page faults again, and glibc runs 10.7 times slower.</p>
+<p>malloc spends memory to stay away from the kernel, parcelling out large blocks in userspace so that most calls never make a syscall.</p>
+<p>The benchmark keeps 4000 blocks live, and each step frees a random block and allocates a replacement of a random size. Of the requests, 90% are 16 to 512 bytes, 9% are up to 16 KiB, and 1% are 128 KiB to 256 KiB. Each new block gets one write per page. An allocator runs 500,000 steps in a fresh process, built at -O2. Run on an Intel Xeon E3-1230 v3. ↩︎</p>
+<p>Liked this? Get new posts
+      via RSS
+        or by email.</p>
+<p>Comments are moderated and appear after review; they are published without edits. Markdown and math ($$…$$) are supported. No account or email needed.</p>
+<p>Posting a comment requires JavaScript. Comments are moderated and published without edits; the thread above
+        renders without it.</p>
+<p>© 2017–2026 Ben Andrew. Unless otherwise stated, all content is licensed under the
+      CC BY-NC 4.0 License. This is my personal website.
+      The views expressed on these pages are mine alone and not those of my employer.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://readwrite.com/ncpg-interim-executive-director-charles-jeffers/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://benmandrew.com/articles/what-is-malloc-doing-anyway" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

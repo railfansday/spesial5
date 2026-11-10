@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Terminal2Shell: Critical flaw grants instant shell access on every major OS</title>
+    <title>How to Build an AI Agent Publishing Workflow in Symfony</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9896.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Terminal2Shell: Critical flaw grants instant shell access on every major OS</h1>
+        <h1>How to Build an AI Agent Publishing Workflow in Symfony</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/pL08BO3ouKNkhrqPjjNqbI6Myh73-e283b0m.jpeg" alt="How to Build an AI Agent Publishing Workflow in Symfony" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/pL08BO3ouKNkhrqPjjNqbI6Myh73-e283b0m.jpeg" alt="How to Build an AI Agent Publishing Workflow in Symfony" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p><a href="https://lobste.rs/s/vghqe8/terminal2shell_critical_flaw_grants">Comments</a></p></p>
+                <p>Hi, friends, being AI enthusiast, I'm an MBA, CEO and CPO who loves building products. I share my insights here.)</p>
+<p>Hi, friends, being AI enthusiast, I'm an MBA, CEO and CPO who loves building products. I share my insights here.)</p>
+<p>Hi, friends, being AI enthusiast, I'm an MBA, CEO and CPO who loves building products. I share my insights here.)</p>
+<p>If you want an AI agent to publish to a WordPress site, you point it at the REST API and you are done. If your site runs on Symfony, you have a choice between handing the agent an admin login, which nobody should do, or pasting its output into your CMS by hand, which defeats the purpose.</p>
+<p>The gap is on the server side. A Symfony site needs an endpoint an agent can draft into, a check the agent can run on its own work before a human sees it, a human-only approve step, and a way to find out afterwards whether the article reached anyone. None of that is CMS territory. It is a thin layer over whatever entities the site already has.</p>
+<p>This article walks through mattleads/agent-publishing-bundle, which adds that layer. We install it on a Symfony 8.1 site, issue scoped keys, run an agent through draft, lint and submit, approve through the API, then look at the view counts the bundle collected, including how many came from ChatGPT and how many from GPTBot. The last section covers the MCP endpoint, which exposes the same operations as tools without adding a protocol dependency.</p>
+<p>I maintain the bundle. The demo repository has every file shown here.</p>
+<p>Nothing in the bundle renders HTML. Your templates and routes stay yours.</p>
+<p>The bundle needs to know which sections and languages the site has, because an agent must never invent one. That lives in configuration, where a deploy review can see it:</p>
+<p>The API is a stateless firewall with the bundle's authenticator. Keys arrive as bearer tokens, and a missing key gets a JSON 401 from the entry point rather than a login redirect:</p>
+<p>Import the routes, run a migration, and the site has an OpenAPI 3.1 document at /api/publisher/v1/openapi.json that a client generator or an agent can read.</p>
+<p>With storage: doctrine you get four tables: articles, keys, and two daily rollups for analytics. With storage: custom you implement ArticleStorageInterface against your own entity. The bundle validates input, resolves slugs and checks workflow rules before it calls you, so the implementation only persists what it is given. ArticleInterface has no setters. That is deliberate: the bundle never mutates your entities behind your back.</p>
+<p>Every caller holds a key with scopes and, optionally, a list of sections:</p>
+<p>The secret is printed once and stored as an HMAC keyed with the kernel secret. A new key gets read and draft by default. Nobody gets publish unless a human types it.</p>
+<p>The scopes map onto the workflow. articles:draft creates, edits and submits. articles:approve approves or rejects what is in review. articles:publish publishes directly or on a schedule. stats:read reads counts. keys:manage issues keys over the API, with one rule that matters for platforms: a key can only mint keys with a subset of its own scopes and sections. A marketing platform holding draft rights in blog can create keys for its customers' agents, and none of them can ever hold publish.</p>
+<p>Section restrictions are enforced as "does not exist" rather than "forbidden". A key limited to blog gets a 404 for an article in docs, and its listings and totals never include other sections. There is nothing to probe.</p>
+<p>The piece that makes agents useful rather than noisy is POST /lint. It takes the same body as create, stores nothing, and returns one entry per rule with pass, warn or fail, a message, and a hint. Here is the demo's first attempt, a two-line body with a seven-character title:</p>
+<p>Eleven rules run. Title length, summary length, a quotable opening paragraph that uses the title's terms, heading structure, word count, Flesch reading ease for English, alt text, link text and internal links, tags, slug uniqueness, and a FAQ block for sections that ask for one. The opening-paragraph rule is the one aimed at answer engines: they quote the first paragraph, so it should be 40 to 120 words and answer the title. Per-section thresholds come from the lint block in configuration, and a host adds rules by tagging a service.</p>
+<p>The agent reads the hints, rewrites, lints again, and gets status: pass. Then it creates the draft and submits it:</p>
+<p>The whole loop is about 150 lines of plain PHP in the demo's scripts/agent.php. No SDK, only JSON over HTTP.</p>
+<p>The bundle ships no admin screen. Approval is an API call, which means your existing backend, a Slack bot or a one-line curl can do it:</p>
+<p>Every transition dispatches an ArticleTransitioned event with the actor, so a listener can notify reviewers on submit or purge a cache on publish. Scheduled articles flip to published when their time comes, through a console command for cron or a Symfony Scheduler task if you enable it. Published articles are frozen for editing; the agent gets a 409 if it tries.</p>
+<p>A listener runs after the response is sent, looks up the published article by section, locale and slug, and records the view. With Messenger installed the view is a message you can route to an async transport. Each view is bucketed by user agent and referrer into one of eight kinds:</p>
+<p>X, LinkedIn, Reddit, Hacker News, Telegram and friends</p>
+<p>a human sent by ChatGPT, Perplexity, Claude or Gemini</p>
+<p>GPTBot, ClaudeBot, PerplexityBot, Google-Extended and other AI crawlers</p>
+<p>Human kinds count as views. Crawler kinds are counted in a separate column, so you can see which articles AI systems read without inflating the human numbers. The demo sends seven requests at the published page, from Chrome with no referrer, from Google twice, from ChatGPT, from Hacker News, then as GPTBot and as ClaudeBot. The stats endpoint reports:</p>
+<p>That is the number a content team asks for and rarely gets: not "how many views" but "which assistants and which engines sent them, and did the crawlers come at all".</p>
+<p>Agents increasingly speak the Model Context Protocol rather than REST. On 6 November 2026 the official PHP SDK, mcp/sdk, is at 0.9.0 and symfony/mcp-bundle is at 1.0.0-BETA1. Pinning either would make their breaking releases the bundle's breaking releases. For a tools-only server the protocol is small, so the bundle implements it directly: JSON-RPC 2.0 over one HTTP endpoint with initialize, ping, tools/list and tools/call, notifications acknowledged, batches accepted, and three protocol versions negotiated.</p>
+<p>Sixteen tools wrap the same services as the REST API, so the two cannot drift. tools/list is filtered by the key's scopes. The demo's agent key sees nine tools and never learns that approve_article exists. Tool failures such as a validation error or a forbidden transition come back as results with isError and a readable message, which is what an agent acts on. Protocol mistakes get JSON-RPC error codes. Two tools exist only for agents: get_style_guide returns the site's writing rules from configuration, and list_sections includes each section's lint thresholds, so an agent can plan before it writes.</p>
+<p>When the official SDK stabilizes, a bridge can expose the same McpToolInterface implementations through it. The tool code will not change.</p>
+<p>Three outputs come for free once articles are published. A Twig function, agent_publishing_jsonld(article), emits schema.org Article markup with headline, description, dates, language, keywords, author and publisher. A sitemap at /sitemap-publisher.xml lists published articles with lastmod and hreflang alternates for articles that share a translation group. In the demo, an English article and its German translation produce two URLs and six hreflang links, including x-default. And /llms.txt follows the llmstxt.org format: the site name, a description, and a Markdown list per section of recent articles with their summaries.</p>
+<p>All three build URLs through UrlResolverInterface. The default pattern is {base}{locale_prefix}{section_path}/{slug}, where the locale prefix is empty for the default language. A site with different routing registers its own resolver. Set seo.base_url in production so a forged Host header cannot plant another domain in cached output.</p>
+<p>The bundle has 59 PHPUnit tests with 681 assertions, running the functional flows against both the in-memory and the Doctrine storage, plus PHPStan at level 8. CI covers PHP 8.2 to 8.4 against Symfony 6.4, 7.4 and 8. The demo repository runs the whole loop with one script and prints every response, so you can verify the numbers above in about a minute.</p>
+<p>The decisions in this design are the useful part, whichever bundle you end up with. Keep articles in the host's entities and mutate them only through a storage contract, so the integration survives your schema. Make the lint report the agent's feedback loop, so humans review finished work instead of first drafts. Default keys to draft rights and let keys mint only subsets of themselves, so a platform cannot escalate. Count referrer kinds rather than visitors, so you can tell which assistants send readers without a consent banner. And speak MCP directly while the SDKs settle, since five JSON-RPC methods are cheaper to own than a beta dependency.</p>
+<p>Start with the REST API and a draft-only key for one agent. Add the MCP endpoint when an agent asks for it. Grant publish rights to nobody until the lint reports have been green for a month.</p>
+<p>Source Code: You can find the full implementation and follow the project's progress on GitHub: https://github.com/mattleads/agent-publishing-bundle, with the runnable demo at https://github.com/mattleads/agent-publishing-demo</p>
+<p>If you found this helpful or have questions about the implementation, I'd love to hear from you. Let's stay in touch and keep the conversation going across these platforms:</p>
+<p>How to Build Production-Ready Passkey Authentication in Symfony 8.1</p>
+<p>Hi, friends, being AI enthusiast, I'm an MBA, CEO and CPO who loves building products. I share my insights here.)</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://terminal2shell.com/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-to-build-an-ai-agent-publishing-workflow-in-symfony?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StackLLaMA: A hands-on guide to train LLaMA with RLHF</title>
+    <title>LoRA training scripts of the world, unite!</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11160.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,172 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>StackLLaMA: A hands-on guide to train LLaMA with RLHF</h1>
+        <h1>LoRA training scripts of the world, unite!</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/dreambooth_lora_sdxl/thumbnail.png" alt="LoRA training scripts of the world, unite!" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/dreambooth_lora_sdxl/thumbnail.png" alt="LoRA training scripts of the world, unite!" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>A community derived guide to some of the SOTA practices for SD-XL Dreambooth LoRA fine tuning</p>
+<p>We combined the Pivotal Tuning technique used on Replicate's SDXL Cog trainer with the Prodigy optimizer used in the
+Kohya trainer (plus a bunch of other optimizations) to achieve very good results on training Dreambooth LoRAs for SDXL.
+Check out the training script on diffusers🧨. Try it out on Colab.</p>
+<p>If you want to skip the technical talk, you can use all the techniques in this blog
+and train on Hugging Face Spaces with a simple UI and curated parameters (that you can meddle with).</p>
+<p>Stable Diffusion XL (SDXL) models fine-tuned with LoRA dreambooth achieve incredible results at capturing new concepts using only a
+handful of images, while simultaneously maintaining the aesthetic and image quality of SDXL and requiring relatively
+little compute and resources. Check out some of the awesome SDXL
+LoRAs here.In this blog, we'll review some of the popular practices and techniques to make your LoRA finetunes go brrr, and show how you
+can run or train yours now with diffusers!</p>
+<p>Recap: LoRA (Low-Rank Adaptation) is a fine-tuning technique for Stable Diffusion models that makes slight
+adjustments to the crucial cross-attention layers where images and prompts intersect. It achieves quality on par with
+full fine-tuned models while being much faster and requiring less compute. To learn more on how LoRAs work, please see
+our previous post - Using LoRA for Efficient Stable Diffusion Fine-Tuning.</p>
+<p>Acknowledgements ❤️: 
+The techniques showcased in this guide – algorithms, training scripts, experiments and explorations – were inspired and built upon the 
+contributions by Nataniel Ruiz: Dreambooth, Rinon Gal: Textual Inversion, Ron Mokady: Pivotal Tuning, Simo Ryu: cog-sdxl, 
+Kohya: sd-scripts, The Last Ben: fast-stable-diffusion. Our most sincere gratitude to them and the rest of the community! 🙌</p>
+<p>Pivotal Tuning is a method that combines Textual Inversion with regular diffusion fine-tuning. For Dreambooth, it is
+customary that you provide a rare token to be your trigger word, say "an sks dog". However, those tokens usually have
+other semantic meaning associated with them and can affect your results. The sks example, popular in the community, is
+actually associated with a weapons brand.</p>
+<p>To tackle this issue, we insert new tokens into the text encoders of the model, instead of reusing existing ones.
+We then optimize the newly-inserted token embeddings to represent the new concept: that is Textual Inversion –
+we learn to represent the concept through new "words" in the embedding space. Once we obtain the new token and its
+embeddings to represent it, we can train our Dreambooth LoRA with those token embeddings to get the best of both worlds.</p>
+<p>In our new training script, you can do textual inversion training by providing the following arguments</p>
+<p>When training/fine-tuning a diffusion model (or any machine learning model for that matter), we use optimizers to guide
+us towards the optimal path that leads to convergence of our training objective - a minimum point of our chosen loss
+function that represents a state where the model learned what we are trying to teach it. The standard (and
+state-of-the-art) choices for deep learning tasks are the Adam and AdamW optimizers.</p>
+<p>However, they require the user to meddle a lot with the hyperparameters that pave the path to convergence (such as
+learning rate, weight decay, etc.). This can result in time-consuming experiments that lead to suboptimal outcomes, and
+even if you land on an ideal learning rate, it may still lead to convergence issues if the learning rate is constant
+during training. Some parameters may benefit from more frequent updates to expedite convergence, while others may
+require smaller adjustments to avoid overshooting the optimal value. To tackle this challenge, algorithms with adaptable
+learning rates such as Adafactor and Prodigy have been introduced. These
+methods optimize the algorithm's traversal of the optimization landscape by dynamically adjusting the learning rate for
+each parameter based on their past gradients.</p>
+<p>We chose to focus a bit more on Prodigy as we think it can be especially beneficial for Dreambooth LoRA training!</p>
+<p>When using prodigy it's generally good practice to set-</p>
+<p>Additional settings that are considered beneficial for diffusion models and specifically LoRA training are:</p>
+<p>There are additional hyper-parameters you can adjust when training with prodigy
+(like- --prodigy_beta3, prodigy_decouple, prodigy_safeguard_warmup), we will not delve into those in this post,
+but you can learn more about them here.</p>
+<p>Besides pivotal tuning and adaptive optimizers, here are some additional techniques that can impact the quality of your
+trained LoRA, all of them have been incorporated into the new diffusers training script.</p>
+<p>When optimizing the text encoder, it's been perceived by the community that setting different learning rates for it (
+  versus the learning rate of the UNet) can lead to better quality results - specifically a lower learning rate for
+  the text encoder as it tends to overfit faster.
+    * The importance of different unet and text encoder learning rates is evident when performing pivotal tuning as
+      well- in this case, setting a higher learning rate for the text encoder is perceived to be better.
+    * Notice, however, that when using Prodigy (or adaptive optimizers in general) we start with an identical initial
+      learning rate for all trained parameters, and let the optimizer work it's magic ✨</p>
+<p>--train_text_encoder enables full text encoder training (i.e. the weights of the text encoders are fully optimized, as opposed to just optimizing the inserted embeddings we saw in textual inversion (--train_text_encoder_ti)).
+If you wish the text encoder lr to always match --learning_rate, set --text_encoder_lr=None.</p>
+<p>While it is possible to achieve good results by training on a set of images all captioned with the same instance
+  prompt, e.g. "photo of a  person" or "in the style of " etc, using the same caption may lead to
+  suboptimal results, depending on the complexity of the learned concept, how "familiar" the model is with the concept,
+  and how well the training set captures it.</p>
+<p>Training
+To use custom captioning, first ensure that you have the datasets library installed, otherwise you can install it by -</p>
+<p>To load the custom captions we need our training set directory to follow the structure of a datasets ImageFolder,
+containing both the images and the corresponding caption for each image.</p>
+<p>Training diffusion models often suffers from slow convergence, partly due to conflicting optimization directions
+  between timesteps. Hang et al. found a way to mitigate this issue by introducing
+  the simple Min-SNR-gamma approach. This method adapts loss weights of timesteps based on clamped signal-to-noise
+  ratios, which effectively balances the conflicts among timesteps.
+    * For small datasets, the effects of Min-SNR weighting strategy might not appear to be pronounced, but for larger
+      datasets, the effects will likely be more pronounced.
+    * snr vis
+find this project on Weights and Biases that compares
+      the loss surfaces of the following setups: snr_gamma set to 5.0, 1.0 and None.</p>
+<p>By default --snr_gamma=None, I.e. not used. When enabling --snr_gamma, the recommended value is 5.0.</p>
+<p>This argument refers to the number of times an image from your dataset is repeated in the training set. This differs
+  from epochs in that first the images are repeated, and only then shuffled.</p>
+<p>To enable repeats simply set an integer value > 1 as your repeats count-</p>
+<p>By default, --repeats=1, i.e. training set is not repeated</p>
+<p>As the popular saying goes - “Garbage in - garbage out” Training a good Dreambooth LoRA can be done easily using
+only a handful of images, but the quality of these images is very impactful on the fine tuned model.</p>
+<p>Generally, when fine-tuning on an object/subject, we want to make sure the training set contains images that
+portray the object/subject in as many distinct ways we would want to prompt for it as possible.</p>
+<p>For example, if my concept is this red backpack: (available
+in google/dreambooth dataset)</p>
+<p>I would likely want to prompt it worn by people as well, so having examples like this:</p>
+<p>Specifically when training on faces, you might want to keep in mind the following things regarding your dataset:</p>
+<p>If possible, always choose high resolution, high quality images. Blurry or low resolution images can harm the
+tuning process.</p>
+<p>When training on faces, it is recommended that no other faces appear in the training set as we don't want to
+create an ambiguous notion of what is the face we're training on.</p>
+<p>Close-up photos are important to achieve realism, however good full-body shots should also be included to
+improve the ability to generalize to different poses/compositions.</p>
+<p>We recommend avoiding photos where the subject is far away, as most pixels in such images are not related to
+the concept we wish to optimize on, there's not much for the model to learn from these.</p>
+<p>Avoid repeating backgrounds/clothing/poses - aim for variety in terms of lighting, poses, backgrounds, and
+facial expressions. The greater the diversity, the more flexible and generalizable the LoRA would be.</p>
+<p>Prior preservation loss -Prior preservation loss is a method that uses a 
+model’s own generated samples to help 
+it learn how to generate more diverse images. 
+Because these sample images belong to the same class as 
+the images you provided, they help the model retain what it has learned about 
+the class and how it can use what it already knows about the class to make new 
+compositions.
+real images for regularization VS model generated ones
+When choosing class images, you can decide between synthetic ones (i.e. generated by the diffusion model) and
+real ones. In favor of using real images, we can argue they improve the fine-tuned model's realism. On the other
+hand, some will argue that using model generated images better serves the purpose of preserving the models 
+knowledge of the class and general aesthetics.</p>
+<p>Celebrity lookalike - this is more a comment on the captioning/instance prompt used to train. Some fine
+tuners experienced improvements in their results when prompting with a token identifier + a public person that
+the base model knows about that resembles the person they trained on.</p>
+<p>--with_prior_preservation - enables training with prior preservation --class_data_dir - path to folder containing class images —-num_class_images - Minimal class images for prior preservation loss. If there are not enough images already present
+in --class_data_dir, additional images will be sampled with --class_prompt.</p>
+<p>To explore the described methods, we experimented with different combinations of these techniques on 
+different objectives (style tuning, faces and objects).</p>
+<p>In order to narrow down the infinite amount of hyperparameters values, we used some of the more popular and common 
+configurations as starting points and tweaked our way from there.</p>
+<p>Huggy Dreambooth LoRA
+First, we were interested in fine-tuning a huggy LoRA which means 
+both teaching an artistic style, and a specific character at the same time. 
+For this example, we curated a high quality Huggy mascot dataset (using Chunte-Lee’s amazing artwork) containing 31 
+images paired with custom captions.</p>
+<p>Y2K Webpage LoRA 
+Let's explore another example, this time training on a dataset composed of 27 screenshots of webpages from the 1990s 
+and early 2000s that we (nostalgically 🥲) scraped from the internet:</p>
+<p>This example showcases a slightly different behaviour than the previous. 
+While in both cases we used approximately the same amount of images (i.e. ~30), 
+we noticed that for this style LoRA, the same settings that induced good results for the Huggy LoRA, are overfitting for the webpage style. There</p>
+<p>For v1, we chose as starting point the settings that worked best for us when training the Huggy LoRA - it was evidently overfit, so we tried to resolve that in the next versions by tweaking --max_train_steps, --repeats, --train_batch_size and --snr_gamma. 
+More specifically, these are the settings we changed between each version (all the rest we kept the same):</p>
+<p>We found v4, v5 and v6 to strike the best balance:</p>
+<p>Face LoRA
+When training on face images, we aim for the LoRA to generate images as realistic and similar to the original person as possible,
+while also being able to generalize well to backgrounds and compositions that were not seen in the training set.
+For this use-case, we used different datasets of Linoy's face composed of 6-10 images, including a set of close-up photos taken all at the same time and a dataset of shots taken at different occasions (changing backgrounds, lighting and outfits) as well as full body shots.
+We learned that less images with a better curation works better than more images if the images are of mid-to-low quality when it comes to lighting/resolution/focus on subject - less is more: pick your best pictures and use that to train the model!
+Configurations:</p>
+<p>Even though few high quality images (in our example, 6) work well, we still need to determine an ideal number of steps to train the model.</p>
+<p>We experimented with few different multipliers on the number of images: 6 x75 = 450 steps / 6 x100 = 600 steps / 6 x120 = 720 steps.</p>
+<p>As you can see below, our preliminary results show that good results are achieved with a 120x multiplier (if the dataset is diverse enough to not overfit, it's preferable to not use the same shooting)</p>
+<p>Inference with models trained with the techniques above should work the same as with any trainer, except that, when we do pivotal tuning, besides the *.safetensors weights of your LoRA, there is also the *.safetensors text embeddings trained with the model
+for the new tokens. In order to do inference with those we add 2 steps to how we would normally load a LoRA:</p>
+<p>The new script fully supports textual inversion loading with Comfy UI and AUTOMATIC1111 formats!</p>
+<p>AUTOMATIC1111 / SD.Next In AUTOMATIC1111/SD.Next we will load a LoRA and a textual embedding at the same time.</p>
+<p>You can then run inference by prompting a y2k_emb webpage about the movie Mean Girls <lora:y2k:0.9>. You can use the y2k_emb token normally, including increasing its weight by doing (y2k_emb:1.2).</p>
+<p>ComfyUI In ComfyUI we will load a LoRA and a textual embedding at the same time.</p>
+<p>🚀 More features coming soon!
+We are working on adding even more control and flexibility to our advanced training script. Let us know what features
+you find most helpful!</p>
+<p>🤹 Multi concept LoRAs
+A recent work of Shah et al. introduced ZipLoRAs - a method to 
+merge independently trained style and subject LoRAs in order to achieve generation of any user-provided subject in 
+any user-provided style. mkshing implemented an open source replication available 
+here and it uses the new and improved script.</p>
+<p>Hi,Could this be done using Stable Diffusion more advanced models? Couldn't yet implement this with 3.5-large.Thanks!Shay</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/stackllama" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/sdxl_lora_advanced_script" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

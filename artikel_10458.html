@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Make your ZeroGPU Spaces go brrr with ahead-of-time compilation</title>
+    <title>Security researcher had to jailbreak their car just to update the clock</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10458.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,97 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Make your ZeroGPU Spaces go brrr with ahead-of-time compilation</h1>
+        <h1>Security researcher had to jailbreak their car just to update the clock</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/zerogpu-aoti/thumbnail.png" alt="Make your ZeroGPU Spaces go brrr with ahead-of-time compilation" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn.mos.cms.futurecdn.net/uWPfVwnAzVfG87r5UBkxc5-1920-80.jpg" alt="Security researcher had to jailbreak their car just to update the clock" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/zerogpu-aoti/thumbnail.png" alt="Make your ZeroGPU Spaces go brrr with ahead-of-time compilation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn.mos.cms.futurecdn.net/uWPfVwnAzVfG87r5UBkxc5-1920-80.jpg" alt="Security researcher had to jailbreak their car just to update the clock" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>ZeroGPU lets anyone spin up powerful Nvidia H200 hardware in Hugging Face Spaces without keeping a GPU locked for idle traffic.
-It’s efficient, flexible, and ideal for demos but it doesn’t always make full use of everything the GPU and CUDA stack can offer.
-Generating images or videos can take a significant amount of time. Being able to squeeze out more performance, taking advantage of the H200 hardware, does matter in this case.</p>
-<p>This is where PyTorch ahead-of-time (AoT) compilation comes in. Instead of compiling models on the fly (which doesn’t play nicely with ZeroGPU’s short-lived processes), AoT lets you optimize once and reload instantly.</p>
-<p>The result: snappier demos and a smoother experience, with speedups ranging from 1.3×–1.8× on models like Flux, Wan, and LTX 🔥</p>
-<p>In this post, we’ll show how to wire up Ahead-of-Time (AoT) compilation in ZeroGPU Spaces. We'll explore advanced tricks like FP8 quantization and dynamic shapes, and share working demos you can try right away. If you cannot wait, we invite you to check out some ZeroGPU-powered demos on the zerogpu-aoti organization.</p>
-<p>Pro users and Team / Enterprise org members can create ZeroGPU Spaces, while anyone can freely use them (Pro, Team and Enterprise users get 8x more ZeroGPU quota)</p>
-<p>Spaces is a platform powered by Hugging Face that allows ML practitioners to easily publish demo apps.</p>
-<p>This works great, but ends up reserving a GPU for the Space during its entire lifetime – even when it has no user activity.</p>
-<p>PyTorch initializes the NVIDIA driver, which sets up the process on CUDA forever. This is not very resource-efficient given that app traffic is not perfectly smooth, but is rather extremely sparse and spiky.</p>
-<p>ZeroGPU takes a just-in-time approach to GPU initialization. Instead of setting up the main process on CUDA, it automatically forks the process, sets it up on CUDA, runs the GPU tasks, and finally kills the fork when the GPU needs to be released.</p>
-<p>Thanks to the Python spaces package, the only code change needed to get this behaviour is as follows:</p>
-<p>By importing spaces and adding the @spaces.GPU decorator, we:</p>
-<p>ZeroGPU currently allocates an MIG slice of H200 (3g.71gb profile). Additional MIG sizes including full slice (7g.141gb profile) will come in late 2025.</p>
-<p>Modern ML frameworks like PyTorch and JAX have the concept of compilation that can be used to optimize model latency or inference time. Behind the scenes, compilation applies a series of (often hardware-dependent) optimization steps such as operator fusion, constant folding, etc.</p>
-<p>PyTorch (from 2.0 onwards) currently has two major interfaces for compilation:</p>
-<p>torch.compile works great in standard environments: it compiles your model the first time it runs, and reuses the optimized version for subsequent calls.</p>
-<p>However, on ZeroGPU, given that the process is freshly spun up for (almost) every GPU task, it means that torch.compile can’t efficiently re-use compilation and is thus forced to rely on its filesystem cache to restore compiled models. Depending on the model being compiled, this process takes from a few dozen seconds to a couple of minutes, which is way too much for practical GPU tasks in Spaces.</p>
-<p>This is where ahead-of-time (AoT) compilation shines.</p>
-<p>With AoT, we can export a compiled model once, save it, and later reload it instantly in any process, which is exactly what we need for ZeroGPU. This helps us reduce framework overhead and also eliminates cold-start timings typically incurred in just-in-time compilation.</p>
-<p>But how can we do ahead-of-time compilation on ZeroGPU? Let’s dive in.</p>
-<p>Let's go back to our ZeroGPU base example and unpack what we need to enable AoT compilation. For the purpose of this demo, we will use the black-forest-labs/FLUX.1-dev model:</p>
-<p>In the discussion below, we only compile the transformer component of pipe since, in these generative models, the transformer (or more generally, the denoiser) is the most computationally heavy component.</p>
-<p>Compiling a model ahead-of-time with PyTorch involves multiple steps:</p>
-<p>Recall that we’re going to compile the model ahead of time. Therefore, we need to derive example inputs for the model. Note that these are the same kinds of inputs we expect to see during the actual runs. To capture those inputs, we will leverage the spaces.aoti_capture helper from the spaces package:</p>
-<p>When used as a context manager, aoti_capture intercepts the call to any callable (pipe.transformer in our case), prevents it from executing, captures the input arguments that would have been passed to it, and stores their values in call.args and call.kwargs.</p>
-<p>Now that we have example args and kwargs for our transformer component, we can export it to a PyTorch ExportedProgram by using torch.export.export utility:</p>
-<p>An exported PyTorch program is a computation graph that represents the tensor computations along with the original model parameter values.</p>
-<p>Once the model is exported, compiling it is pretty straightforward.</p>
-<p>A traditional AoT compilation in PyTorch often requires saving the model on disk so it can be later reloaded. In our case, we’ll leverage a helper function part of the spaces package: spaces.aoti_compile. It's a tiny wrapper around torch._inductor.aot_compile that manages saving and lazy-loading the model as needed. It's meant to be used like this:</p>
-<p>This compiled_transformer is now an AoT-compiled binary ready to be used for inference.</p>
-<p>Now we need to bind our compiled transformer to our original pipeline, i.e., the pipeline.</p>
-<p>A naive and almost working approach is to simply patch our pipeline like pipe.transformer = compiled_transformer. Unfortunately, this approach does not work because it deletes important attributes like dtype, config, etc. Only patching the forward method does not work well either because we are then keeping original model parameters in memory, often leading to OOM errors at runtime.</p>
-<p>spaces package provides a utility for this, too -- spaces.aoti_apply:</p>
-<p>Et voilà! It will take care of patching pipe.transformer.forward with our compiled model, as well as cleaning old model parameters out of memory.</p>
-<p>To perform the first three steps (intercepting input examples, exporting the model, and compiling it with PyTorch inductor), we need a real GPU. CUDA emulation that you get outside of @spaces.GPU function is not enough because compilation is truly hardware-dependent, for instance, relying on micro-benchmark runs to tune the generated code. This is why we need to wrap it all inside a @spaces.GPU function and then get our compiled model back to the root of our app. Starting from our original demo code, this gives:</p>
-<p>With just a dozen lines of additional code, we’ve successfully made our demo quite faster (1.7x faster in the case of FLUX.1-dev).</p>
-<p>If you want to learn more about AoT compilation, you can read PyTorch's AOTInductor tutorial</p>
-<p>Now that we have demonstrated the speedups one can realize under the constraints of operating with ZeroGPUs, we will discuss a few gotchas that came up while working with this setup.</p>
-<p>AoT can be combined with quantization to deliver even greater speedups.
-For image and video generation, the FP8 post-training dynamic quantization schemes deliver good speed-quality trade-offs.
-However, FP8 requires a CUDA compute capability of at least 9.0 to work.
-Thankfully, for ZeroGPUs, since they’re based on H200s, we can already take advantage of the FP8 quantization schemes.</p>
-<p>To enable FP8 quantization within our AoT compilation workflow, we can leverage the APIs provided by torchao like so:</p>
-<p>(You can find more details about TorchAO here.)</p>
-<p>And we can then proceed with the rest of the steps as outlined above. Using quantization provides another 1.2x of speedup.</p>
-<p>Images and videos can come in different shapes and sizes. Hence, it’s important to also account for shape dynamism when performing AoT compilation. The primitives provided by torch.export.export make it easily configurable to provide what inputs should be treated accordingly for dynamic shapes, as shown below.</p>
-<p>For the case of Flux.1-Dev transformer, changes in different image resolutions will affect two of its forward arguments:</p>
-<p>We start by defining a range in which we want to let the (latent) image resolutions vary.
-To derive these value ranges, we inspected the shapes of hidden_states in the pipeline with respect to varied image resolutions. The exact values are model-dependent and require manual inspection and some intuition. For Flux.1-Dev, we ended up with:</p>
-<p>We then define a map of argument names and which dimensions in their input values we expect to be dynamic:</p>
-<p>Then we need to make our dynamic shapes object replicate the structure of our example inputs. The inputs that do not need dynamic shapes must be set to None. This can be done very easily with PyTorch tree_map utility:</p>
-<p>Now, when performing the export step, we simply supply transformer_dynamic_shapes to torch.export.export:</p>
-<p>Check out this Space that shows how to use both quantization and dynamic shapes during the export step.</p>
-<p>Dynamic shapes is sometimes not enough when dynamism is too important.</p>
-<p>This is, for instance, the case with the Wan family of video generation models if you want your compiled model to generate different resolutions.
-One thing can be done in this case: compile one model per resolution while keeping the model parameters shared and dispatching the right one at runtime</p>
-<p>Here is a minimal example of this approach: zerogpu-aoti-multi.py. You can also see a fully working implementation of this paradigm in the Wan 2.2 Space.</p>
-<p>Since the ZeroGPU hardware and CUDA drivers are perfectly compatible with Flash-Attention 3 (FA3), we can use it in our ZeroGPU Spaces to speed things up even further. FA3 works with ahead-of-time compilation. So, this is ideal for our case.</p>
-<p>Compiling and building FA3 from source can take several minutes, and this process is hardware-dependent. As users, we wouldn’t want to lose precious ZeroGPU compute hours. This is where Hugging Face kernels library comes to the rescue. It provides access to pre-built kernels that are compatible for a given hardware. For example, when we try to run:</p>
-<p>It tries to load a kernel from the kernels-community/vllm-flash-attn3 repository, which is compatible with the current setup. Otherwise, it will error out due to incompatibility issues. Luckily for us, this works seamlessly on the ZeroGPU Spaces. This means we can leverage the power of FA3 on ZeroGPU, using the kernels library.</p>
-<p>Here is a fully working example of an FA3 attention processor for the Qwen-Image model.</p>
-<p>So far, we have been compiling the full model. Depending on the model, full model compilation can lead to significantly long cold start times. Long cold start times make the development experience unpleasant.</p>
-<p>We can also choose to compile regions within a model, significantly reducing the cold start times, while retaining almost all the benefits of full model compilation. Regional compilation becomes promising when
-a model has repeated blocks of computation. A standard language model, for example, has a number of
-identically structured Transformer blocks.</p>
-<p>In our example, we can compile the repeated blocks of the Flux transformer ahead of time, and propagate the compiled graph to the remaining repeated blocks. The Flux Transformer has two kinds of repeated blocks: FluxTransformerBlock and FluxSingleTransformerBlock.</p>
-<p>You can check out this Space for a complete example.</p>
-<p>💡 For Flux.1-Dev, switching to regional compilation reduces the compilation time from 6 minutes to just 30 seconds while delivering identical speedups.</p>
-<p>Once a model (or even a model block) is compiled ahead of time, we can serialize the compiled graph module
-as an artifact and reuse later. In the context of a ZeroGPU-powered demo on Spaces, this will significantly
-cut down the demo startup time by skipping the compilation time.</p>
-<p>To keep the storage light, we can just save the compiled model graph without including any model parameters
-inside the artifact.</p>
-<p>Check out this collection that shows a full workflow of obtaining compiled model graph, pushing it
-to the Hub, and then using it to build a demo.</p>
-<p>ZeroGPU within Hugging Face Spaces is a powerful feature that enables AI builders by providing access to powerful compute. In this post, we showed how users can benefit from PyTorch’s ahead-of-time compilation techniques to speed up their applications that leverage ZeroGPU.</p>
-<p>We demonstrate speedups with Flux.1-Dev, but these techniques are not limited to just this model. Therefore, we encourage you to give these techniques a try and provide us with feedback in this community discussion.</p>
-<p>Acknowledgements: Thanks to ChunTe Lee for creating an awesome thumbnail for this post. Thanks to Pedro and Vaibhav for providing feedback on the post. Thanks to Angela Yi from the PyTorch team for helping us with AOT guidance.</p>
-<p>generate a video from an image with a text prompt</p>
-<p>generate a video from an image with a text prompt</p>
+                <p>Get started with free access to reviews, badges and discussions.</p>
+<p>Unlock exclusive tools and insights for enthusiasts who want more.</p>
+<p>Access Bench, Roadmaps, deep analysis and other exclusive tools.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Keep exploring and earning more as a member.</p>
+<p>Reviews, benchmarks, and updates on current GPUs.</p>
+<p>Join for quick access. Enter your email below and we'll send confirmation plus sign you up to our newsletter.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Unlock instant access to exclusive member features.</p>
+<p>Get full access to premium articles, exclusive features and a growing list of member rewards.</p>
+<p>By reverse engineering the 2014 Renault Latitude’s firmware and exploiting some vulnerabilities, the researcher fixed their daylight savings time mismatch issue.</p>
+<p>When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works.</p>
+<p>A security researcher has revealed how they were forced to update the time on their car infotainment system using reverse engineering techniques. Of course, invasive tech surgery shouldn’t be needed for this kind of basic routine daylight saving time tweaking task. However, Rasmus Moorats’ 2014 Renault Latitude wouldn’t allow him to adjust the time because the original navigation map SD card was missing.</p>
+<p>Moorats had been warned. When he bought the used car, the previous owner noted that the SD card would be required to change the time on the in-car display. “I didn't really find that believable,” recalls the security researcher. They seem to have believed it was a skill issue of the prior owner and, because the maps it contained were chronically out of date, they decided to confidently decide they didn’t need the SD card...</p>
+<p>The time to adjust non-connected clocks to daylight saving time inevitably came, and Moorats decided to adjust the in-car time display, which had become an hour out of sync. Two settings menus were available via the in-dash system. One allowed the adjustment of Bluetooth and Phonebook settings – clearly no use here. But the second settings menu wouldn’t produce any submenu. Instead, an error message "No maps detected!" popped up every time it was prodded.</p>
+<p>With a certain set of skills under his belt, Moorats decided to “just RE it,” where RE = reverse engineer. He found out that the head unit ran a customized Linux-based TomTom operating system on a Samsung SoC. In brief, he extracted and analyzed the firmware, built a QEMU environment for the device, reversed the scripting engine, and uncovered a number of vulnerabilities affecting the system.</p>
+<p>The breakthrough came in a brainwave, which seems to stem from experience with kernel exploit techniques during his day job. “Instead of trying to get the userland to execute our script, why don't I get the kernel to execute our script instead?” pondered Moorats. The approach worked, rewarding Moorats with root-level access to the infotainment system.</p>
+<p>The 2014 Renault Latitude owner subsequently discovered that the date & time settings were in /mnt/flash/settings.dat in a custom binary format. Interestingly, the system “doesn't really have a concept of time zones at all,” observed Moorats in the conclusion of his blog post. “It gets the time from GPS and stores the local offset as a number of minutes. Mine was set to 180. I changed it to 120.”</p>
+<p>Follow Tom's Hardware on Google News, or add us as a preferred source, to get our latest news, analysis, & reviews in your feeds.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Mark Tyson is a news editor at Tom's Hardware. He enjoys covering the full breadth of PC tech; from business and semiconductor design to products approaching the edge of reason.</p>
+<p>Tom's Hardware is part of Future US Inc, an international media group and leading digital publisher. Visit our corporate site.</p>
+<p>©
+Future US, Inc. Full 7th Floor, 130 West 42nd Street,
+New York,
+NY 10036.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/zerogpu-aoti" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.tomshardware.com/tech-industry/cyber-security/security-researcher-had-to-jailbreak-their-car-just-to-update-the-clock-missing-tomtom-sd-card-locked-settings-menu-custom-linux-exploit-deployed-to-adjust-daylight-saving-time" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
