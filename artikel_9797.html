@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Agent Aced the Task. Will It Do It Again?</title>
+    <title>Synaptics patent claims stop work on DisplayLink drivers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9797.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,225 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Your Agent Aced the Task. Will It Do It Again?</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
+        <h1>Synaptics patent claims stop work on DisplayLink drivers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Your agent works in rehearsal, but during the live demo, it takes a different path and fails the same task.</p>
-<p>That is embarrassing onstage. In production, it is a reliability problem: a workflow that succeeded once may fail the next time a user makes the same request. For mission-critical work, such as reconciling a financial transaction or checking a contract for an obligation, that can be a showstopper.</p>
-<p>Most benchmarks hide this variability behind an average. On AppWorld, a ReAct agent using GPT-4.1 succeeded on 77.4% of runs across five repetitions. But it succeeded in all five runs for only 53.0% of tasks — a 24.4-point consistency gap.</p>
-<p>Most benchmarks report the first number. We built a way to measure the second — and improve it.</p>
-<p>In an earlier post, we introduced ALTK-Evolve — a system that turns an agent's own past trajectories into reusable guidelines, distilled automatically and injected back at inference time. It measurably improves task success, but those results only asked the average-case question too.  This post introduces consistency guidelines, a new guideline type in altk-evolve built on top of a diagnostic tool we call the Consistency Analyzer, that targets this gap directly.</p>
-<p>Standard agent evaluation reports Mean@k: run a benchmark k times, average the pass rate. Often k=3, sometimes just 1. It's the number on every leaderboard, and it's what "77% accurate" means in practice.</p>
-<p>Mean@k answers "how good is this agent, on average?" It does not answer the question a real user cares about: will it still be good if I ask this exact question again? For that you need Pass^k: the fraction of tasks where the agent succeeds on all k runs.</p>
-<p>⚠️ Pass^k is not Pass@k. The familiar Pass@k is optimistic — it asks whether at least one of k attempts succeeded, the right question when you can verify and retry. Pass^k is its pessimistic mirror image: every attempt must succeed. Same letters, opposite question. Pass^k ≤ Mean@k ≤ Pass@k, always.</p>
-<p>A ReAct agent backed by GPT-4.1 posts a Mean@5 of 77.4% — genuinely strong. But Pass^5 is only 53.0%. Nearly a quarter of the benchmark consists of tasks the agent can sometimes solve and sometimes can't, with nothing about the task changing between runs. We call this gap — Mean@k minus Pass^k — the consistency gap.</p>
-<p>This isn't a capability problem you fix with a bigger model. It's an orthogonal axis: an agent can be capable and inconsistent at the same time.</p>
-<p>Every time an LLM agent decides something — which API to call, what argument to pass, whether to retry — that decision comes out of a probability distribution over next tokens. What matters is the shape of that distribution. A sharp one puts most of its mass on a single token: the runners-up are far behind, and the same choice comes out run after run. A flat one spreads comparable mass across several near-tied tokens, and which one wins is close to a coin flip.</p>
-<p>The shape decides how much noise it takes to change the outcome. Sharp distributions are resilient — GPU floating-point non-associativity, request batching, and other platform-side effects nudge the numbers slightly, but nowhere near enough to reorder a clear winner. Flat distributions are vulnerable to exactly that nudge: near-ties may reorder under small perturbations. And because a trajectory chains dozens of decisions, a small per-step chance of flipping compounds into a large chance that some run goes differently. That's where a 24-point gap comes from.</p>
-<p>This is also why the problem survives your decoding settings. Greedy decoding and a fixed seed both govern how a distribution gets turned into a token — they say nothing about the distribution itself. On a hosted endpoint the probabilities shift slightly from run to run, so the same prompt to the same model at temperature zero can still resolve a near-tie one way today and the other way tomorrow.</p>
-<p>Our setup: the ReAct agent runs at temperature 0.0, so none of the variance above is ordinary sampling.</p>
-<p>Which turns the problem into a search: which steps in a given trajectory were the flat ones — and what do you do about them once you know?</p>
-<p>Consistency guidelines come out of a two-stage pipeline that plugs into ALTK-Evolve's existing machinery — with a new source signal driving what gets written.</p>
-<p>1. Detect — the Consistency Analyzer. 
-Given one recorded trajectory, the analyzer replays each decision step through controlled resampling, measuring how much the model's output actually varies at that point. Concretely, that's one additional model call per decision step, done once offline — issued with the sampling parameter set to draw k completions at once (k=5 by default) — replayed against the already-recorded context, not new tool calls, not new environment interactions, and not a second end-to-end rollout of the task. This yields a consistency score per decision step that is written into a scorecard to pinpoint exactly which decisions are at risk of flipping on the next run. Detection is fully black-box — no logits, no model internals, no instrumentation beyond the trace you already have.</p>
-<p>2. Generate — targeted guidelines.  Every flagged step becomes a candidate consistency guideline in the standard ALTK-Evolve format, so it slots into the existing storage and retrieval pipeline. Here's a real example, generated by GPT-4.1 from a trajectory of the AppWorld task "How many activities are done in my bucket list as per my SimpleNote note?":</p>
-<p>[Guideline 1] When counting checkbox-style markers in note content, use a line-anchored regex match rather than a plain substring count — note titles often repeat the marker symbol in a legend line.</p>
-<p>[Guideline 2] Always verify search results for note queries by checking for multiple matches and confirming the correct note before proceeding.</p>
-<p>Nothing here is task-specific trivia. String-counting bugs and unverified search results are decision points that show up with high uncertainty across many AppWorld tasks. That's the point: the analyzer targets instability, not failure — so it catches steps the agent happened to get right this time but could easily get wrong next time.</p>
-<p>Watch the 2-minute demo — five parallel runs of the agent split 3-2 on this task because of agent uncertainty about the counting strategy, then run again after these guidelines in context: all five agree.</p>
-<p>We evaluated on AppWorld test_normal (168 tasks) with a ReAct agent on GPT-4.1, generating consistency guidelines from a single baseline trajectory per task and testing them on 5 fresh runs.</p>
-<p>Mean@5 (%), aggregate — same scale as Pass^5 above.</p>
-<p>The consistency gap is cut roughly in half. Aggregate Pass^5 rises 53.0% → 69.0% while Mean@5 rises 77.4% → 81.0%, narrowing the gap between "looks capable" and "can be counted on" from 24.4pp to 12.0pp. Nearly a third of previously-inconsistent tasks become tasks the agent passes on every single run.</p>
-<p>The middle and hard tiers gain most. Medium +22.9pp (+44% relative), Hard +14.3pp (+45% relative) — effectively tied in relative terms, with Medium ahead absolutely. Easy gains +12.2pp, having had the least room. This is consistency guidelines doing what they're designed to do: finding and stabilizing the specific decision points where an agent's own uncertainty was leaking into the outcome.</p>
-<p>Mean@5 never drops. Preserving average accuracy was a hard requirement, not a nice-to-have: a system that boosts Pass^5 by trading away Mean@5 would just be shifting unreliability around, not fixing it. Mean accuracy holds or improves at every difficulty level.</p>
-<p>Applied to a different but related task in the same AppWorld scenario — another variant of the scenario the guidelines were mined from — consistency guidelines still lift Pass^5 by +13.0pp, only 3 points below the same-task number. A guideline derived from one run isn't just patching that run; it's capturing something that transfers.</p>
-<p>The sharper evidence comes from a weaker model, gpt-oss-120b. Same-task Pass^5 rose +6.0pp from a much lower baseline (10.1% → 16.1%) — and, interestingly, the similar-task generalization number (+8.7 pp) actually exceeded the same-task gain, suggesting the guidelines were capturing genuinely reusable failure patterns rather than memorizing one trajectory's specifics.</p>
-<p>Try the ALTK-Evolve — the open-source repo now includes the Consistency Analyzer and consistency-guideline generation used in these experiments — or read the technical report on arXiv for the complete methodology.</p>
-<p>If accuracy numbers you can't reproduce on your own tasks sound familiar, we'd like to hear about it — concrete examples of flip-prone behavior in your own agents are exactly the kind of feedback that shapes what we build next. Open an issue or a discussion.</p>
-<p>Great perspective on agent reliability. Measuring consistency alongside accuracy seems especially important as AI agents move into workflows where reproducibility matters. The Consistency Analyzer approach is a fascinating way to identify unstable decisions without requiring full task replays.</p>
-<p>The useful split is the one most dashboards still refuse to print: Mean@k answers “how good is this agent on average?” Pass^k answers “will the same request still succeed if I ask again?”</p>
-<p>Once you’ve watched a trajectory chain dozens of near-tied tool choices, a strong average with a wide consistency gap is exactly the demo that fails live. Capability and consistency are orthogonal — buying a bigger model can lift Mean without closing the gap.</p>
-<p>What I want teams to take from the Consistency Analyzer framing is operational, not the guideline machinery itself: treat flip-prone decision steps as first-class eval targets. One offline resample pass over a recorded trace is a cheaper reliability signal than another end-to-end leaderboard screenshot.</p>
-<p>Practical ask for anyone shipping agents from this: do you report Pass^k (even k=3) next to Mean@k in the release gate, and do you refuse the “stable” label when the consistency gap is still large on your hard tier?</p>
-<p>Reproducible reliability will not remove disagreement about which guidelines to inject. It will make the disagreement about the right metric.</p>
-<p>Thanks, and you've landed on exactly the operational takeaway we hoped for: flip-prone decision steps should be eval targets in their own right. Beyond that, knowing where they are also turns the eval into a diagnostic: a consistency gap tells you that an agent is unreliable, while the flip-prone steps tell you where and why.</p>
-<p>On your release-gate question: we'd strongly encourage it, and k=3 is a sensible default. A few things we'd suggest to anyone adopting Pass^k as a gate:</p>
-<p>I'd like to understand your closing point better. In our experiments, we didn't choose among individual guidelines: for each new task, we injected the guidelines derived from the most similar task. I'm curious where you see the disagreement about which guidelines to inject arising.</p>
-<p>https://huggingface.co/spaces/observantdistressed/minimax-h3</p>
-<p>Loved your space, any plan to set it up again in near future?</p>
+                <p>Mike Lothian owns a docking station (or dock) that uses a DisplayLink chipset
+that had, at least in his opinion, subpar performance on Linux. He
+decided to try improving the Linux driver, with LLM assistance, but ran into one
+problem that he could not solve—so he asked for help, hoping that
+Synaptics's developers would lend a hand. (DisplayLink was acquired by
+Synaptics in 2022.) Rather than help him in improving the
+driver, however, the Synaptics legal team responded with patent infringement
+claims, a demand
+that he cease unauthorized implementation of DisplayLink technology, and threats
+of expensive legal penalties. For now, it appears that Linux users of the
+company's docks will have to continue to live without feature parity with other
+platforms.</p>
+<p>The dock that he was trying to support is a Dell device that connects to
+a system via USB 3 and allows users to connect multiple monitors and other
+devices to their computer. It provides its DisplayLink
+Manager (DLM) software for Linux for the devices via an APT repository for
+Ubuntu.</p>
+<p>The company only provides DLM software in binary form, and only for x86-based
+platforms. The software is proprietary, but the company does maintain an
+open-source, out-of-tree kernel module that is included with DLM, the
+Extensible Virtual Display
+Interface (EVDI) project. It provides a driver that's compatible with Linux DRM and
+allows users to manage their docked displays with standard tools used for 
+display settings, such as xrandr or GNOME and KDE Plasma's
+utilities.</p>
+<p>A short
+article explains why the company has not released source code for DLM: the
+software uses a proprietary graphics technology called DL3 to create a compressed stream
+of the various channels (e.g., USB, DisplayLink video, audio) over a
+communication channel (USB 3 in this case) and decode it again for output
+to the user's devices.</p>
+<p>Unfortunately, the vendor-supplied software did not work well for Lothian. I
+spoke and chatted with him via Signal while writing this article; he said that
+the driver kept crashing under Linux, so he decided to use his Claude
+subscription to try to develop a new driver and support software.</p>
+<p>He posted the first
+patch series for Vino—his Rust-based DRM/KMS driver—to the kernel's
+dri-devel list as an RFC on June 17. Lothian noted that it was in an
+incomplete state, and asked for help with a blocker that
+he had run into trying to communicate with the dock's control plane. "If you have
+knowledge of the DisplayLink DL3 control-plane engagement sequence, or ideas for
+isolating a whole-bus timing/ordering property a per-channel diff cannot see,
+help would be very welcome." He received feedback from a few developers, including guidance
+from Danilo Krummrich to rework the driver to use the Rust KMS bindings, but no advice
+specific to the problem he was trying to solve.</p>
+<p>Lothian also opened an issue on the EVDI 
+GitHub repository on June 17. It explained the work he'd done so far, outlined the
+approach in trying to reverse-engineer the DL3 protocol, provided links to
+his GitHub repository with the Vino code, and asked for clarification on a few
+issues. There was no reply to his issue.</p>
+<p>He also reached out to Łukasz Spintzyk of Synaptics directly by email; his
+correspondence with the company between July 5 and October 7 is
+available in this PDF compiled
+by Lothian. He noted that he had found a few bugs in EVDI and opened a pull request (that went
+unreviewed for several months), and also asked for assistance where he was blocked on Vino. On
+July 20, he received a reply, not from Spintzyk, but from Michal Lukaszek of
+Synaptics:</p>
+<p>The reason I'm writing is that DisplayLink is not an open standard. The
+protocol, codec, and other technologies used by DisplayLink devices are
+proprietary to Synaptics and are protected by a substantial portfolio of patents
+in a number of jurisdictions, including the UK.</p>
+<p>From what you've published, it appears that the VINO project is progressing
+beyond interoperability work and toward implementing technology that we believe
+is covered by those patents. While many developers understandably focus on
+avoiding copyrighted source code, patent law is different. An independently
+written or clean-room implementation does not necessarily avoid patent
+infringement if it implements patented inventions.</p>
+<p>Lukaszek said it was entirely possible that Lothian was unaware of the
+"intellectual property landscape surrounding DisplayLink", so he wanted
+to make him aware now rather than "have the situation become more formal
+later". Lothian lives in Scotland and has a ".co.uk" email address, which
+explains why the email made reference to the UK.</p>
+<p>On August 17, Andrew Bateman, an assistant general council of
+intellectual property for Synaptics, sent a cease-and-desist notice. The letter stated that Lothian had not
+"substantially responded" to Lukaszek's communication, and had continued
+with "public statements and further development activities". It included
+an appendix with a list of 125 patents that "cover fundamental aspects of
+DisplayLink's architecture and operation", but did not specify which patents
+might be infringed by the work.</p>
+<p>Synaptics included a list of eight demands it expected immediate compliance
+with, including ceasing development of "any software or other
+implementation that infringes any Synaptics patent", withdrawing submissions of
+materials "made to Linux kernel maintainers, mailing
+lists, code-hosting platforms, package maintainers, distributions, or any other person or
+organization", and to identify in writing every location "in which the
+relevant materials have been published, submitted, stored, or
+distributed". It also demanded that he provide Synaptics with a signed
+confirmation, by August 28, that he had complied with its demands.</p>
+<p>Lothian, instead, posted version
+three of his Vino work for the DisplayLink docks to the dri-devel list on
+August 26. He said that the previous two versions had "never lit a
+panel", but the new work could control three generations of DL3 docks
+without any vendor software. There were no substantive reviews of the patch set
+posted to the list, though there were some automated reviews from Sashiko.</p>
+<p>On August 27, Lothian responded to Bateman and asked him to elaborate
+on the patents that Synaptics thought were being infringed. "A claim chart
+mapping the relevant claims to the relevant code would make it much easier for
+me to understand and properly respond to your concerns."</p>
+<p>He also expressed confusion about Synaptics's position that his work was
+being treated as patent infringement. Synaptics is a member of the Open Invention Network (OIN), which
+was created to help open-source
+developers and vendors deal with the threats of expensive patent litigation. It
+holds a large, cross-licensed portfolio that serves to provide patent protection
+to individuals, open-source projects, and large vendors alike. Lothian said that
+he was now an OIN licensee as well, and he thought that it was supposed to
+"reduce exactly this sort of patent problem around Linux and open source
+software".</p>
+<p>Lothian did not think he could "reasonably provide the signed undertaking"
+Synaptics had demanded by August 28 without understanding which patent
+claims it was alleging. He asked for an extension to the deadline. There was no
+response from Bateman, so Lothian sent a follow-up email on
+September 18. He said he was concerned there was no acknowledgment to his 
+last email, and wondered it was safe to assume he could continue his work. He
+had been running the Vino driver himself for quite a while, and was eager to
+move it upstream without having patent threats hanging over the work.</p>
+<p>Bateman responded the next day and said that he should be concerned:</p>
+<p>The letter continued to claim that Lothian would be "single-handedly
+eviscerating DisplayLink's competitive advantage in this crowded market by
+educating our competitors and other third parties as to how we implement our
+proprietary technology". He said that DisplayLink is not a member of OIN,
+and none of its technology is licensable through OIN or any other
+organization.</p>
+<p>Bateman sent a follow-up
+letter, dated October 5, that included two claim charts for UK patents: GB2484736B ("Display control device") and GB2485613B ("Image generation"), both filed in 2010
+and published in 2012. He reiterated Synaptics's demands from its previous
+letter, and said that the deadline was now October 11; failure to comply
+would result in the company seeking "monetary
+compensation from you in the amount of US$25,000 to recoup the costs and effort required to
+create the attached documentation of your infringing acts". That amount
+would be increased by $25,000 each week until the company's demands were
+complied with.</p>
+<p>Lothian responded the next day, by email, to say that he was on
+vacation, and would not be back home until October 13. He asked for an extension
+of the deadline to return home and go through the claim charts "ideally with
+someone qualified to help me read them". Bateman replied
+that Synaptics would agree to extend the deadline to October 18, though no
+further extensions would be granted. He reiterated that "DisplayLink is not a
+member of OIN" and none of its technology was licensable through OIN.</p>
+<p>Synaptics is a member of OIN, and is listed in the community
+directory. In addition to joining OIN, Lothian had reached out to the
+organization to try to solicit its help and has been in communication with some of
+the staff there. OIN indicated that it would look into the matter and see if he
+had any protection as an OIN member. That process took longer than Lothian
+hoped, though OIN did eventually provide its conclusion.</p>
+<p>OIN's portfolio covers a wide range of software that matches its Linux System
+Definition, but it does not cover everything that might be implemented for a
+Linux system. In particular, its definition specifies that codecs ("a
+component of a program capable of performing transformations of a video, still
+image or audio data stream or signal") are not covered unless specifically
+mentioned in this
+list of components.</p>
+<p>I spoke briefly to OIN CEO Keith Bergelt on October 23, shortly after
+OIN staff informed Lothian of the result of their research. Bergelt said that
+OIN's conclusion was that, since codecs are explicitly not covered by OIN's
+Linux System Definition, its protections did not extend to Lothian's attempted
+kernel contributions. OIN had recommended that Lothian reach out to a lawyer in
+the UK, and provided a recommendation.</p>
+<p>Unfortunately, that referral did not pan out, Lothian said. He has not given up
+entirely, but he has taken down the GitHub repository to comply with Synaptics's
+demands. For now, he may continue working on some of the components that are not
+affected by the patent claims, but the work on Vino will not be submitted
+to the kernel. "Vino itself has to remain local until this is sorted out, I
+just can't afford to defend myself against Synaptics."</p>
+<p>Perhaps amusingly, Lothian told me that someone from Synaptics finally
+replied to the pull request on October 7. Lothian told me he does not
+intend to follow up on the comments: "You can't threaten to sue me and then
+say 'can you update your pull request?'"</p>
+<p>For the time being, Synaptics has succeeded in shutting down an effort to
+improve the way DisplayLink docks work with Linux. It is an unpleasant reminder
+that, while much of the current conversations in open-source communities are
+concerned with LLM-driven development, software patents still pose problems for
+free-software developers and users.</p>
+<p>And  GB2484736B seems to be about using a Haar wavelet/transform to compress and decompress an image, by way of encoding/decoding sub-groups of the image. I don't know enough about image compression and Haar's transform to know if there is anything novel about, but knowledge of using Haar's transform for image compression goes back to at least the 1970s - e.g., see US4224678A from 1976. The idea of applying compression to an image in sub-groups of the image is surely also long described (??).</p>
+<p>I bought $SUBJECT last month, expecting it to run well enough on my Linux laptop.</p>
+<p>No such luck. Obviously, Synaptics wants to be on our boycott lists.</p>
+<p>Now I only need to find a Windows or Mac user to sell the thing to …</p>
+<p>… or found/join an underground network for stealth driver development. Kernel driver development on Radicle?</p>
+<p>I use AI for lots of things, because it saves a lot of time, which is becoming short for me...</p>
+<p>1) is without sharing. Sharing knowledge and code and understanding is core to the hacker and FOSS ethos. How can you so gleefully ditch that?
+
+2) very often relies on an opaque, non-free third party that can censor or cut you off at any moment. I can't think of anything more antithetical to the hacker and FOSS ethos.</p>
+<p>2) very often relies on an opaque, non-free third party that can censor or cut you off at any moment. I can't think of anything more antithetical to the hacker and FOSS ethos.</p>
+<p>I think LLM assistance in reverse engineering is one of the few good LLM usecases, to be clear. But the proposed approach after that is pure capitulation!</p>
+<p>They have a patent on hardware. Even if all this code is published, they still have that hardware patent and can prevent anybody else from producing such hardware. Acting this way to prevent a real driver from being developed is incredibly short sighted of them as it does nothing to affect the actual underlying hardware.
+
+As somebody who holds over 50 patents myself and sits on my company patent committee, this is a total face-palm for me. Just misunderstanding and stupidity all around.</p>
+<p>As somebody who holds over 50 patents myself and sits on my company patent committee, this is a total face-palm for me. Just misunderstanding and stupidity all around.</p>
+<p>I don't really see where you are coming from. The patent gives knowledge but restricts the use of that knowledge in various ways. This is the general premise of patents that you seem to be calling it ludicrous, and I don't follow.</p>
+<p>> By open sourcing our DisplayLink technology for whatever personal reasons you may have as a "hobbyist," you will be single-handedly eviscerating DisplayLink's competitive advantage in this crowded market by educating our competitors and other third parties as to how we implement our proprietary technology, which we have gone to great lengths and great expense to prevent.
+
+This sentence seems to be claiming that "DisplayLink's competitive advantage" is a *trade secret*. Patents don't protect trade secrets; in fact it's the opposite --- a patent is supposed to reveal your methods while giving you a monopoly over implementations of them.
+
+You could claim that some parts of your technology are patented and others are trade secrets, but you'd have to carefully lay out which parts are which, and the lawyer didn't do that here.</p>
+<p>This sentence seems to be claiming that "DisplayLink's competitive advantage" is a *trade secret*. Patents don't protect trade secrets; in fact it's the opposite --- a patent is supposed to reveal your methods while giving you a monopoly over implementations of them.
+
+You could claim that some parts of your technology are patented and others are trade secrets, but you'd have to carefully lay out which parts are which, and the lawyer didn't do that here.</p>
+<p>You could claim that some parts of your technology are patented and others are trade secrets, but you'd have to carefully lay out which parts are which, and the lawyer didn't do that here.</p>
+<p>Posted Nov 10, 2026 21:46 UTC (Tue)
+                               by Cyberax (✭ supporter ✭, #52523)
+                              [Link]</p>
+<p>If these are the same docks I use at work, then they really aren't much better on Windows. I have constant issues with them, including</p>
+<p>If somebody wants to come around and knock these guys out of the market with a better product and open source software, that would be amazing and very welcome.</p>
+<p>This is a ridiculous conclusion? The entire point of OIN was deterrence via mutually assured destruction. Why would it matter if the specific aspect is covered or not? A member of OIN is threatened with patent litigation for open source work on Linux, the appropriate response is to kick Synaptic out of OIN, and aim the patent-cannon at them for everything they have.</p>
+<p>In theory, yes.  In practice, afaik OIN has never ever done this.  So I suspect this was done to reduce the pressure to get rid of software patents  and has no other real world impact.</p>
+<p>I also don't think this is the first time one of these 'wait OIN doesn't protect us???' events has occurred but getting patent clarifications take so long that we forget.</p>
+<p>Copyright © 2026, Eklektix, Inc.
+            
+            Comments and public postings are copyrighted by their creators.
+            Linux  is a registered trademark of Linus Torvalds</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lwn.net/SubscriberLink/1102549/acbc92e00cee3a3f/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

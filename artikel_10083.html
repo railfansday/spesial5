@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</title>
+    <title>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10083.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,66 +15,47 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
+        <h1>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Imagine ordering your weekly groceries as naturally as texting a friend:"Hey, we're out of milk and eggs. Can you also add some snacks for Friday movie night?"</p>
-<p>In our previous post, Building Conversational Commerce with Multi-Agent Swarms on GCP, we shared the architectural blueprint for conversational commerce—proposing a 3-layer decoupled design (Ingress, Memory, and Cognition) to solve messaging timeouts, state tracking, and response reliability.</p>
-<p>While blueprints establish the architecture on paper, production readiness demands working software. In this post, we take that blueprint and bring it to life with a functional prototype called HappyDelivery.</p>
-<p>Using LangGraph, Gemini, FastAPI, and Google Cloud, we'll walk through the code, the state machine, deterministic financial tools, and an automated verification suite that demonstrates how this multi-agent swarm operates in practice.</p>
-<p>To build a reliable commerce swarm, we implemented three decoupled layers that handle the journey of every customer text message:</p>
-<p>Let's examine how each layer functions in code with its own dedicated architecture.</p>
-<p>A frequent question when designing conversational commerce is: how does a message sent by a customer on their smartphone actually land in Layer 1, and can this architecture support messaging platforms beyond WhatsApp?</p>
-<p>End users do not communicate directly with your Google Cloud servers. Instead, customer messages traverse an operator ecosystem before landing on your webhook:</p>
-<p>Every major consumer messaging platform operates on the exact same fundamental contract: an asynchronous HTTPS POST webhook delivery with a strict HTTP acknowledgement timeout:</p>
-<p>While the payload schemas and cryptographic headers differ slightly between platforms, Layer 1 abstracts away all client differences:</p>
-<p>This ensures the rest of your system—Session Store (Layer 2) and Agent Swarm (Layer 3)—operates on clean, normalized data without caring whether the shopper sent their message from an iPhone, an Android RCS chat, or a WhatsApp thread.</p>
-<p>Messaging platforms are completely stateless: every text message arrives as an isolated webhook event. To provide a coherent shopping experience, the system must instantly reconstruct the customer's full context without having to re-read or re-parse days of chat logs on every turn.</p>
-<p>We use Cloud Memorystore (Redis) keyed by the customer's verified phone number (session:{phone_number}) to store active state:</p>
-<p>A common question in conversational commerce is whether state lookups will introduce latency. Here is what the baseline infrastructure supports:</p>
-<p>Key Takeaway: In practice, the Session & Cart Layer will never be the bottleneck—it easily outpaces upstream webhook inference and downstream LLM inference.</p>
-<p>Rather than relying on a single monolithic prompt to handle every task, we separate reasoning into a swarm of specialized agents:</p>
-<p>Now that we have seen the high-level design of the three layers, let's look at the actual Python prototype code that brings each layer to life.</p>
-<p>The goal of this service is simple: verify authenticity across any inbound channel, normalize the payload into a canonical schema, and get off the critical path in < 150ms.</p>
-<p>Here is our implementation showing how multiple messaging channels (WhatsApp, RCS, Apple Messages, SMS) are handled by pluggable adapters:</p>
-<p>By immediately returning an HTTP 200 OK and handing the payload off to Pub/Sub, we completely decouple message intake from downstream AI reasoning time across all messaging ecosystems.</p>
-<p>We benchmarked the live Cloud Run HTTPS webhook intake across warm invocations:</p>
-<p>This empirically proves our architectural claim: the Ingress service validates the cryptographic signature and immediately commits the event to Pub/Sub, freeing the customer chat client without waiting on agentic reasoning.</p>
-<p>We also verified security enforcement against tampered payloads:</p>
-<p>The worker pods pulling from Pub/Sub need to instantly look up who the customer is and what is in their current cart.</p>
-<p>Here is the session store implementation using Cloud Memorystore (Redis):</p>
-<p>Each record contains the customer ID (cust_9821), saved address, dietary restrictions, and current cart items. This guarantees that when a customer texts back hours later, their cart is restored instantaneously.</p>
-<p>Every session lookup executes in 0.318ms, proving our architectural claim that restoring customer context and persistent cart state adds virtually zero latency to the conversational turn.</p>
-<p>With Ingress and Redis handling incoming traffic and memory, all the decision-making lives in the LangGraph multi-agent graph.</p>
-<p>Every turn passes through a typed data structure holding the customer's profile, active cart, and the supervisor's routing decision:</p>
-<p>Next, we define the nodes and conditional edges that allow the Supervisor to dynamically route tasks to the right specialist:</p>
-<p>A core tenet of our blueprint is: delegate arithmetic to deterministic tools. Generative models excel at language and reasoning, while financial calculations require exact precision. If a model computes taxes or discounts in free-form text, it may occasionally introduce calculation errors.</p>
-<p>Instead, we bind deterministic tools to our specialist nodes. For example, the Inventory and Transaction agents use a Python calculation tool rather than computing prices in-prompt:</p>
-<p>Worker containers pull messages asynchronously from Pub/Sub and stream LangGraph node transitions in real time.</p>
-<p>Now that we have all three components—Ingress (Layer 1), Redis Memory (Layer 2), and the LangGraph Swarm (Layer 3)—how do they actually run together as a single unified system?</p>
-<p>Here is the complete end-to-end lifecycle of a customer's message:</p>
-<p>The worker loop that coordinates all three layers is concise, clean, and completely decouples the user-facing webhook from back-office AI reasoning:</p>
-<p>With the entire pipeline wired together, let's look at what happens when we run an actual customer order through it.</p>
-<p>To verify the prototype, we ran an automated simulation of an end-to-end customer order. Here is how the swarm behaves across three natural conversational turns:</p>
-<p>Behind the Scenes: The InventoryAgent mutates the in-memory cart (removing Sprite and adding Coke Zero), executes calculate_cart_totals, and confirms delivery details without losing context.</p>
-<p>We validated all core behaviors—webhook HMAC validation, catalog indexing, deterministic math, and multi-turn state transitions—with automated unit and integration tests:</p>
-<p>A critical question when evaluating multi-agent architectures is token consumption and operational inference cost. In a naive implementation where massive prompts and entire conversation histories are repeatedly re-sent on every step, LLM API bills can quickly eat into e-commerce retail margins.</p>
-<p>Our prototype is engineered specifically to prevent token waste through strict agent specialization, deterministic tools, and externalized Redis state:</p>
-<p>Here is the exact token telemetry measured across the live 3-turn HappyDelivery session:</p>
-<p>Bringing the blueprint into working code revealed several practical realities:</p>
-<p>Building this prototype proved that the decoupled architecture outlined in our blueprint isn't just theoretical—it is practical, reliable, and ready for production on Google Cloud.</p>
-<p>By combining LangGraph for multi-agent workflows, Gemini for natural language reasoning, and GCP for fast ingress and persistent memory, we can build shopping experiences that feel as simple as chatting with a friend while maintaining the enterprise rigor required for commerce.</p>
-<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
-<p>Cost per task: Using cheap classifiers to route across Gemini models and thinking levels</p>
-<p>From prompt to app: Build with Google Maps in AI Studio</p>
-<p>On-Device Speech Recognition and Text-to-Speech in Google AI Edge Gallery</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>We sent 1,000 streaming calls at the same moment through three self-hosted LLM gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each gateway was limited to 2 CPUs. As shipped, Langfuse finished 261 of the 1,000 streams and LiteLLM finished 403. Neither failure came from the gateway's own code.</p>
+<p>Langfuse's failures came from Linux's open-file limit, which Docker sets to 1,024 by default. LiteLLM had that problem too, plus a second one: an empty key cache sent hundreds of database lookups at once, and the ones that waited longer than 10 seconds were rejected. This article shows how each failure looked, how we traced it to its cause, and the settings that fixed it.</p>
+<p>This benchmark measured the resource consumption of three LLM gateways under scaling concurrent streaming loads.</p>
+<p>Full latency, memory, and feature results are available in the Langfuse vs LiteLLM vs AcruxCore benchmark.</p>
+<p>First-token times are medians of the streams that succeeded. Up to 250 streams, every gateway succeeded. Then the errors started, and they did not look alike:</p>
+<p>A 502 and a 503 point at different layers, so we expected two different causes. Two of the three turned out to share one cause.</p>
+<p>Linux counts every network connection as an open file, and it caps how many open files one process may hold. The cap has two values. The soft limit is the cap that is in force now. The hard limit is the ceiling: a process may raise its own soft limit up to that value, and no further.</p>
+<p>A streaming gateway holds two connections for each stream: one from the client, and one to the model provider. That makes about 1,000 open files at 500 streams, and about 2,000 at 1,000 streams. A gateway also needs a few more files for its database, its logs and its own libraries.</p>
+<p>Docker on our machine gave every container a soft limit of 1,024 and a hard limit of 524,288. All three gateways received the same two numbers. What differed was how each program treats them when it starts:</p>
+<p>Node.js raises its own soft limit to the hard limit at startup. The Rust and Python services keep 1,024, and neither project's Compose file sets a higher value. So the two gateways ran out of open files near 500 streams, which is the point where the errors started.</p>
+<p>The out-of-files error appeared as a failed connection, not as a clear message. The Langfuse gateway's logs showed failed connections to OpenAI, and also failed connections to Langfuse's own web service, which the gateway asks to check each key. Both come from one cause: a process that cannot open another file cannot open another socket. Its client then receives a 502.</p>
+<p>Read the limit the process actually has, not the one you think Docker gave it. Process 1 is usually the main process in a container:</p>
+<p>If the gateway runs under a supervisor or several workers, check each worker's process ID instead of process 1. To see how close a process is to its limit under load, count its open file descriptors:</p>
+<p>Raise the limit for the gateway service in its Compose file. We used 65,536 for all three gateways:</p>
+<p>The same ulimits block works on the LiteLLM service. On Kubernetes or another platform, check /proc/<pid>/limits inside a running container rather than assuming a value.</p>
+<p>With the open-file limit raised, the Langfuse gateway finished all 1,000 streams. LiteLLM still returned 503 errors. To separate the two causes, we ran LiteLLM with one worker and only the open-file limit raised. All 500 streams succeeded in that ladder, but 595 of 1,000 failed with 503.</p>
+<p>The 503 message names the authentication database, so we read LiteLLM's logs and its source. The log gave the same reason for all 840 failed streams in these runs, 595 in that ladder and 245 in the cold-cache runs below:</p>
+<p>When 500 calls arrive while the key is not in the cache, each call looks the key up in Postgres. All of those lookups queue for 10 connections. The worker was also using its whole CPU allowance at this point, which slows every query it sends and receives. We infer that this CPU load lengthens the queue, but we did not measure it separately. Whatever the share of each, the lookups at the back of the queue miss the 10-second deadline.</p>
+<p>If that explanation is right, the failures should depend on whether the key is already in the cache. So we ran 500 streams four more times. Three runs started after 75 seconds with no calls, which is longer than the 60-second cache. One run started right after a single warm-up call:</p>
+<p>The warm run had no failures. The cold runs failed by different amounts, 161, 84 and 0, because the result depends on how many lookups miss the deadline, and that changes from run to run. This probably explains why the earlier ladder succeeded at 500 and failed at 1,000. A run is a race between the lookup queue and the deadline, so a single ladder does not show where the limit is.</p>
+<p>The warm-up result is the one we measured. Send one call with each virtual key after LiteLLM starts, and avoid quiet periods longer than 60 seconds before a traffic spike. A steady flow of traffic keeps the key in the cache.</p>
+<p>LiteLLM also exposes three settings that act on this path. We did not test them, so treat them as places to look rather than proven fixes:</p>
+<p>We raised the open-file limit to 65,536 for all three gateways and gave LiteLLM 2 workers, one per CPU, as its production guide recommends for a single machine. Then we ran the full ladder again:</p>
+<p>The open-file errors were gone for every gateway, and the Langfuse gateway gave the fastest first token of the three. LiteLLM still returned 120 × 503 at 500. That level started about 60 seconds after the first call of the ladder, so the cached key had probably just expired. All 1,000 succeeded at the next level, which started within 60 seconds of the 500 level.</p>
+<p>Once nothing failed, CPU decided the first-token times. LiteLLM used its whole 2-CPU allowance from 100 streams on, and its median first token took 19.2 seconds at 1,000 streams. AcruxCore also used both CPUs from 100 streams on, and its first token at 1,000 streams was 3.8 s at the median and 9.7 s at p95. The Langfuse gateway peaked at 1.65 CPUs and 168 MiB, with a first token of 1.7 s at the median and 9.6 s at p95.</p>
+<p>Each gateway also needs the rest of its stack, and that stack uses CPU too. While the Langfuse gateway served 500 streams, its whole stack used up to 3.1 CPUs, because the web service checked keys and the worker and ClickHouse stored usage. AcruxCore's whole stack peaked at 4.0 CPUs, because its API writes a trace for every call to Postgres. Size the stack around the gateway, not only the gateway container.</p>
+<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems at talhaanwar.com.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/building-conversational-commerce-with-multi-agent-swarms-on-gcp-a-working-prototype/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/what-breaks-when-a-self-hosted-llm-gateway-hits-1-000-concurrent-streams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

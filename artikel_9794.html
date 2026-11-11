@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Article: LLM Reliability Layers Under Test: Accuracy, Yield, and the Limits of Verification</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9794.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,96 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-10</p>
+        <h1>Article: LLM Reliability Layers Under Test: Accuracy, Yield, and the Limits of Verification</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://res.infoq.com/articles/llm-reliability-layers-limits-accuracy/en/headerimage/llm-reliability-layers-limits-accuracy-header-1793873839325.jpg" alt="Article: LLM Reliability Layers Under Test: Accuracy, Yield, and the Limits of Verification" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://res.infoq.com/articles/llm-reliability-layers-limits-accuracy/en/headerimage/llm-reliability-layers-limits-accuracy-header-1793873839325.jpg" alt="Article: LLM Reliability Layers Under Test: Accuracy, Yield, and the Limits of Verification" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>A monthly overview of things you need to know as an architect or aspiring architect.</p>
+<p>Learning budget left this year? Use it for a QCon conference or a live InfoQ certification cohort, if your employer's policy allows. 
+
+                            Explore your options.</p>
+<p>Facilitating the Spread of Knowledge and Innovation in Professional Software Development</p>
+<p>Unlock the full InfoQ experience by logging in! Stay updated with your favorite authors and topics, engage with content, and download exclusive resources.</p>
+<p>Lily Mara explains how to avoid high-risk software rewrites through incremental FFI refactoring. She shares how engineering teams can replace Python bottlenecks with Rust via PyO3, demonstrating how to achieve dramatic function-level speedups, seamless integration testing, and meaningful infrastructure cost savings without microservice overhead.</p>
+<p>Agentic AI architecture extends microservices and cloud-native architectures with AI agents that work with context, memory, and protocols such as MCP and A2A. The article covers bounded-context integration, task-dependent coordination strategies, new security risks, and observability needs. It expects gradual adoption alongside existing architectures, with platforms absorbing common components.</p>
+<p>Aditya Mulik explains how Walmart Global Tech deployed multi-agent LLM workflows across 4,700 stores for nightly batch inventory forecasting. He discusses tackling production hurdles - schema violations, cross-department data mismatches, and network drops - via MCP grounding and loop agents, while slashing cloud inference costs from $100k+ to $10k per month shifting from PTUs to pay-as-you-go.</p>
+<p>Vanessa Formicola shares how technical leaders can move beyond "wishful architecture" by practicing holistic socio-technical engineering. She discusses why engineering leaders must account for organizational maturity, reward structures, geopolitical climate, and team dynamics, framing the staff-plus role as designing the conditions for technology to thrive rather than just picking tools.</p>
+<p>Colin Douch shares battle-tested strategies for building and scaling self-hosted observability stacks. He explains how to effectively correlate metrics, structured logs, and distributed traces using open-source tooling like Prometheus, VictoriaMetrics, and Jaeger, while navigating the engineering trade-offs of avoiding SaaS vendor lock-in.</p>
+<p>Work through your production AI decisions with senior engineers from other companies. Apply their perspectives to challenges from your own work.Online. Register Now.</p>
+<p>Building RAG pipelines or AI agents? Work through retrieval, context, evals, and reliability decisions with experienced practitioners.Online. Register Now.</p>
+<p>Compare team design, delivery flow, AI roles, and metrics with experienced practitioners. Online. Register Now.</p>
+<p>Distributed systems, decentralized decisions, platform engineering, and AI architecture. Online. Register Now.</p>
+<p>What's working across AI, architecture, and leadership, from the teams doing it. Register. Early bird ends Nov 10.</p>
+<p>Production AI across agents, context, evals, security, and infrastructure, from the senior engineers building it.Register. Early bird ends Nov 10.</p>
+<p>What early-adopter teams have proven in production, across 15 engineering tracks. Register. Early bird ends Nov 10.</p>
+<p>Learn from the decisions and trade-offs behind AI systems already running in production.Registration open.</p>
+<p>InfoQ Homepage
+Articles
+LLM Reliability Layers Under Test: Accuracy, Yield, and the Limits of Verification</p>
+<p>Nov 10, 2026
+								
+								
+								
+									
+									15
+									min read</p>
+<p>Clinical notes, incident reports, support tickets, and forum posts are prose, and a language model can read them. What it produces is not dependable. Ours was right about one answer in three on the task below and reported full confidence on two-thirds of its answers; wherever a wrong answer costs something, that is unusable.</p>
+<p>We tested six layers, checks wrapped around the model, that each evaluate the model's output and flag what is wrong so that it can be put right: check each answer against something deterministic, send provable failures back to the model [1], sample it several times and vote [2], have a second model judge it [3], withhold what cannot be corroborated, and send the rest to a person. The theory we set out to test is that these layers are additive: each one catches errors the layers below it missed, so accuracy rises with every layer added. That assumption is what justifies stacking them at all. We ran all six on the same records, each priced, with the free check entered as a competitor. The theory did not hold. The layers sorted the answers by how far to trust them and corrected almost none.</p>
+<p>Explore how Azul helps Java teams reduce JVM vulnerability risk, strengthen application security, and prepare their Java environments for agentic AI. Discover practical strategies for securing Java workloads while maintaining performance and reliability. Learn more.</p>
+<p>Testing it needs a graded task, so we chose an annotated corpus: CADEC, the CSIRO Adverse Drug Event Corpus [4], 1,250 forum posts about two drugs, every adverse reaction marked as a span, the writer's exact words such as "rectal bleed", and given a SNOMED CT code. A gold answer for every mention lets us score each layer's verdicts instead of trusting them — and that assumes gold is the only right answer, which is not always true. Running one development document through the pipeline, the span "extremely sick" is gold-coded 213257006 |Generally unwell|; the model answered 39104002 |Illness| — an equally active, equally general reading that shares no wording with the span or with gold's own name. Naming either is a real answer; only one is scored correct. We did not build a CADEC system or tune for it: the aim was to evaluate open-weight models and measure how much each layer raises their accuracy, and CADEC is the instrument.</p>
+<p>A supervised system does far better. CONORM [5], fine-tuned on 875 of CADEC's 1,250 files, reaches an end-to-end F1 of 0.72 under lenient span matching. Our zero-shot extractor, everything it returns, reaches 0.47 to 0.50 under the same matching on our development split, 0.39 to 0.43 span-exact. We are not competing with it: it needs those 875 annotated files, and still cannot say which of its answers to trust. Our held-out split was spent once: 60 documents, one run; every other number is development-side and says so. Two things would move the absolute numbers: the judge is small, and CADEC, public since 2015, is almost certainly in its training data. The comparisons between layers should hold.</p>
+<p>The model is never asked for a code, and everything above it depends on that choice.</p>
+<p>Figure 1: The pipeline, left to right, on one illustrative post (CADEC is non-transferable). Teal: a model call; grey: deterministic code. Each card shows what that step produces for the example; code appears for the first time in the last one. Image: the authors.</p>
+<p>The model quotes each reaction; a retriever with no language model in it searches 227,554 keyword-to-code rows — every description in the SNOMED CT Australian edition of 31 July 2026 — embedding each quote with granite-embedding:30m, 384 dimensions, run locally, and showing the model a menu of the 20 nearest concepts to pick from. Codes are written as 271782001 |Drowsy|, SNOMED's bar notation, throughout.</p>
+<p>We chose this shape by measuring the alternatives on 40 development documents, three cold runs each: recall the code from memory, name the concept and look it up, or pick from the menu.</p>
+<p>Figure 2: F1 of the extractor alone under three ways of getting the code, one dot per cold run, with tokens per run and unparseable replies beneath. Image: the authors.</p>
+<p>Recalling the code is not weak but broken: eight to twelve times worse than naming the concept. It answered null on up to 38 percent of records, and of the codes it committed to, 13 to 18 percent exist in no SNOMED release.</p>
+<p>F1 is span-exact throughout: a wrong boundary is both a false positive and a false negative.</p>
+<p>That is the extractor the six layers sit on. Before measuring what a layer adds, we had to know how much its output moves between runs of the same inputs.</p>
+<p>Three identical runs of the unchanged extractor differed by four points of F1, at temperature zero.</p>
+<p>We ran the extraction step three times, cold, on the same 40 documents. Two runs were byte-identical. The third diverged and finished with 98 correct mentions against the pair's 87. Grouped by mention, the runs give 233 mentions:</p>
+<p>Where all three found the same span, they agreed on the code 84 percent of the time, so what moves between runs is mostly the reading, not the coding. We did not ask why those 22 were coded differently, and we should have.</p>
+<p>The variation is a property of this model: four other families run three times each, llama3.1:8b, mistral:7b-instruct, qwen3:8b, and granite4:micro-h, returned byte-identical output every time. Our extractor, gpt-oss:20b, is the only mixture-of-experts model of the five and the only one that varied. Why, we could not settle: the diverging request, sent alone eight times, returns one reply; it moves only inside a full run. We kept it for its 6.5 extra points of F1 over llama3.1:8b.</p>
+<p>From then on, every change was measured on three runs and reported as the range across them.</p>
+<p>The two free layers did their jobs: the vocabulary check sorted the answers, and refusal withheld the doubtful ones, and neither changed an answer. Of the three paid layers, self-correction almost never fired, voting did not help, and the judge worked, but nothing read its verdict.</p>
+<p>Development split, three runs of 40 documents; figures below are ranges across the runs:</p>
+<p>Then we removed the three paid layers and replayed refusal: what it passed differed by one record on the first run and by none on the other two.</p>
+<p>Voting and the judge's verdicts are good for diagnosis, not repair: a split vote marks an answer the model cannot reproduce, and a judge answering not on this menu marks a failed menu, not a failed pick. We did not use them that way, and should have.</p>
+<p>Every verdict carries information. None makes the system produce more right answers, and they do not stack.</p>
+<p>Figure 3: The first run's 230 records under each shipping rule. Dark green: right code on the exact span; light green: exact span, wrong code; light teal: right code, boundary off; grey: neither; amber: to a person. Dotted lines: the most the extractor found. Image: the authors.</p>
+<p>Figure 3 reads each verdict as a shipping rule over the same 230 records. Three things hold.</p>
+<p>First, any verdict raises the accuracy of what passes, because withholding is a layer's only lever. No rule ships more than the 88 right answers the extractor found, so every gain in accuracy is paid for in right answers held back. Accuracy alone flatters any withholding layer. Yield, right answers as a share of all records, cannot be flattered, so we report both.</p>
+<p>Second, the price differs by verdict. ACCEPT is the most precise rule and the most expensive: moving to it removes 128 errors at the cost of 49 right answers and 177 records for a person, because the check can endorse only 32 percent of mentions whose wording matches the vocabulary. The menu-shown judge's verdict is informed rather than lexical, and it is the one rule whose F1 beats shipping everything, 0.420 against 0.397.</p>
+<p>Third, the verdicts nest rather than add. Nearly everything the free check endorses, the judge endorses too, so a second verdict mostly confirms the first and can only remove records, never recover one the first held back; that is why removing the paid layers changed one record. Where every verdict agrees, the answers are almost all right; where only a vote does, almost all wrong. Each verdict is a different trade between errors, lost answers, and reviews; we recommend none.</p>
+<p>The held-out split, run once, tells the same story. Before any check, one answer in three was right. Of those, the vocabulary check marked ACCEPT, five in six were right; of the rest, one in five. The check changed no answer; it only sorted them.</p>
+<p>The domain knowledge was never missing. The model loses at reading, and nothing above it can see what it did not read.</p>
+<p>Figure 4: Where the development split's 226 annotated mentions go through the shipped extractor, gpt-oss:20b, first run. Each bar is what the stage above kept; the dotted steps are what each stage lost. Teal: a model call; grey: deterministic code. Image: the authors.</p>
+<p>Once a mention is found, the pipeline is reliable: the right concept reaches the menu for 93 percent of found spans and the model picks it 81 percent of the time. The loss is at finding. Nearly half the annotated mentions are never quoted as the annotators marked them, and none of the reasons are medical: single words go untouched where the annotator marked them, boundaries stretch — an extra adjective swept into a span the annotator left bare — and figures of speech are read literally, an idiom for exasperation coded as a nocturnal behaviour. Two domain-adapted models did not help: BioMistral-7B could not reliably return a parseable reply, and SapBERT as the retriever's encoder improved the menu and worsened the answer. A worked example and a denied-reactions rule did.</p>
+<p>No layer can add a mention. Every layer above the extractor checks, re-asks, votes on, judges, or withholds an answer the extractor already gave; none can find a mention it missed. So the most any stack can ever get right is what the extractor found in the first place: on the held-out split, just over half the annotated mentions, a detection F1 of 0.521. The one way past that ceiling is a second reader: a different model family shown the post and the first model's spans, asked what was missed. We did not build it. Its additions would be proposals, needing the same measurement as the extractor's.</p>
+<p>Four of the five lessons were held on other data. What changed is where the model loses, and where the free check can be trusted.</p>
+<p>Seven further corpora [6–10], five model families; for each lesson, does the data agree?</p>
+<p>The judge, the nesting of verdicts, and the diagnostic use of split votes were measured on CADEC only.</p>
+<p>Every layer passed its own tests. The two defects that mattered sat between the layers and inside the metric.</p>
+<p>The first was the unread verdicts. The second was the metric: voting overwrote codes without re-running the vocabulary check, so records shipped marked verified for a code they no longer held. Fixing that moved the held-out F1 from 0.204 to 0.204, because precision and recall cannot tell an unwarranted answer from a wrong one. We built six layers to decide which answers to trust, then scored them with a metric that cannot see the difference.</p>
+<p>Both defects share a shape: a load-bearing fact recorded once, so nothing could disagree with it. Three checks built from that lesson, gatecheck, crosscheck and stagecheck, are reached from the repository below; stagecheck is a standalone package with no dependencies.</p>
+<p>What transfers is not the layers but six practices, each earned above.</p>
+<p>We set out believing that stacking reliability layers buys reliability. Measured end to end, they sorted the answers by how far to trust them and fixed almost none: worth a great deal, and not what we bought them for. The model reads. Almost everything else belongs to code, and one choice to you.</p>
+<p>Code, ledger, decision records, and every figure's source. CADEC is non-transferable; we ship document IDs, never text.</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+        
+			View an example</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+		
+			View an example</p>
+<p>Test your approach against the decisions and trade-offs of senior practitioners running agents, evals, model serving, and AI-assisted engineering in production.
+                
+                See what worked, what failed, and what they would do differently. Bring those lessons back to your team to make better-informed architecture and delivery decisions.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.infoq.com/articles/llm-reliability-layers-limits-accuracy/?utm_campaign=infoq_content&utm_source=infoq&utm_medium=feed&utm_term=global" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
