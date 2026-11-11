@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</title>
+    <title>Android Auto is getting a Gemini upgrade, but only if you use a Pixel</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10083.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,26 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</h1>
+        <h1>Android Auto is getting a Gemini upgrade, but only if you use a Pixel</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://9to5google.com/wp-content/uploads/sites/4/2026/04/Ask-Gemini-on-Android-Auto.jpg?quality=82&amp;strip=all&amp;resize=1200,628" alt="Android Auto is getting a Gemini upgrade, but only if you use a Pixel" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://9to5google.com/wp-content/uploads/sites/4/2026/04/Ask-Gemini-on-Android-Auto.jpg?quality=82&strip=all&resize=1200,628" alt="Android Auto is getting a Gemini upgrade, but only if you use a Pixel" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>We sent 1,000 streaming calls at the same moment through three self-hosted LLM gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each gateway was limited to 2 CPUs. As shipped, Langfuse finished 261 of the 1,000 streams and LiteLLM finished 403. Neither failure came from the gateway's own code.</p>
-<p>Langfuse's failures came from Linux's open-file limit, which Docker sets to 1,024 by default. LiteLLM had that problem too, plus a second one: an empty key cache sent hundreds of database lookups at once, and the ones that waited longer than 10 seconds were rejected. This article shows how each failure looked, how we traced it to its cause, and the settings that fixed it.</p>
-<p>This benchmark measured the resource consumption of three LLM gateways under scaling concurrent streaming loads.</p>
-<p>Full latency, memory, and feature results are available in the Langfuse vs LiteLLM vs AcruxCore benchmark.</p>
-<p>First-token times are medians of the streams that succeeded. Up to 250 streams, every gateway succeeded. Then the errors started, and they did not look alike:</p>
-<p>A 502 and a 503 point at different layers, so we expected two different causes. Two of the three turned out to share one cause.</p>
-<p>Linux counts every network connection as an open file, and it caps how many open files one process may hold. The cap has two values. The soft limit is the cap that is in force now. The hard limit is the ceiling: a process may raise its own soft limit up to that value, and no further.</p>
-<p>A streaming gateway holds two connections for each stream: one from the client, and one to the model provider. That makes about 1,000 open files at 500 streams, and about 2,000 at 1,000 streams. A gateway also needs a few more files for its database, its logs and its own libraries.</p>
-<p>Docker on our machine gave every container a soft limit of 1,024 and a hard limit of 524,288. All three gateways received the same two numbers. What differed was how each program treats them when it starts:</p>
-<p>Node.js raises its own soft limit to the hard limit at startup. The Rust and Python services keep 1,024, and neither project's Compose file sets a higher value. So the two gateways ran out of open files near 500 streams, which is the point where the errors started.</p>
-<p>The out-of-files error appeared as a failed connection, not as a clear message. The Langfuse gateway's logs showed failed connections to OpenAI, and also failed connections to Langfuse's own web service, which the gateway asks to check each key. Both come from one cause: a process that cannot open another file cannot open another socket. Its client then receives a 502.</p>
-<p>Read the limit the process actually has, not the one you think Docker gave it. Process 1 is usually the main process in a container:</p>
-<p>If the gateway runs under a supervisor or several workers, check each worker's process ID instead of process 1. To see how close a process is to its limit under load, count its open file descriptors:</p>
-<p>Raise the limit for the gateway service in its Compose file. We used 65,536 for all three gateways:</p>
-<p>The same ulimits block works on the LiteLLM service. On Kubernetes or another platform, check /proc/<pid>/limits inside a running container rather than assuming a value.</p>
-<p>With the open-file limit raised, the Langfuse gateway finished all 1,000 streams. LiteLLM still returned 503 errors. To separate the two causes, we ran LiteLLM with one worker and only the open-file limit raised. All 500 streams succeeded in that ladder, but 595 of 1,000 failed with 503.</p>
-<p>The 503 message names the authentication database, so we read LiteLLM's logs and its source. The log gave the same reason for all 840 failed streams in these runs, 595 in that ladder and 245 in the cold-cache runs below:</p>
-<p>When 500 calls arrive while the key is not in the cache, each call looks the key up in Postgres. All of those lookups queue for 10 connections. The worker was also using its whole CPU allowance at this point, which slows every query it sends and receives. We infer that this CPU load lengthens the queue, but we did not measure it separately. Whatever the share of each, the lookups at the back of the queue miss the 10-second deadline.</p>
-<p>If that explanation is right, the failures should depend on whether the key is already in the cache. So we ran 500 streams four more times. Three runs started after 75 seconds with no calls, which is longer than the 60-second cache. One run started right after a single warm-up call:</p>
-<p>The warm run had no failures. The cold runs failed by different amounts, 161, 84 and 0, because the result depends on how many lookups miss the deadline, and that changes from run to run. This probably explains why the earlier ladder succeeded at 500 and failed at 1,000. A run is a race between the lookup queue and the deadline, so a single ladder does not show where the limit is.</p>
-<p>The warm-up result is the one we measured. Send one call with each virtual key after LiteLLM starts, and avoid quiet periods longer than 60 seconds before a traffic spike. A steady flow of traffic keeps the key in the cache.</p>
-<p>LiteLLM also exposes three settings that act on this path. We did not test them, so treat them as places to look rather than proven fixes:</p>
-<p>We raised the open-file limit to 65,536 for all three gateways and gave LiteLLM 2 workers, one per CPU, as its production guide recommends for a single machine. Then we ran the full ladder again:</p>
-<p>The open-file errors were gone for every gateway, and the Langfuse gateway gave the fastest first token of the three. LiteLLM still returned 120 × 503 at 500. That level started about 60 seconds after the first call of the ladder, so the cached key had probably just expired. All 1,000 succeeded at the next level, which started within 60 seconds of the 500 level.</p>
-<p>Once nothing failed, CPU decided the first-token times. LiteLLM used its whole 2-CPU allowance from 100 streams on, and its median first token took 19.2 seconds at 1,000 streams. AcruxCore also used both CPUs from 100 streams on, and its first token at 1,000 streams was 3.8 s at the median and 9.7 s at p95. The Langfuse gateway peaked at 1.65 CPUs and 168 MiB, with a first token of 1.7 s at the median and 9.6 s at p95.</p>
-<p>Each gateway also needs the rest of its stack, and that stack uses CPU too. While the Langfuse gateway served 500 streams, its whole stack used up to 3.1 CPUs, because the web service checked keys and the worker and ClickHouse stored usage. AcruxCore's whole stack peaked at 4.0 CPUs, because its API writes a trace for every call to Postgres. Size the stack around the gateway, not only the gateway container.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems at talhaanwar.com.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Google has confirmed that Gemini on Android Auto is adding “proactive suggestions” soon, but only for Pixel users.</p>
+<p>Gemini Intelligence on Pixel phones will be extending to Android Auto, Google says, with “personalized suggestions when you need them.”</p>
+<p>And if you have a Pixel phone with Gemini Intelligence, it will soon bring proactive suggestions to Android Auto — connecting the dots across your apps to surface helpful, personalized suggestions when you need them. For example, if your friend texts you to ask where you are meeting for a pilates class, Gemini Intelligence on Android Auto can find your confirmation email and instantly suggest sending the address with a single tap.</p>
+<p>Google first announced this earlier this year, and recent updates have set the stage for a rollout.</p>
+<p>Importantly, Google says this is exclusive to “Pixel phone[s] with Gemini Intelligence,” which includes only the Pixel 10 and Pixel 11 series for now. Google started expanding key Gemini Intelligence features to the Pixel 10 series with this month’s Pixel Drop.</p>
+<p>Follow Ben: Twitter/X, Threads, Bluesky, and Instagram</p>
+<p>FTC: We use income earning auto affiliate links. More.</p>
+<p>Check out 9to5Google on YouTube for more news:</p>
+<p>Android Auto is an extension of the Android plat…</p>
+<p>Find him on Twitter @NexusBen. Send tips to schoon@9to5g.com or encrypted to benschoon@protonmail.com.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/what-breaks-when-a-self-hosted-llm-gateway-hits-1-000-concurrent-streams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://9to5google.com/2026/11/11/android-auto-gemini-intelligence-pixel/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

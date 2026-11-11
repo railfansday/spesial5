@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finding a vulnerability in Star Wars Episode I: Racer</title>
+    <title>Introducing Mellum2: A 12B Mixture-of-Experts Model by JetBrains</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9999.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Finding a vulnerability in Star Wars Episode I: Racer</h1>
+        <h1>Introducing Mellum2: A 12B Mixture-of-Experts Model by JetBrains</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://www.synacktiv.com/sites/default/files/styles/blog_grid_view/public/2026-11/star-wars-episode-i-racer-la-fureur-de-vivre-la-force-12798954_w1920.jpg" alt="Finding a vulnerability in Star Wars Episode I: Racer" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.synacktiv.com/sites/default/files/styles/blog_grid_view/public/2026-11/star-wars-episode-i-racer-la-fureur-de-vivre-la-force-12798954_w1920.jpg" alt="Finding a vulnerability in Star Wars Episode I: Racer" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Security incident? Suspected breach? 
-09 71 18 27 69csirt@synacktiv.com</p>
-<p>Star Wars Episode I: Racer is a racing video game published by LucasArts. The player pilots a podracer, just like in the movie Star Wars: Episode I â The Phantom Menace. This article details the multiplayer protocol and a vulnerability allowing remote code execution. We will also cover creating a Wireshark dissector and developing tools with DirectPlay.</p>
-<p>Looking to improve your skills? Discover our trainings sessions! Learn more.</p>
-<p>Star Wars Episode I: Racer is a racing video game developed in 1999 by LucasArts. It is based on the podrace scene from the movie Star Wars: Episode I â The Phantom Menace. The research focused on version 1.0 distributed by GOG for the Windows platform. This article details the analysis of the protocol used for local network multiplayer.
-Â</p>
-<p>First, traffic analysis is required. The game is installed on two virtual machines on the same network. The network capture below, displayed with Wireshark, shows the packets sent when a player (at 192.168.56.2) connects to a game host (192.168.56.104).</p>
-<p>The game communicates in multiplayer mode over UDP on destination port 54792. Packets are sent by the client to the broadcast address 192.168.56.255, so every machine on the local network receives them. This is a common mechanism used by video games to discover game instances on a local network. The server then responds to the client with a packet containing the game name.</p>
-<p>The capture above does indeed contain a game name MY Game : (null). The subprotocol does not appear to be detected by Wireshark; however, the presence of the string "play" in the packets may indicate the DirectPlay protocol1. The source code of the DirectPlay dissector implemented in WiresharkÂ epan/dissectors/packet-dplay.cÂ uses this heuristic [1].</p>
-<p>However, since the string "play" is located at offset 27 rather than offset 20, the DirectPlay protocol is not recognized. Let's try to confirm the use of the DirectPlay protocol through reverse engineering.</p>
-<p>Microsoft's DirectPlay API uses the Component Object Model2Â (COM). It is a specification that describes an object model and programming requirements enabling COM objects to interact with other objects. In practice, a COM object (also called a component) is identified by a unique identifier known as a CLSID (Class Identifier). The Windows CoCreateInstance API allows creating and initializing a COM object by its CLSID. The DirectPlay header file dplay.hÂ provides the CLSID for the DirectPlay component as well as the identifiers for the various DirectPlay interfaces.</p>
-<p>Binary searching in IDA allows locating the CLSID and identifying its usages through cross-references. The pseudocode of the function that instantiates the DirectPlay component is as follows:</p>
-<p>Once the object is initialized, the program zero-initializes an array of ConnectionInfo_tÂ structures [1].Â This array is then populated indirectly via theÂ EnumConnections method, which calls the EnumConnectionCallback callback each time a network service provider is found [2].</p>
-<p>Each network service provider is identified by a GUID (Globally Unique Identifier). DirectPlay originally provided 4 different network service providers:</p>
-<p>Network service providers are registered in the Windows registry under the key HKEY_LOCAL_MACHINE\SOFTWARE\WOW6432Node\Microsoft\DirectPlay\Service Providers.</p>
-<p>As shown in the following pseudocode, the program iterates through all installed network service providers and explicitly selects IPX [1]</p>
-<p>IPX3Â is a network communication protocol developed by Novell in the 1980s. It is a connectionless protocol that operates on the network layer of the OSI model (Layer 3). IPX therefore handles the routing and delivery of data packets between different networks. IPX addresses consist of:</p>
-<p>IPX support was officially discontinued starting with Windows Vista. However, the IPX service provider is specifically installed by the game, as indicated by the script C:\\GOG Games\\STAR Wars Racer\\directplay-win64.reg. The game's installation folder contains DLLs from the ipxwrapper4Â project. This project emulates IPX by encapsulating packets into UDP datagrams.</p>
-<p>The ipxwrapper source code initializes a UDP socket listening on port 54792. According to src/router.cÂ ,DirectPlay packets are encapsulated within anÂ ipx_packet structure defined in src/ipxwrapper.h :</p>
-<p>This information enables us to decode the header of the previously captured game announcement packet:</p>
-<p>The utility C:\\GOG Games\\STAR Wars Racer\\ipxconfig.exeÂ allows you to retrieve the machine's IPX configuration. The node address (8E:E0:B5:8C:5E:B2) and the network number match those observed in the previously decoded header.</p>
-<p>We now have all the information required to decode the IPXwrapper headers. Consequently, we embarked on creating a Wireshark dissector. The DirectPlay dissector (already natively supported) will then be called to decode the data portion of the IPX packets.</p>
-<p>First, the fileÂ epan/dissectors/packet-ipxwrapper.c defines a minimalist dissector. Two functions must be implemented : proto_register_XXXÂ andÂ proto_reg_handoff_XXX, oÃ¹ XXX where XXX represents the protocol name, here ipxwrapper.Â</p>
-<p>TheÂ hf_register_infoÂ array [1] describes each field of the packet, its size, and the format in which it should be displayed in the graphical user interface.</p>
-<p>proto_register_ipxwrapper handles registering the protocol along with its metadata, which will appear in the application menus [2]. register_dissector_with_description associates the protocol with a dissector. The dissection function dissect_ipxwrapper will be called when Wireshark detects the protocol or when the dissector is explicitly invoked using the "Decode As" feature [3].</p>
-<p>register_heur_dissector_list_with_description creates a list of heuristic dissectors that can be called on the data portion of the IPX packet [4].</p>
-<p>The functionÂ proto_reg_handoff_ipxwrapper associates the protocol with UDP traffic on port 54792.</p>
-<p>The dissection function dissect_ipxwrapper checks whether the packet is large enough [1].Â It then adds the various protocol fields using theÂ proto_tree_add_itemÂ function [2]. These fields are described in the hf array within the proto_register_ipxwrapperÂ function.</p>
-<p>Finally, the DirectPlay dissector must be called on the data payload. However, the DirectPlay protocol only registers heuristic dissectors for a specific protocol. The heur_dissector_add method adds a dissector to the list of heuristic dissectors previously initialized in theÂ packet-ipxwrapper.cÂ file</p>
-<p>Despite this, Wireshark still does not seem to recognize the DirectPlay packets. This is a current limitation of the software: only packets using the DirectPlay 4 Reliable Protocol5 are recognized. As specified in the documentation, fields marked as optional are only present if the DPSESSION_DIRECTPLAYPROTOCOL (0x2000) flag is used during session creation.</p>
-<p>Although the DirectPlay interface's Open method is called with a session description containing this flag, a function further along explicitly disables this setting [1].</p>
-<p>A few modifications were made to the DirectPlay dissector to handle packets without the optional headers. Below is a network capture correctly decoded by Wireshark.</p>
-<p>Next, we will focus on processing application-specific DirectPlay packets. DirectPlay messages are received via the Receive method of the IDirectPlay4AÂ interface. This method can return the DPERR_NOMESSAGES error codeÂ (0x887700BE),Â which is often handled by programs using DirectPlay. The function callingÂ Receive was located by searching for the aforementioned constant [1].</p>
-<p>TheÂ HandleSysMessage function partially processes system messages, these messages are designed to manage game session events. The structure of each system message is defined in the DirectPlay headers, unlike user messages, which are defined by the application.</p>
-<p>The function handling user messages was located by tracing back the call to the ReceiveÂ method. Message types 0x21, 0x22, 0x28 et 0x20 are processed when the player has not yet fully joined the game, as shown in the pseudocode at [1]. While the initial connection steps are handled using the DirectPlay API, the game also maintains its own player state and implements specific messages to add and remove players.</p>
-<p>Checking the packet's wMsgId field indicates that there are theoretically 100 different message handlersÂ [1].Â  However, only 26 entries in theÂ network_handlers_table array are initialized.</p>
-<p>The function processing type 0x21 packets contains an out-of-bounds write vulnerability. First, an iIndex integer is retrieved from the network packet [1]. The program then copies a UTF-16 string using wcsncpy into the wzName member of a STATE_T structure selected by the index. An index greater than or equal to 20 will cause a write outside the bounds of the _g_PlayerStatesÂ array.</p>
-<p>A minimalist DirectPlay-based server was written to send a specifically crafted message to the client. First, an instance of a DirectPlay object must be retrieved using the CoCreateInstance6Â API.</p>
-<p>Next, the program selects the IPX network service provider using the EnumConnectionÂ andÂ InitializeConnectionmethods. The IPXwrapper DLLs must be placed in the server's execution directory. The server then creates a session via the Openmethod [1]. The first parameter is a session descriptor specifying the maximum number of allowed players, the game name, and the guidApplication. This unique identifier must match the game ID for Star Wars Racer: {C95FB584-FA31-11D2-909D00AA00A322AD}. A player is created using the CreatePlayer method. An event object is created and will be signaled whenever a message intended for this player is received. The core message processing is handled inside the ReceiveLoopÂ function [3].</p>
-<p>This function waits for a message from the DirectPlay object using the WaitForMultipleObjects7Â API [1]. The message is retrieved via the Receivemethod, which returns the sender's identifier. The application must handle two types of messages: system messages, where the sender ID is DPID_SYSMSG , and custom messages specific to Star Wars Episode I: Racer.</p>
-<p>System messages always begin with a DWORD indicating the message type, with the remaining fields defined according to that type. The server application must handle the DPSYS_CREATEPLAYERORGROUP system message. When a player connects, the server saves their ID to send the payload later. Initially, the server responds with a proprietary type 0x20Â message containing the list of active players in the game session.</p>
-<p>Exploitation is triggered when the target player sends a type 0x22Â message. This message is sent by the client after connecting and again contains the player's name.</p>
-<p>The exploit works by responding with a type 0x21 message that overwrites a handler in the network_handlers_tableÂ array. Setting the index to 0x01737B26 targets the addressÂ 0x004E9DE4Â , which corresponds to the handler for message 0x33. The handler is replaced with 0xEC7BC8, which corresponds to the receive buffer address.</p>
-<p>A second type 0x33 message containing shellcode is sent, causing the program to execute the code received in the packet.</p>
-<p>We exploited this vulnerability in a Windows 10 test environment (version 10.0.19045.2965). The Proof of Concept (PoC) is available for educational purposes at the following link:Â https://github.com/synacktiv/SWEP1RCR-exploitÂ</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://synacktiv.com/en/publications/star-wars-episode-i-racer" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/JetBrains/mellum2-launch" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Python asyncio: Running Jobs at the Same Time Without Threads</title>
+    <title>I built a desktop app where the AI agent can see your running app, not just your code</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9608.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,40 +15,33 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Python asyncio: Running Jobs at the Same Time Without Threads</h1>
+        <h1>I built a desktop app where the AI agent can see your running app, not just your code</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fc5d0mrln1aqkyfvh52kv.png" alt="Python asyncio: Running Jobs at the Same Time Without Threads" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frc7zepnvp2m60z2w72g0.png" alt="I built a desktop app where the AI agent can see your running app, not just your code" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fc5d0mrln1aqkyfvh52kv.png" alt="Python asyncio: Running Jobs at the Same Time Without Threads" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frc7zepnvp2m60z2w72g0.png" alt="I built a desktop app where the AI agent can see your running app, not just your code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 11
-•
-Originally published at practicaldevblog.blogspot.com</p>
-<p>Picture a small shop dashboard on a Monday morning. Before the first order ships, someone has to check stock with four suppliers, one for tote bags, one for mugs, one for notebooks, one for lamps. Each check takes a couple of seconds while the supplier's system answers. Done one after another, that is eight seconds of staring at a spinner, and the computer spends almost all of it doing nothing, just waiting for a reply. The work is not hard, it is slow, and the slowness comes from waiting, not from thinking. That is the exact gap asyncio is built for: one program that starts several waits at once and picks each one up when its answer arrives.</p>
-<p>My first check is what the program is actually waiting on. Asyncio helps when the time goes to waiting: network calls, database queries, slow file reads. It does nothing for work that keeps the processor busy, like crunching numbers or resizing images, because one thread still does that work one piece at a time. If the job is mostly computing, threads or separate processes are the honest answer, not asyncio.</p>
-<p>My second check is whether the libraries I need can play along. Asyncio only works if the waiting code is written for it. A normal requests call blocks the whole loop while it waits, which quietly turns a concurrent program back into a sequential one. So I check for an async client, like aiohttp for HTTP or asyncpg for Postgres, before I commit. If the only library available is synchronous, asyncio buys me nothing.</p>
-<p>My third check is how many things run at once, and who reads the code later. Four supplier checks are easy to reason about. Four hundred are still possible, but then I need to limit how many run together, or the program hammers the supplier's server. Async code is also harder to debug: an error can surface in a different task from the one that caused it. For a script I run once a month, sequential code is easier to trust.</p>
-<p>My verdict, as judgement: use asyncio when a program makes several independent waits and the libraries support it. That is the shape of most small dashboards, scrapers, and notification senders. The recommendation flips the moment there is only one wait, the work is mostly computing, or the libraries are synchronous. In those cases the plain version is shorter, easier to debug, and just as fast.</p>
-<p>The example is a small shop checking stock for four orders before the day starts. Each check waits on a supplier's system, and the waiting time is different for each one: a second and a half for the tote bags, two seconds for the mugs, one second for the notebooks, two and a half for the lamp. In the script, asyncio.sleep stands in for that waiting, since there is no real supplier to call. The real question is only how long four waits take when they run together, and the script prints the answer.</p>
-<p>Here is the whole program. The check_stock coroutine waits, then reports the order as in stock. The main coroutine hands all four checks to asyncio.gather, which starts them together and waits until every one of them has finished. The timer around it measures the whole run.</p>
-<p>All four results came back, and the whole run took 2.50 seconds. That is not the sum of the four waits, it is the longest single wait, the two and a half seconds for the lamp. While the lamp check was waiting, the other three finished and reported in. That is the entire trick: overlapping the waits instead of stacking them.</p>
-<p>The thing that went wrong was my first version of this script. I wrote the natural loop, awaiting each check inside it, and the program checked one order, waited for the answer, then moved on to the next. It worked, and it took the full seven seconds, one wait stacked on the next. Here is that version, with its output:</p>
-<p>The fix was one line: gather the four coroutines instead of awaiting them in a loop. Same checks, same waits, same results, but the elapsed time dropped from 7.01 seconds to 2.50. The lesson is that await inside a loop means finish this one, then start the next, while gather means start them all, and tell me when the last one finishes.</p>
-<p>First, forgetting await. Calling a coroutine without awaiting it does not run it, it hands back a coroutine object and prints a warning at shutdown. This is the real output from a script that made that mistake:</p>
-<p>The fix is to await the call, or pass it to asyncio.gather, and to treat that warning as a bug, not noise, because the check never ran at all.</p>
-<p>Second, awaiting inside a loop, as in the example above. The symptom is a program that works but takes the full summed time, 7.01 seconds here instead of 2.50. The fix is asyncio.gather, or asyncio.create_task for checks that should start right away.</p>
-<p>Third, a timeout that cancels the task. Wrapping a slow check in asyncio.wait_for with a short timeout raises TimeoutError and cancels the check, so the order never gets an answer. This is the real output from a check given half a second for a two second wait:</p>
-<p>The fix is to catch TimeoutError and decide: retry once, mark the order as unchecked, or allow a longer wait, instead of letting the exception end the whole run.</p>
-<p>Asyncio is worth learning the moment a program waits on more than one thing. The example above is the whole case in miniature: same four checks, same waits, 7.01 seconds one way and 2.50 the other, with no extra libraries and no threads to manage. The price is a new habit: every wait has to be awaited, and the code has to be written for the loop. If your next script spends its time waiting on a network or a database, try it on that one script first. Run it, time it, and let the elapsed seconds make the decision for you.</p>
-<p>Originally published at https://practicaldevblog.blogspot.com/2026/11/python-asyncio-running-jobs-at-same.html</p>
+                <p>Piye is live on Mac and Linux. One project. Build it visually, or write the code.</p>
+<p>After more than a year of building, Piye is live on Mac and Linux.</p>
+<p>Piye is one desktop app where you build software visually or write the code, on the same project. This post is about the code side, because that's where most of the hard work went.</p>
+<p>AI agents read your files, but they can't see what's actually happening: the error in the terminal, the breakpoint you hit, the crash on the phone simulator, the dev server that died. So they guess, explore the project again and again, and burn tokens doing it.</p>
+<p>Piye Code is a full code editor, built from scratch rather than forked from another editor. Its own tools report to the agent:</p>
+<p>Because the agent gets these reports directly, it spends less time searching and more time fixing the real problem. In one of our tests, it found the two causes of a performance bug in Piye's own code in 12 minutes, for about €2 of AI.</p>
+<p>The agent never acts behind your back: commits, pushes and deploys each need your explicit approval.</p>
+<p>On Piye's own credits, code work is charged at the AI's cost, so you're not paying a markup to write code.</p>
+<p>A separate window for running many agents on many projects at once, showing which are running, done or waiting on you.</p>
+<p>Founders can describe an app in Piye Visual and get a real website or a native iPhone, iPad and Android app, see it on real simulators, and publish to the web, the App Store and Google Play.</p>
+<p>When they need a developer, Handoff creates a private GitHub repo and branch and writes a HANDOFF.md briefing: what's built, what's missing, which keys are needed. You open it in Piye, or in any editor you like. The project is a normal folder on your computer, with no lock-in.</p>
+<p>Free on Mac and Linux, with 750 credits to start (no card): piye.dev</p>
+<p>I'd really like honest feedback from developers: what's confusing, what breaks, what you'd need before using it every day.</p>
 <p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
 <p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
 <p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
 <p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/practicaldevblog/python-asyncio-running-jobs-at-the-same-time-without-threads-4chb" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/aldgar/i-built-a-desktop-app-where-the-ai-agent-can-see-your-running-app-not-just-your-code-2jm9" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

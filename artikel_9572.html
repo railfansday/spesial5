@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dover Startup Jobs</title>
+    <title>How to Build an MCP Server That Checks npm Packages Before AI Installs Them</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9572.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Dover Startup Jobs</h1>
+        <h1>How to Build an MCP Server That Checks npm Packages Before AI Installs Them</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/XJJdxU0vNOOwAWTAbTpxZ6VZmou1-9x83cyp.png" alt="How to Build an MCP Server That Checks npm Packages Before AI Installs Them" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/XJJdxU0vNOOwAWTAbTpxZ6VZmou1-9x83cyp.png" alt="How to Build an MCP Server That Checks npm Packages Before AI Installs Them" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Where great startups meet great candidates
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/dover?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1310843?app_id=339">Link</a>
-          </p></p>
+                <p>Senior Technical Writer | Software Developer</p>
+<p>Senior Technical Writer | Software Developer</p>
+<p>Senior Technical Writer | Software Developer</p>
+<p>Build a remote MCP server on Cloudflare Workers with the 2026-07-28 spec and TypeScript SDK v2. It checks npm packages for typos, deprecation and known vulnerabilities before your AI installs them.</p>
+<p>AI coding assistants are good at writing npm install lines. They're less good at knowing whether the package in that line is real, abandoned, or a trap.</p>
+<p>I wanted my assistant to check before it suggests anything. So I built a small MCP server for it: two tools, running on Cloudflare Workers, using the new stateless MCP spec from July 2026. It's free to host and needs no API keys.</p>
+<p>This post walks through the build. It also covers the parts that surprised me, and a few of them changed how the tools work.</p>
+<p>The server is called pkgscout. It exposes two tools:</p>
+<p>Both tools only read public data from the npm registry. That keeps the server simple, and it means the free Workers plan is enough.</p>
+<p>Until this year, a remote MCP server kept a session open with each client. The client sent an initialize request, the server returned an Mcp-Session-Id, and every request after that had to reach a server that remembered the session. On a platform like Workers, where any request can land on any instance, that was awkward.</p>
+<p>The 2026-07-28 spec removes that handshake. Each request carries what the server needs, so any instance can answer it. For a Worker, that's the natural model. You build a fresh server for each request, answer it, and throw it away.</p>
+<p>SDK v2 is built around this. It also splits the old single @modelcontextprotocol/sdk package into separate client and server packages, so older tutorials won't match what you see when you install it.</p>
+<p>The Wrangler config is short. Turning on observability gives you logs in the Cloudflare dashboard without any extra setup.</p>
+<p>One thing I expected to fight with and didn't: JSON Schema validation on Workers. Validators that compile schemas with eval don't run there. SDK v2 checks the runtime and uses a Workers-safe validator automatically, so there was nothing to configure.</p>
+<p>All the data comes from registry.npmjs.org. I put the registry calls in their own file, src/registry.ts, and the MCP code just calls those functions.</p>
+<p>My first version fetched the full package document (the "packument") to get everything in one request. That works for small packages. For a big one, it's a different story. When I checked, the typescript packument was about 16 MB, because it lists every version ever published. Its /latest manifest was under 5 KB.</p>
+<p>That matters on Workers. The free plan gives each request 10 ms of CPU time. Parsing megabytes of JSON for one lookup is a good way to blow through that.</p>
+<p>So the server asks for /<name>/latest instead. Every registry call goes through one small helper:</p>
+<p>The cf.cacheTtl option is a nice Workers detail. Cloudflare caches the registry response at the edge, so when the model asks about zod three times in one conversation, the repeat calls can be answered from cache instead of going back to npm.</p>
+<p>The manifest doesn't include download counts. The registry's search endpoint does, so I called /-/v1/search?text=<name> and picked the hit with the matching name.</p>
+<p>That worked for hono. It didn't work for request, the old HTTP client. I asked search for request and got retry-request, teeny-request, @types/request and 22 others. The request package itself wasn't in the top 25 results.</p>
+<p>I tried two more deprecated packages, querystring and left-pad. Neither showed up in its own top 25 either. Search clearly ranks deprecated packages low. That's sensible for humans browsing npm. It's bad for a tool whose job is to tell the model "this package is deprecated."</p>
+<p>The fix was to get downloads from npm's downloads API and keep search as a fallback:</p>
+<p>With that change, request came back with its deprecation notice and about 14 million downloads last week. Deprecated since 2020, and still one of the most downloaded packages on npm. That's exactly the kind of package a model will keep suggesting.</p>
+<p>This is the part that made the project worth writing about.</p>
+<p>When a package doesn't exist, the most useful thing the tool can do is point at the package the model probably meant. My first attempt passed the misspelled name to npm search and returned the top five results.</p>
+<p>I tested it with reqeusts, a plausible typo for requests. Search returned simple-server-request, clientside-api-request, nifty-guard, @yof/cli and @tutorbot/api-client. None of them had more than 200 weekly downloads, and none had anything to do with HTTP requests.</p>
+<p>That's worse than returning nothing. A model reading "similar packages" will happily suggest one of them.</p>
+<p>So I stopped asking search and generated the typos myself. Most misspellings are two letters swapped or one letter dropped, so the server builds those variants and checks which ones exist:</p>
+<p>The cap matters. The Workers free plan allows 50 outbound fetches per request. Without a limit, a long package name would generate enough variants to hit it.</p>
+<p>With this change, reqeusts returned three real packages: requests, reqests and reqeust. I looked them up one by one, and none of them is what you want.</p>
+<p>Three typo neighbours, three different traps. Returning bare names wasn't enough, so each suggestion now comes with the same warnings as a normal lookup:</p>
+<p>I could have returned raw fields and let the model work it out. But "version": "0.0.1-security" only means something if you already know npm's conventions. "Do not install" leaves nothing to interpret.</p>
+<p>Here's what inspect_package returns for reqeusts now (trimmed):</p>
+<p>The second tool uses the endpoint npm audit talks to. You POST a map of package names to versions, and it returns matching advisories:</p>
+<p>The catch is that it wants exact versions. If you send ^4.17.0, you won't get a useful answer. Models love sending ranges, because that's what they see in package.json files. So the input schema rejects anything that doesn't start with a real version number:</p>
+<p>When validation fails, the SDK sends the message back to the model as a tool error instead of crashing the request. The model sees packages.0.version: Use an exact version and can fix its own call.</p>
+<p>Testing lodash@4.17.15 returned five advisories, three of them rated high. Then I tried 4.17.21, the version a lot of us remember as "the fixed one." It still matches two advisories: a high-severity code injection in _.template and a prototype pollution bug in _.unset. The current release is 4.18.1.</p>
+<p>That's a good example of why this tool is useful. A model trained on older code will confidently suggest 4.17.21 as the safe version.</p>
+<p>With the registry code done, the MCP part is short. Each tool gets a name, a description written for the model, a schema, and a handler:</p>
+<p>createMcpHandler takes a factory function, not a server. It calls buildServer() for each request, which is the whole idea of the new spec. Nothing is kept between requests, so it doesn't matter which Cloudflare instance answers.</p>
+<p>It also handles older clients. By default, requests that use the 2025 protocol are served statelessly too, so a client that hasn't updated yet still works.</p>
+<p>For auth I used a single bearer token stored as a Worker secret. safeEqual (in the repo, about ten lines) hashes both values and compares the hashes, so the check takes the same time whether the token is close or completely wrong. A shared token is fine for a personal server. If you plan to share yours, the new spec's OAuth rules are the next step.</p>
+<p>To test without wiring up a whole AI client, I wrote a short script with the v2 client package:</p>
+<p>That versionNegotiation line cost me some time. Without it, the v2 client still speaks the 2025 protocol. Everything worked, so nothing looked wrong. I only noticed because I logged which protocol each request used and every one said legacy. Setting mode: "auto" makes the client try the 2026 protocol first.</p>
+<p>You can see the difference in the wrangler dev output. With the old protocol, the client opens with a handshake and a GET /mcp that the server rejects with a 405. With the new one, it's just a series of POST /mcp requests, each one complete on its own.</p>
+<p>If you'd rather click than script, MCP Inspector v2 can talk the new protocol too. Start it with --protocol-era modern and it shows the negotiated version right on the connection card:</p>
+<p>That printf %s is there for a reason. The first time, I pasted the token into the secrets screen in the dashboard and every request came back 401. The value the Worker stored didn't match the one in my terminal, most likely because of a stray character from the paste. Piping it from the same shell variable your client uses rules that out. A quick check before you wire up a client:</p>
+<p>A 401 means the token is wrong. A 415 means auth passed and the server just wants a real MCP request.</p>
+<p>Wrangler prints your URL, something like https://pkgscout.<your-subdomain>.workers.dev. Each tool call writes one JSON log line with the tool name, the outcome and how long it took, and you can read them under Observability in the Cloudflare dashboard.</p>
+<p>Then ask for something that needs a package. A good test is adding lodash@4.17.21 to a small Node script, since that's the version a lot of older code pins. This is the check the assistant should run first, done by hand in MCP Inspector:</p>
+<p>The MCP part of this project was the easy part. Most of the work went into the data: noticing that search hides deprecated packages, that typo suggestions can point at malicious ones, and that the "safe" lodash version isn't safe anymore. That's where a tool like this earns its place in your editor.</p>
+<p>The code is on GitHub: https://github.com/tarunsinghofficial/pkgscout. If you try it with a misspelling that slips past it, I'd like to hear about it.</p>
+<p>Senior Technical Writer | Software Developer</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/dover" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-to-build-an-mcp-server-that-checks-npm-packages-before-ai-installs-them?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
