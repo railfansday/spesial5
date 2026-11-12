@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Migrating Your GitHub CI to Hugging Face Jobs</title>
+    <title>Featuring Every Eval Ever Results on Hugging Face Model Pages</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10076.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,41 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Migrating Your GitHub CI to Hugging Face Jobs</h1>
+        <h1>Featuring Every Eval Ever Results on Hugging Face Model Pages</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/github-ci-hf-jobs/thumbnail.gif" alt="Migrating Your GitHub CI to Hugging Face Jobs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/eee_commevals/eee_commevals_banner.png" alt="Featuring Every Eval Ever Results on Hugging Face Model Pages" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/github-ci-hf-jobs/thumbnail.gif" alt="Migrating Your GitHub CI to Hugging Face Jobs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/eee_commevals/eee_commevals_banner.png" alt="Featuring Every Eval Ever Results on Hugging Face Model Pages" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>If you have a GitHub repository and you have GitHub Actions enabled, you probably use GitHub-hosted runners for CI. That is the default for many projects because it is simple: add a workflow, write runs-on: ubuntu-latest, and GitHub gives you a machine.</p>
-<p>That default is convenient, but it also has limits. GitHub Actions can be slow or down for maintenance, the hosted machines are generic, and GPU access is not something most open-source projects can just turn on. For Trackio, those limits started to matter. We wanted both reliable CPU CI for basic unit tests and frontend checks, but also GPU CI for tests that need to run on actual CUDA hardware.</p>
-<p>So built an alternative: keep GitHub Actions in charge of CI, but run the jobs on Hugging Face Jobs.</p>
-<p>The result: Trackio's CI now runs on Hugging Face Jobs and streams back real-time logs, cutting our CI time for CPU jobs by about 30% and enabling a whole new test suite that runs on GPU machines!</p>
-<p>In this article, we explain step-by-step how to recreate the same setup for your GitHub repo. If you are using an agent, you can point it to this article, since we provide CLI instructions alongside browser-based instructions for us humans.</p>
-<p>Let's start with a quick intro to Hugging Face Jobs!</p>
-<p>Hugging Face Jobs lets you run commands or scripts on Hugging Face's serverless infrastructure with almost any hardware flavor. A Job is essentially:</p>
-<p>That makes Jobs a natural fit for CI. CI jobs are already command-driven, already run in clean environments, and often benefit from choosing exactly the right hardware. For ML libraries, the GPU case is especially compelling: you can run a test suite on real GPU hardware without maintaining your own always-on runner.</p>
-<p>The key step is connecting GitHub Actions to HF Jobs, which we describe below.</p>
-<p>For this setup, we created huggingface/jobs-actions, a small bridge that turns a GitHub Actions job into an ephemeral self-hosted runner running inside an HF Job.</p>
-<p>From GitHub's point of view, this is just a self-hosted runner. From Hugging Face's point of view, it is just a Job that launches a container to run the workflow steps from the repo’s GitHub Actions.</p>
-<p>The first thing you need is the dispatcher. This is a small Docker Space that receives GitHub workflow_job webhook events and launches HF Jobs in response.</p>
-<p>Create this first because the GitHub App needs a webhook URL, and that URL comes from the Space. This Space should be under your own namespace or under a Hugging Face org that you have write access to.</p>
-<p>Go to huggingface/jobs-actions-dispatcher and click Duplicate this Space.</p>
-<p>Use cpu-upgrade for real CI so the dispatcher stays available for GitHub webhooks. cpu-basic is fine for testing and will probably work, but it can sleep after inactivity; if GitHub's webhook arrives while it is waking up, the workflow may stay queued forever.</p>
-<p>After it builds, open the duplicated Space. You will see a section that says "Required Space secrets," which you can ignore for now. The landing page should display the GitHub App webhook URL you need in the next step. It will look like this:</p>
-<p>If you'd prefer to set up the dispatcher Space with an agent or use a CLI workflow:</p>
-<p>Next, create and install the GitHub App from the dispatcher Space itself. This App needs permission to listen for queued workflow jobs and create ephemeral self-hosted runner registration tokens.</p>
-<p>In the setup form, enter the GitHub repo whose CI should run on HF Jobs:</p>
-<p>Then click the button to create the GitHub App. GitHub will ask you to choose a name for the App; the name can be anything, as long as it is available in your GitHub account or org. After you submit, the final screen tells you exactly how to upload the App credentials to the dispatcher Space with the hf CLI.</p>
-<p>Important note: you will need to provide an Hugging Face token that has permissions to launch Jobs, corresponding to your personal account or an org under which Jobs should be charged. This token should be saved as the HF_TOKEN secret in your dispatcher Space.</p>
-<p>Finally, you will install the App on the same GitHub repo you entered in the Space. In the Trackio setup, we installed it on gradio-app/trackio.</p>
-<p>The GitHub App manifest flow is still browser-based, but an agent can follow the same Space-driven path:</p>
-<p>Paste $GITHUB_REPO into the Space, click the GitHub App creation button, choose any available App name, and follow the generated GitHub instructions.</p>
-<p>After the App exists, install it on your repo from the App settings page. For a GitHub org, the installation settings are under:</p>
-<p>At this point, the dispatcher Space should be configured. The GitHub App setup flow generated the commands that upload the App credentials, webhook secret, and Hugging Face token to the Space.</p>
-<p>By default, HF Jobs are launched under the same namespace as the dispatcher Space. Optionally, set HF_NAMESPACE as a Space variable if you want to bill jobs to a different Hugging Face user or org:</p>
-<p>The token you set in Step 2 should correspond to this namespace.</p>
-<p>The actual workflow change is small. Instead of:</p>
-<p>use one of the labels handled by the dispatcher:</p>
-<p>For any GitHub Action you'd like to run on HF Jobs, this 1-line change is all you need!</p>
-<p>To add a minimal smoke-test workflow from the CLI:</p>
-<p>You should be able to see logs just like a regular GitHub Action—for example, in this Trackio PR #565.</p>
-<p>Our first CPU setup used ubuntu:22.04 and installed missing system packages during every run. That worked, but it was slower than it needed to be. GitHub's ubuntu-latest image includes a lot of developer tooling by default; a bare Ubuntu image does not.</p>
-<p>For Trackio, the UI tests need Playwright browsers, Node, ffmpeg, sqlite, git, and normal Linux build dependencies. Hugging Face Jobs supports using any Docker image, so we switched to the Microsoft Playwright image, which worked well:</p>
-<p>Here are the numbers from the Trackio CI:</p>
-<p>The biggest win was GPU CI. The Trackio GPU check ran on HF Jobs and passed in 45s, costing less than a cent at the t4-small rate for that duration.</p>
-<p>The CPU result was also encouraging. With the right image, the Linux test job was faster than the GitHub-hosted baseline. That suggests HF Jobs can be a practical CI backend, especially for ML projects that need custom images or accelerators.</p>
-<p>Logs were another pleasant surprise. GitHub Actions logs are useful, but the web UI can be heavy for large logs. HF Jobs logs are easy to fetch from the CLI:</p>
-<p>That makes them easy to inspect with local tools or coding agents. In our bridge, we also mirrored the GitHub Actions job log into the HF Job log, so either system had enough information to debug a run.</p>
-<p>Finally, although we didn't need them for Trackio's CI, HF Jobs also supports mounting volumes, which can be very helpful if you need to load datasets or models from Hugging Face quickly as part of your CI.</p>
-<p>Hopefully, this gives you all you need to try HF Jobs for running your GitHub Actions!</p>
-<p>GitHub CI is limitless and free. In Huggingface now I can't even run more 3 CPU spaces.</p>
-<p>Hi @k-l-lambda  what error do you see when try to run more than 3 CPU Spaces? Can you share a bit more about your CI setup?</p>
-<p>Please feel free to drop a comment if you need any help migrating your CI!</p>
+                <p>Every Eval Ever (EEE) and Hugging Face Community Evals are now intercompatible. We enable cross-posting and interpreting evaluation results, while linking to open models, leaderboards, and a unified standardized metadata store.</p>
+<p>EEE launched in February 2026 as a project of the EvalEval Coalition, the first cross-institutional effort to improve how AI evaluation results get reported by both first and third party evaluators. Hugging Face launched Community Evals in February 2026 to decentralize how benchmark scores get reported on the Hub. Combined, they patch gaps in how users, researchers, and policymakers trust, understand, and choose evaluations and models.</p>
+<p>Evaluation results are how we measure model capabilities, compare models against each other, and reason about safety and governance, and yet they are scattered and hard to compare. They live in papers, leaderboards, blog posts, and harness logs, among others, each in its own format. The same model on the same benchmark often returns different scores depending on who ran it and how; LLaMA 65B, for one, has been reported at both 63.7 and 48.8 on MMLU. These gaps can arise from evaluation settings that we found are commonly unreported.</p>
+<p>EEE is our fix for the reporting side. It's one JSON schema for an evaluation result that records:</p>
+<p>The schema was built with feedback from researchers and policy researchers, and it takes in results from any source, so harness logs, leaderboard scrapes, and paper numbers all end up in the same shape. The GitHub repository has the converters, examples, and a contributor guide. Since launching, the datastore on Hugging Face has grown to around 229,000 evaluation results across more than 22,000 models and 2,200 benchmarks, pulled from 31 different reporting formats. Reproducing just those runs from scratch would cost somewhere in the hundreds of thousands of dollars, which is a reasonable argument for not letting the data scatter once someone has paid to generate it.</p>
+<p>Learn more about the schema and how to contribute here.</p>
+<p>Now, it comes with better integration and attribution. Contributors can now send EEE results to Hugging Face Community Evals. We built a converter that takes your EEE records and writes the small YAML files Hugging Face expects, so you don't have to keep the same result in two formats by hand.</p>
+<p>This is new functionality for everyone who reports or reads evaluations, not only existing EEE contributors. First-party evaluators reporting on their own models and third-party evaluators reporting on someone else's can both submit to Community Evals and to EEE, and anyone browsing the Hub gets results that trace back to a full record. When you submit your data through your organization's official Hugging Face account, your results show up with a verified checkmark on EvalEval, a signal to readers that the numbers come straight from the source. The rest of this post walks through what Community Evals are and what the converter does.</p>
+<p>Hugging Face Community Evals has two sides.</p>
+<p>A benchmark lives in a dataset repo that registers itself by adding an eval.yaml. Once registered, that dataset page collects and displays a leaderboard of every score reported against it across the Hub. The list of official benchmarks grows over time.</p>
+<p>A model's scores live in .eval_results/*.yaml inside the model repo. They show up on the model card and feed into the matching benchmark leaderboard. Both the model author's own results and results submitted by anyone else through a pull request get aggregated, and each score carries a badge saying whether it was author-submitted, community-submitted, or independently verified. Anyone can add a score to any model by opening a PR with the right YAML file, and the model author can close PRs or hide results on their own repo.</p>
+<p>Here is what one of these leaderboards looks like:</p>
+<p>Community Evals Leaderboard for Humanity's Last Exam on the Hub</p>
+<p>This is where EEE and Community Evals fit together. When you send a result to both, two things happen: First, your score appears on the Hugging Face model page and gets pulled into the benchmark's leaderboard. And second, it carries a source badge that links straight back to the full EEE record, where the generation config, the harness version, the reproducibility notes, and any instance-level data live.</p>
+<p>An Evaluation (MMLU-Pro) from EEE Datastore (a) cross-linked at the file level to a Hugging Face model card (b). The Source EvalEval badge links to the full JSON record.</p>
+<p>The two destinations do different jobs toward the same goal. Hugging Face puts your result where people look at models, with a link back to the source. EEE keeps the full structured record that makes the result interpretable, and powers Eval Cards on top of it. Send your data to both and the same evaluation ends up visible and legible at once, which is the point of reporting one at all.</p>
+<p>You can see that cross-compatibility below. The same GPQA scores that surface on the model card above also render in Eval Cards, which composes the EEE run data with benchmark and model metadata into one interpretable record. Same evaluation, a different surface:</p>
+<p>Hugging Face stores eval scores in the model repo as a YAML under .eval_results/. The required fields are just the benchmark dataset, the task, and the value. The source block is the part that creates the backlink to EEE.</p>
+<p>The converter fills this in from your existing records. It maps source_data.hf_repo to dataset.id, evaluation_name to task_id, score_details.score to value, and evaluation_timestamp to date, then drops in the datastore object URL as the source link to the per-record EEE JSON. It currently handles four of the official benchmarks: MMLU-Pro, GPQA, HLE, and GSM8K.</p>
+<p>The converter does more than reshape fields. You point it at one EEE datastore collection and it downloads that collection along with the records it references, checks the object hashes, and finds the scores that map to a supported benchmark. Before it writes anything live it audits what already exists: it reads every .eval_results YAML on the model's main branch and in open PRs, and compares by dataset and task rather than by filename. If a score is already there it is marked already_present, if a different score is there it is flagged as a score_conflict, and if the model repo doesn't resolve on the Hub it is marked missing_hf_model. Everything else is marked ready.</p>
+<p>Nothing gets pushed without your sign-off. The tool writes local YAML previews and a review file you can inspect, shows a report of what is ready and what needs attention, and only opens PRs after you type OPEN PRS and enter a commit message. Reruns reuse the cached results for a collection unless you pass --force.</p>
+<p>The converter's review step. Excluded entries (here, models with no matching Hub repo) are listed with their EEE source URLs, and the ready PRs wait on an explicit OPEN PRS confirmation.</p>
+<p>Submit your full records to the EEE datastore.</p>
+<p>Utilizing EEE requires only one additional step, which the converter largely automates. The community eval converter tool can be found in the GitHub repository. To process a collection, execute the following:</p>
+<p>Review the previews and the report it generates, then type OPEN PRS when you're ready to submit. Full documentation for the schema, CLI, and converters is at evalevalai.com/every_eval_ever/hf-community-evals.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/github-ci-hf-jobs" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/eee-community-evals" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

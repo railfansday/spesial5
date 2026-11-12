@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>London meetup - update</title>
+    <title>Let’s Write a PostScript Interpreter</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9992.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,25 +15,62 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>London meetup - update</h1>
+        <h1>Let’s Write a PostScript Interpreter</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://lobste.rs/touch-icon-144.png" alt="London meetup - update" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://lobste.rs/touch-icon-144.png" alt="London meetup - update" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>After discovering that the original pub is indeed very busy on Sundays and finally finding a pub that will accept a large table booking, the Lobsters London meetup is now taking place at The Counting House, 50 Cornhill, London EC3V 3PD.</p>
-<p>My slim chance of making it down has narrowed to zero chance.</p>
-<p>Have fun, hope to make it along to meet #2 in future (or a northern meet next time…)</p>
-<p>I appreciate the collab with Handmade London! Please keep a CoC handy -- you're welcome to just reference, link or even steal ours. Maybe throw an AI Policy in there.</p>
-<p>Humans gonna human eventually: e.g. you may get raided by AI boosters who start mocking the tradcoders. Things devolve into insults and the group then blames the organizer for being unprepared. (True story btw.)</p>
-<p>Unlikely scenarios do occur, so it's nice to have some error-handling :D</p>
-<p>Nothing deader than the City on a weekend is there?</p>
-<p>Could you resend the invite for the WhatsApp group? it's expired.</p>
-<p>I'm hoping to make it on Sunday! Would it be possible to get an invite link to the WhatsApp group as well please?</p>
+                <p>I think the most trustworthy programming languages are those which are human-scale: languages which a single user could reasonably write from scratch on some readily-available computational substrate. Knowing how to make your own tools provides a satisfying feeling of power.</p>
+<p>Today I’d like to take you on a brisk journey through the process of implementing an interesting subset of the PostScript programming language. We will ignore or simplify many features of the language, and we will elide most error-handling for simplicity, but every PostScript example we discuss will be a well-formed PostScript program which has the same behavior in our toy subset and a standard PostScript interpreter like Ghostscript.</p>
+<p>PostScript is primarily designed for describing printed documents: it has a rich vocabulary of features for creating and manipulating raster and vector graphics. For the purposes of this article I will narrowly focus on its mechanics as a general-purpose programming language.</p>
+<p>PostScript programs are composed of a series of whitespace-delimited tokens, plus a few special characters (% / ( ) < > [ ] { }) which immediately terminate the preceding token and begin a new one. The % character begins a line-comment. The / character can prefix a literal name, which we’ll discuss in more detail momentarily. The ( ) and < > characters enclose PostScript strings, which we will omit from our interpreter for simplicity. The [, ], { and } characters are used to enclose PostScript arrays and procedures, respectively, but are ordinary self-delimiting tokens. Given a PostScript program fragment:</p>
+<p>The PostScript execution model centers around several stacks: chiefly, an operand stack which is used to pass arguments between operators and a dictionary stack which is used to associate names with values.</p>
+<p>The above program fragment is executed as follows:</p>
+<p>It’s also worth taking a moment to touch on PostScript arrays. The [ operator pushes a special value called mark onto the operand stack, and the ] operator pops all of the values of the operand stack down to the topmost mark and builds an array from them:</p>
+<p>We’ll discuss programming in PostScript in more detail later, but this is enough to get building.</p>
+<p>Our PostScript interpreter will be written in a very concise style of JavaScript that is influenced by the philosophy of Forth, an influential ancestor of PostScript:</p>
+<p>Here are a few routines which illustrate this style:</p>
+<p>If you’re finding yourself struggling to “skim” code in this style, try to slow down and read each definition carefully, character-by-character. You may also find it useful to experiment with each definition in your browser’s JavaScript console as you go along.</p>
+<p>The first step in writing any interpreter is determining how we’ll represent data, in this case describing PostScript datatypes in terms of JavaScript datatypes:</p>
+<p>Using primitive JavaScript values to represent most of these types will be particularly helpful for writing the definitions of all the operators.</p>
+<p>Here are a set of definitions for constructing, accessing, and identifying various PostScript values:</p>
+<p>Next, we need to translate PostScript syntax into the above data representations. We can use a JavaScript RegExp to split an input program into a sequence of tokens- line-comments (which can be discarded), special delimiters ([]{}), names, and numbers (which can be coerced into JavaScript numbers). While it is possible to implement { and } as PostScript operators, it is simpler for our purposes to cluster the tokens of procedures together as we parse the program:</p>
+<p>The parse(x) routine will break it down into</p>
+<p>The PostScript operand stack and dictionary stack can be represented as simple JavaScript global arrays- o and d, respectively:</p>
+<p>Some simple routines for manipulating these stacks:</p>
+<p>Executing pre-tokenized PostScript programs is very simple: we execute each token in sequence. Names are looked up in the dictionary stack and the corresponding operator or procedure is called; anything else is pushed onto the operand stack. Since operators are JavaScript functions, when we execute them we’ll pop a number of values from the operand stack corresponding to their argument list count and apply() them to the function. If the function returns something other than undefined, we’ll push the result onto the stack:</p>
+<p>The large bulk of the machinery of our interpreter lives in the primitive operator definitions, but each is individually fairly simple, with the possible exception of the for operator, which needs a few helper routines for generating stepped ranges. Many of these operators are pure JavaScript functions which do not directly access or modify either stack and can be tested and understood in isolation.</p>
+<p>To access the primitives from within exec() and execproc() we need to install them into the dictionary stack. Here’s a procedure to initialize both stacks:</p>
+<p>We can now execute programs and observe their effects on the stacks:</p>
+<p>For interactive use, we can wire everything up into a Read-Eval-Print-Loop (REPL). We’ll need at least some rudimentary output capabilities, so for starters we can install an extra primitive == which pops a value from the stack and displays it:</p>
+<p>If we’re using Node.js we have to write our REPL in an event-driven style:</p>
+<p>If we’re using QuickJS we can write a more straightforward infinite loop instead:</p>
+<p>Either way, we now have a fancy PostScript-style desk calculator:</p>
+<p>The entire interpreter in one piece, for reference.</p>
+<p>Our interpreter offers a very small subset of the primitive operators supplied with standard PostScript. There are some fun finger-exercises to be had in fleshing out more of that set in terms of what we already have:</p>
+<p>Try your hand at abs- compute the absolute value of a number:</p>
+<p>How about min- find the minimum of two values on the stack?</p>
+<p>It can also be worthwhile to try some classic functional programming exercises, like recursively computing the Fibonacci sequence:</p>
+<p>There are, of course, more idiomatic iterative approaches:</p>
+<p>I quite enjoy the way that enclosing PostScript expressions in [] acts like a more composable alternative to list comprehensions.</p>
+<p>Here’s a utility routine for making a copy of an array with the elements in reversed order:</p>
+<p>How many approaches can you think of for concatenating a pair of arrays, given the primitive operators we have at hand?</p>
+<p>Much of my experience with concatenative programming languages like PostScript is with Forth, which uses slightly different names and factorings for most operators. Fortunately, PostScript is fairly malleable:</p>
+<p>PostScript’s roll and index operators make it easier to reach deep into the stack than the usual Forth stack-twiddlers, but this also demands the programmer retain a larger perspective of the contents of the stack in their limited working memory as they read. Even rot/-rot can be controversial “code smells” to some Forthwrights.</p>
+<p>In Forth, we can freely manipulate the “return stack” as well as the operand stack, usually with words like r> and >r for transferring values from the top of one stack to the other. Forth control structures will often store things like loop indices on the return stack between iterations in order to prevent them from interfering with the flow of arguments within the loop body. It can also be handy for temporarily stashing intermediate results to keep the operand stack shallow. PostScript has an “execution stack” for nested procedure bookkeeping, but it is not under direct control of the programmer; as a result we can’t use these sorts of idioms.</p>
+<p>The dictionary stack offers nestable scopes for named local variables:</p>
+<p>It’s even possible to build tidy abstractions around this pattern:</p>
+<p>But since this approach produces dynamic rather than lexical scopes, it is not transparent to procedures we exec. Without an auxiliary stack to “hide” intermediate state, it can be surprisingly challenging to write higher-order functions. Try defining the equivalent of a Lispy (cond) conditional in PostScript and you’ll see what I mean:</p>
+<p>PostScript has a tantalyzing bind operator (not implemented in our interpreter) which is meant to help sidestep the footguns of dynamic scope by eagerly replacing references to operators within a procedure with their values at bind-time. However, since bind concerns itself only with resolving operators, it isn’t useful for simulating general-purpose lexical scope; we’d need to build a more general mechanism for performing named substitutions within procedures.</p>
+<p>My preceding semantic quibbles aside, I think PostScript is quite elegant, and well worth learning. Now that we have an interpreter for the language which fits on a printed page or two, we have an inviting foundation for experimentation. I’m sure that over the course of our brief explorations you’ve already thought of many new primitive operators you could add- sin, cos, pi, perhaps more tools for manipulating data like type, cvx, and cvlit, or a richer set of input and output routines?</p>
+<p>You might find it worth the added bulk to add more robust error-handing. For example, you could make load tolerate undefined names and return a placeholder:</p>
+<p>You could also implement a more complete range of datatypes and syntax, like (strings), non-integer numbers, and the <</a 11 /b 22>> syntax for dictionary “literals”.</p>
+<p>Take your budding new human-scale programming environment in whatever direction you like. Enjoy the feeling of power.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lobste.rs/s/miyll7/london_meetup_update" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://beyondloom.com/blog/postscript.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

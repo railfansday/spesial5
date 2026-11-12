@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Ethical Guidelines for developing the Diffusers library</title>
+    <title>Train your ControlNet with diffusers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11131.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,42 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Ethical Guidelines for developing the Diffusers library</h1>
+        <h1>Train your ControlNet with diffusers</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/136_train-your-controlnet/thumbnail.png" alt="Train your ControlNet with diffusers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/136_train-your-controlnet/thumbnail.png" alt="Train your ControlNet with diffusers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>ControlNet is a neural network structure that allows fine-grained control of diffusion models by adding extra conditions. The technique debuted with the paper Adding Conditional Control to Text-to-Image Diffusion Models, and quickly took over the open-source diffusion community author's release of 8 different conditions to control Stable Diffusion v1-5, including pose estimations, depth maps, canny edges, sketches, and more.</p>
+<p>In this blog post we will go over each step in detail on how we trained the Uncanny Faces model - a model on face poses based on 3D synthetic faces (the uncanny faces was an unintended consequence actually, stay tuned to see how it came through).</p>
+<p>Training your own ControlNet requires 3 steps:</p>
+<p>Planning your condition: ControlNet is flexible enough to tame Stable Diffusion towards many tasks. The pre-trained models showcase a wide-range of conditions, and the community has built others, such as conditioning on pixelated color palettes.</p>
+<p>Building your dataset: Once a condition is decided, it is time to build your dataset. For that, you can either construct a dataset from scratch, or use a sub-set of an existing dataset. You need three columns on your dataset to train the model: a ground truth image, a conditioning_image and a prompt.</p>
+<p>Training the model: Once your dataset is ready, it is time to train the model. This is the easiest part thanks to the diffusers training script. You'll need a GPU with at least 8GB of VRAM.</p>
+<p>To plan your condition, it is useful to think of two questions:</p>
+<p>For our example, we thought about using a facial landmarks conditioning. Our reasoning was: 1. the general landmarks conditioned ControlNet works well. 2. Facial landmarks are a widespread enough technique, and there are multiple models that calculate facial landmarks on regular pictures 3. Could be fun to tame Stable Diffusion to follow a certain facial landmark or imitate your own facial expression.</p>
+<p>Okay! So we decided to do a facial landmarks Stable Diffusion conditioning. So, to prepare the dataset we need:</p>
+<p>For this project, we decided to go with the FaceSynthetics dataset by Microsoft: it is a dataset that contains 100K synthetic faces. Other face research datasets with real faces such as Celeb-A HQ, FFHQ - but we decided to go with synthetic faces for this project.</p>
+<p>The FaceSynthetics dataset sounded like a great start: it contains ground truth images of faces, and facial landmarks annotated in the iBUG 68-facial landmarks format, and a segmented image of the face.</p>
+<p>Perfect. Right? Unfortunately, not really. Remember the second question in the "planning your condition" step - that we should have models that convert regular images to the conditioning? Turns out there is no known model that can turn faces into the annotated landmark format of this dataset.</p>
+<p>Here you can find the code used to convert the ground truth images from the FaceSynthetics dataset into the illustrated mask and save it as a Hugging Face Dataset.</p>
+<p>Now, with the ground truth image and the conditioning_image on the dataset, we are missing one step: a caption for each image. This step is highly recommended, but you can experiment with empty prompts and report back on your results. As we did not have captions for the FaceSynthetics dataset, we ran it through a BLIP captioning. You can check the code used for captioning all images here</p>
+<p>With that, we arrived to our final dataset! The Face Synthetics SPIGA with captions contains a ground truth image, segmentation and a caption for the 100K images of the FaceSynthetics dataset. We are ready to train the model!</p>
+<p>With our dataset ready, it is time to train the model! Even though this was supposed to be the hardest part of the process, with the diffusers training script, it turned out to be the easiest. We used a single A100 rented for US$1.10/h on LambdaLabs.</p>
+<p>We trained the model for 3 epochs (this means that the batch of 100K images were shown to the model 3 times) and a batch size of 4 (each step shows 4 images to the model). This turned out to be excessive and overfit (so it forgot concepts that diverge a bit of a real face, so for example "shrek" or "a cat" in the prompt would not make a shrek or a cat but rather a person, and also started to ignore styles).</p>
+<p>With just 1 epoch (so after the model "saw" 100K images), it already converged to following the poses and not overfit. So it worked, but... as we used the face synthetics dataset, the model ended up learning uncanny 3D-looking faces, instead of realistic faces. This makes sense given that we used a synthetic face dataset as opposed to real ones, and can be used for fun/memetic purposes. Here is the uncannyfaces_25K model.</p>
+<p>In this interactive table you can play with the dial below to go over how many training steps the model went through and how it affects the training process. At around 15K steps, it already started learning the poses. And it matured around 25K steps. Here</p>
+<p>All we had to do was, install the dependencies:</p>
+<p>And then run the train_controlnet.py code</p>
+<p>Let's break down some of the settings, and also let's go over some optimisation tips for going as low as 8GB of VRAM for training.</p>
+<p>The combination of a batch size of 1 with 4 gradient accumulation steps is equivalent to using the original batch size of 4 we used in our example. In addition, we enabled gradient checkpointing and 8-bit Adam for additional memory savings.</p>
+<p>This experience of training a ControlNet was a lot of fun. We successfully trained a model that can follow real face poses - however it learned to make uncanny 3D faces instead of real 3D faces because this was the dataset it was trained on, which has its own charm and flare.</p>
+<p>As for next steps for us - in order to create realistically looking faces, while still not using a real face dataset, one idea is running the entire FaceSynthetics dataset through Stable Diffusion Image2Imaage, converting the 3D-looking faces into realistically looking ones, and then training another ControlNet.</p>
+<p>And stay tuned, as we will have a ControlNet Training event soon! Follow Hugging Face on Twitter or join our Discord to stay up to date on that.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ethics-diffusers" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/train-your-controlnet" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

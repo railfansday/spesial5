@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profiling in PyTorch (Part 2): From nn.Linear to a Fused MLP</title>
+    <title>ScarfBench: Benchmarking AI Agents for Enterprise Java Framework Migration</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10072.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,85 +15,64 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Profiling in PyTorch (Part 2): From nn.Linear to a Fused MLP</h1>
+        <h1>ScarfBench: Benchmarking AI Agents for Enterprise Java Framework Migration</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/torch-mlp-fusion/thumbnail.png" alt="Profiling in PyTorch (Part 2): From nn.Linear to a Fused MLP" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/649c1276a83f996b4191a8f1/iYCwB2Hl8qPTA8DCgDilB.png" alt="ScarfBench: Benchmarking AI Agents for Enterprise Java Framework Migration" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/torch-mlp-fusion/thumbnail.png" alt="Profiling in PyTorch (Part 2): From nn.Linear to a Fused MLP" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/649c1276a83f996b4191a8f1/iYCwB2Hl8qPTA8DCgDilB.png" alt="ScarfBench: Benchmarking AI Agents for Enterprise Java Framework Migration" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>This is the second post of Profiling in PyTorch, a series where we slowly build the skill of reading profiler traces and use it to drive optimization:</p>
-<p>In the first part of this series "Profiling in PyTorch", we used torch.add(torch.matmul(x, w), b) to learn how to read PyTorch profiler traces. We also discussed several other topics that came our way - the CPU dispatch chain, launch overhead, the difference between an overhead-bound and a compute-bound regime, and some internals of torch.compile.</p>
-<p>In the second iteration (this blog post), we climb one rung up the ladder. We replace the hand-written matmul-add pair with an nn.Linear (with bias=True). This is the building block every deep learning model uses. We then stack three of them (specific to our example), with an activation in between, to form a Multilayer Perceptron (MLP) block.</p>
-<p>The scripts for this blog post live here: 02_linear.py, 03_simple_mlp.py, and 03_kernels_mlp.py. Like before, it helps to open them in a separate tab and walk through the code as you read. We use an NVIDIA A100-SXM4-80GB GPU to run the scripts. It is really easy to set up a GPU on the Hugging Face infrastructure and experiment with the scripts using Dev Mode with Spaces. One could also run the scripts with the Hugging Face Jobs pipeline.</p>
-<p>Before we begin, a quick recap of two ideas we will lean on repeatedly:</p>
-<p>nn.Linear is a module wrapper around the same matrix multiplication and addition we already profiled in Part 1. The only difference is that it owns its weight and bias as parameters and exposes a forward method that PyTorch users have grown familiar with.</p>
-<p>Where x is the input, w is the weight and b is the bias. Let's run 02_linear.py and check the profile.</p>
-<p>trace-util is a utility that will sync your traces to a Hugging Face bucket and then provide the Preffeto URLs on your terminal.</p>
-<p>Figure 1 shows the profiler trace of a forward call of the linear layer. We trace the forward call of the linear layer with a similar schedule setup as the previous traces, with wait=1, warmup=1 and active=3. This is why we see three Profile Steps in the CPU and GPU lanes.</p>
-<p>If we zoom into the profiler trace, as we do in Figure 2, we notice an aten::t (transpose) op before the aten::addmm (multiplication and addition) op. We can already figure out that nn.Linear transposes the weight parameter and then multiplies it with the input. This is the reason we see an aten::t op.</p>
-<p>An important thing to notice is that aten::t does not really copy or reorganize data: it only rewrites tensor metadata (shape and stride) on the CPU to represent the transposed matrix. It does not launch a kernel on the GPU. One can verify this two ways: by looking at the GPU lane in the trace, or by checking the aten::t row in the profiler table and the time it took on CUDA.</p>
-<p>There is no aten::add (the bias addition) in the dispatch chain of the linear layer, as seen in Figure 3. This is because the bias addition has been folded into the matrix multiplication kernel, using what is called an epilogue.</p>
-<p>An epilogue is a small computation that a GEMM (GEneral Matrix Multiply) kernel does at the very end, just before it writes its result back to HBM (High Bandwidth Memory, the GPU's main memory). Adding a bias, applying an activation, or scaling by a constant are all classic epilogues. The point of an epilogue is to avoid loading or writing to HBM a second time, since memory traffic makes an operation expensive.</p>
-<p>nn.Linear calls torch.nn.functional.linear, which, in turn, calls aten::linear. aten::linear looks at the inputs, notices that a bias was passed, and dispatches aten::addmm(bias, x, weight) instead of doing a matmul and an add separately. addmm computes:</p>
-<p>The cuBLAS GEMM kernel that runs on the GPU has a bias-add variant built in, and that's the kernel aten::addmm picks. The add never appears as a separate kernel because it is part of the matmul kernel's writeback, which is exactly what an epilogue is.</p>
-<p>This is the moment to notice something subtle. The kernel you saw in Part 1 under --compile (addmm) is the kernel that eager nn.Linear already uses. There is nothing left for torch.compile to fuse here, which is the next thing we will verify.</p>
-<p>Let's compile the forward call and look at the profiler trace. (The profiler trace is visualized in the next section)</p>
-<p>If you compare the eager and compiled traces for a single nn.Linear's forward, you will find:</p>
-<p>This is worth internalizing. A common reflex is to reach for torch.compile whenever a model feels slow. For a single GEMM-with-bias, compile has very little to do. This is not a bug, this is just that compile needs more than one operation to possibly do any fusing. Let's prove that by looking at an MLP.</p>
-<p>A careful reader of the two traces (eager vs compile) will notice that the eager CPU dispatch chain has more in it than the compiled one.</p>
-<p>The eager CPU dispatch chain inside aten::linear is aten::t followed by aten::addmm (Figure 4). To understand what aten::t actually does, we need a quick detour into strides and views.</p>
-<p>A tensor stores its data as one flat, contiguous run of numbers in memory. The shape and stride are metadata that sit on top of that run and tell PyTorch how to walk it: a stride of (s0, s1) means "step s0 elements to move one row, step s1 to move one column". Change the metadata and you get a different view of the same raw data, with no copy:</p>
-<p>M.t() did not move a single number. It returned a new view whose strides are swapped, so reading it row-by-row now walks the original buffer 0, 1, 2, 3, 4, 5 in transposed order. The underlying data is identical; only the metadata differs.</p>
-<p>This is exactly what aten::t does inside the linear layer: it does not allocate a new tensor or copy any data, it produces a view of the weight with rewritten strides.</p>
-<p>As we can see in Figure 5, compile did not remove a GPU kernel: it removed the CPU overhead of dispatching that view. Inductor traced through the view chain at compile time, computed the resulting strides once, and emitted a direct aten::addmm call with those strides hard-coded. A few microseconds of CPU work disappear while the GPU does identical math.</p>
-<p>As one would expect, when the input data violates the strides precomputed by the compiler, it will throw an error.</p>
-<p>If you look at the GPU lane in both traces, there is exactly one kernel per forward, and it is the same kernel both times:</p>
-<p>If no transpose kernel ran, who taught the GEMM to read the weight matrix in transposed order? The answer is in the kernel's name. Look at the suffix:</p>
-<p>That tn is the layout descriptor. cuBLAS and CUTLASS precompile a separate kernel binary for each combination of input layouts.</p>
-<p>n (non-transposed) and t (transposed) describe how a kernel walks its input during the inner loop. The dispatcher's job is to look at the input strides, decide which suffix combination matches, and pick the right precompiled kernel.</p>
-<p>The kernel name in a profiler trace is a hash dump of the kernel's identity. If two runs show the same kernel name, the GPU is doing the same work. If they differ (e.g., _tn_ vs _nn_, bf16 vs fp16, or s16816gemm vs s161616gemm) then the GPU is doing different work, and the dispatcher took a different branch. Learning to read this name is one of the most useful habits when comparing traces.</p>
-<p>In this section, we will profile a Multilayer Perceptron (MLP). To make this more interesting, we will profile a feed-forward network with the GeGLU activation variant (which is quite heavily used in practice). This is also our way of paying tribute to one of the greatest lines ever written in the history of deep learning research (Figure 6).</p>
-<p>You will find the entire script here: 03_simple_mlp.py. Execute it like so:</p>
-<p>Before we open the trace, let's think together about what we should expect to see. The forward function does a fair amount of computation, but most of it is already familiar to us.</p>
-<p>We should expect three aten::linear dispatches, one for each nn.Linear layer. We should also expect two pointwise kernel launches, one for the GeLU and one for the multiplication. Forming this expectation before looking is the single most useful habit in the profiling journey: you read the trace to confirm or break a guess, not to form one from scratch.</p>
-<p>From Figure 7 we can pat ourselves on the back, as our intuition was correct. Per forward pass (one mlp_fwd), the GPU runs exactly 5 kernels. Figure 8 highlights the "occupancy query" as seen in the CPU lane for the linear projection layers.</p>
-<p>The three GEMMs each do an extra cudaOccupancyMaxActiveBlocksPerMultiprocessor call before the launch. We have a separate section on this in Part 1, you can find it here. That is cuBLAS sizing the grid. The pointwise ops (GeLU and mul) launch directly, with no occupancy query. So "a linear" is actually query + launch, while "a pointwise op" is just launch.</p>
-<p>The aten::t, aten::transpose, aten::reshape, aten::view, aten::as_strided, and aten::_unsafe_view ops launch zero kernels. They show 0.000us of CUDA time in the table (Figure 9) because they only rewrite tensor metadata (shape and stride) on the CPU. A reader scanning the table sees around six op names per linear, but only one of them (mm) ever reaches the GPU.</p>
-<p>The MLP flattens [batch, seq, dim] to [batch * seq, dim] for the matmul. In our command-line invocation we used 64 for batch and 128 for seq, so that's where the 8192 (batch * seq = 64 * 128) below comes from.</p>
-<p>All three GEMMs have the same FLOP count, 2·8192·768·3072 ≈ 38.7 GFLOP each, yet down_proj is about 10% faster. Same work, different shape (N=768 instead of 3072), so cuBLAS picks a different tile (128×256, with a deeper stages_64x3 pipeline) that gets better reuse for that shape.</p>
-<p>If you want to learn more about tiling in depth, here is a great resource to get started with.</p>
-<p>This is exactly why the table had two GEMM rows (Figure 9): the 128x128 row is gate+up and the 128x256 row is down.</p>
-<p>Before compiling the forward method and visualizing it, let's do the mental exercise again of asking ourselves what we expect to see in the trace. This is a fun experiment, and an important one to repeat every time you profile something yourself. Always build on your intuition, and the moment something does not match, stop and figure out why.</p>
-<p>In eager mode, each nn.Linear was expanded into a chain of dispatcher ops (aten::linear → aten::t → aten::transpose → aten::matmul → aten::reshape → aten::mm). Those are the high-level wrappers that ATen walks through before reaching the real GEMM. torch.compile removes that chain.</p>
-<p>By the time the compiled graph runs, there is no linear, no matmul, no transpose or reshape and those metadata ops were folded into how mm is called. We can see three bare aten::mm external calls (Figure 10). The proof that it is the same GEMM is that the kernel names are byte-for-byte identical to eager: ...128x128...stages_32x5_tn for gate and up, and ...128x256...stages_64x3_tn for down.</p>
-<p>This is the headline of the whole compile lesson. The two eager pointwise kernels (GeLU and mul) plus a reshape collapsed into one kernel, triton_poi_fused__unsafe_view_gelu_mul_0 (Figure 11). Let's decode the name:</p>
-<p>Why is this a win? In eager mode, the intermediate h = gelu(g) is a full [8192, 3072] bf16 tensor (around 50 MB) that the GeLU kernel writes to HBM and the mul kernel immediately reads back. Fusion keeps it in registers (memory that resides inside the chip and are closer than the HBM). The Triton kernel reads g and u once, computes gelu(g) * u, and writes the result once. One whole round trip of the intermediate through global memory is gone.</p>
-<p>So far we have let PyTorch (eager) and the compiler (torch.compile) pick our kernels. Now we plug in a kernel that a human expert wrote and tuned by hand. We use the LigerGEGLUMLP layer, that we can easily fetch from the Hugging Face Hub with the kernels library.</p>
-<p>The full script is here: 03_kernels_mlp.py.</p>
-<p>Figure 12 shows the profile for the LigerGEGLUMLP layer using the Liger kernels from the Hub.</p>
-<p>Writing kernels in Triton or CUDA is one problem and shipping them is another. The kernel has to be compiled for your exact combination of GPU architecture, CUDA version, and PyTorch version. This is the step that usually breaks ("works on my machine", missing nvcc, wrong Triton version).</p>
-<p>The kernels library moves that build step off your machine. get_kernel("kernels-community/liger-kernels", version=1) downloads a pre-built, version-pinned kernel package from the Hugging Face Hub and caches it locally (here under ~/.cache/...kernels-community--liger-kernels). The benefits are:</p>
-<p>When we say "tuned", we mean two concrete things, and both are visible in the trace.</p>
-<p>The fusion is baked in. The LigerGEGLUMLP forward is down_proj(LigerGELUMulFunction.apply(gate_proj(x), up_proj(x))). The LigerGELUMulFunction runs a single Triton kernel, _geglu_tanh_forward_kernel, that computes gelu(gate) * up in one pass. This is exactly what we saw from torch.compile, where the intermediate never makes a round-trip through HBM. We get it here without the compiler, as shown in Figures 13 and 14 (no Dynamo guards, no compile latency, no recompilation risk).</p>
-<p>The launch parameters were chosen for the hardware. The kernel does not guess its block size at random. Liger's calculate_settings picks them from the column count.</p>
-<p>It is worth being honest about the trade-off here, because the raw numbers can be misleading. The Liger kernel runs in 92.8 µs, while Inductor's fused kernel from the compile run was 89.4 µs. At first glance the hand-written kernel looks slightly slower, but that comparison hides the cost that makes it worthwhile.</p>
-<p>torch.compile specializes for a static shape. Inductor's 89.4 µs kernel is fast precisely because it was generated for this exact [8192, 3072] problem. Change the batch size, the sequence length, or the hidden dimension, Dynamo re-traces, and you pay the compile cost all over again to get a new specialized kernel.</p>
-<p>So the real choice is not "slow human kernel vs fast compiled kernel". It is a fast generic kernel vs a kernel specialized for one particular input shape. The Liger kernel takes one set of launch parameters and runs them for any shape with no recompilation. It gives up the last few microseconds that per-shape specialization would buy, in exchange for being robust to changing shapes.</p>
-<p>The table below collects what each step changed on the GPU and what it left untouched.</p>
-<p>If there is one habit to carry forward, it is the one we practiced before every trace: guess first, then look. State what you expect the trace to contain, open it, and treat any mismatch as the most interesting thing on the screen.</p>
-<p>This was the second stop in the Profiling in PyTorch series. In the next post we will keep climbing the ladder, moving from this MLP block towards the attention block and, eventually, a full model.</p>
-<p>Thanks to Noe Flandre and Pedro Gabriel Gengo Lourenço for their reviews on the early draft of the post!</p>
-<p>The blog post was polished using an LLM. This in no way means that we have let an agent run in the background and let it generate the blog. Some of us in the team are non-english speakers and think LLMs (which are mostly trained in the English Language) can rectify silly grammar mistakes or rephrase sentences that sound less intimidating and cleaner. Hope this helps with the idea of "why should I read, if this was LLM generated". 🤗</p>
-<p>thanks bro, it's really help, looking forward your next blog!</p>
-<p>Thanks a bunch for this blog post series! A good habit: Reason first, then look 👍.</p>
-<p>There are some parts I have been thinking about:</p>
-<p>WDYT? I am looking forward to the third blog post!</p>
-<p>Thanks for the intuition-led blog. Really appreciate it! :)</p>
-<p>I am incredibly excited for the third blog post.</p>
+                <p>Modernizing enterprise applications is one of the largest and most expensive software engineering activities organizations undertake. Teams migrate applications across frameworks to improve maintainability, cloud readiness, developer productivity, and access to modern capabilities.</p>
+<p>Recent advances in coding agents have sparked excitement around AI-assisted modernization. But an important question remains:</p>
+<p>Can AI agents reliably modernize real-world enterprise applications?</p>
+<p>Existing software engineering benchmarks have demonstrated impressive progress in bug fixing and code generation, but framework migration presents a fundamentally different challenge. Success requires not only translating code, but also preserving behavior, adapting build systems, and navigating runtime dependencies.</p>
+<p>To address this gap, we introduce ScarfBench (Self-Contained Application Refactoring Benchmark), an open benchmark for evaluating AI agents on cross-framework migration tasks in Enterprise Java.</p>
+<p>ScarfBench focuses on migrations across three major Java ecosystems:</p>
+<p>Unlike traditional benchmarks that compare generated code against reference implementations, ScarfBench evaluates whether migrated applications actually build, deploy, and preserve behavior.</p>
+<p>Framework migration is much more than replacing annotations.</p>
+<p>A simple repository migration can require changes across dependency injection, persistence configuration, queries, and framework descriptors. Small mistakes in any of these pieces can prevent successful deployment.</p>
+<p>Figure: Spring → Jakarta Migration Example</p>
+<p>Framework migration requires translating framework semantics, not just source code.</p>
+<p>ScarfBench provides a systematic way to evaluate AI agents on enterprise Java framework migration tasks.</p>
+<p>This provides a much more realistic measure of modernization quality.</p>
+<p>ScarfBench includes both focused migration tasks and whole-application migrations.</p>
+<p>Starting from a JSR-based enterprise Java taxonomy, expert migrations create verified implementations across Spring, Jakarta EE, and Quarkus.</p>
+<p>We evaluated several state-of-the-art coding agents on ScarfBench.</p>
+<p>Despite strong performance on traditional software engineering benchmarks, framework migration remains difficult. Success rates vary considerably across framework pairs and whole-application migrations remain particularly challenging.</p>
+<p>Figure: Compile → Deploy → Test Progression</p>
+<p>Compile success consistently exceeds deploy success, which in turn exceeds behavioral success. Build success alone significantly overestimates migration quality.</p>
+<p>Figure: Migration Outcomes by Target Framework</p>
+<p>Migration difficulty depends strongly on the target framework, with Jakarta EE proving particularly challenging.</p>
+<p>Beyond measuring success rates, ScarfBench helps us understand how agents behave during modernization.</p>
+<p>A migrated application is only useful if it actually builds and runs.</p>
+<p>We therefore compared agent-reported outcomes against independent build verification.</p>
+<p>Claude Code reported successful builds for 29 out of 30 whole applications.</p>
+<p>Only 22 of those applications actually built successfully.</p>
+<p>Meanwhile, the single application classified as failed by the agent ultimately built correctly.</p>
+<p>This suggests that agent self-assessment should not be treated as a reliable signal of migration completion.</p>
+<p>Independent build and test validation remains essential.</p>
+<p>Framework migrations rarely affect a single file or layer.</p>
+<p>Changes in configuration, services, databases, and web components often cascade across the application.</p>
+<p>This suggests that migration is an iterative dependency-resolution process rather than a simple source-to-source transformation.</p>
+<p>We used layer revisit frequency as a proxy for migration effort. Layers that required repeated visits typically involved debugging, dependency resolution, or framework adaptation.</p>
+<p>Rather than proceeding linearly, agents repeatedly returned to configuration-related artifacts while resolving framework differences and dependency issues.</p>
+<p>Not every migration issue originates from source code.</p>
+<p>Agents frequently struggled with environmental issues, including:</p>
+<p>These operational concerns often delayed validation even when the source-code migration itself was largely complete.</p>
+<p>Modernization failures span build systems, deployment environments, dependency injection, databases, endpoints, assertions, and infrastructure.</p>
+<p>The biggest challenge in framework modernization is not translating Java code.</p>
+<p>It is managing the web of dependencies across configuration, infrastructure, and runtime environments.</p>
+<p>While frontier agents can automate substantial portions of the migration process, reliable validation and architectural reasoning remain critical for achieving successful outcomes.</p>
+<p>ScarfBench helps expose these challenges and provides a standardized way to measure progress toward truly autonomous application modernization.</p>
+<p>ScarfBench is designed as an open resource for researchers and practitioners.</p>
+<p>Researchers can compare agent architectures and techniques. Practitioners can use ScarfBench to evaluate modernization solutions before deploying them in production environments.</p>
+<p>https://huggingface.co/datasets/ibm-research/ScarfBench</p>
+<p>https://huggingface.co/spaces/ibm-research/ScarfBench</p>
+<p>Framework migration remains one of the largest unsolved problems in AI-assisted software engineering. We hope ScarfBench helps the community measure progress and accelerate the next generation of AI-assisted application modernization.</p>
+<p>We invite researchers, practitioners, and framework communities to evaluate their agents, contribute new migration scenarios and help advance the state of the art.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/torch-mlp-fusion" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ibm-research/scarfbench" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

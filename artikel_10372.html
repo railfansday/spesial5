@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Arm will be @ PyTorch Conference, Join Us!</title>
+    <title>Self-Hosted LangSmith Alternatives: 4 Tools Tested on One TypeScript Agent</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10372.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,68 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Arm will be @ PyTorch Conference, Join Us!</h1>
+        <h1>Self-Hosted LangSmith Alternatives: 4 Tools Tested on One TypeScript Agent</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_langsmith_alternatives_cover_07555aa102.png" alt="Self-Hosted LangSmith Alternatives: 4 Tools Tested on One TypeScript Agent" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_langsmith_alternatives_cover_07555aa102.png" alt="Self-Hosted LangSmith Alternatives: 4 Tools Tested on One TypeScript Agent" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>LangSmith is closed-source and restricts self-hosting to enterprise licenses, teams that run their own LLMOps stack and want to keep traces on their own servers need an alternative. To find the best fit, we set a baseline by tracing a small TypeScript agent (equipped with two tools) in LangSmith Cloud. Then, we ran the exact same agent through Langfuse, Arize Phoenix, Opik, and AcruxCore using each platform's recommended TypeScript setup. All tests were run on November 5, 2026, and we pulled every trace back through each tool's API to verify the data.</p>
+<p>All four alternatives successfully recreated LangSmith’s trace tree for the test prompt: a single agent span containing three LLM calls and two tool calls. The real differences between them come down to how much boilerplate code you have to write, how spans are typed, whether costs are tracked, and the overall server footprint.</p>
+<p>Why Teams Look for a LangSmith Alternative</p>
+<p>LangSmith remains the best choice if you already use LangChain and allow cloud hosting—it required just 25 lines of code in our test. The alternatives below are for teams that don't fit that profile.</p>
+<p>To test these platforms, we built a simple customer support agent equipped with two tools:</p>
+<p>Both tools use static fixture data to ensure every test run is identical. The agent runs a standard loop: it prompts the model, executes any requested tools, and stops once the model provides a final answer.</p>
+<p>We tested the agent with three specific prompts to see how the tracing handled different levels of complexity:</p>
+<p>For our comparison, we focused entirely on the third question because it generates a robust, multi-step trace.</p>
+<p>Under the hood, the agent uses the standard openai package to call the qwen3.8-flash model. We originally picked this model based on its reliable tool-calling behavior during early probing thought it once skipped a tool call later.</p>
+<p>We used LangSmith as our baseline. By tracing the agent there first, we created a checklist of every field it captured, and we judged all the alternatives against that exact list.</p>
+<p>For setup, we followed the recommended TypeScript approach from each tool's documentation. Phoenix didn't have specific instructions for using its register() helper with OpenAI in TypeScript, so we adapted the pattern from their Anthropic guide.</p>
+<p>Here is the agent with no tracing. Each tool section adds one tracing file that imports these files and changes nothing in them.</p>
+<p>LangSmith traces the plain openai package with two helpers. wrapOpenAI records each model call, and traceable records your own functions. Without traceable on the run and the tools, wrapOpenAI alone gave three separate root runs and no tool runs.</p>
+<p>This file adds 25 lines and removes 3, and installs one package.</p>
+<p>LangSmith showed one root run with five children in call order: LLM, get_order_status, LLM, get_refund_policy, LLM. Every field it recorded became a row of the checklist table under "Results". Cost appeared only after a custom price entry. In our error run the failing tool was marked as an error, but the root stayed success: traceable turned the throw into a rejected promise that our agent did not await, so the agent carried on and answered.</p>
+<p>Langfuse self-hosts as six containers, including ClickHouse, a column store built for large scans. In our measurement the stack held 2.60–2.64 GiB of memory at idle. Its Docker Compose guide recommends at least 4 CPU cores and 16 GiB RAM, with about 100 GiB of disk.</p>
+<p>The TypeScript path is built on OpenTelemetry. You start the OTel Node SDK with LangfuseSpanProcessor, wrap the client with observeOpenAI, and wrap your own functions with observe:</p>
+<p>This file adds 31 lines and removes 5, and installs four packages. We pinned the OTel Node SDK to 0.223.0, because @langfuse/otel 6.1.1 does not accept 0.300.0.</p>
+<p>Langfuse successfully recreated the same trace tree, neatly tagging the spans as AGENT, GENERATION, and TOOL. It captured all the essentials: tool calls, tool definitions, and the complete message history. However, for the LLM output, it only saved the assistant's message—dropping the finish_reason, response ID, and the provider name.</p>
+<p>We ran our deployment in Langfuse v4's events_only mode, which turns off the v1 trace endpoint. Because of this, the API didn't return a centralized trace object or root-level sums for tokens and costs, even though the UI calculated and displayed them perfectly (we didn't test other modes).</p>
+<p>Costs showed up exactly as expected once we added a custom price entry. Since Langfuse calculates prices based on the specific usage types you define, and we only set rates for input and output, the separate reasoning tokens went unpriced. Finally, during our error test, the observe wrapper let the error bubble up to the agent, correctly flagging both the tool and the root span as an ERROR.</p>
+<p>Phoenix self-hosts as two containers, one Python server and Postgres. In our measurement it held 0.47 GiB at idle. Phoenix is source-available under the Elastic License 2.0, so it is not open source. Authentication is off until you turn it on.</p>
+<p>The TypeScript path uses Phoenix's register() helper and the OpenInference instrumentation for the OpenAI package. OpenInference is a set of OpenTelemetry attribute names for LLM spans. traceAgent and traceTool wrap the run and the tools:</p>
+<p>This file adds 32 lines and removes 3, and installs three packages.</p>
+<p>Phoenix rebuilt the same tree, typed as AGENT, LLM and TOOL. Each LLM span keeps the full OpenAI response object, plus the messages as flattened attributes. The root span stores no token count, but Phoenix computes a sum for the root and the trace when you read it. Cost and those sums are only in the GraphQL API and the UI, and the REST API has no per-trace endpoint.</p>
+<p>Cost appeared after a custom price entry under Settings > Models, and Phoenix priced the reasoning tokens by falling back to the output price. In the error run, the tool span and the root were marked ERROR, and the tool span carried an exception event with the stack trace.</p>
+<p>Opik self-hosts as eight containers, including ClickHouse, MySQL and ZooKeeper. In our measurement it held 3.69 GiB at idle, the most of the four. The self-hosted UI opened without a login, so every trace was readable from any machine that could reach the port.</p>
+<p>The TypeScript path wraps the client with trackOpenAI and your own functions with track. By default trackOpenAI starts a new trace for every model call, so the file passes the run's span through the documented parent option:</p>
+<p>This file adds 33 lines and removes 5. It installs opik-openai 2.2.142, and npm adds opik 1.11.14 as its peer, because opik-openai asks for opik ^1.8.61.</p>
+<p>Opik successfully recreated the trace tree, and its trace object neatly tallies token counts across all LLM spans. In the logs, tool arguments are bundled into an array, and the LLM output only retains the assistant's message.</p>
+<p>We did notice a quirk with the documented OpenAI wrapper (tested on the npm package opik 1.11.14): it tags model calls as general rather than llm, which incorrectly leaves the llm_span_count at zero. (We didn't test newer Opik core versions to see if this has changed). Additionally, because our synchronous tools execute in under a millisecond, they log the exact same start time as the subsequent LLM call, causing the UI to list the LLM call first out of order.</p>
+<p>Cost tracking is entirely manual. Opik showed no costs by default, and the documentation doesn't mention a custom price table. We checked the configuration tabs on our 2.2.52 instance (Feedback definitions, AI Providers, Workspace preferences) and found no model pricing settings. To see costs, you have to manually assign a price to each individual span yourself—only the spans we hardcoded this way displayed a cost.</p>
+<p>Finally, error reporting is highly detailed. If something fails, Opik attaches an error_info block—complete with the error type, message, and full traceback—directly to the tool span, the root span, and the overall trace.</p>
+<p>AcruxCore self-hosts as five containers: Postgres, Redis, a Node API and worker, and nginx. In our measurement it held 0.39 GiB at idle, the least of the four. Its quickstart leaves sign-up open and ships a committed default GATEWAY_ENCRYPTION_KEY, which encrypts stored provider keys; replace it. We tested a local build from 2026-09-17.</p>
+<p>The TypeScript path AcruxCore's docs put first is its gateway. The official openai client keeps working: you point its baseURL at ACRUXCORE_BASE_URL + "/gateway" and call a model registered in AcruxCore, which forwards each call to an OpenAI-compatible provider. The gateway records every model call as an llm span. The SDK's step helpers add the rest: traces.step opens the agent span, traces.wrap wraps each tool, and two headers file the gateway's spans under the agent span:</p>
+<p>This file adds 30 lines and removes 5, and installs one package. It builds its own client, so it does not use provider.ts. The gateway refused our team API key, so the client uses a gateway virtual key created in the dashboard.</p>
+<p>On this path every model call passes through the AcruxCore server, which none of the other four tools need. If you do not want a proxy in the request path, the SDK's register() helper sends OpenTelemetry spans from your process instead. On that path the step helpers do not join the openai package's spans, so you write the agent and tool spans by hand.</p>
+<p>AcruxCore rebuilt the same tree, typed as agent, llm and tool, in call order. Each LLM span keeps the full response, the provider and the cached-token count, and the trace carries a token total. The LLM spans do not keep the tool definitions sent to the model, and no reasoning-token count was recorded. The trace took its name from the question, not from the agent span, and each LLM span is named by its start time.</p>
+<p>Cost appeared on every LLM span and as a sum on the trace, from the custom price we set on the model in AcruxCore's model list. In the error run, the step helpers marked the tool span and the agent root as error with the error message, with no status code of ours. The API returned no stack trace.</p>
+<p>All five tools accept traces over OTLP, the OpenTelemetry wire format. trace-otel.ts sends the same spans with no vendor package: the OTel Node SDK, the OTLP/HTTP protobuf exporter and the OpenInference OpenAI instrumentation. The exporter reads its endpoint and headers from environment variables:</p>
+<p>We ran the two-tool question once per backend and changed only environment variables: the endpoint, the headers, and for Phoenix a resource attribute that sets the project name (without it, spans go to a default project). "Accepted" means the exporter reported success, which it does only for an HTTP 2xx, and we read the spans back through each API.</p>
+<p>Opik stored the root and tool spans as general although AGENT and TOOL kinds were sent; the cause is Not tested. LangSmith mapped AGENT to its chain type. If you instrument with plain OTel and OpenInference attributes, your raw spans are not tied to one vendor, but span types, cost and trace views still differ by backend.</p>
+<p>The first table covers setup: how much server each tool needs, how much code we changed in the agent, and how cost and the plain OTel exporter worked. Phoenix and AcruxCore had the smallest servers, and AcruxCore needed the fewest lines among the self-hosted tools. Opik was the only one without a price table.</p>
+<p>The second table checks each trace against what LangSmith recorded for the same run, one field at a time. All five rebuilt the same tree with tokens and durations. They differ in span types, how much of the LLM output they keep, where token sums live, and how much detail they store for the failing tool.</p>
+<p>Token totals for the two-tool question ranged from 1,910 to 2,111. Each tool traced a separate run and reasoning length varies, so these numbers do not compare the tools.</p>
+<p>All five tools successfully traced our test agent, so the right choice really comes down to your team's specific constraints, infrastructure preferences, and how tracing fits into the rest of your MLOps tooling.</p>
+<p>All four alternatives successfully recreated LangSmith’s trace tree. The real deciding factors are boilerplate code, span typing, cost tracking, and server bloat.</p>
+<p>LangSmith remains the simplest option for LangChain users who can utilize the cloud. Otherwise, your choice depends on your priorities: Langfuse for community size, Phoenix for a lightweight Postgres footprint, Opik for strict Apache-2.0 compliance with deep error logging, or AcruxCore for combined tracing and tool governance on minimal hardware. Best of all, if you stick to standard OpenTelemetry spans, you aren't locked in—you can try them all and easily pivot later.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/Arm/arm-at-pytorch-conference" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/self-hosted-langsmith-alternatives-4-tools-tested-on-one-typescript-agent/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

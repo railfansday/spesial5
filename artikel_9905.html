@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Andrew Kensler&#x27;s permute(), a function for stateless, constant-time pseudorandom-order array iteration</title>
+    <title>Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9905.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Andrew Kensler&#x27;s permute(), a function for stateless, constant-time pseudorandom-order array iteration</h1>
+        <h1>Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://image.theregister.com/236933.jpg?imageId=236933&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/236933.jpg?imageId=236933&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="Jensen Huang's self-sabotage sends Nvidia into a midlife crisis" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>That subtitle is a little bit of a mouthful, but I’ve been wanting to talk about Andrew Kensler’s permute() function for a while and I wanted to make it clear right off the bat why it’s useful. permute() is used some in the graphics community, especially in offline rendering, and the techniques are more widely known in cryptography*, but it’s applicable to so much more than graphics and cryptography.</p>
-<p>Let’s first talk about the problem it solves. You want to iterate over \(k\) items of an array of length \(n\), in random order, where \(k \leq n\). Those \(k\) items cannot contain duplicates from the original array (they must each correspond to a unique index). Or, you want to get a random sample of \(k\) items without replacement.</p>
-<p>When I say “random”, this is obviously pseudorandom, but there are varying degrees of pseudorandomness. This is unquestionably not cryptographically secure, that’s not its intended use. I can’t say that I know enough about pseudorandomness to say how statistically indistiguishable from random this is or for what applications it will be random enough. It’s good enough to use for computing rendering integrals, and I’d be comfortable using it for a lot of casual statistical analysis.</p>
-<p>Update May 27, 2021: I saw what looks to be a nice improvement to the randomness of this, and extends it to work for 64-bit integers. I recommend taking a look after reading this post!</p>
-<p>Anyway, the canonical way to randomly iterate over an array is to first shuffle it with the Fisher-Yates shuffle, and then iterate over the shuffled array.</p>
-<p>*I found this Stack Overflow answer from 2009 that gives the exact same idea, so I should be clear that Andrew Kensler didn't really invent the method I'll talk about here, but I think he popularized the use of it in graphics and certainly created the particular hash function I'll show at the end.</p>
-<p>uniform_rand_int(min, max) is inclusive of both min and max, i.e. \(\textnormal{swap\_idx} \in \{i, i+1, \dots, n-1\}\)</p>
-<p>Obviously this manipulates the array in place, which may not be desirable for a bunch of reasons. In practice you might call this with an array of indices or an array of pointers.</p>
-<p>There are a bunch of situations where the Fisher-Yates shuffle doesn’t work very well, because you need to store the shuffled array.</p>
-<p>In the latter two cases there’s obviously a lot more to think about, like the cost of just reading incoherent values from the large array. There are other good ways to solve #2 and #3 too, especially if you’re doing distributed computing. But a lot of the techniques I know share the problem that you need to scan over the entire array at least once. If you have constant-time access into the array, Kensler’s method is always linear only in the size of your random sample, not in the original array.</p>
-<p>In other words, if you want to iterate over \(k\) random, unique items from an array of length \(n\), then the Fisher-Yates shuffle is \(O(n)\) time and \(O(n)\) memory. As I’ll show in a second, this can be reduced to \(O(k)\) time and \(O(k)\) memory. But permute() is \(O(k)\) time and \(O(1)\) memory, the best you could possibly do. Not only that, but with permute() you can arbitrarily query random indices in constant time, which means you can use it in parallel across multiple threads or computers.</p>
-<p>I think it’s worth mentioning you can extend the Fisher-Yates shuffle to handle #2. You use a sparse map to keep track of swapped indices rather than putting them into the array. When you swap the next index, you check your map to see if the original or swapped locations in the array have already been swapped. If so, you use the values from the map, otherwise you just use the original indices, and then you update the map. Here’s a code snippet to show what that looks like. This will select \(k\) random unique integers from the values \(\{0,1,\dots,n-1\}\).</p>
-<p>But still, even this “incremental” Fisher-Yates shuffle requires \(O(k)\) memory, which makes it unsuitable for case #1 or case #3.</p>
-<p>Update: I believe this is equivalent to, but less elegant than, Floyd's algorithm for random sampling without replacement. So if you want to use that (like if you're in case #2 and really care about good randomness), implement Floyd's algorithm, rather than the way I've framed it here.</p>
-<p>Kensler introduced permute() in his paper Correlated Multi-Jittered Sampling. I didn’t quite understand how it worked when I first read it, so I also wanted to write this blog post to break it down and hopefully help others appreciate it. However if you just want the code, skip to the bottom!</p>
-<p>The function acts as a “stateless” pseudorandom iterator over an array. It takes in a seed value for a permutation, the length of the array, and the index you’d like to map to a different index. It looks like this:</p>
-<p>and if you wanted to use it, say to get 10 random unique values from a vector, you might do:</p>
-<p>So how do we construct this magic function?</p>
-<p>The first thing we need is a hash function that is invertible for a given power-of-two sized domain. What does that mean? For a given number of bits \(n\), every value from \(0\) to \(2^n-1\) will be hashed to a single unique value in the same range. It’s a one-to-one and onto mapping, i.e. a bijective function. Let’s give a super simple example: adding 1. Let’s say our domain is 2-bit integers. If we add one to a 2-bit number, we’ll get a unique 2-bit number.</p>
-<p>Adding is generally, an invertible hashing operation. Another invertible operation in binary is multiplying by an odd number, let’s say 3.  \(f(x) = (x * 3) \mod 4\), with:</p>
-<p>A non-invertible operation is multiplying by two or any even number:</p>
-<p>Kensler outlines more invertible operations in power-of-two domains, especially xor’s and combinations with a seed value, where different seed values give different permutations. Ultimately, we get some invertible hash function:</p>
-<p>Already, we can see that this hash will allow us to randomly iterate over an array with length power-of-two. But what about arrays of other lengths? Kensler uses a technique from cryptography called “cycle walking”, which was invented in “Ciphers with Arbitrary Finite Domains” by Black and Rogaway. Cycle-walking is a fancy name, but the idea is simple: we just repeat the hash until the value is less than the length of the array! So we get a permute() function like this:</p>
-<p>Obviously this can be really slow since it could take a lot of hashes to get to where we want, but we’ll get to that in a second. First, why does this work at all? This is where the bijective mapping comes in. We start with an index that is less than the length of the array and we hash it until we get another value less than the length of the array. Let’s visualize it like this:</p>
-<p>where \(hash^3(x)\) is \(hash(hash(hash(x)))\) or, if you prefer the function composition notation, \(hash \circ hash \circ hash(x)\). In this case, I’ve bolded the first two hashes to indicate that the values are bigger than the length of the array. The last hash is our final permuted value.</p>
-<p>Because our hash function is invertible, we can invert the final hashed value (note that we don’t need to actually implement the inverse, this is just theoretical):</p>
-<p>By inverting the final value, which was less than the length of the array, we again get a value larger than or equal to the length of the array. So if we did this loop in reverse until we got a value less than the length of the array, we would get back the original index.</p>
-<p>In other words, our loop is also an invertible hash function. But rather than mapping within a power-of-two sized domain, it maps within the domain of the array’s length, which is exactly what we’ve been trying to achieve.</p>
-<p>We need to make this faster, specifically we don’t want a lot of loop iterations. Let’s say that we have a really good hash function such that there’s roughly a 50% probability that any bit (within our power-of-two domain) will be 1 after hashing. Now, we modify our hash function to specify the power-of-two domain. We do this by taking in a mask that limits the bits which get hashed. Here’s an example (but a bad hash function).</p>
-<p>If our hash domain is the two-bit (unsigned) integers, then our mask would be 11 in binary, or 0x3. If our domain is the 32-bit integers, it would be 0xFFFFFFFF.</p>
-<p>Now, in our permute() function, we’ll use a mask with all the bits set up to the most significant bit of the highest possible index (that is, len - 1). Here’s a really inefficient (\(O(\log n)\)) implementation for clarity:</p>
-<p>However a lot of processors (e.g. x86 processors) have a single instruction that can get the number of leading zeros of an integer. In GCC you can use this with the instrisic __builtin_clz(x), which even on processors that don’t have the instruction will compile to a constant-time operation. So if you use GCC you could write:</p>
-<p>This may not be super portable, here is how Kensler does it with bit arithmetic.</p>
-<p>With this, our permute() function looks something like:</p>
-<p>Because of this mask, we know that our hashing domain is less than two times the size of the array. Since our hash function has a 50/50 chance of flipping the most significant bit, or rather of hashing to a value in the lower half of its domain, we can say that on average, this will take less than two iterations. We’ve got our fast random iterator!</p>
-<p>We still need to make a good invertible hash function. As I mentioned, Kensler outlines a bunch of invertible operations, and he uses hill-climbing to find a good hash function. I won’t go into that in more detail, but here is the final code using his hash. I’ve adapted Kensler’s code to the way I’ve structured this blog post:</p>
-<p>Okay, there’s one additional thing at the end, the (static_cast<uint64_t>(idx) + seed) % len, but that won’t break anything and adds a little extra randomness. The cast to 64-bit is necessary to prevent an overflow bug that could lead to repeats.</p>
-<p>I hope that you find this as elegant and useful as I have! One final note: Kensler mentions that this hash only works well up to domains of about \(2^{27}\). For larger domains you could maybe use two calls of the permute function, although if it’s not random enough, that could exacerbate correlations. Overall I really just wanted to present the ideas here.</p>
+                <p>The competition is circling like vultures</p>
+<p>Nvidia CEO and founder Jensen Huang has been ousted after nearly two weeks of controversy that, at times, felt more like a soap opera than reality: a wealthy businessman, reported affairs, and an alleged Chinese spy and GPU smuggler.</p>
+<p>For Nvidia’s board, it seems there was no question Huang had to go. The man behind what was recently the most valuable company in the world proved too big a liability to retain in any capacity. He was too toxic even for a demotion from CEO to chairman, a vantage point that would have retained Huang as the face of the company even if he could no longer be trusted to run it.</p>
+<p>Replacing him won’t be so easy. Nvidia now faces an identity crisis. Huang, who has led the company for more than three decades, has no clear successor. The GPU slinger has no shortage of brilliant engineers, but executives capable of wrangling one of the biggest and most influential brands in the world, not so much.</p>
+<p>Ian Buck, father of CUDA and Nvidia’s VP of hyperscale and HPC is currently favored by many to be Huang’s successor. Buck has taken on a more public role within Nvidia in recent years headlining keynotes at events like Supercomputing and the AI Infra Summit.</p>
+<p>CFO Colette Kress, a bean counter who’s kept Jensen’s ambitions grounded for more than a decade, now takes the reins as interim CEO while the board searches for its next figurehead.</p>
+<p>And while Kress fights to contain the chaos, others will no doubt capitalize on Huang’s controversial choice of consorts to advance their own agendas.</p>
+<p>One need only ask a few inconvenient questions to cast doubt on Nvidia’s loyalties. How deep does China’s influence in Nvidia go? Can Nvidia’s hardware still be trusted? You get the idea.</p>
+<p>It certainly wouldn’t be the first time Nvidia’s and, by extension, Huang’s loyalties have been called into question. In late 2023, Cerebras CEO Andrew Feldman blasted rival Nvidia for supplying GPUs to China in spite of US export controls, calling the behavior “un-American” and likening the graphics titan to an AI arms dealer.</p>
+<p>Nvidia has also faced criticism from US government officials, including former commerce secretary Gina Raimondo, for failing to take a hint and trying instead to limbo under US export controls in order to continue selling chips to the Middle Kingdom.</p>
+<p>After the Trump administration's short lived blockade of H20 sales early last year cost the company some $10.5 billion, Huang spent much of the 2025 lobbying the Trump administration to reverse export bans on the sales of older Hopper generation GPUs to China, an endeavor which ultimately proved successful.</p>
+<p>One could make the case that Huang’s ongoing efforts to sell Nvidia’s chips to China were financially motivated. But that argument is undermined by Huang admitting to having an extramarital affair with Megaspeed exec Alice Huang (no relation), a woman that US intelligence has accused of moonlighting as a Chinese spy and helping to smuggle GPUs into the country.</p>
+<p>When technology and politics collide, the appearance of impropriety is often more damning than the impropriety itself.</p>
+<p>Uncle Sam has forced Chinese companies out of the United States for the mere possibility that they could be coerced into planting back doors in critical infrastructure. Just ask Huawei whether the truth counts for anything once Washington has decided that you’re a national security threat.</p>
+<p>Huang’s affairs may not just cost him his job, but could cost Nvidia key government contracts and make the company’s hardware less attractive, particularly in highly-regulated and notoriously risk-averse industries.</p>
+<p>Rival chipmakers will no doubt capitalize on Nvidia’s bad optics if Huang’s departure doesn’t pop the AI financing merry-go-round bubble first – Nvidia's stock lost about 25% of its value in the few days after news about Huang started breaking, only recovering slightly after his ouster. Regardless, with Nvidia’s reputation marred and its future shrouded in uncertainty, once loyal customers may be more willing to explore alternative providers.</p>
+<p>There are certainly plenty to choose from. Amid a surge in custom AI chips from the likes of Broadcom, Marvel, and others, Nvidia’s main advantage wasn’t so much technological as it was simply considered a safe bet.</p>
+<p>AMD is the most obvious winner here. As we reported earlier this year, the House of Zen’s GPU tech has already surpassed Nvidia’s, at least on paper. What’s more, the company has a long and unblemished relationship serving the US government. AMD’s chips now power two of the Department of Energy’s three largest and most sensitive supercomputers.</p>
+<p>Meanwhile, hyperscalers with sufficient cashflow – think Google, Microsoft, Amazon, and Meta – may seek to insulate themselves from Huang’s fallout by investing more heavily in homegrown silicon and offering it to customers.</p>
+<p>Then there's the threat from the man himself. Huang's ambitions and influence are such that he's unlikely to fade into obscurity. He may disappear from the spotlight while things blow over, but it’s a pretty sure bet that he’ll pop up at a new company eventually, and will still have enough sway to poach some of Nvidia’s top engineers. ®</p>
+<p>‘Actions taken thus far have not provided the anticipated relief’</p>
+<p>'Intelligent eyewear' has a built-in camera and mic, but there's a recording light to warn you and some stern legalese to discourage abuse</p>
+<p>PARTNER CONTENT: Real-time endpoint data keeps AI-driven IT operations accurate, fast and under control</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>Altman, Torvalds, Yen. One has got his head screwed on. The others could do with some grounding</p>
+<p>Meanwhile, a group of nonprofits sue AI giants and cite AI-driven cyberattacks</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>The competition is circling like vultures</p>
+<p>Chips boast up to 256 cores, clocks up to 5.3 GHz, and IPC gains of 20 to 31 percent, just not all on the same SKU</p>
+<p>Cores, clocks, memory, and interconnects all perfectly balanced for a singular mission: keeping instinct fed.</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>OpenVDDK is reportedly already being used in production, at scale</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://andrew-helmer.github.io/permute/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/ai-and-ml/2026/11/12/jensen-huangs-self-sabotage-sends-nvidia-into-a-midlife-crisis/5309480" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

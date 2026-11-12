@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Shipping huggingface_hub every week with AI, open tools, and a human in the loop</title>
+    <title>AMD: Where we&#x27;re going we don&#x27;t need (as much) DRAM</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10038.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Shipping huggingface_hub every week with AI, open tools, and a human in the loop</h1>
+        <h1>AMD: Where we&#x27;re going we don&#x27;t need (as much) DRAM</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/huggingface-hub-release-ci/thumbnail.png" alt="Shipping huggingface_hub every week with AI, open tools, and a human in the loop" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5259665.jpg?imageId=5259665&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="AMD: Where we&#x27;re going we don&#x27;t need (as much) DRAM" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/huggingface-hub-release-ci/thumbnail.png" alt="Shipping huggingface_hub every week with AI, open tools, and a human in the loop" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5259665.jpg?imageId=5259665&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="AMD: Where we're going we don't need (as much) DRAM" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>huggingface_hub is the Python client at the base of the Hugging Face ecosystem. transformers, datasets, diffusers, sentence-transformers and dozens of other libraries depend on it to talk to the Hub. Every week we don't ship a new release is a week of fixes and features stuck on main.</p>
-<p>For a long time we released every 4 to 6 weeks. We now release every week from a single GitHub Actions workflow. We built it using open-source tools and open-weights models and kept a human in the loop at the one place where judgment matters. Nothing in this post requires a vendor contract, a closed model, or infrastructure you can't run yourself. That was a design goal from the start since we wanted a workflow other maintainers could pick up and adapt.</p>
-<p>By the end of this post, you'll have everything you need to build your own.</p>
-<p>The old process was partly automated, mostly manual.</p>
-<p>Writing good notes for a new version was the heavy part, aggregating tens of PRs on different topics. Nothing technically hard but a few hours of focused attention. Add the announcements on top and a minor release was easily a half-day of work spread over several days.</p>
-<p>So we decided to streamline the whole thing. Looking at that list, the work splits in two.</p>
-<p>Some steps are purely mechanical and can be automated: bumping the version, committing, tagging, pushing, opening downstream test branches, opening the post-release PR. Nobody needs to think about those. They just have to happen in the right order, every time, which is what a CI workflow is good at.</p>
-<p>The rest is different. Writing release notes, deciding what to highlight, phrasing an announcement for a human audience: that's brain work. It's the kind of judgment that kept the release manual for years. This is where AI comes in, turning a blank page into a solid first draft in seconds. It's also where we have to be careful because a draft that looks confident and is subtly wrong is worse than no draft at all.</p>
-<p>When we decided to fix this, we set one constraint up front: every moving part had to be something any maintainer could run themselves. No closed model behind an API we couldn't swap, no proprietary release platform, no secret sauce.</p>
-<p>The second principle: the model drafts, a human decides. Language models are good at turning thirty terse PR titles into readable release notes. They are not good at being trusted blindly. So the workflow is human-supervised: the model does the first pass, a deterministic script checks its work, and a human reviews and edits before anything ships (more on that below).</p>
-<p>The full workflow is a single file, .github/workflows/release.yml, triggered by hand from the Actions UI. It takes exactly one input:</p>
-<p>From there, the jobs run roughly in this order:</p>
-<p>The remaining manual steps are reviewing and publishing the draft release notes, and reviewing and posting an internal Slack message. Those two steps are where we want a human in the loop.</p>
-<p>Here's the failure mode everyone worries about with AI-generated release notes: the model quietly drops a PR or invents one that isn't in this release. A changelog that's almost right is worse than no changelog because nobody re-checks it.</p>
-<p>We don't trust the generated release notes to be complete on the first try, we verify it deterministically. Before the model runs, a Python script retrieves all PRs that belong to the release and stores them as ground truth.</p>
-<p>Then model drafts the notes from them. Once done, we check its output against the initial list of PRs:</p>
-<p>If anything is missing or extra, we don't fail and we don't ship a wrong file. We hand the discrepancy back to the agent and ask it to fix exactly those PRs:</p>
-<p>This is the pattern that makes the whole thing trustworthy: a non-deterministic model wrapped in deterministic guardrails. The model is great at writing prose and unreliable at being exhaustive. So we let it write and let code enforce the consistency.</p>
-<p>Completeness is one half. Accuracy is the other. A model summarizing a PR from its title alone will cheerfully invent a code example that doesn't match the real API.</p>
-<p>To prevent that, when we fetch PR metadata we also pull the actual documentation diffs from each PR: the unified diff of any .md file under docs/ that the PR touched.</p>
-<p>That diff goes into the model's context so when it writes "here's the new CLI command," it's quoting the example the PR author actually wrote in the docs. That's the same logic as before: give the model real source material and a narrow job.</p>
-<p>The prompts themselves live as Skills: small Markdown files (SKILL.md plus reference templates) checked into the repo. The release-notes skill spells out how to pick highlights, how to structure sections, when to add a doc link, etc. It reads like onboarding instructions, which is exactly the right mental model.</p>
-<p>After the RC is published, the draft GitHub release sits there with the AI's first pass in it. This is where the human comes in:</p>
-<p>The reviewer's time goes into polishing, turning a half-day of writing into a fifteen-minute editing session.</p>
-<p>We also keep a paper trail to improve over time. We archive two files side by side to a Hugging Face Bucket: the raw AI draft, uploaded at RC time before anyone touches it, and the human-edited version, uploaded when the final release is cut.</p>
-<p>Collecting both every week gives us a growing dataset of "what the model wrote" versus "what we wished it wrote". Dataset that we can then reuse to update the agent's skill.</p>
-<p>Revamping the release process was a good opportunity to tighten security, especially against supply-chain attacks.</p>
-<p>No PyPI token. Publishing uses Trusted Publishing: PyPI verifies a short-lived OIDC token minted by GitHub for this exact workflow, and issues PEP 740 attestations / Sigstore provenance for every artifact. There's no long-lived secret to leak or rotate.</p>
-<p>The agent runtime is pinned and verified. We don't curl | bash the latest OpenCode and hope. We pin a version and check its SHA256 before running it:</p>
-<p>Open tooling doesn't mean careless tooling.</p>
-<p>Almost nothing. A full release (notes plus the Slack announcement, across 20-40 PRs and a few rounds of prompting) costs about $0.25 on Inference Providers. With open weights billed pay-as-you-go, the only real question each week is "is there something worth shipping?", and there always is.</p>
-<p>The cadence went from one release every 4 to 6 weeks to once a week. The secondary effects were the interesting ones:</p>
-<p>This is the part we cared about most. The workflow is shaped around huggingface_hub but the structure is generic.</p>
-<p>To adapt it: fork the workflow file and scripts, point it at your package, rewrite the skill Markdown for your project's voice, set two repo variables (the model ID and your OpenCode version), set up Trusted Publishing on PyPI, and delete the downstream-testing job if you don't have downstreams. The trust-but-verify loop is the part worth reusing as-is. It's what makes a generated artifact safe to ship.</p>
-<p>The parts of a release that used to need a half-day of focused human work (writing notes, drafting announcements, coordinating downstream checks) are the parts a model is good at drafting. Everything else is mechanical and fits in a YAML file. The trick was never just "let the AI do it". It's to let the model draft, let deterministic code verify, and let a human decide. It's built entirely from open tools and open weights so the cost rounds to zero and anyone can run it.</p>
-<p>The full workflow file is public. If you maintain a Python library, fork it, adapt it, and let us know how it goes!</p>
-<p>Thanks for the post! This will help so many people 🤗</p>
+                <p>The House of Zen's Mext team promises smarter SWAP through the power of, you'll never guess: AI</p>
+<p>AMD's latest sales pitch: Up to 99 percent of the performance with half the DRAM, provided you're willing to buy a Mext license alongside your shiny new Epyc server.</p>
+<p>This is made possible by using AI models to load memory pages in and out of cheaper NVMe storage before your operating system or apps ever know they need it — kind of like SWAP or a Windows page file, but smarter.</p>
+<p>AMD acquired the tech from Mext back in June, and according to former CEO Gary Smerdon — now CVP of business development at AMD — the tech could cut enterprise server costs by as much as 83 percent by replacing costly RDIMMs with flash storage. Of the initial 145 systems the software has been deployed on so far, he estimates customers have already saved $5 million in avoided DRAM costs.</p>
+<p>"Conservatively, 60, 70, even 80 or 90 percent for very large memory systems, of the cost of a server can be in memory," he explained.</p>
+<p>Even in systems with high memory utilization, where (say) 95 percent of the memory is "in use," a lot of it isn't actively being used, he explained. He cited a Meta research paper that showed that between 50 and 80 percent of memory pages hadn't been touched in five minutes, ten minutes, or even longer. "Five minutes to Epyc is an eternity."</p>
+<p>Mext technology aims to offload those infrequently accessed pages to flash. The challenge, Smerdon explains, is that while flash may be 50x cheaper per bit, 30x lower power per bit, it's also 500x slower.</p>
+<p>This is why most folks, when provisioning VPCs or servers, generally avoid swapping out to disk wherever possible: it kills application performance and sends service level agreements out the window.</p>
+<p>So for Mext's tech to work, it needed to ensure that any pages offloaded to storage were back in DRAM before they're needed. Kind of like running an errand in the middle of the workday – so long as you're back before your boss needs you again, they'll never know you left your desk.</p>
+<p>The problem was that the "R" in DRAM stands for random. Predicting which pages the system was going to need at which time isn't exactly trivial. The solution? (Brace for it.)</p>
+<p>"We realized we could use AI to monitor the system and proactively push those pages back into DRAM, so that as far as the application or the operating system knew, they were there the whole time," Smerdon said. In other words: "We transparently make flash appear as DRAM."</p>
+<p>So, "instead of buying two terabytes of DRAM for your Epyc-based server, you could buy one terabyte of DRAM, and then the next terabyte comes with Mext."</p>
+<p>To do this, AMD’s Mext employs a number of machine learning algorithms.</p>
+<p>"The workhorse model is a transformer derivative model, just like ChatGPT or Claude or the other famous models, but instead of predicting, for example, in the case of text, what word is next, what we're doing is predicting what page of memory is going to be required next," Smerdon explained. So long as the pages are in DRAM before they're needed, the pages don't even need to be in the right order, he added.</p>
+<p>Training the models to predict memory access patterns accurately presents its own challenges, which, Smerdon says, makes pre-training the models impractical.</p>
+<p>Instead, they take a single Epyc core and train the model "in under one second," he explained. From there, the model is further refined and retrained over time until it is able to predict accurately where the pages need to be and when they need to be there.</p>
+<p>All of this training, he emphasizes, takes place on the CPU core — no GPU required, which means essentially any Epyc customer can take advantage of the software platform.</p>
+<p>While no GPU may be required, it's worth noting that in virtualized environments, the software requires one core per VM or VPC, so the overhead scales with virtualization. Container runtimes presumably don't suffer from this same limitation. We've reached out to AMD for clarification.</p>
+<p>According to AMD, the technology actually works. Initially, Smerdon says, the company targeted memory-hungry applications like electronic design automation (EDA) and content creation, but later expanded to support latency-sensitive applications like databases and agentic AI pipelines.</p>
+<p>"When pages of memory are cold, we can push them off to flash, and there's literally no impact on performance," he said.</p>
+<p>Smerdon is overstating things just a little here. Depending on the application and how much memory is offloaded to flash, there is a performance penalty.</p>
+<p>According to tests against Synopsys' PrimeTime EDA suite, he claims, half the memory can be offloaded to flash using Mext and the system still achieves 95 percent of the performance of DRAM. With 25 percent DRAM and 75 percent flash, performance fell to 80 percent of the DRAM-only baseline in AMD's tests.</p>
+<p>EDA tools are extremely memory-hungry, but the amount of data the cores are working on at any given moment is often measured in megabytes. This is why AMD's Epyc X-chips remain so popular with EDA customers and why Mext targeted it initially.</p>
+<p>In other scenarios, like Apache Spark, AMD's Mext team says it is seeing 99 percent of the performance even after replacing half the DRAM in the system with flash.</p>
+<p>While implementing the tech may cost some performance, AMD is betting that customers will be willing to make that compromise in exchange for substantial DRAM savings, as memory remains constrained thanks to the AI datacenter buildout.</p>
+<p>Right now, AMD is working to integrate Mext into its broader enterprise portfolio. The software, we're told, will be exclusive to AMD hardware and will be offered as a license sold through OEM partners.</p>
+<p>Systems running Linux require only a kernel driver to take advantage of the software, while a separate RAM View application is being offered to help enterprises understand which systems and workloads it should be enabled on.</p>
+<p>The chip designer says it's currently in the first phase of its Mext rollout, which means working with OEMs like HPE to ensure systems are so-called "Mext ready." In the second phase, the company aims to begin selling licenses for the software and shipping Epyc platforms with RAM View preinstalled.®</p>
+<p>‘Actions taken thus far have not provided the anticipated relief’</p>
+<p>'Intelligent eyewear' has a built-in camera and mic, but there's a recording light to warn you and some stern legalese to discourage abuse</p>
+<p>PARTNER CONTENT: Real-time endpoint data keeps AI-driven IT operations accurate, fast and under control</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>Altman, Torvalds, Yen. One has got his head screwed on. The others could do with some grounding</p>
+<p>Meanwhile, a group of nonprofits sue AI giants and cite AI-driven cyberattacks</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>The competition is circling like vultures</p>
+<p>Chips boast up to 256 cores, clocks up to 5.3 GHz, and IPC gains of 20 to 31 percent, just not all on the same SKU</p>
+<p>Cores, clocks, memory, and interconnects all perfectly balanced for a singular mission: keeping instinct fed.</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>OpenVDDK is reportedly already being used in production, at scale</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/huggingface-hub-release-ci" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/systems/2026/11/11/amd-where-were-going-we-dont-need-as-much-dram/5308953" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

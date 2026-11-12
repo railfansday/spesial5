@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fine-tuning Stable Diffusion models on Intel CPUs</title>
+    <title>Towards Encrypted Large Language Models with FHE</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11065.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fine-tuning Stable Diffusion models on Intel CPUs</h1>
+        <h1>Towards Encrypted Large Language Models with FHE</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/encrypted-llm/thumbnail.png" alt="Towards Encrypted Large Language Models with FHE" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/encrypted-llm/thumbnail.png" alt="Towards Encrypted Large Language Models with FHE" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Large Language Models (LLM) have recently been proven as reliable tools for improving productivity in many areas such as programming, content creation, text analysis, web search, and distance learning.</p>
+<p>One possible solution to this problem is on-premise deployment, where the LLM owner would deploy their model on the client’s machine. This is however not an optimal solution, as building an LLM may cost millions of dollars (4.6M$ for GPT3) and on-premise deployment runs the risk of leaking the model intellectual property (IP).</p>
+<p>Figure 1 shows the GPT2 architecture which has a repeating structure: a series of multi-head attention (MHA) layers applied successively. Each MHA layer projects the inputs using the model weights, computes the attention mechanism, and re-projects the output of the attention into a new tensor.</p>
+<p>In TFHE, model weights and activations are represented with integers. Nonlinear functions must be implemented with a Programmable Bootstrapping (PBS) operation. PBS implements a table lookup (TLU) operation on encrypted data while also refreshing ciphertexts to allow arbitrary computation. On the downside, the computation time of PBS dominates the one of linear operations. Leveraging these two types of  operations, you can express any sub-part of, or, even the full LLM computation, in FHE.</p>
+<p>Next, you’ll see how to encrypt a single attention head of the multi-head attention (MHA) block. You can also find an example for the full MHA block in this use case example.</p>
+<p>Figure 2. shows a simplified overview of the underlying implementation. A client starts the inference locally up to the first layer which has been removed from the shared model. The user encrypts the intermediate operations and sends them to the server. The server applies part of the attention mechanism and the results are then returned to the client who can decrypt them and continue the local inference.</p>
+<p>First, in order to perform the model inference on encrypted values, the weights and activations of the model must be quantized and converted to integers. The ideal is to use post-training quantization which does not require re-training the model. The process is to implement an FHE compatible attention mechanism, use integers and PBS, and then examine the impact on LLM accuracy.</p>
+<p>To evaluate the impact of quantization, run the full GPT2 model with a single LLM Head operating over encrypted data. Then, evaluate the accuracy obtained when varying the number of quantization bits for both weights and activations.</p>
+<p>This graph shows that 4-bit quantization maintains 96% of the original accuracy. The experiment is done using a data-set of ~80 sentences. The metrics are computed by comparing the logits prediction from the original model against the model with the quantized head model.</p>
+<p>Building upon the transformers library from Hugging Face, rewrite the forward pass of modules that you want to encrypt, in order to include the quantized operators. Build a SingleHeadQGPT2Model instance by first loading a GPT2LMHeadModel and then manually replace the first multi-head attention module as following using a QGPT2SingleHeadAttention module. The complete implementation can be found here.</p>
+<p>The forward pass is then overwritten so that the first head of the multi-head attention mechanism, including the projections made for building the query, keys and value matrices, is performed with FHE-friendly operators. The following QGPT2 module can be found here.</p>
+<p>Other computations in the model remain in floating point, non-encrypted and are expected to be executed by the client on-premise.</p>
+<p>Loading pre-trained weights into the GPT2 model modified in this way, you can then call the generate method:</p>
+<p>As an example, you can ask the quantized model to complete the phrase ”Cryptography is a”. With sufficient quantization precision when running the model in FHE, the output of the generation is:</p>
+<p>“Cryptography is a very important part of the security of your computer”</p>
+<p>When quantization precision is too low you will get:</p>
+<p>“Cryptography is a great way to learn about the world around you”</p>
+<p>You can now compile the attention head using the following Concrete-ML code:</p>
+<p>Running this, you will see the following print out: “Circuit compiled with 8 bit-width”. This configuration, compatible with FHE, shows the maximum bit-width necessary to perform operations in FHE.</p>
+<p>In transformer models, the most computationally intensive operation is the attention mechanism which multiplies the queries, keys, and values. In FHE, the cost is compounded by the specificity of multiplications in the encrypted domain. Furthermore, as the sequence length increases, the number of these challenging multiplications increases quadratically.</p>
+<p>For the encrypted head, a sequence of length 6 requires 11,622 PBS operations. This is a first experiment that has not been optimized for performance. While it can run in a matter of seconds, it would require quite a lot of computing power. Fortunately, hardware will improve latency by 1000x to 10000x, making things go from several minutes on CPU to < 100ms on ASIC once they are available in a few years. For more information about these projections, see this blog post.</p>
+<p>Zama libraries Concrete and Concrete-ML (Don't forget to star the repos on GitHub ⭐️💛) allow straightforward ML model building and conversion to the FHE equivalent to being able to compute and predict over encrypted data.</p>
+<p>Hope you enjoyed this post; feel free to share your thoughts/feedback!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/stable-diffusion-finetuning-intel" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/encrypted-llm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

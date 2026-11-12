@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training and Finetuning Multi-Vector Embedding Models with Sentence Transformers</title>
+    <title>Adapting CPython for yk</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,92 +15,649 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Training and Finetuning Multi-Vector Embedding Models with Sentence Transformers</h1>
+        <h1>Adapting CPython for yk</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Multi-Vector Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Training and Finetuning Multi-Vector Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Sentence Transformers is a Python library for using and training embedding and reranker models for a wide range of applications, such as retrieval augmented generation, semantic search, semantic textual similarity, and more. Its v6.0 update introduces a fourth model type: MultiVectorEncoder, for ColBERT-style late interaction retrieval, alongside a complete training approach for it. In this blogpost, I'll show you how to use it to finetune a multi-vector model that outperforms general-purpose retrievers on your data. This method can also train strong new multi-vector models from scratch. Everything below runs on pip install -U "sentence-transformers[train]".</p>
-<p>Finetuning multi-vector models involves several components: the model itself, datasets, loss functions, training arguments, evaluators, and the trainer class. I'll have a look at each of these components, accompanied by practical examples of how they can be used for finetuning strong multi-vector models.</p>
-<p>Lastly, in the Evaluation section, I'll show you that my finetuned multi-vector-encoder/mLateOn-medical model, trained in 14.5 hours on a single RTX 3090 alongside this blogpost, easily outperforms every general-purpose retrieval model I could find on my medical retrieval evaluation: dense, sparse, lexical, and multi-vector alike.</p>
-<p>If you're interested in finetuning dense embedding models, sparse embedding models, or rerankers instead, then consider reading through my prior Training and Finetuning Embedding Models, Training and Finetuning Sparse Embedding Models, and Training and Finetuning Reranker Models blogposts.</p>
-<p>This blogpost is about training multi-vector models. If you want to learn how to use them, from loading and encoding to indexing in vector databases, see the companion Multi-Vector (Late Interaction) Embedding Models with Sentence Transformers blogpost.</p>
-<p>A dense embedding model compresses a whole text into a single vector, and similarity is one dot product between two such summaries. A multi-vector model (also called a late-interaction or ColBERT-style model) skips that compression. It keeps one small vector per token and scores a query against a document with the MaxSim operator, where every query token finds its best-matching document token and the scores are summed. Token-level matching preserves exactly the fine-grained signals that a single vector has to average away, which usually means stronger retrieval, at the cost of a bigger index.</p>
-<p>The companion Multi-Vector Embedding Models blogpost covers the architecture, encoding, scoring, and indexing in detail, so I'll keep this section short and get to the training.</p>
-<p>Finetuning multi-vector models significantly improves their retrieval performance on your specific domain: the vocabulary, the query style, and the notion of relevance all differ between web search, legal discovery, code search, and scientific literature review. Because queries and documents are matched token by token, multi-vector models pick up fine-grained domain signals that single-vector models tend to average away, and they respond very well to even modest amounts of in-domain finetuning data.</p>
-<p>Beyond that, most released retrieval models were configured for short passages. The classic ColBERT checkpoints truncate documents at 180 or 300 tokens, and many popular dense models at 256 or 512, because their MS MARCO-style training data rarely goes beyond that. If your documents are long, these models silently discard most of every document before scoring it. On my medical evaluation with passages averaging 941 tokens, I measured that this truncation costs up to 0.24 NDCG@10, considerably more than any difference between model architectures. When you train your own model, you configure the document length that your data needs.</p>
-<p>LightOn ran into this same dynamic with code retrieval, where general LateOn wasn't enough and they trained LateOn-Code. Your domain, whether that's medical, legal, financial, or your company's internal documents, is not getting an official model. This blogpost shows you how to build it yourself, in a matter of hours, on a single consumer GPU.</p>
-<p>Training MultiVectorEncoder models involves the following components:</p>
-<p>Let's take a closer look at each component.</p>
-<p>Multi-vector training gives you a real choice of starting point, and it matters more than you might expect.</p>
-<p>If you want to further finetune an existing multi-vector model, you don't have to worry about the architecture at all:</p>
-<p>The checkpoint brings its own recipe along: its query and document marker tokens, its projection head, its scoring skiplist. For finetuning, you generally want to keep all of that and change only what your data demands. The first thing to check is the length configuration, since many released checkpoints cap documents at 180 to 512 tokens (see Why Finetune?), and my medical passages run to 1,400 tokens. The mLateOn family already serves the backbone's full 8192 token context, but if your starting checkpoint carries caps, lift them:</p>
-<p>With the per-task caps unset, truncation falls back to the tokenizer's model_max_length, which is why I configure that limit at load time above.</p>
-<p>I made one more change, adding a punctuation skiplist that excludes punctuation tokens from document-side scoring and storage. In a 4-way ablation (none, punctuation, stopwords, both) it modestly won on quality, and it shrinks the document index by 9.6% on this data for free:</p>
-<p>You can also point MultiVectorEncoder at any base transformer, and a fresh, randomly initialized token-level projection is appended for you:</p>
-<p>That's the classic ColBERT pipeline: a Transformer producing contextualized token embeddings, a token-level Dense projecting each of them down to 128 dimensions, a MultiVectorMask deciding which tokens count during scoring, and a token-level Normalize. The projection starts random, so training is required before this model is useful. Interestingly, this works with strong dense embedding backbones too. A fresh projection on Alibaba-NLP/gte-modernbert-base reached within 0.03 of the existing-checkpoint starting points in my experiments, from nothing but the projection and 25k training pairs.</p>
-<p>The classic ColBERT tokenization tricks ([MASK] query expansion, [Q] / [D] prefix tokens, a document length cap, a punctuation skiplist) are all off by default and configurable. See Creating Custom Models for the full set. For what it's worth, I tested [MASK] query expansion in four configurations for my domain finetune and none of them made a measurable difference, so don't feel obliged to reach for the classic recipe.</p>
-<p>I measured this directly while preparing this blogpost, taking six starting points and training each with the identical recipe on 25k medical question-passage pairs from MIRIAD, then evaluating on 1,000 held-out questions against a 50,000 passage corpus:</p>
-<p>The result surprised me, and it replicated across two model families. *The -unsupervised checkpoints adapt to a new domain far better than their finished siblings, overtaking them despite starting lower. These checkpoints sit after large-scale contrastive pretraining but before supervised finetuning on general retrieval, so they carry all the late-interaction structure with none of the general-purpose tuning that domain training then has to undo. The finished checkpoints, by contrast, barely moved or even regressed, at every learning rate I tried.</p>
-<p>So, if the model family you like publishes a pre-supervised checkpoint, start there. If not, a fresh projection on a strong retrieval-pretrained backbone is a close runner-up. Continuing from a fully finished checkpoint is the weakest option for domain adaptation, despite being the most natural-feeling one.</p>
-<p>The MultiVectorEncoderTrainer uses datasets.Dataset or datasets.DatasetDict instances for training and evaluation. You can load data from the Hugging Face Datasets Hub or use local data in whatever format you prefer (e.g. CSV, JSON, Parquet, Arrow, or SQL).</p>
-<p>Note: Lots of public datasets that work out of the box with Sentence Transformers have been tagged with sentence-transformers on the Hugging Face Hub, so you can easily find them on https://huggingface.co/datasets?other=sentence-transformers. Consider browsing through these to find ready-to-go datasets that might be useful for your tasks, domains, or languages.</p>
-<p>You can use the load_dataset function to load data from datasets on the Hub:</p>
-<p>This is the dataset I'll train on in this blogpost: 4.4 million medical questions from MIRIAD, each paired with the source passage that contains its answer (averaging 941 tokens). Simple (query, relevant passage) pairs like these are the easiest retrieval training data to collect for your own domain, and as you'll see, they're all you need.</p>
-<p>You can also use load_dataset for loading local data in common file formats:</p>
-<p>And if your local data requires pre-processing, you can use datasets.Dataset.from_dict to initialize your dataset with a dictionary of lists:</p>
-<p>It is important that your dataset format matches your loss function (or that you choose a loss function that matches your dataset format). Verifying whether a dataset format works with a loss function involves two steps:</p>
-<p>There are two multi-vector specific conventions on top of this:</p>
-<p>Loss functions quantify how well a model performs for a given batch of data, allowing an optimizer to update the model weights to produce more favourable (i.e., lower) loss values. The right loss function for your task depends on the data you have and what you're trying to achieve. You can find a full list of options in the Loss Overview.</p>
-<p>For the common case of question-answer or question-passage pairs, the workhorse is in-batch negatives training with MultiVectorMultipleNegativesRankingLoss, where every other document in the batch acts as a negative for each query. Bigger batches mean more negatives and stronger training, so in practice you'll want its GradCache variant, CachedMultiVectorMultipleNegativesRankingLoss, which decouples the effective batch size from what fits on your GPU:</p>
-<p>The mini_batch_size parameter bounds the memory by encoding documents in chunks of this size, while the effective contrastive batch size (128 in my run below, and in my ablations bigger batches bought nothing further) stays a free choice. GradCache guarantees identical results regardless of the chunk size, so lower it for smaller GPUs at only a wall-clock cost. When your document lengths vary a lot, consider its sibling mini_batch_num_tokens, which packs each chunk to a total token budget instead of a document count, so a chunk of unusually long documents can never spike your memory (my mini_batch_size=16 at roughly 940 tokens per document corresponds to mini_batch_num_tokens=15_000).</p>
-<p>One multi-vector specific trap is that the contrastive losses default to scale=1.0, unlike the dense embedding equivalent which defaults to scale=20.0. That 20.0 exists because a cosine similarity is a single value in [-1, 1], too narrow a range for a sharp softmax. A MaxSim score instead sums one best-match similarity per query token, so it already spans roughly [0, query_length]: a 32-token query can score up to 32. So don't copy scale=20.0 over from a dense training script, since it would saturate the softmax and kill your gradients.</p>
-<p>For distillation from a stronger teacher, which is how the strongest general-purpose late-interaction models are trained, see MultiVectorDistillKLDivLoss and the Knowledge Distillation tab in the Training Overview documentation.</p>
-<p>You can customize the training process using the MultiVectorEncoderTrainingArguments class. This class lets you adjust parameters that can impact training speed and help you understand what's happening during training.</p>
-<p>For more information on the most useful training arguments, check out the Multi-Vector Encoder > Training Overview > Training Arguments. It's worth reading to get the most out of your training.</p>
-<p>Here's an example, using the values from my actual training run:</p>
-<p>To track your model's performance during training, you can pass an eval_dataset to the trainer for evaluation loss, but concrete retrieval metrics are much more informative. Sentence Transformers includes the following built-in evaluators for multi-vector models:</p>
-<p>For domain finetuning, the MultiVectorInformationRetrievalEvaluator built from your own held-out data is the one that matters. One tip on constructing it is that the corpus should be hard enough that models can be told apart. In my case the MIRIAD questions are generated from their own source passages, which makes retrieval unusually easy. Against just the 10k gold passages, nearly every model scored above 0.97 NDCG@10. If your evaluation saturates like that, add distractor passages (I use deduplicated passages from the training split) until the scores spread out:</p>
-<p>The MultiVectorEncoderTrainer is where all previous components come together. Here is the complete script that trained multi-vector-encoder/mLateOn-medical, the model from the introduction:</p>
-<p>That's the whole recipe: a pre-supervised checkpoint, a million domain pairs, in-batch negatives, full document length, and a higher-than-usual learning rate. The run took 14.5 hours on my single RTX 3090 at a peak of 17.5 GB VRAM, and every one of those choices was the winner of a measured comparison rather than a guess.</p>
-<p>For readers on smaller budgets, my scaling experiments put 100k pairs (75 minutes of training) within 0.012 NDCG@10 of the full million-pair run. Most of the gain comes in the first hour.</p>
-<p>The MultiVectorEncoder trainer supports various transformers.TrainerCallback subclasses, including:</p>
-<p>Enable these via the report_to training argument, e.g. report_to=["wandb", "codecarbon"], with the required dependencies installed. It defaults to "none", and report_to="all" activates every integration whose dependency is installed.</p>
-<p>Refer to the Transformers Callbacks documentation for more information on these callbacks and how to create your own.</p>
-<p>Typically, top-performing general-purpose models are trained on multiple datasets simultaneously. However, this approach can be challenging due to the varying formats of each dataset. Fortunately, the MultiVectorEncoderTrainer allows you to train on multiple datasets without requiring a uniform format. Additionally, it provides the flexibility to apply different loss functions to each dataset. Here are the steps to train with multiple datasets at once:</p>
-<p>Each training/evaluation batch will only contain samples from one of the datasets. The order in which batches are sampled from the multiple datasets is defined by the MultiDatasetBatchSamplers enum, which can be passed to the MultiVectorEncoderTrainingArguments via multi_dataset_batch_sampler. Valid options are:</p>
-<p>To find out where the finetuned model stands, I evaluated it against over 50 retrieval model configurations across four architecture families on the MIRIAD evaluation set, built exactly as in the Evaluator section above, with 1,000 held-out medical questions searching 200,000 unique passages (the 10k gold passages hidden among 190k deduplicated distractors from the training split). This corpus is four times the size of the 50,000-passage one from Which starting point should you pick?, so scores are not comparable between the two tables.</p>
-<p>The headline results, with the full table in the collapsible below:</p>
-<p>The finetuned model tops the table, beating the strongest zero-shot model of any architecture by +0.062 NDCG@10. In other words, the strongest zero-shot model returns the right passage as the very first hit for 75.8% of the queries, while the finetuned model does so for 84.9%, cutting the rank-1 error by more than a third.</p>
-<p>The architecture pattern is just as clear, with the top of the table exclusively late interaction. On long documents, one vector per token beats one vector per document, even at matched training and matched backbones. DenseOn and LateOn share training data and architecture except for the head, and the late-interaction sibling wins by +0.12, with the multilingual pair (mDenseOn and mLateOn) replicating this at +0.13. Scale doesn't rescue single vectors either. Qwen3-Embedding-4B, the strongest dense model with roughly 33x the active (non-embedding) parameters of mine, still stops 0.13 short, and the 8B version scores lower than the 4B.</p>
-<p>BM25 also performs surprisingly well, beating every sparse model, every truncation-capped multi-vector model, and all but three dense models: the multi-billion Qwen3-Embedding-4B and 8B, and voyage-4-nano, which reads its full 32k token context to edge past by just 0.006. Don't expect that to transfer to your own data though. MIRIAD's questions are generated from the passages, so the lexical overlap between a query and its gold passage is far larger than in typical retrieval, and BM25's unlimited context length lets it use every one of those overlapping words while most neural checkpoints truncate. A BM25 baseline is cheap and always worth running, just don't count on this margin.</p>
-<p>The full field at a glance, sorted by score and colored by architecture family.</p>
-<p>Models marked @N are evaluated with their document length cap lifted to N tokens, since their native caps (180 to 512 tokens) would otherwise truncate the 941-token average passages. For every multi-vector model this lift was worth +0.08 to +0.24 NDCG@10 over the as-served row, and even the dense DenseOn gained +0.03 from the same treatment.</p>
-<p>Note that this does not mean that multi-vector-encoder/mLateOn-medical is the strongest model on all domains. It's simply the strongest in my domain. This is totally fine, as I just need this model to work well on my data.</p>
-<p>Don't underestimate the power of finetuning multi-vector models on your domain. Fourteen and a half hours on a single consumer GPU produced a model that no general-purpose retriever comes close to on this data, and the recipe is a single script with no teacher model and no mined negatives!</p>
-<p>The fair objection to multi-vector retrieval is index size, and this domain is close to the worst case for it. Storing one vector per token, my model needs about 878 vectors per passage, so the 200,000-passage corpus takes roughly 45 GB at fp16, where a dense model needs well under 1 GB. Document length is what makes that gap so wide. The Natural Questions passages in the companion post average about 125 token vectors each, seven times fewer, so a corpus of short passages starts from a far smaller index than this one does. The HierarchicalTokenPooling module compresses exactly this by clustering each document's token embeddings and storing the cluster means, keeping roughly 1 / pool_factor of the vectors:</p>
-<p>I measured it post-hoc on the finished model, with no pooling-aware training, and on long documents it is remarkably cheap.</p>
-<p>The solid points are uncompressed embeddings, so that every family is counted the same way and scored with exact search. You would not deploy any of them like that, though. Dense indexes routinely use int8 or binary quantization with rescoring, sparse indexes compress their postings, and multi-vector indexes use PLAID-style residual compression. Don't read those points as the disk you need to buy, but as relative storage cost.</p>
-<p>Token pooling is the solid line. Halving the vector count costs 0.0033 NDCG@10 and leaves rank-1 accuracy untouched, and keeping only a quarter of them, at 11.2 GB, still scores 0.8991. The curve keeps going (I measured out to a tenth of the vectors, still at 0.8765) but there is little reason to push pooling that far once quantization is on the table, which is what the dashed line below is about.</p>
-<p>The dashed line is what a real deployment might look like. I gave Omar Khattab early access to the model and the benchmark, and he measured these configurations with fast-plaid at 1-bit residual quantization, using compact 17-bit centroid ids and 18-bit document ids instead of its ordinary unpacked 64-bit integers, plus document-side pruning:</p>
-<p>That first row is 13x smaller than the raw embeddings, for 0.0155 NDCG@10. That is a far better trade than anywhere on the pooling curve. Quantization shrinks each vector while pooling and pruning cut how many you keep, so they compose, and quantization is the one to reach for first. Push further and the last row lands at 1.45 GB, smaller than the fp16 embeddings of Qwen3-Embedding-8B (1.64 GB), while scoring 0.0895 higher. The objection that multi-vector indexes are too big does not survive a properly configured index.</p>
-<p>The pruning here is naive, meant only to establish that token reduction works on top of quantization, so read the bottom two rows as a floor rather than the frontier. If you would rather not hand-tune quantization at all, the Indexing section of the companion post covers fast-plaid, Qdrant, Weaviate, and Vespa.</p>
-<p>Multi-vector retrieval is only as expensive as its index. The raw embeddings for this corpus are 45 GB, and a properly configured index is at least 7x smaller at nearly the same accuracy. The index deserves as much of your attention as the checkpoint.</p>
-<p>Thanks to Omar Khattab for measuring the quantized and pruned index configurations in Optimizing the index, and for the discussions around late-interaction index costs.</p>
-<p>These pages have training examples with explanations as well as links to training scripts. You can use them to get familiar with the multi-vector training loop:</p>
-<p>For further learning, you may also want to explore the following resources on Sentence Transformers:</p>
-<p>And here is an advanced page that might interest you:</p>
-<p>And the companion blogpost, covering everything about using these models:</p>
-<p>Finetuning multi-vector models involves several components: the model itself, datasets, loss functions, training arguments, evaluators, and the trainer class. I'll have a look at each of playfy these components, accompanied by practical examples of how they can be used for finetuning strong multi-vector models.</p>
-<p>This is a really interesting deep dive into multi-vector embedding models... 🔥 The introduction of MultiVectorEncoder in Sentence Transformers v6.0 looks especially useful for ColBERT-style late interaction retrieval, where keeping multiple representations can capture much finer-grained matching than a single dense embedding. The fact that the same framework supports RAG, semantic search, and reranking makes this a very practical direction for modern retrieval systems. 🚀</p>
-<p>I also like how the post breaks the finetuning process down into the individual pieces... datasets, loss functions, training arguments, evaluators, and the trainer class. 🧠 Having practical examples around each component makes the approach much easier to understand and reproduce, especially for people who want to move beyond using a general-purpose retriever and actually optimize a model for their own domain.</p>
-<p>The medical retrieval results are probably the most impressive part... 💡 Training the mLateOn-medical multi-vector encoder for just 14.5 hours on a single RTX 3090 and getting better results than dense, sparse, lexical, and other multi-vector approaches shows how valuable domain-specific finetuning can be. It’s a great reminder that the biggest gains in retrieval often come from matching the model and training data closely to the actual search task rather than simply choosing the newest general-purpose model. 👏📚</p>
-<p>Overall, this is a great practical resource for anyone experimenting with advanced retrieval pipelines... ⚡ The ability to train strong multi-vector models from scratch as well as finetune existing ones opens up plenty of possibilities for specialized search and RAG applications. I especially appreciate that the whole workflow can be set up with sentence-transformers[train]... it makes an otherwise fairly complex retrieval training process feel much more approachable. 👍🤖</p>
+                <p>Earlier this year I wrote a post on
+yk,
+which can automatically add JIT compilers to C interpreters. Since then weâve
+applied yk to more interpreters, fixed various bugs, and improved
+performance notably. Towards the end of October I showed some data where on our
+benchmark suite1 yklua is 2Ã faster than the PUC Lua interpreter it takes as a
+base.</p>
+<p>I was quite pleased with myself until someone brought me down to earth by
+asking âhow do you know if this works for large interpreters?â Itâs a fair
+question: PUC Lua is at least an order of magnitude smaller2 than CPython or CRuby and whoâs
+to say if it would work with much bigger interpreters? We had looked at CPython a year or so ago, but
+at that point yk was missing several obvious things that CPython would need, so
+we quickly moved on. A lot has changed since then, and a quick LLM experiment
+got far enough to suggest it would be worth looking again.</p>
+<p>Happily, having taken a deeper look, CPython not only works when adapted for yk
+as ykcpython3, but there are
+meaningful performance gains to be had â not only relative to normal CPython,
+but also relative to Pythonâs experimental JIT4. Roughly speaking,
+this is the result of 3-4 daysâ work on ykcpython directly; there was a separate
+week and a half of generic yk bug fixing necessary to get to the point that I
+could look at ykcpython itself.</p>
+<p>Here are the âfinalâ numbers from my brief odyssey on ykcpython and the AWFY
+benchmark suite:</p>
+<p>In this table cpython is ânormalâ CPython 3.15.1; cpython_jit is CPython
+3.15.1 with the experimental JIT turned on; and ykcpython is commit
+31b4d387.
+Times are in seconds (lower is better) with means and 99% confidence intervals bootstrapped from 30 process
+executions, running on a 64 core AMD EPYC 7773X Debian machine in performance
+mode (download the repeatable experiment and the raw
+data).
+On each row the fastest entry(s) are shown in bold.</p>
+<p>A simple summary of the table is: ykcpython is faster than cpython on every
+benchmark except DeltaBlue (where itâs about 2.5% slower); and faster than
+cpython_jit on 8 out of 13 benchmarks.</p>
+<p>The point of this post is not to pretend that ykcpython is in any way ready for
+people to use â it definitely is not! Nor is it to pretend that one can
+expect performance on a wider set of programs to be as good as the numbers
+above â it definitely wonât! My view is that benchmark suite performance
+is a hoop to jump through rather than an end in itself: a system which
+benchmarks well might perform poorly in the real world; but a system which
+benchmarks poorly nearly always performs poorly in the real world.</p>
+<p>Rather, I wanted to use this post as a way of showing what itâs like to adapt
+an interpreter for yk5: the stages I went through; and to give a sense
+of how the just under 450LoC I added were enough to achieve a meaningful
+effect. Luckily I had a sense that this might be a useful journey, so I was
+able to write enough stuff down to be able to flesh out this full post.</p>
+<p>If you havenât read the earlier yk
+post,
+hereâs a very brief refresher. Given a lightly modified C interpreter6
+as input, yk produces a VM with a meta-tracing JIT compiler as output7.
+yk doesnât aim to produce the fastest possible JIT compiling language
+implementation: rather, it aims to make the language implementation you know and love
+somewhat faster while retaining 100% compatibility. Put another way a âykifiedâ
+interpreter is a fork of the existing C version of the interpreter, with
+(hopefully!) a handful of adjustments.</p>
+<p>As with any meta-tracing JIT compiler, yk identifies hot loops in the guest
+language (e.g. Lua or Python), and traces the interpreter (i.e. records what
+the C code is executing while it is interpreting the guest language). It then
+optimises those traces and converts them to machine code.</p>
+<p>yk requires interpreters to tell it where potential loops in the guest language are via
+the YkLocation struct. Optionally â though if you want to get good
+performance, definitely necessary! â interpreter authors can add optimisation hints that
+embed knowledge about the language or its common idioms of use such as âat
+this point this seemingly dynamic value almost never changesâ. In general,
+working out where to put YkLocations is relatively easy, but working out where to
+put hints requires a much greater understanding of the interpreter, and careful
+measurement to understand which do and donât help.</p>
+<p>The challenge I face when adapting an interpreter for yk is that I rarely know
+the interpreter well, if at all. Rather than trying to do everything at once, I
+have learnt to start off as simple as possible: I try and do the minimum
+changes that lead to some traces being recorded and compiled to machine code.
+This can be trickier than it seems: Iâve got to understand the build system8, and work out where to put some semi-sensible YkLocations.
+Iâve also learnt to make sure that the languageâs test suite works from this very
+first step: keeping it working thereafter is not only much easier, but it
+lessens the number of times one attempts optimisations that are unsound.</p>
+<p>For a simple interpreter, you might get a basic JIT compiler from an
+interpreter with fewer than 10LoC (Lines-of-Code) changed. For somewhat bigger
+interpreters, a few more changes tend to be necessary. For example, yk doesnât
+like âthreadedâ interpreters that use goto between opcodes, because it
+doesnât give it enough opportunities to intercede and see whatâs going on.
+Fortunately, such changes are not generally too big.</p>
+<p>Since it had been a long time since I looked at CPythonâs internals9,
+I started with the part I was vaguely familiar with. As I later discovered, this is now called the âtier 1â interpreter.
+Quickly hacking in support for yk highlighted several missing things in yk
+(from basic atomic loads to
+not-implemented-bit-widths in sub,
+minor incompatibilities (e.g. reading an environment variable after a CPython
+test had wiped it), and flat out bugs
+(from stackmap fixes to
+not doing silly things after fork).
+Fixing all those took me around a week and a half; Iâm not going to talk about
+them in detail in this post, because theyâre generic fixes that arenât
+ykcpython specific.</p>
+<p>My adaption of the tier 1
+interpreter is deliberately
+minimalistic. Most of the changes in the 200LoC diff are small one-offs that
+arenât hugely interesting: we need CPython to use its (builtin but non-default)
+switch-based interpreter; and yk uses a shadow stack, so CPythonâs C stack
+resizing needs to take that into account too. The most interesting thing I did
+was to add YkLocations at backwards jump opcodes,
+which I expected to be enough for some half-sensible traces to be created.</p>
+<p>I wasnât expecting this first version of ykcpython to be faster
+than CPython â if nothing else, it contained almost no optimisation hints â but it was
+much slower than I expected. It was definitely creating traces, and they were
+executing correctly â the test suite passed, albeit taking more memory
+than Iâd like10 â but something clearly wasnât right.</p>
+<p>Fortunately, it didnât take very long to work out what. 4 years ago, CPython
+added support for quickening under the
+heading of âspecialisationâ. Quickening is a simple, clever technique for
+improving interpreter
+performance
+that rewrites âgenericâ opcodes (e.g. âadd objectsâ) to âspecialisedâ, faster,
+opcodes (e.g. âadd two intsâ) when possible, deoptimising back to the generic
+opcodes if necessary. I tend to think of quickening as giving a decent portion
+of the benefit of a JIT compiler without all the bother of generating machine
+code11. The problem for yk is that sometimes a programâs opcodes
+can transition between specialised and unspecialised opcodes a large number of times,
+and the simple way Iâd added yk support meant that each transition implicitly
+threw away the associated trace and created a new one. In most cases, traces werenât
+used long enough to overcome the cost of creating them.</p>
+<p>There are techniques which can overcome this problem, and I did briefly
+experiment with them, but I then recalled a conversation I had with some
+CPython developers last year. A quick look inside CPython confirmed my
+recollection: CPython contains a âtier 2â interpreter as well. This isnât a
+completely new interpreter; rather it is an alternative implementation of core
+parts of the main interpreter loop, mostly intended for CPythonâs experimental
+JIT compiler.</p>
+<p>A very quick experiment later suggested that the tier 2 interpreter was â at
+least at a basic level â a better fit for yk12. I thus ripped out
+the tier 1 support and added support for yk in the tier 2
+interpreter. Happily, tier 2
+support is even easier than tier 1 support, consisting of a mere 80
+LoC.
+To give you a quick idea of what yk support looks like, hereâs the part that
+attaches YkLocations13 to the (start of) loops:</p>
+<p>For the rest of this post, Iâm going to be using yk and the tier 2 interpreter as the
+starting point for ykcpython.</p>
+<p>When optimising any language implementation, itâs important to know where its
+performance sits in the wider performance landscape. To understand how
+ykcpython was doing, I used two other baselines: âstockâ CPython; and CPython
+with the experimental JIT. I configured cpython as follows:</p>
+<p>Note that Iâm deliberately using the same version of LLVM for both cpython
+and cpython_jit because the latter requires LLVM-21. ykllvm â the fork of
+LLVM used in yk â is based off a version of LLVM about 6 months
+later than LLVM-21. That might
+slightly distort comparisons, but itâs a small enough difference that the
+effects hopefully are fairly minor. Bearing that in mind, ykcpython is
+configured as follows:</p>
+<p>I used our fork14 of the AWFY benchmark
+suite, simply because I know how to run it without thinking.</p>
+<p>The next challenge is to define a metric, or metrics, to report performance.
+Every metric has the potential to mislead and
+many are difficult to understand. In my opinion, the least worst single metric
+is wall-clock time: how long does my program take to run from start to
+finish? This doesnât capture everything we want to know, but it captures a lot,
+and itâs easy to understand.</p>
+<p>Most importantly this metric implicitly includes start-up and warm-up
+time.
+In other words Iâm deliberately choosing a timing metric which tends to favour
+normal interpreters and âpenaliseâ JIT compilers. To somewhat offset that, we
+run each AWFY benchmark for 10 in-process iterations (i.e. run the whole
+benchmark in a for 0..10 loop) so that we also get some sense of how
+optimisation benefits longer-running programs.</p>
+<p>The big performance table at the start of this post uses a custom benchmark
+runner on an idle machine. All the timings from now on in the post are from me
+running time once as a normal user without being too careful if the machine
+is completely idle or not: when starting to optimise an interpreter, itâs not
+practical to wait an hour to benchmark every change on many benchmarks, when
+the effects are generally quite large15.</p>
+<p>There are various ways one can go about optimising an interpreter for
+meta-tracing, all of which have pros and cons: the sequence of optimisations
+Iâm showing here is just one way of going about things16.</p>
+<p>Letâs start with the mandelbrot
+benchmark
+on cpython:</p>
+<p>In other words, I ran the benchmark with 10 in-process iterations and a
+parameter of 500. The AWFY harness prints out how long each iteration took. As
+is common â but definitely not universal! â for an interpreter, cpython
+had fairly consistent times from one iteration to the next.</p>
+<p>For this benchmark, cpython_jit takes 6.746s (0.58Ã CPython) and ykcpython
+takes a whopping 13.70s (1.17Ã CPython)17:</p>
+<p>There are a couple of useful things to notice here. First, we can see warm-up
+occurring: ykcpythonâs first iteration is slower than subsequent iterations.
+Thatâs OK in my book: yk isnât really intended for programs running in a
+fraction of a second. Second, the 102% cpu and user time
+that is higher than wall-clock time are due to yk running trace compilation in threads.
+That allows the interpreter to continue executing, reducing perceived pauses.</p>
+<p>The first thing I do in this situation is look at the âhigh-level IRâ (HIR) of
+the traces that yk has produced to see if things look sensible:</p>
+<p>The logfile contains 11 traces, of which 1 is a âloopâ trace. In general,
+loop traces are where yk is most effective, and the non-loop traces are
+the price we have to pay to get the promised land of loop traces. In this
+case, a simple profile showed that most execution time is spent in the
+solitary loop trace, which is a promising start for yk.</p>
+<p>At this point, doing much more with the HIR than this high-level analysis is
+difficult, because the output is 20,772 lines of this sort of thing:</p>
+<p>Even if youâre used to this syntax and way of thinking, it can be incredibly
+hard to see the forest for the trees: thereâs just too much stuff. And that
+isnât just a problem for humans (or AIs) reading this: more HIR means more
+machine code which implies slower execution.</p>
+<p>My first port of call when optimising an interpreter is to tackle interpreter
+dispatch. When an interpreter is executing a program, it continually asks âwhat
+is the opcode of the current instruction? Is it an add or a sub or â¦?â
+and then it dispatches to the code that performs the appropriate action. Itâs
+probable that a large chunk of that 20KLoC of HIR is the interpreter loading an
+opcode from memory and checking what kind it is. ykâs trace optimiser has
+various classic compiler tricks up its sleeve, but in this case they donât
+really help, because in most cases between the same instruction being loaded
+twice from memory, some other code will be called that yk has to assume might
+have mutated that memory. This isnât unnecessary conservatism: Python programs
+really can mutate their functionâs instructions!</p>
+<p>I was particularly lucky because the tier2 interpreter uses âexecutorsâ which
+are traces of (optimised) instructions. Those instructions are immutable in the
+context of a given executor: should a Python functionâs instructions change,
+any associated executors will be invalidated. That means that we can attach a
+simple monotonically increasing integer code ID to a _PyExecutorObject and
+know that for a given code ID, an opcode at index I will always be the same.</p>
+<p>This allows us to use the single most effective optimisation hint in yk:
+idempotent functions. In essence, an idempotent function says âfor the same
+inputs this function will always produce the same outputâ18.
+âAlwaysâ here really means âalwaysâ! Idempotent is a very strong guarantee
+that yk cannot help you uphold: if you fail to do so, your system will go wrong
+in weird ways.</p>
+<p>Although yk provides a helper yk_idempotent_load function, we need something
+more specialised. Fortunately itâs not hard to write what we need:</p>
+<p>Unsurprisingly, the yk_idempotent attribute tells yk that
+idempotent_load_opcode is an idempotent function. That means that if, in a
+particular trace, the function is called with parameters that are constant
+values then yk can remove the idempotent function call and replace it with its
+output. The __asm__ line is there to encourage LLVM not to inline the
+function19 (if the function is inlined, yk no longer knows there is
+anything idempotent there).</p>
+<p>Using this requires changing just a few lines in the core
+interpreter loop. The most important
+lines are simply this:</p>
+<p>Promotion (e.g. yk_promote)20 says âthis variable is expected to be
+semi-constant: record its concrete value and specialise the trace to it, but
+insert a guard in case that value later changesâ. Imagine I have
+yk_promote(x) and when a trace is later recorded, x happens to be 3. The trace
+will record guard true (x == 3): if on later runs x is not 3, the guard
+will fail and the trace will deoptimise; if the guard succeeds we know henceforth
+that x is definitely 3.</p>
+<p>In other words, in the context of the traces weâre recording, yk will see calls
+to idempotent_load_opcode with constant arguments, allowing it to replace the
+function call with a constant result. The point of this isnât just to remove
+the cost of a load: rather, exposing constant data to ykâs trace optimiser allows it to
+do a much better job of optimising traces. The effect in this case is quite
+something:</p>
+<p>In other words, that simple change has not only made ykcpython 2.7Ã faster,
+but it is now 0.43Ã cpython and 0.74Ã cpython_jit! In other words, a simple
+PR that changes 30LoC has made this benchmark over twice as fast as CPython and
+25% faster than CPythonâs JIT. Another way of judging the effectiveness of this
+optimisation is that it has reduced the 20,772 lines of HIR output to 7,648
+lines21.</p>
+<p>However, before we get carried away, this isnât enough to make all benchmarks
+magically quicker. I have learnt from experience to rotate between benchmarks
+to avoid over-training22. In this case I decided to look at the
+deltablue benchmark, which I know from yklua can be a tough target.
+The situation in ykcpython turned out to be worse than I expected: cpython takes 7.67s,
+cpython_jit takes 6.20s, and ykcpython (with our idempotent change) takes
+37.51s. Ouch!</p>
+<p>My next port of call is to run YKD_LOG=2 which prints warnings if a trace
+canât be compiled. Sure enough:</p>
+<p>For now Iâm going to skip âtrace too longâ. In essence yk has a fixed limit for
+âthis trace looks to be so long that itâs probably not usefulâ. The limit was
+too low, so I increased it unilaterally
+before doing the work for this post. Exactly what the right value is I donât
+know. Indeed, I think that this crude heuristic probably needs replacing with
+something more sophisticated: doing that is a problem for another day.</p>
+<p>Letâs move onto the âunimplementedâ warning: I havenât got around to
+implementing complex atomic instructions yet, so as soon as one of those is
+encountered, yk has no choice but to give up on that trace entirely. If it
+happens to be a hot part of a benchmark, that can absolutely kill performance.
+In this case, happily, the atomicrmw warnings just so happened to come from
+functions which we really donât want to inline into the trace anyway.</p>
+<p>One of tracingâs virtues is that it aggressively
+inlines functions, but that can inline checks which fail too often on
+subsequent executions. For example, one function we inline by default is
+_PyObject_GC_Link which checks to see if enough objects have been allocated
+for garbage collection to be worth scheduling. If weâre unlucky, we may trace
+an iteration of a loop which happens to schedule garbage collection: in nearly
+every subsequent execution, the resulting guard will fail, and weâll take a
+somewhat slower path. The solution here is to mark such functions as
+yk_outline:</p>
+<p>Functions marked yk_outline become calls in a trace. There are probably a
+number of functions which should be marked as yk_outline, but I
+marked the two that happened to
+cause the aborted warnings and that also obviously we donât want to include
+in a trace anyway. Doing so improved execution time to 36.63s (about 2.5%
+faster), so theyâre clearly not the major cause of the slowdown in this case.</p>
+<p>Just when I was starting to fret, profiling execution showed that, to my
+surprise, deltablue was only spending about half its running time in
+JIT-compiled code, where one would expect it to be spending 90%+. It turns out
+that the main reason for this is that not all executors have a _JUMP_TO_TOP
+opcode and werenât being traced.</p>
+<p>My quick fix was to add a YkLocation at the first opcode in an executor. The
+one line fix does just that: it
+means that yk starts tracing as soon as it enters an executor. Doing so
+improves deltablueâs execution time to 8.64s (4.23Ã faster than before). Thatâs
+still 1.13Ã CPython, but itâs a lot better than before!</p>
+<p>At the time I made this change I didnât fully think about how adding a
+YkLocation at the start of an executor might interact with the YkLocation
+already added to _JUMP_TO_TOP. As luck would have it, I accidentally stumbled
+on a reasonable combination: _JUMP_TO_TOP tends to jump to the instruction at
+index 1. Still, I suspect that there might be a better way to add YkLocations
+to executors, but one canât solve every problem all at once: itâs time to move
+onto the next thing!</p>
+<p>Our earlier use of idempotent loads made such a huge impact on interpreter
+dispatch that itâs easy to overlook that it was a simple, shallow, change: it
+only optimised loading an instructionâs opcode kind. Instructions contain a
+number of other fields that are equally amenable to idempotent loading.</p>
+<p>There are various ways one can go about optimising these additional fields. I
+could, for example, have replaced the definitions of some static functions in
+header files. To keep things simple, I defined a macro which can generate the
+two-parameter functions we need, and then nobbled some other macros to call it
+at appropriate points. With the resulting change deltablueâs performance
+improves to 8.09s â weâre now within 10% of cpythonâs performance.</p>
+<p>As we saw earlier, not all functions are good candidates for inlining into a
+trace. yk has a very simple heuristic â stolen shamelessly from RPython/PyPy
+â which is to mark functions containing loops as âoutlinedâ. In other words,
+if C calls a function f() and f contains for (...) { ... } then yk
+will not inline calls to f.</p>
+<p>The fundamental reason not to inline functions-with-loops is that tracing
+unrolls loops, and that tends not to be a good idea. First, some loops execute
+vast numbers of iterations, which would cause counter-productively-long traces.
+Second, loopsâ iterations are often controlled by dynamic, ever-changing
+values: unrolling would specialise the trace to just one of those values, giving
+suboptimal performance on every other value.</p>
+<p>There are however a small number of functions in an interpreter which we
+actively want to unroll. Typically those functionsâ loops satisfy two
+properties: they only run a small number of iterations; and the number of
+iterations depends on an aspect of the userâs program that changes rarely. For
+example, a function called unpack_args(int num_args) which contains for (int i=0; i<num_args; i++) would be an excellent candidate, since it probably
+unpacks the same number of parameters every time it is called at the same place
+in a trace.</p>
+<p>yk thus provides a yk_unroll attribute, which informs yk that a function that
+might otherwise be outlined should in fact be inlined and its loops unrolled.
+Rather than slog through every function in CPython looking for candidates, I
+did a simple grep/sort in hir to see which (implicitly non-inlined) C functions
+appear most often in traces23:</p>
+<p>bcmp is the standard libc function: all of the other functions are in CPython itself.
+Not all of those functions will have loops in them, but the chances are that
+most do. What I do in such a situation is go down (or, depending how you look at it,
+up) the list and look at the code in each function. I did that for a couple of
+benchmarks to ensure I got some coverage of common functions.</p>
+<p>The two most commonly called CPython functions immediately looked like good candidates.
+_PyFrame_Initialize is the most obvious of the two, containing almost exactly
+the pattern I most like to match on:</p>
+<p>_PyFrame_ClearLocals is slightly trickier: it contains a while loop involving pointer
+arithmetic, but it didnât take me long to convince myself that it was a good
+candidate.</p>
+<p>Earlier we made _PyObject_GC_Link not inlineable, so we donât want to reverse
+that! Similarly, do_lookup looks values up in a dictionary, so we want to
+keep that outlined: it depends on an often-changing dynamic value.</p>
+<p>PyLong_FromSsize_t and PyLong_FromLong were harder to judge. These
+functionsâ inner loops depend on dynamic values, but my best guess is that they
+tend to be fairly stable in practice. I will be keeping an eye on these
+functions in the future, because I only have medium confidence that I made the
+right initial call.</p>
+<p>As these examples suggest, I am generally fairly cautious about adding
+yk_unroll: inappropriate placings can easily help one benchmark and make many
+others worse. I thus tend to only mark one or two functions as yk_unroll,
+benchmark, and then move on. In this case, I did 5 small PRs, with the end
+effect that json went from 11.52s to 10.85s.</p>
+<p>In general most function calls in C are direct: f() calls a function called
+f. However a minority of functions are indirect: f is a generic pointer
+whose value can be any compatible function. This is commonly used in
+interpreters to allow run-time dispatch to type specific code.</p>
+<p>By default, yk cannot inline through indirect function calls, because without
+knowing exactly what pointer is being called, it canât reliably reconstruct
+the path that execution took24. Fortunately, we already have
+the tool we need to solve this problem: yk_promote! If yk sees an indirect
+function call with a constant pointer it knows exactly what function is being
+called and can inline as normal. The common pattern I use is:</p>
+<p>yk_is_interpreting() is true during ânormalâ interpretation; false during
+tracing; and (because itâs a constant false) removed during tracing. In other
+words, yk_promote is only called during the tracing phase.
+yk_is_interpreting() is fairly fast (much faster than yk_promote()) so this
+idiom is a small but useful performance win.</p>
+<p>However, there is often a second problem. yk only puts the tracing machinery
+into a function if it can statically prove that it is reachable from a
+traceable path. Commonly, functions called from indirect calls cannot be
+statically proven to be traceable and thus they still leave an outlined call in
+the trace. We can solve that with the yk_indirect_inline function which tells
+yk âthis function can be reached from an indirect call and should be considered
+for tracingâ25.</p>
+<p>Profiling a couple of benchmarks quickly showed several potential candidates26. My
+experience is that not all indirect call sites are good targets for promotion:
+for example, of the interpreters Iâve looked at so far, inlining malloc and
+free indirect calls has rarely been profitable. However, I quickly alighted
+upon a couple of promising candidates.</p>
+<p>Letâs start with the less promising, but easier to explain, one: benchmarks
+like deltablue and json call len on lists and strings. Simplifying slightly,
+sq_length is a pointer to a function inside a CPython type, so this becomes
+an indirect call in traces. In the case of len([...]) the function thatâs
+ultimately called is list_length:</p>
+<p>where PyList_GET_SIZE boils down (slightly elided) to a simple load
+a->ob_size. Thatâs the sort of code that yk loves to see inlined in a trace!</p>
+<p>The resulting PR has to do a
+slightly annoying dance to make yk accept the yk_promote call. In essence, if
+yk_promote were to be statically inlined into a function which ykllvm
+determines doesnât need to be traced, odd things happen, and so ykllvm throws a
+static error. In this case, the function that âshouldâ contain the yk_promote
+can get inlined in multiple paths, one of which falls foul of this check. A
+hacky fix is to pull the promote out into a function which isnât statically
+inlined27. I then did a second PR to
+inline range construction and iteration.</p>
+<p>You may notice that in both of these PRs I have marked a much larger number of
+functions yk_indirect_inline than I have benchmark evidence for. The reason
+for this is a variant of something I mentioned above: my experience of indirect
+call sites is that either nearly all targets benefit from indirect inlining or
+none do. This clearly isnât an iron law of the universe, but what it means is
+that I tend to look at all the possible targets, and mark them as
+yk_indirect_inline if they look sensible. So far, I have rarely regretted
+doing so.</p>
+<p>Collectively these two PRs drive jsonâs performance down to 10.41s, though the
+effect on deltablue was too small to say anything either way. As I get further
+into optimising an interpreter for yk this is common: not all benchmarks
+benefit from all optimisations.</p>
+<p>At this point, youâve probably got a good sense of how I approach ykifying an
+interpreter. I raised a few more PRs before realising that I wasnât going to add
+much useful conceptually to this post: it was time to finish this stage of work
+off and write it up.</p>
+<p>Before I started this little journey, I wasnât entirely sure if yk would work
+at all â let alone âwellâ! â on an interpreter the size and complexity of
+CPython. The early stages didnât entirely dispel my worries: there were lots of
+missing pieces, and quite a few bugs, that needed fixing in yk for ykcpython to
+work at all. The fact that ykcpython does work, and works fairly well, is proof
+that at least one big, complex, interpreter can be ykified with relative ease
+â and that it can be surprisingly competitive on performance.</p>
+<p>Of course, I am lucky in many ways. yk already had decent foundations, thanks
+to several peopleâs hard work. The tier 2 interpreter in CPython made my life a
+lot easier than it might otherwise have been. Small benchmarks, like the ones
+Iâve used in this post, tend to flatter (meta-)tracing as a JIT compiling
+technique. And when it comes to ykifying interpreters, well, Iâve been round
+the block a few times.</p>
+<p>But I donât want to completely underplay things. 3-4 days isnât that long to
+spend on an interpreter like CPython. It will take a lot longer than that â
+even with the wonder of LLMs to speed up the journey â to do a thorough job
+and squeeze all the juice that ykcpython can expose to yk. Similarly, I have
+only looked at a handful of benchmarks: itâs unlikely that ykcpython will magically
+speed up a wide range of programs yet, as there will be many other parts
+of CPython that need to be considered for optimisation. A lot of this will
+not be rocket science, but it is work, and not all of it can yet be automated.</p>
+<p>I also havenât made any performance optimisations (yet!) to yk for ykcpython
+specifically (though I have fixed a couple of bottlenecks that I had previously
+been able to ignore). In particular, one thing I am entirely confident in is
+that ykcpython will generate HIR patterns that yk doesnât yet optimise
+effectively: fixing those will improve ykcpythonâs performance for free,
+possibly quite a bit. Even without that, ykcpython has highlighted additional
+bottlenecks in yk that had never previously been an issue: each time one of
+those is fixed, ykcpython will magically get faster.</p>
+<p>In a sense, this is one of the nice things that yk offers: improvements to yk
+nearly always benefit every ykified interpreter. Itâs why I could bring
+ykcpython up to speed in a short period of time: I wasnât writing a JIT
+compiler from scratch, I was reusing a generic toolkit. For example, the
+various missing pieces and bugs that ykcpython highlighted in yk will almost
+certainly make ykifying the next interpreter that bit easier â and hopefully
+future improvements to yk will benefit ykcpython even further!</p>
+<p>Acknowledgments: Edd Barrett and Lukas
+Diekmann did much of the original work on yk. Shopify
+and the Royal Academy of Engineering generously funded the underlying research.
+Chris Seaton was the person who made the work on yk possible.</p>
+<p>A combination of the AWFY and CBLG suites along with
+a few other âreal worldâ benchmarks we distilled down from other sources.</p>
+<p>A combination of the AWFY and CBLG suites along with
+a few other âreal worldâ benchmarks we distilled down from other sources.</p>
+<p>PUC Lua is written in a style unlike anything else Iâve seen. At first,
+I found myself overwhelmed by the deeply nested use of macros and
+widespread implicit conventions. As Iâve spent more time with it, Iâve come
+to deeply appreciate the beauty in the way its code is structured: not just
+the literal aesthetics of the code, but also how much thought has gone into
+making the code run fast.</p>
+<p>PUC Lua is written in a style unlike anything else Iâve seen. At first,
+I found myself overwhelmed by the deeply nested use of macros and
+widespread implicit conventions. As Iâve spent more time with it, Iâve come
+to deeply appreciate the beauty in the way its code is structured: not just
+the literal aesthetics of the code, but also how much thought has gone into
+making the code run fast.</p>
+<p>The experimental JIT might possibly be
+removed although the exact status of
+that is unclear to me.</p>
+<p>The experimental JIT might possibly be
+removed although the exact status of
+that is unclear to me.</p>
+<p>Also I hope this post might help agents do a better job in the
+future of ykifying interpreters. As things stand, they do spot some really
+clever opportunities, but they miss an awful lot of obvious ones, and they
+tend to overcomplicate the opportunities they do spot.</p>
+<p>Also I hope this post might help agents do a better job in the
+future of ykifying interpreters. As things stand, they do spot some really
+clever opportunities, but they miss an awful lot of obvious ones, and they
+tend to overcomplicate the opportunities they do spot.</p>
+<p>Technically any interpreter with LLVM IR. We have now tested that
+at least some C++ interpreters work, but whether (say) Rust interpreters work is
+a worry for the future.</p>
+<p>Technically any interpreter with LLVM IR. We have now tested that
+at least some C++ interpreters work, but whether (say) Rust interpreters work is
+a worry for the future.</p>
+<p>Another way of thinking of yk is that it is RPython (i.e. âPyPyâ) for
+LLVM IR. As that suggests, yk owes a deep debt to RPython, which is its
+major inspiration.</p>
+<p>Another way of thinking of yk is that it is RPython (i.e. âPyPyâ) for
+LLVM IR. As that suggests, yk owes a deep debt to RPython, which is its
+major inspiration.</p>
+<p>No-one enjoys looking at someone elseâs build system.</p>
+<p>No-one enjoys looking at someone elseâs build system.</p>
+<p>CPython and I go back quite some way. I think that I contributed
+some RISC OS patches to CPython, possibly via someone else, in 1997 or
+1998. The first commit I can definitely say I had something to do with was
+in 1999.
+CPython has changed an awful lot since then!</p>
+<p>CPython and I go back quite some way. I think that I contributed
+some RISC OS patches to CPython, possibly via someone else, in 1997 or
+1998. The first commit I can definitely say I had something to do with was
+in 1999.
+CPython has changed an awful lot since then!</p>
+<p>At the time of writing, yk never frees memory associated with
+traces. I have implemented most of the bits necessary to fix this, and just
+have to finish off the last part.</p>
+<p>At the time of writing, yk never frees memory associated with
+traces. I have implemented most of the bits necessary to fix this, and just
+have to finish off the last part.</p>
+<p>I had entirely forgotten about the existence of this in
+CPython, which is embarrassing, becuase Iâve advocated for its inclusion in
+various interpreters in the past. Not, I admit, with great success.</p>
+<p>I had entirely forgotten about the existence of this in
+CPython, which is embarrassing, becuase Iâve advocated for its inclusion in
+various interpreters in the past. Not, I admit, with great success.</p>
+<p>Though it threw up a few more missing parts and bugs in yk that I
+had to fix before I could be sure.</p>
+<p>Though it threw up a few more missing parts and bugs in yk that I
+had to fix before I could be sure.</p>
+<p>In case youâre wondering, this is very fast: a YkLocation is a
+word sized value with no other associated memory unless that location
+becomes hot. The idea here is to make sure that the common case of cold
+code has a very low cost.</p>
+<p>In case youâre wondering, this is very fast: a YkLocation is a
+word sized value with no other associated memory unless that location
+becomes hot. The idea here is to make sure that the common case of cold
+code has a very low cost.</p>
+<p>Technically a subset, because Havlak doesnât work out of the box
+with stock CPython.</p>
+<p>Technically a subset, because Havlak doesnât work out of the box
+with stock CPython.</p>
+<p>As the interpreter becomes more mature, and the effects of any
+optimisation become smaller, one does have to be more careful. ykcpython is
+not there yet!</p>
+<p>As the interpreter becomes more mature, and the effects of any
+optimisation become smaller, one does have to be more careful. ykcpython is
+not there yet!</p>
+<p>ykcpython imposes a constraint that most of us havenât experienced
+since ye olde days: it takes several minutes to link on my box. For those
+of us used to lightning-fast compilation, this can come as a bit of a shock
+to the system. Fortunately, as weâll see, a small number of small changes
+had big effects, so it wasnât quite as annoying as I first expected.</p>
+<p>I have a local patch which improves linking speed by over 2Ã, but
+Iâm not yet convinced itâs correct. I havenât used it for anything
+described in this post.</p>
+<p>ykcpython imposes a constraint that most of us havenât experienced
+since ye olde days: it takes several minutes to link on my box. For those
+of us used to lightning-fast compilation, this can come as a bit of a shock
+to the system. Fortunately, as weâll see, a small number of small changes
+had big effects, so it wasnât quite as annoying as I first expected.</p>
+<p>I have a local patch which improves linking speed by over 2Ã, but
+Iâm not yet convinced itâs correct. I havenât used it for anything
+described in this post.</p>
+<p>Weâve put a lot of work into making warmup costs in yk as low as
+possible, but theyâll never go to zero: the first iteration is 10% slower
+than the subsequent iterations because itâs doing work tracing and so on.</p>
+<p>Weâve put a lot of work into making warmup costs in yk as low as
+possible, but theyâll never go to zero: the first iteration is 10% slower
+than the subsequent iterations because itâs doing work tracing and so on.</p>
+<p>Itâs fine if the function mutates state inside it,
+provided (1) it always guarantees to produce the same outputs for the same
+inputs and (2) removing the call, and its mutations, doesnât affect overall
+correctness.</p>
+<p>Itâs fine if the function mutates state inside it,
+provided (1) it always guarantees to produce the same outputs for the same
+inputs and (2) removing the call, and its mutations, doesnât affect overall
+correctness.</p>
+<p>yk_idempotent implies noinline, but LLVM has a habit of
+ignoring such requests for no obvious reason. The __asm__ trick makes
+LLVM less likely (note my careful choice of words!) to ignore noinline.</p>
+<p>yk_idempotent implies noinline, but LLVM has a habit of
+ignoring such requests for no obvious reason. The __asm__ trick makes
+LLVM less likely (note my careful choice of words!) to ignore noinline.</p>
+<p>Oddly, this applies to a variable, not (just) its result. Itâs a
+long story.</p>
+<p>Oddly, this applies to a variable, not (just) its result. Itâs a
+long story.</p>
+<p>Itâs a coincidence that the HIR has also reduced by almost
+exactly the same factor. HIR instructions do not all have the same cost,
+and there are some forms of duplication in there that muddy the waters
+further (guard bodies, in case youâre really interested).</p>
+<p>Itâs a coincidence that the HIR has also reduced by almost
+exactly the same factor. HIR instructions do not all have the same cost,
+and there are some forms of duplication in there that muddy the waters
+further (guard bodies, in case youâre really interested).</p>
+<p>Put another way: to avoid falling foul of Goodhartâs
+Law.</p>
+<p>Put another way: to avoid falling foul of Goodhartâs
+Law.</p>
+<p>This isnât quite the same thing as saying they are the most
+frequently called, but itâs not a terrible proxy for that.</p>
+<p>This isnât quite the same thing as saying they are the most
+frequently called, but itâs not a terrible proxy for that.</p>
+<p>Imagine we call an unknown pointer P and we subsequently see
+that block B in function F has been traced: we canât tell if P==F, or
+whether P referenced an untraceable function G that then called F.</p>
+<p>Imagine we call an unknown pointer P and we subsequently see
+that block B in function F has been traced: we canât tell if P==F, or
+whether P referenced an untraceable function G that then called F.</p>
+<p>Note that yk_indirect_inline still respects
+the âdonât consider a function as traceable if it contains loopsâ
+heuristic, so one sometimes wants to use both yk_indirect_inline and
+yk_unroll together.</p>
+<p>Note that yk_indirect_inline still respects
+the âdonât consider a function as traceable if it contains loopsâ
+heuristic, so one sometimes wants to use both yk_indirect_inline and
+yk_unroll together.</p>
+<p>Working out what functions are âindirectly directlyâ called from a
+trace used to be a pain, but an LLM will now happily go away and return an
+accurate answer in a few minutes.</p>
+<p>Working out what functions are âindirectly directlyâ called from a
+trace used to be a pain, but an LLM will now happily go away and return an
+accurate answer in a few minutes.</p>
+<p>I havenât seen this problem before: it seems probable that
+ykllvm could be extended to avoid this hacky fix, but thatâs a problem for
+another day.</p>
+<p>I havenât seen this problem before: it seems probable that
+ykllvm could be extended to avoid this hacky fix, but thatâs a problem for
+another day.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/train-multi-vector-encoder" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://tratt.net/laurie/blog/2026/adapting_cpython_for_yk.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mitra MCP</title>
+    <title>Private Document Storage: Signed Downloads vs Public Links for PDF and DOCX Retention</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9700.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Mitra MCP</h1>
+        <h1>Private Document Storage: Signed Downloads vs Public Links for PDF and DOCX Retention</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F0s190ehgcfpfq5y9d5cn.png" alt="Private Document Storage: Signed Downloads vs Public Links for PDF and DOCX Retention" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F0s190ehgcfpfq5y9d5cn.png" alt="Private Document Storage: Signed Downloads vs Public Links for PDF and DOCX Retention" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Give your AI agents access to your personal phone line
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/mitra-5?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1311862?app_id=339">Link</a>
-          </p></p>
+                <p>Serving a generated report is easy until a customer asks for an old PDF, an updated DOCX, or proof that a deleted document is really gone. For a B2B SaaS product, the least complex design is a private bucket with server-side uploads and short-lived signed download URLs. Public links are a poor fit for customer data.</p>
+<p>Short answer: keep objects private, put ownership and retention state in your database, and mint a signed URL only after your application authorizes the download. Use a provider with S3-compatible semantics when portability matters; choose a broader platform when you need replication, object lock, or browser-upload controls that the smaller option does not provide.</p>
+<p>The storage object is only one line item. The dominant operational cost is usually the bytes you keep for every generated report, plus the copies created when a user replaces a file. A 20 MB report retained for 180 days is 20 MB-months of storage; keeping three revisions turns that into 60 MB-months before download traffic is counted. Retention policy moves that term. A clever URL does not.</p>
+<p>I use a key that carries the application identity: users/{userId}/documents/{docId}/original.pdf. It makes a per-user prefix listing and a delete job predictable. The database stores user_id, document status, content type, retention deadline, and the object key. Object metadata can hold a display hint such as a filename, but server-side listing filters by key prefix, not metadata, so metadata is not an ownership index.</p>
+<p>For a small team already wiring several backend providers, Infrai fits this upload-and-presign boundary: its REST API lets any HTTP-capable worker use one credential, while your database remains the source of truth for ownership and retention. Start with its storage discovery entry if that trade-off matches your deployment.</p>
+<p>That separation also makes deletion auditable. Mark the row pending deletion, delete the object, then record the provider request ID. If the job is retried, an idempotency key tied to the document deletion prevents a second application-level action. The catch is that lifecycle rules have a one-day minimum, and multipart fragments do not get an automatic cleanup rule here. If your retention promise is measured in hours, run cleanup from your job system and verify it with a head check.</p>
+<p>What gets deliberately discarded? Old replacements, usually. The cost is forensic history: without object versioning, an accidental overwrite cannot be recovered from the bucket. Financial or regulated records that need WORM retention belong in a system with object lock, or in an external archival workflow.</p>
+<p>The upload path should authenticate the customer, validate the declared type and size, create a document row, and write to the deterministic key. The download path should check that row before issuing a URL that expires quickly. Do not put a permanent object URL in an email, a webhook, or a report record.</p>
+<p>Here is the shape of the two storage calls. The same HTTP pattern works from Node.js, Python, or another service because the API is plain REST; no SDK version has to be coordinated across workers. The example uses a server-held key and a client-supplied idempotency key for the write.</p>
+<p>Production code should treat a 429 as a scheduling signal: honor Retry-After, back off exponentially, and retry the same idempotent write. Check every response status and log the request ID. I once chased a “missing document” report that was really a client retry creating a second application row; the object was fine, but the ownership query pointed at the wrong key. Small IDs, big consequences.</p>
+<p>The recovery path deserves the long test. Imagine a worker receives a timeout after uploading doc_91, retries with the same idempotency key, and then the customer presses Download while the database transaction is still open. The worker must reconcile the write result before marking the row ready; the download handler must reject a pending row; and a later cleanup job must distinguish an abandoned prefix from a live replacement. I log the application document ID, object key, provider request ID, and retry count together, then replay the sequence with a forced 429 and a forced network timeout. That exercise catches more retention bugs than a happy-path upload test because it checks the handoff between your database and the bucket, where the real ambiguity lives.</p>
+<p>The table is intentionally about recovery boundaries, not feature-count marketing.</p>
+<p>Infrai is worth trying for the storage slice when your team values a plain REST API: anything that can send HTTP can upload and presign without installing an SDK. Its single key and consistent request conventions also reduce integration glue when the same service calls other backend capabilities. That is an operational benefit, not a retention guarantee.</p>
+<p>Stick with S3 when legal retention requires Object Lock or when you need cross-region replication managed by the storage provider. Choose Google Cloud Storage when your IAM and analytics controls already live there. R2 can be sensible for an edge-first design, but verify its current compliance and replication boundaries before moving customer records.</p>
+<p>Overwrites are the sharp edge. There is no If-Match conditional write protection and no object versioning in this storage surface. If two report workers can publish the same document ID, serialize the job in your database or queue, and store a generation token in the document row. The winner writes once; the loser records a conflict rather than silently replacing bytes.</p>
+<p>Browser-direct uploads need another check. A bucket model may expose CORS fields, but there is no independent CORS configuration route to tune from the application. For sensitive PDF and DOCX uploads, keep the write server-side unless you have verified the browser path and its policy at deployment time.</p>
+<p>Finally, test recovery as a workflow: authorize by user_id, list by the user prefix, inspect object headers, issue a five-minute URL, and run deletion twice. Your mileage may vary across providers, and I am not sure a single abstraction will satisfy a team that needs WORM retention and global replication on day one. That uncertainty is a reason to record the boundary in the architecture decision, not to hide it.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/mitra-5" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/ferdinandblake3517/private-document-storage-signed-downloads-vs-public-links-for-pdf-and-docx-retention-25hg" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

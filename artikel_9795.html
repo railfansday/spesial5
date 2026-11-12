@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>TorchNeuron: running HF models on AWS Trainium is easier than ever</title>
+    <title>Google Open-Sources TPU Sync for KV Cache and Weight Transfer on TPUs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9795.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,41 +15,66 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>TorchNeuron: running HF models on AWS Trainium is easier than ever</h1>
+        <h1>Google Open-Sources TPU Sync for KV Cache and Weight Transfer on TPUs</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/hf-torchneuron/thumbnail.png" alt="TorchNeuron: running HF models on AWS Trainium is easier than ever" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://res.infoq.com/news/2026/11/google-tpu-sync/en/headerimage/generatedHeaderImage-1794402814105.jpg" alt="Google Open-Sources TPU Sync for KV Cache and Weight Transfer on TPUs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/hf-torchneuron/thumbnail.png" alt="TorchNeuron: running HF models on AWS Trainium is easier than ever" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://res.infoq.com/news/2026/11/google-tpu-sync/en/headerimage/generatedHeaderImage-1794402814105.jpg" alt="Google Open-Sources TPU Sync for KV Cache and Weight Transfer on TPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>TorchNeuron provides a new native backend for PyTorch on AWS Trainium. Transformers, Diffusers and Kernels natively support it, making it easier than ever to run models on Trainium and to share them on the HF hub.</p>
-<p>TorchNeuron is a PyTorch plugin that brings a new backend for Trainium enabling support for eager mode, torch.compile and native distributed APIs like FSDP and TP.
-Read the Pytorch blog to learn more about TorchNeuron.</p>
-<p>Starting Oct. 20, 2026, TorchNeuron will be available as a public beta. Researchers and developers will be able to install it with pip install torch-neuronx.</p>
-<p>To date, the Hugging Face experience on AWS Trainium and Inferentia — AI chips designed respectively for cost-effective training and inference at scale — has been delivered through optimum-neuron. This library relies on the torch-neuronx package, which is based on PyTorch XLA. It was the natural choice at the time, but it meant thinking like a compiler: lazy tensors instead of eager execution, static shapes only, a recompilation for every graph break. Optimum Neuron existed to hide that complexity, and maintained custom code (modeling classes, trainers, etc) to do so.</p>
-<p>TorchNeuron changes this. It integrates directly into PyTorch and exposes neuron as a native device, with eager execution, PyTorch's own distributed primitives (DTensor, FSDP2) and torch.compile.</p>
-<p>For the Hugging Face libraries, Trainium becomes a device like any other: Transformers, Diffusers, Accelerate, PEFT and TRL run on it directly, with the same classes and scripts you would use on any other accelerator. From now on, we recommend that Neuron users use these libraries directly instead of going through Optimum Neuron.</p>
-<p>Text generation is now natively supported in Transformers for a wide range of models. With TorchNeuron, 89% of the top 100 most-used text-generation model architectures are supported out of the box, compared to 46% with Optimum Neuron v0.4.5. You just need to pass the device_map=neuron argument in your code and your model will be moved to the Neuron devices.</p>
-<p>The following is an example of text-generation with tensor parallelism, which will enable to fully benefit from your Neuron instance. Note that it uses a static cache for generation as this is strongly recommended with Neuron to prevent frequent recompilations.</p>
-<p>Now that Neuron is a native PyTorch device, training on Trainium uses the same Hugging Face libraries as any other accelerator: Transformers, Accelerate, PEFT and TRL. You no longer need a dedicated trainer or a Neuron-specific fork of the model code. A standard TRL fine-tuning script runs on a Trainium instance with only a few Neuron-specific settings.</p>
-<p>Here is a supervised fine-tuning script built on TRL's SFTTrainer. If you have fine-tuned a model with TRL on GPUs before, it should look familiar.</p>
-<p>Parallelism is handled natively by Transformers. You put a DistributedConfig with the tensor-parallel (TP) and FSDP sizes in model_init_kwargs, SFTTrainer passes it to from_pretrained, and the model is sharded as its weights are loaded. The Trainer sees that the model is already distributed and does not wrap it again. You don't need an --fsdp flag or an Accelerate FSDP config.</p>
-<p>Nothing in the script is tied to Trainium: the same code runs on any hardware. A few things are worth knowing when you run it on Trainium:</p>
-<p>The command below launches training with torchrun, which starts one process per NeuronCore. TP_SIZE and FSDP_SIZE set the parallelism layout, and their product is the number of processes: here 4 x 8 = 32, matching --nproc_per_node. The 32 processes form a 4 x 8 grid. Tensor parallelism splits each layer across the 4 cores of a TP group, and FSDP shards the parameters, gradients and optimizer state across the 8 TP groups.</p>
-<p>We ran it on 8 Trainium2 chips (32 NeuronCores), which is half a trn2.48xlarge instance.</p>
-<p>Training runs to completion, and trainer.save_model writes a standard Transformers checkpoint. Nothing in it is tied to Neuron: you can push it to the Hugging Face Hub as is and load it on any other hardware.</p>
-<p>Many pipelines from the Diffusers library are compatible with TorchNeuron in eager and compiled mode. FLUX.1-dev, FLUX.2, Qwen-Image, Qwen-Image-2.1 and H3 are also compatible with tensor parallelism to make the most of your Neuron devices. The following is an example showing how you can use TP:</p>
-<p>You can run this piece of code with: NEURON_LOGICAL_NC_CONFIG=2 torchrun --nproc_per_node=8 run.py.</p>
-<p>More and more pipleines will be compatible with TP. If a pipeline you like is not, you can also add support for it following this guide.</p>
-<p>Make sure to check out the kernels from the Neuron team  as more and more Neuron kernels will become available on the Hub to speed up your models.
-Neuron kernels can be written using the Neuron Kernel Interface (NKI), which gives lower control to optimize operations. This way, users can run their own custom operations and share them on the hub.</p>
-<p>You can use for example this kernel to speed up your vision transformers with up to a x2.4 speedup on Trainium!</p>
-<p>Special thanks to the AWS team for their work on TorchNeuron and for their reactivity to our feedback to make the HF integration as good as possible.</p>
-<p>hi, which models are supported with this? is mobernbert and t5gemma2 on the list?</p>
-<p>Hi, we now have a space where you can chek if a model is supported: https://huggingface.co/spaces/aws-neuron/torch-neuronx-model-support</p>
+                <p>A monthly overview of things you need to know as an architect or aspiring architect.</p>
+<p>Online InfoQ High-Performing Teams Certification (Nov 17): Is your team structure helping delivery, or slowing it down?
+
+                            Register Now</p>
+<p>Facilitating the Spread of Knowledge and Innovation in Professional Software Development</p>
+<p>Unlock the full InfoQ experience by logging in! Stay updated with your favorite authors and topics, engage with content, and download exclusive resources.</p>
+<p>Lily Mara explains how to avoid high-risk software rewrites through incremental FFI refactoring. She shares how engineering teams can replace Python bottlenecks with Rust via PyO3, demonstrating how to achieve dramatic function-level speedups, seamless integration testing, and meaningful infrastructure cost savings without microservice overhead.</p>
+<p>Agentic AI architecture extends microservices and cloud-native architectures with AI agents that work with context, memory, and protocols such as MCP and A2A. The article covers bounded-context integration, task-dependent coordination strategies, new security risks, and observability needs. It expects gradual adoption alongside existing architectures, with platforms absorbing common components.</p>
+<p>Hannes Hapke shares how Dataiku’s open-source Kiji Inspector applies Sparse Autoencoders (SAEs) directly to decision tokens to expose why agents pick specific tools. Moving past superficial chain-of-thought narratives, he discusses causal ablation, layer activation extraction via patched vLLM engines, and production monitoring workflows for software architects and senior engineering leaders.</p>
+<p>Vanessa Formicola shares how technical leaders can move beyond "wishful architecture" by practicing holistic socio-technical engineering. She discusses why engineering leaders must account for organizational maturity, reward structures, geopolitical climate, and team dynamics, framing the staff-plus role as designing the conditions for technology to thrive rather than just picking tools.</p>
+<p>Oli Lane and Julian Wreford share how Gearset replaced guesswork in distributed asynchronous queues with OpenTelemetry tracing. They explain why traditional metrics fall short, how to implement user-centric SLOs based on latency distributions, and share practical debugging tips to help senior developers, software architects, and engineering leaders improve system reliability and team culture.</p>
+<p>Work through your production AI decisions with senior engineers from other companies. Apply their perspectives to challenges from your own work.Online. Register Now.</p>
+<p>Building RAG pipelines or AI agents? Work through retrieval, context, evals, and reliability decisions with experienced practitioners.Online. Register Now.</p>
+<p>Compare team design, delivery flow, AI roles, and metrics with experienced practitioners. Online. Register Now.</p>
+<p>Distributed systems, decentralized decisions, platform engineering, and AI architecture. Online. Register Now.</p>
+<p>What's working across AI, architecture, and leadership, from the teams doing it. Register. Early bird ends Nov 10.</p>
+<p>Production AI across agents, context, evals, security, and infrastructure, from the senior engineers building it.Register. Early bird ends Nov 10.</p>
+<p>What early-adopter teams have proven in production, across 15 engineering tracks. Register. Early bird ends Nov 10.</p>
+<p>Learn from the decisions and trade-offs behind AI systems already running in production.Registration open.</p>
+<p>InfoQ Homepage
+News
+Google Open-Sources TPU Sync for KV Cache and Weight Transfer on TPUs</p>
+<p>Nov 12, 2026
+								
+								
+								
+									
+									2
+									min read</p>
+<p>Google Cloud has open-sourced TPU Sync, a native C++ library that moves KV cache blocks and model weights between TPU HBM, host DRAM, shared storage, and the data center network. GCP also announced the TPU 8tx and TPU 8i Max systems, the project targets two workloads where accelerators often wait on data: long-context and disaggregated LLM serving, and reinforcement learning loops that push updated weights from trainers to rollout samplers.</p>
+<p>For prefill/decode disaggregation, Google says median KV transfer latency for Qwen3 235B fell from several seconds to about 230 ms, with average TTFT reductions of 60% for that model and 90% for a 480B model at low concurrency. For prefix caching, it reports up to 90% lower average TTFT on 64K-context workloads.</p>
+<p>Developers get Python wheels for JAX and PyTorch, with KV cache manager, KV store, and weight synchronizer APIs. TPU Sync acts as the KV connector for vLLM-TorchTPU through vLLM's KVConnector interface, as the disaggregation and hierarchical-cache backend for SGLang-TorchTPU, and pairs with llm-d 1.0 on GKE for prefix-cache-aware routing. The RL weight-sync module for Pathways and multi-controller JAX is experimental. The GitHub repository, which absorbed the earlier TPU Raiden codebase, warns that APIs are changing rapidly and that only development builds are on PyPI, and recommends pinning to its last-known-good commit. It is validated on TPU v7x and v6e, and the PyTorch wheel requires a matching torch_tpu build that is not on a public index.</p>
+<p>On GPUs, similar problems are handled by NVIDIA Dynamo and its NIXL transfer library, LMCache, which offloads KV cache to CPU memory, disk, or remote stores, Mooncake, the KVCache-centric serving architecture behind Moonshot AI's Kimi, and vLLM's own disaggregated prefill connectors. TPU Sync differs mainly in being tied to PJRT and TPU tile layouts, and in covering RL weight transfer in the same library.</p>
+<p>Early reactions focused on data movement rather than the new chips, with developer Anand Butani sharing:</p>
+<p>TPU sync cutting kv transfer latency 90% matters more to me than the chip names, long-context serving mostly dies on moving cache between nodes.</p>
+<p>Another developer posting under the pseudonym @lgoodbookd ran rough numbers on why bandwidth alone does not solve the problem:</p>
+<p>8i Max doubles HBM bandwidth to ~17.2TB/s, yet one 64K session on a 235B MoE still eats ~12.6GB of KV cache. That's why open-sourcing TPU Sync (host-DRAM KV tiering, ~223GB/s per v7x host) may matter as much as the new package. Bandwidth helps; capacity is still the wall.</p>
+<p>TPU Sync is available under the Apache 2.0 license, and its repository includes architecture documentation, C++ and Python APIs, and examples for single-host and multi-host disaggregated serving and host KV offloading. Until a stable release is cut, the JAX and PyTorch packages are published only as development builds, while the storage tier and RL weight synchronization remain experimental</p>
+<p>December 15–16, 2026.
+Examine how senior practitioners run agents, evals, model serving, and AI-assisted engineering in production, including what failed and what changed. Register Now.</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+        
+			View an example</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+		
+			View an example</p>
+<p>Test your approach against the decisions and trade-offs of senior practitioners running agents, evals, model serving, and AI-assisted engineering in production.
+                
+                See what worked, what failed, and what they would do differently. Bring those lessons back to your team to make better-informed architecture and delivery decisions.</p>
+<p>InfoQ.com and all content copyright © 2006-2026 C4Media Inc.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/hf-torchneuron" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.infoq.com/news/2026/11/google-tpu-sync/?utm_campaign=infoq_content&utm_source=infoq&utm_medium=feed&utm_term=global" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
