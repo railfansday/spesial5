@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security updates for Wednesday</title>
+    <title>billion-context Hands-On: Compressing Coding-Agent History to Fit a Small Context Window</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9731.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,20 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Security updates for Wednesday</h1>
+        <h1>billion-context Hands-On: Compressing Coding-Agent History to Fit a Small Context Window</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/dXNcOigZuTOB2gplAzF5jXX9cda2-xr82bha.jpeg" alt="billion-context Hands-On: Compressing Coding-Agent History to Fit a Small Context Window" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/dXNcOigZuTOB2gplAzF5jXX9cda2-xr82bha.jpeg" alt="billion-context Hands-On: Compressing Coding-Agent History to Fit a Small Context Window" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Copyright © 2026, Eklektix, Inc.
-            
-            Comments and public postings are copyrighted by their creators.
-            Linux  is a registered trademark of Linus Torvalds</p>
+                <p>Software Architect, AI Engineer & Technical Leader. Building apps, exploring dev tools, sharing insights from a decade in tech.</p>
+<p>Software Architect, AI Engineer & Technical Leader. Building apps, exploring dev tools, sharing insights from a decade in tech.</p>
+<p>Software Architect, AI Engineer & Technical Leader. Building apps, exploring dev tools, sharing insights from a decade in tech.</p>
+<p>Long agent sessions keep failing the same way for me. The window fills up with test logs and file dumps, the harness runs its own auto-compaction, and the agent forgets the constraint I gave it an hour earlier. So when billion-context reached 5,427 GitHub stars about three months after the repo was created, I wanted to see what it actually does to a real session, measured in tokens and in what the agent still remembers afterwards.</p>
+<p>This post covers what I installed, the one bug I ran into, the numbers from a real tool-calling session, and where I think the project's claims hold up and where they don't.</p>
+<p>billion-context (github.com/ranxianglei/billion-context, MIT plus an attribution clause) is a local proxy, bili, that sits between a coding agent and its model API. It works with Anthropic, OpenAI and Google-native requests, and it adds four tools to every request:</p>
+<p>The main difference from Claude Code-style auto-compaction is that the model decides what to fold, nudged by the proxy as the window fills. The proxy runs the fold on its side, keeps the originals in a local SQLite store, and from then on sends the folded view upstream. Summaries can be folded again (tier 2, tier 3), and the README calls this "an LSM tree over summaries."</p>
+<p>The README makes three headline claims: "100K context is enough", "5× fewer tokens", and "month-long single sessions." The author's preprint in the repo reports 174,327 model calls over 4.5 months. A benchmark folder labeled "independent third-party" reports 79.2% vs 83.2% for full context on LongMemEval-S at 71% lower cost. Both live inside the project's own repo, so I count them as claims, not evidence.</p>
+<p>The repo is also changing very fast: 565 commits between 2 Nov and today, and npm latest is 0.1.213. I tested that version.</p>
+<p>I had a Free Tier Gemini key and no other credentials, so I skipped the bili claude / bili codex launchers. Instead I used the universal path: start the proxy and prefix the upstream URL with /bili/. To get folds within an afternoon's budget, I pinned the window to 40K tokens:</p>
+<p>I set ACP_AUTO_UPDATE=0 on purpose. By default bili checks npm every three minutes and upgrades itself after a staggered delay. That's convenient for a fast-moving project, but I don't want it in a benchmark, and I'd think about it before putting this on a shared CI box.</p>
+<p>My first harness used Gemini's OpenAI-compatible endpoint. The first request went through fine. Every request after a tool call failed with:</p>
+<p>Gemini 3.x returns an opaque thought_signature with each tool call, and it has to come back in the next request. The same two-request script returned 200 when sent directly and 400 through the proxy, so the proxy is dropping that field on the chat-completions path. Switching to Gemini's native generateContent wire fixed it:</p>
+<p>If you run Gemini 3 behind an OpenAI-style client, test multi-turn tool calls before anything else.</p>
+<p>I wrote a small agent loop with a single bash tool and pointed it at a fresh clone of python-slugify. I scripted 11 user turns, the kind I'd actually type:</p>
+<p>The model was gemini-3.5-flash-lite. For the baseline, I ran Gemini's countTokens on every uncompressed request prefix, using the same system prompt and tool schema without the proxy. That gives an exact "what would I have sent" number for each of the 41 requests.</p>
+<p>One thing about the agent itself: Flash-Lite never edited a file. It read code, ran tests, and then claimed in its final answer that it had implemented the feature. The git tree was clean. That's a model problem, not a compression problem. The fold summary was actually more accurate than the model's answer, because it listed the feature under "Open objectives."</p>
+<p>The session took 41 client requests and 184 seconds of wall-clock time. That includes three back-offs from Free Tier 429s (250K input tokens per minute); summed model latency was 45.9 seconds. The proxy added a median of 10 ms of local processing per request (max 26 ms over 50 requests).</p>
+<p>That's 284 characters standing in for a few thousand tokens of find output, a full pytest log, and an inspect.signature dump. The user messages themselves stayed verbatim, because the proxy protects them.</p>
+<p>I asked two quizzes at the end of the session, once through the proxy (folded view) and once directly with the full history.</p>
+<p>Easy set (10 questions about things I told it): ticket ID, client, Python version, separator decision, new kwarg, test file, first test result, port, reviewer, postponed refactor. Through bili: 10/10 on 13,821 prompt tokens. Full history: 10/10 on 39,114. Since user turns aren't folded, this is the case the design is built for, and it held up.</p>
+<p>Hard set (8 questions about tool output): the line number of slugify(), the module marked "DO NOT MODIFY", the CLI --algorithm choices, the last commit hash, the top CHANGELOG version, the pytest/Python versions, the parameter count, and the CLI test files.</p>
+<p>So the folded agent matched the full-history agent, but only by paying for retrieval: six upstream rounds and 89,958 input tokens (72,497 of them cached), against one 39K call. Three practical notes. First, on the non-streaming lane the search_context output came back to my client as the response text, with no answer after it, so plan on streaming. Second, the search receipts ("Found 2 block(s) for ...") show up in the client-visible text stream, as do fold receipts. Third, in an earlier attempt the model decompressed a block to /tmp/acp-decompress-b6-*.txt and then tried to grep it with its own bash tool, so decompress-to-file assumes the agent can read local files.</p>
+<p>At Gemini 3.5 Flash-Lite list prices ($0.30/M input, $0.03/M cached, $2.50/M output):</p>
+<p>On a 39K-token session, compression lost on cost once caching is counted. Every fold rewrites the prompt prefix, and the proxy's own log said so: "the whole prefix rewrites and the prefix cache restarts from scratch on the next request." On top of that, the ~4K-token tool overhead is charged on every call. The savings come from staying under a window you'd otherwise overflow, and from long sessions where uncompressed history grows without limit. My session was neither, so treat 12.5% as a lower bound for a short session, not as evidence for the "5×" claim.</p>
+<p>The design idea is good: let the model decide what's stale, keep the originals, and make folds reversible. In my run that held up on the questions that matter most, the constraints and decisions I gave it, at a third of the final context size. The "billions of tokens" claim is a separate test that needs a session thousands of calls long. I'll run that one with a stronger model before I put it in front of real agent traffic.</p>
+<p>Aura Autopilot Review: I Tested the AI Game-Testing Agent, and It Found Every Bug</p>
+<p>Software Architect, AI Engineer & Technical Leader. Building apps, exploring dev tools, sharing insights from a decade in tech.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lwn.net/Articles/1106876/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/billion-context-hands-on-compressing-coding-agent-history-to-fit-a-small-context-window?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

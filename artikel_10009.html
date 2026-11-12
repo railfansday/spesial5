@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hill-Climbing Agent Quality with Agents CLI Evaluation</title>
+    <title>eMudhra Statement on Recent Certificate Security Incident</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10009.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,60 +15,152 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Hill-Climbing Agent Quality with Agents CLI Evaluation</h1>
+        <h1>eMudhra Statement on Recent Certificate Security Incident</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A live walkthrough of the Agents CLI eval loop, from a first run to regression tracking, model-backend experiments, and automated alerting</p>
-<p>Building an agent that works on a demo is a different problem from building an agent that stays working across model upgrades, tool changes, and new conversation shapes. The first takes a weekend; the second takes a loop. A team writes test cases, runs them, grades them, reads what failed, changes the agent, and runs the cases again. If the score goes up, the change was good. If it goes down, revert. Over weeks of this, the agent inches toward the ceiling of what the model, tools, and prompt can do together. The quality-engineering name for this is hill-climbing.</p>
-<p>The Agents CLI eval namespace was built around this loop. The commands are small and framework-agnostic: eval generate runs the agent against a dataset of cases, eval grade scores the generated traces, eval compare diffs two run results side by side, eval analyze clusters failures into themes, and eval optimize runs an automated hill-climbing pass on the agent's prompt.</p>
-<p>Below: baseline → regression → model swap → scheduling and alerting.</p>
-<p>The scaffold used throughout is the LangChain template that ships with Agents CLI v1.8.0. The setup is a single command:</p>
-<p>The scaffold ships with an eval dataset at tests/eval/datasets/basic-dataset.json, a config at tests/eval/eval_config.yaml, and a custom LLM-as-judge metric at tests/eval/response_quality.py. The config declares the metric to run:</p>
-<p>The metric grades each response on a 1-to-5 scale for accuracy, relevance, and clarity, using gemini-3.8-flash as the judge. The default dataset has a single trivial case, which is not enough for a hill-climb. The first thing we do is expand it to four cases that probe different behaviors:</p>
-<p>Four cases: a greeting, a weather question the mock tool handles with the hardcoded foggy response, a weather question for a city the tool defaults on, and an off-topic question that the agent has to decide how to handle. This is a small dataset by design; the hill-climbing loop pays off when the dataset is small enough to run on every change.</p>
-<p>With the dataset in place, we run eval generate to drive the agent against each case, then eval grade to score the resulting traces:</p>
-<p>Mean 4.0 out of 5 across four cases, with a standard deviation of 1.41. That stdev tells us immediately that the cases are not scoring uniformly, which is a healthier starting point than a flat 5.0 across the board. A flat 5.0 either means the agent is perfect (unlikely) or the dataset is too easy to show variation. 4.0 with real spread is a hill to climb.</p>
-<p>To demonstrate the loop, we introduce a realistic regression. A developer working across several agent projects accidentally pastes the wrong system prompt into our weather agent: a chef persona meant for a different codebase. In app/agent.py:</p>
-<p>The change compiles, the agent still runs, and nothing in the pre-eval pipeline (lint, unit tests, type checks) catches it. Re-running the same eval generate plus eval grade sequence produces:</p>
-<p>Mean 2.75, down from 4.0. The judge agrees with our intuition that a chef persona on a weather agent is a worse product than a general-purpose helpful assistant. The stdev also tightened from 1.41 to 0.96, consistent with the chef prompt pushing most cases toward the same mediocre range.</p>
-<p>A 1.25-point drop on a 1-to-5 scale is substantial, and the kind of regression that can slip through code review when the diff looks small ("one string literal changed"). The loop surfaced the change at all, with a specific number attached to it, before the agent reached production.</p>
-<p>Mean scores are a start; the per-case diff is where the hill-climb happens. eval compare reads two result files and produces a structured JSON diff:</p>
-<p>The output lists which keys changed and which stayed the same:</p>
-<p>The differences object has the full per-case breakdown with the baseline and candidate values side by side. For a hill-climbing workflow, we typically pipe the output through jq or a small Python script to extract the signal; the raw JSON is the complete evidence.</p>
-<p>Walking the two result files and lining up the scores per case shows where the regression landed:</p>
-<p>Three cases dropped, one held. The most important of the three is sf_weather: the chef persona pulled the model's attention away from the registered get_weather tool, so the agent stopped calling it and started making up weather values. Unit tests can't catch this: the code runs, the tool is still registered, but the model's behavior around it has shifted. Only an end-to-end eval that scores the response in context surfaces this.</p>
-<p>The mean drop by itself (−1.25) is a clear signal, but the per-case breakdown is what tells the developer where to look. A one-line system-prompt change propagated through three different cases in three different ways: greeting lost a point on tone, sf_weather lost two on tool usage, off_topic lost two on scope creep.</p>
-<p>A common hill-climbing question is whether a cheaper or faster model would do the job acceptably. For the LangChain template, the model is defined in app/agent.py:</p>
-<p>We swap gemini-3.8-flash for gemini-2.5-flash (restoring the helpful system prompt first), re-run eval generate plus eval grade, and compare the two result files. The mean drops from 4.00 to 2.75, the same magnitude as the chef-prompt regression, but the per-case breakdown tells a completely different story:</p>
-<p>The cheaper model matched 3.8-flash exactly on the greeting and rome_weather cases and lost a point on sf_weather (slightly less polished phrasing). The whole visible drop traces to off_topic, where the cheaper model refused with a hedge about the event "not having happened yet" (a training-cutoff artifact), and the judge marked it harshly.</p>
-<p>The lesson is that the summary number is misleading. Look only at the mean and you'd call gemini-2.5-flash as bad as the chef prompt. Look at the per-case breakdown and you'd call it a reasonable swap for most of the agent's workload, with one case (handling out-of-scope questions about recent events) exposing a real limitation. If the production distribution of user questions matches the first three cases more than the fourth, the swap is worth considering. If off_topic-style questions are common, it is not.</p>
-<p>Two caveats on this experiment. First, model swaps interact with the prompt: a prompt tuned for a stronger model often leaks capability when ported to a weaker one, so the right comparison is "weaker model with a prompt tuned for it" versus "stronger model with its own tuned prompt." Second, the Vertex AI Eval Service calls a judge model to grade the traces, and the judge is held constant across the comparison. Changing the judge is a different experiment and should be done separately.</p>
-<p>Agents CLI does not ship a scheduler, but the eval commands are designed to drop into standard infrastructure. The pattern we can use here is a cron job or Cloud Scheduler trigger that runs eval generate plus eval grade on a cadence and writes the results to a persistent location:</p>
-<p>A nightly run against a stable regression dataset catches drift from model updates, data changes in the agent's tools, and dependencies that shift under the agent's feet. For a production agent, the scheduled run also captures the model vendor's quiet upgrades, which can move the agent's behavior without any change on our side. The dataset for the scheduled run is typically larger than the one used in the inner loop (dozens to hundreds of cases rather than a few), since it only runs once a day.</p>
-<p>The scheduled run produces a result file every day, but a file nobody looks at is not an alert. The pattern here can be a wrapper script that compares each new run's mean against a baseline (the previous run, or a committed known-good) and exits non-zero when the drop exceeds a threshold. The non-zero exit is what triggers the alert from the surrounding scheduler.</p>
-<p>Running it against our regression demo (baseline 4.0, candidate 2.75 from the chef-prompt run):</p>
-<p>And against an identical pair (self-compare):</p>
-<p>The non-zero exit code is what a cron job, Cloud Scheduler, or GitHub Actions step picks up to send the alert.</p>
-<p>For ADK projects, eval optimize runs an automated hill-climbing pass on the agent's prompt using the GEPA framework (not currently supported for the LangChain extension). The command takes a dataset and a target metric, proposes prompt variants, grades each one, keeps the variants that improve the metric, and iterates. The output is a set of candidate prompts ranked by their eval score, which a human then reviews and promotes to the agent definition.</p>
-<p>Two things to understand about eval optimize. First, it is scoped to prompt optimization, not to arbitrary agent changes: the agent's tools, structure, and model stay fixed. Second, GEPA sometimes finds genuine improvements and sometimes finds prompt variants that score higher on the specific metric by overfitting to its wording. The reviewer is the control. For projects where the loop applies, the discipline is to run eval optimize on the regression dataset (where improvements are measurable) and to review the candidate prompts carefully before promotion.</p>
-<p>A few patterns and anti-patterns from running this loop ourselves and watching teams do the same.</p>
-<p>Lead with a small, representative dataset, not a comprehensive one. The temptation when starting an eval is to try to cover every edge case the agent will ever see. The result is a dataset that takes an hour to run and that nobody runs on a change. Four cases that run in under a minute, as above, exercise the main behaviors and get run on every change. A regression dataset of three hundred cases that runs for an hour becomes a release gate at best and shelfware at worst.</p>
-<p>Snapshot result files, not scores. The score is a summary; the result file is the evidence. When a regression surfaces three weeks after a prompt change, having the full result JSON from before and after the change (not just the mean score) is what lets eval compare show the specific case that moved. The per-case breakdown in Step 4 above would not have been possible from scores alone.</p>
-<p>Separate the dataset from its expectations. The dataset is the inputs. The eval config is the expectations. They evolve on different cadences: the dataset grows as new real-world cases surface in production, and the config evolves as the team's definition of "good" matures. Keeping them in separate files, both committed to version control, makes it clear which half changed when a score moves.</p>
-<p>Treat summary metrics with suspicion. The model-swap experiment in Step 5 is the clearest example. The mean dropped by half a point, but the per-case breakdown showed the drop was concentrated in one case while the others held or improved. A team that only looked at the mean would have made the wrong call.</p>
-<p>More evals do not automatically lead to more fixes. A recent controlled study we ran found that coding agents using agents-cli run four times as many evals as coding agents without it, but change the agent after an eval about as often as the baseline. The behavior gain comes from what the skills put into the build at the start, not from the inner iteration. Evals are necessary for quality, but the quality comes from acting on what the evals show.</p>
-<p>Scaffold an Agents CLI project and run the first eval loop in a handful of commands:</p>
-<p>The full eval namespace is documented at google.github.io/agents-cli/cli. The source code, including the first-party eval primitives, is at github.com/google/agents-cli.</p>
-<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
-<p>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</p>
-<p>On-Device Speech Recognition and Text-to-Speech in Google AI Edge Gallery</p>
+                <p>Sign smarter. Approve faster. Go fully
+paperless with ease.</p>
+<p>Automate multi-level approvals, accelerate document signing,
+and monitor workflow progress in real time.</p>
+<p>Streamline bulk signing for HR, finance, legal, procurement,
+and other enterprise operations.</p>
+<p>Access implementation guides, technical documentation, and best
+practices for eSignature deployment.</p>
+<p>Flexible plans for individuals, SMBs, and large enterprises
+with scalable usage tiers.</p>
+<p>FAB drives an enterprise-wide paperless initiative...</p>
+<p>Mercedes curbs employment fraud by going digital...</p>
+<p>emSigner plays an instrumental role in streamlining processes...</p>
+<p>Converged identity platform for authentication,
+access management and identity governance</p>
+<p>Enforce adaptive authentication, SSO, and centralized
+governance to strengthen access control across your enterprise.</p>
+<p>Simplify secure logins, user provisioning, and access
+management for internal systems and apps.</p>
+<p>Find documentation, configuration guides, and best practices
+for identity and access management.</p>
+<p>Tiered pricing designed for individuals, SMBs, and enterprise
+deployments with flexible scalability.</p>
+<p>India's Largest Life Insurance Provider Scales Digital Identity for 50M+ Users</p>
+<p>Central Govt Department in India Secures Employee Access Across a Large Workforce</p>
+<p>Discover, automate and manage the lifecycle of digital certificates from any certificate authority</p>
+<p>Issue, renew, and revoke digital certificates for users,
+devices, and services with complete lifecycle management.</p>
+<p>Secure internal systems, apps, and communications through
+PKI-based authentication and encryption.</p>
+<p>Access guides, technical manuals, and workflows for PKI and
+certificate lifecycle management.</p>
+<p>Flexible subscription models to support small teams, large
+enterprises, and global deployments.</p>
+<p>India's Largest Commercial Bank Deploys CertiNext for Enterprise CLM</p>
+<p>Digital Government Authority in the Middle East Establishes Certificate Governance</p>
+<p>Cable & Internet Provider in Southeast Asia Centralises Certificate Management</p>
+<p>The identity platform that scales from KYC to national ID.</p>
+<p>API-first KYC for banks, fintechs, NBFCs and certifying authorities.</p>
+<p>Sovereign-grade identity infrastructure for national ID programmes.</p>
+<p>OCR, liveness, face match and 20+ government verification APIs.</p>
+<p>V-CIP and two-way video sessions with audit-ready recording.</p>
+<p>Account opening, V-CIP, periodic re-KYC...</p>
+<p>Citizen enrolment, sovereign ID, civil registry...</p>
+<p>Digital-first customer onboarding and account services.</p>
+<p>Streamline contracts and supply chain workflows.</p>
+<p>Digital workflows for patient and compliance needs.</p>
+<p>Effortless admissions and certifications.</p>
+<p>Secure and simplify citizen services with trusted digital identity.</p>
+<p>Protect financial assets with continuous identity verification.</p>
+<p>Enable trusted access across people, systems, and machines.</p>
+<p>Secure vehicles and data through unified digital identity.</p>
+<p>Manage users and networks under one secure identity.</p>
+<p>Safeguard classified systems with military-grade identity controls.</p>
+<p>Ensuring Continuity and Security in Critical Services</p>
+<p>Securing IoT, 5G, and Connected Vehicle (CV2X) Infrastructure</p>
+<p>Reliable Certificate Management for 5G and CV2X Networks</p>
+<p>Implementing Zero Trust Across Financial IT Infrastructure</p>
+<p>Enhancing Security for IoT and Electric Vehicle (EV) Ecosystems</p>
+<p>Future-proofing Security with Post Quantum Cryptography</p>
+<p>Account opening, V-CIP and periodic re-KYC on one platform.</p>
+<p>Loan origination KYC, bank account verification and V-CIP.</p>
+<p>Wallet onboarding, prepaid card KYC and merchant verification.</p>
+<p>Proposer KYC, video suitability checks and nominee verification.</p>
+<p>Citizen enrolment, sovereign ID and benefit delivery.</p>
+<p>Simplifying policy and claims management while
+protecting sensitive information.</p>
+<p>Automate policy approvals and claims docs.</p>
+<p>Protect policy docs and claims with certificates.</p>
+<p>Policy issuance, claims approvals and agent onboarding.</p>
+<p>Digitizing approvals, securing records and enabling
+smooth academic operations.</p>
+<p>Simplify approvals and document workflows for institutions.</p>
+<p>Secure student, faculty and staff access.</p>
+<p>Protect student records and institutional data.</p>
+<p>Enrollment forms, approvals and transcripts.</p>
+<p>How GenAI is transforming trust, security and signing workflows.</p>
+<p>How to operationalise data protection impact assessments at scale with a living data map, a consistent risk model, automatic triggers and a central record.</p>
+<p>Why VPN traffic is an early harvest-now, decrypt-later target, and how hybrid key exchange, crypto-agility and inventory start a quantum-safe migration.</p>
+<p>Govern the non-human identity lifecycle: policy-based provisioning, short-lived credentials and deprovisioning that retires identities with their workloads.</p>
+<p>In line with our announcement to cease issuance of emSign TLS certificates, eMudhra wishes to provide an update regarding the scheduled phase out of certificates issued under the emSign G1 hierarchy by major browser root programs.</p>
+<p>The respective browser root programs have indicated the following effective dates for phase out of emSign G1 chained certificates:</p>
+<p>For Chrome and Mozilla, SCTNotAfter implies that after these dates, certificates issued under the emSign G1 hierarchy will not be trusted by the respective browser and platform trust programs, but does not impact any existing certificates issued before these dates.</p>
+<p>For Apple it means all certificates issued under the G1 hierarchy at any point in time will cease to be trusted on their platforms.</p>
+<p>In alignment with these time lines, we have already migrated all emSign TLS certificates to alternative providers in all geolocations with the exception of the US region where a large community of customers is still in-progress. It is anticipated that the remaining emSign TLS customers will all be transitioned to alternative providers in advance of the date set by Apple.</p>
+<p>eMudhra Limited today announced the appointment of KPMG as its independent external reviewer following the incident that led to the distrust of select global TLS intermediate certificate authorities earlier this month. The appointment fulfills the commitment the company made in its press release of October 21, when it said an independent entity would examine the matter. KPMG is among the leading global networks of professional services firms.</p>
+<p>The company said the review is intended to bring clarity on the incident and to help it address any issues arising from it, in keeping with its approach to governance and compliance.</p>
+<p>This update follows Update 5 and gives more detail on where the customer transition stands.</p>
+<p>Affected G3 certificates and the alternate G1 pathway</p>
+<p>The roughly 30,800 certificates issued under the affected G3 hierarchies belong to a client ecosystem in the United States. We had already given this ecosystem an alternate issuance pathway through eMudhra's G1 RSA root, and they are now using that pathway.</p>
+<p>Orderly transition out of the G1 TLS Roots</p>
+<p>We have asked the browser and root-store programs for time so that the impacted client ecosystem in US can move over in an orderly way without disrupting its member institutions. We are in advanced discussions with leading SSL/TLS providers to support the move. We will keep working with our Client, these providers and the root programs until the transition is complete.</p>
+<p>G1 issuance is being used only to support this transition. As part of our voluntary wind-down of publicly trusted TLS services, eMudhra will stop issuing TLS certificates from G1 once the federation's transition is complete. A vast majority of our remaining TLS customers have already been transitioned to alternate TLS providers and we intend to complete this activity in the coming days.</p>
+<p>Free migration to alternate providers for unaffected TLS customers</p>
+<p>eMudhra immediately provided (and continues to provide) alternate options at no charges to all TLS customers who were using eMudhra TLS certificates without any additional charges. We have already moved these customers to alternate providers at no cost to them, and our teams remain dedicated to support them through the switch.</p>
+<p>Global eSignature (DSC, eSignature, eSign), and Enterprise Solutions business unaffected</p>
+<p>None of eMudhra's Global Digital Signature Certificate (DSC) or eSign business is affected by this incident. They continue to run normally throughout and remain unaffected. Neither is there any impact to our enterprise solutions (emSigner, CertiNext, SecurePass, Privatrust). Where applicable, SaaS solutions provided by eMudhra also remain unaffected.</p>
+<p>We remain committed to transparency, responsible remediation and continued cooperation with the global WebPKI community. We thank our customers, partners, and root store programs for their understanding as we work our way through this transition. Further updates will be published on this page as material developments occur.</p>
+<p>Last week, a security researcher reported that the private keys associated with eight of our emSign G3 intermediate TLS CAs were recoverable. They were right.</p>
+<p>The flaw was ours. A script error resulted in issuing CA’s with weak keys.</p>
+<p>We want to apologise directly to our customers and to the broader WebPKI community, both of whom were entitled to expect better from us. Also to our partners, who have had to field questions that are ours to answer.</p>
+<p>The affected intermediate CAs were revoked within 14 hours of our confirming the issue. Based on our investigation to date, the affected intermediates had not issued publicly trusted end-entity certificates, and there has been no compromise of our infrastructure or customer data.</p>
+<p>Our digital-signature & eSign/eSignature in India, and Globally, along with all of our enterprise applications operate on separate infrastructure and were not impacted in any manner. We are already in the process of moving our impacted G3 customers and our broader non-impacted TLS customers to alternate certificates at no cost.</p>
+<p>We will publish a full root-cause analysis through the CCADB process. It will explain what went wrong, why our controls failed to detect it, and the changes we are making as a result.</p>
+<p>We are also commissioning an independent expert to review the incident and the procedures and controls followed by us. Nothing is more important in our business than the trust placed in us by our customers and the broader digital-trust ecosystem.</p>
+<p>We will do all that is necessary to maintain that trust and confidence through our actions in the coming weeks.</p>
+<p>eMudhra is making certificates issued by Sectigo available as an alternate option to all of our customers.</p>
+<p>Our G1 root certificates remain active and continue to be fully supported. Despite this, we are offering Sectigo-issued certificates to give customers additional peace of mind and flexibility in managing their certificate deployments.</p>
+<p>Our support team will guide you through the process and help ensure a smooth experience for your environment.</p>
+<p>We remain committed to the security, reliability, and continuity of the services our customers depend on.</p>
+<p>What happened, who is affected, and what we are doing about it</p>
+<p>On October 17, 2026, an independent security researcher reported that the keys of eight (out of several) eMudhra Global TLS intermediate Certificate Authorities (CAs) were cryptographically weak. We revoked all eight intermediates the following day. No certificates had been issued from any of them, our infrastructure was not compromised, and no data was breached.</p>
+<p>We take this incident seriously. We believe an organization's character is shown in how it responds when something goes wrong, so this post sets out plainly what happened, who is affected, and what we are doing about it.</p>
+<p>Eight intermediate (issuing) CAs in our Global TLS business were revoked because their published keys were weak. These intermediates sit under eMudhra's ECC root. As a consequence of the incident, the browser root programs have also distrusted that one ECC root.</p>
+<p>To be clear about what was and was not affected:</p>
+<p>The keys were generated on FIPS 140-2 Level 3 certified Hardware Security Modules (HSMs). Suggestions that HSMs were not used are incorrect. The problem was a flaw in one step of the ceremony procedure, not the absence of HSMs.</p>
+<p>During the ceremony, a key wrap/unwrap step produced a second, weak set of keys alongside the original strong keys. The weak keys were the ones published to the browser root stores. The issue went undetected for about 18 months, through two independent audit cycles. The researcher was able to reverse-engineer the weak keys, reportedly with the help of AI-assisted tooling.</p>
+<p>We have not yet confirmed the exact root cause. We will publish it in full once our investigation is complete. We are not aware of any evidence that the weak keys were recovered or exploited by anyone before the issue was disclosed.</p>
+<p>The impact is limited to TLS certificates chaining to the distrusted ECC root, and it is contained to a single customer ecosystem in the United States.</p>
+<p>These products and services run on separate infrastructure and continue to operate normally. Customers using them do not need to take any action.</p>
+<p>Our first priority is making sure the affected customer's services keep running without disruption.</p>
+<p>CA redundancy for all Enterprise TLS customers. We are offering every Enterprise TLS customer certificates from an additional publicly trusted CA. If one hierarchy ever has a problem, customers can switch without interrupting their business. Keeping our customers running is one of our top priorities.</p>
+<p>A full review of our key generation process. We are reviewing every step of our Key Generation Ceremonies, starting with the wrap/unwrap step that caused this incident. We intend to deeply study how we can enhance the governance around our processes, and adopt AI based tooling in addition to other conventional means available to mitigate such occurences.</p>
+<p>We acknowledge this incident and take full responsibility for it. Trust is the foundation of everything we do, and we intend to earn it back through action.</p>
+<p>We thank the independent researcher who reported this issue responsibly, and our customers and partners for their trust.</p>
+<p>eMudhra is actively investigating a security incident involving a specific set of intermediate CA certificates created as part of a Key Generation Ceremony (KGC) conducted in April 2025 within its public trust infrastructure.</p>
+<p>The incident is limited to these specific intermediate CA certificates and does not affect eMudhra's root CA private keys or other intermediate CAs.</p>
+<p>Importantly, none of the affected intermediate CAs were deployed in production, with the exception of one. Furthermore, none of these intermediate CAs, including the one deployed in production, have issued any end-entity certificates. This has been confirmed through our internal analysis and corroborated by publicly available Certificate Transparency records on crt.sh.</p>
+<p>Upon becoming aware of the incident, eMudhra initiated its incident response procedures, took measures to contain the affected certificates, and began working closely with browser and root-store operators to safeguard users and maintain the integrity of the broader WebPKI ecosystem.</p>
+<p>We are conducting a thorough investigation into the circumstances surrounding the incident and reviewing our security controls and operational procedures to identify and implement any necessary improvements.</p>
+<p>The security and integrity of our trust services remain our highest priority. We are committed to transparency, adherence to industry standards, and continued collaboration with the global WebPKI community.</p>
+<p>To avoid any misunderstanding, the removal of our Root CA’s C1 and C3 with Mozilla was a voluntary and planned activity and does not pertain to this security incident.</p>
+<p>We will provide further updates as our investigation progresses and additional findings are confirmed.</p>
+<p>On 20 October 2026, Mozilla published a post on its Security Blog regarding eMudhra intermediate certificates. According to Mozilla:</p>
+<p>Empowering digital transformation through trusted identity, signatures, and
+secure enterprise solutions.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/hill-climbing-agent-quality-with-agents-cli-evaluation/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://emudhra.com/en/post/certificate-security-incident" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

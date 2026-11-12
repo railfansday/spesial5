@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pre-Train BERT with Hugging Face Transformers and Habana Gaudi</title>
+    <title>Training a language model with 🤗 Transformers using TensorFlow and TPUs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11107.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,62 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Pre-Train BERT with Hugging Face Transformers and Habana Gaudi</h1>
+        <h1>Training a language model with 🤗 Transformers using TensorFlow and TPUs</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/99_pretraining_bert/thumbnail.png" alt="Pre-Train BERT with Hugging Face Transformers and Habana Gaudi" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/99_pretraining_bert/thumbnail.png" alt="Pre-Train BERT with Hugging Face Transformers and Habana Gaudi" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In this Tutorial, you will learn how to pre-train BERT-base from scratch using a Habana Gaudi-based DL1 instance on AWS to take advantage of the cost-performance benefits of Gaudi. We will use the Hugging Face Transformers, Optimum Habana and Datasets libraries to pre-train a BERT-base model using masked-language modeling, one of the two original BERT pre-training tasks. Before we get started, we need to set up the deep learning environment.</p>
-<p>Note: Steps 1 to 3 can/should be run on a different instance size since those are CPU intensive tasks.</p>
-<p>Before we start, make sure you have met the following requirements</p>
-<p>BERT, short for Bidirectional Encoder Representations from Transformers, is a Machine Learning (ML) model for natural language processing. It was developed in 2018 by researchers at Google AI Language and serves as a swiss army knife solution to 11+ of the most common language tasks, such as sentiment analysis and named entity recognition.</p>
-<p>Read more about BERT in our BERT 101 🤗 State Of The Art NLP Model Explained blog.</p>
-<p>MLM enables/enforces bidirectional learning from text by masking (hiding) a word in a sentence and forcing BERT to bidirectionally use the words on either side of the covered word to predict the masked word.</p>
-<p>Read more about Masked Language Modeling here.</p>
-<p>Note: Steps 1 to 3 were run on a AWS c6i.12xlarge instance.</p>
-<p>The Tutorial is "split" into two parts. The first part (step 1-3) is about preparing the dataset and tokenizer. The second part (step 4) is about pre-training BERT on the prepared dataset. Before we can start with the dataset preparation we need to setup our development environment. As mentioned in the introduction you don't need to prepare the dataset on the DL1 instance and could use your notebook or desktop computer.</p>
-<p>At first we are going to install transformers, datasets and git-lfs to push our tokenizer and dataset to the Hugging Face Hub for later use.</p>
-<p>To finish our setup let's log into the Hugging Face Hub to push our dataset, tokenizer, model artifacts, logs and metrics during training and afterwards to the Hub.</p>
-<p>To be able to push our model to the Hub, you need to register on the Hugging Face Hub.</p>
-<p>We will use the notebook_login util from the huggingface_hub package to log into our account. You can get your token in the settings at Access Tokens.</p>
-<p>Since we are now logged in let's get the user_id, which will be used to push the artifacts.</p>
-<p>The original BERT was pretrained on Wikipedia and BookCorpus datasets. Both datasets are available on the Hugging Face Hub and can be loaded with datasets.</p>
-<p>Note: For wikipedia we will use the 20220301, which is different from the original split.</p>
-<p>As a first step we are loading the datasets and merging them together to create on big dataset.</p>
-<p>We are not going to do some advanced dataset preparation, like de-duplication, filtering or any other pre-processing. If you are planning to apply this notebook to train your own BERT model from scratch I highly recommend including those data preparation steps into your workflow. This will help you improve your Language Model.</p>
-<p>To be able to train our model we need to convert our text into a tokenized format. Most Transformer models are coming with a pre-trained tokenizer, but since we are pre-training our model from scratch we also need to train a Tokenizer on our data. We can train a tokenizer on our data with transformers and the BertTokenizerFast class.</p>
-<p>More information about training a new tokenizer can be found in our Hugging Face Course.</p>
-<p>We can start training the tokenizer with train_new_from_iterator().</p>
-<p>We push the tokenizer to the Hugging Face Hub for later training our model.</p>
-<p>Before we can get started with training our model, the last step is to pre-process/tokenize our dataset. We will use our trained tokenizer to tokenize our dataset and then push it to the hub to load it easily later in our training. The tokenization process is also kept pretty simple, if documents are longer than 512 tokens those are truncated and not split into several documents.</p>
-<p>As data processing function we will concatenate all texts from our dataset and generate chunks of tokenizer.model_max_length (512).</p>
-<p>The last step before we can start with our training is to push our prepared dataset to the hub.</p>
-<p>In this example, we are going to use Habana Gaudi on AWS using the DL1 instance to run the pre-training. We will use the Remote Runner toolkit to easily launch our pre-training on a remote DL1 Instance from our local setup. You can check-out Deep Learning setup made easy with EC2 Remote Runner and Habana Gaudi if you want to know more about how this works.</p>
-<p>When using GPUs you would use the Trainer and TrainingArguments. Since we are going to run our training on Habana Gaudi we are leveraging the optimum-habana library, we can use the GaudiTrainer and GaudiTrainingArguments instead. The GaudiTrainer is a wrapper around the Trainer that allows you to pre-train or fine-tune a transformer model on Habana Gaudi instances.</p>
-<p>The DL1 instance we use has 8 available HPU-cores meaning we can leverage distributed data-parallel training for our model.
-To run our training as distributed training we need to create a training script, which can be used with multiprocessing to run on all HPUs.
-We have created a run_mlm.py script implementing masked-language modeling using the GaudiTrainer. To execute our distributed training we use the DistributedRunner runner from optimum-habana and pass our arguments. Alternatively, you could check-out the gaudi_spawn.py in the optimum-habana repository.</p>
-<p>Before we can start our training we need to define the hyperparameters we want to use for our training. We are leveraging the Hugging Face Hub integration of the GaudiTrainer to automatically push our checkpoints, logs and metrics during training into a repository.</p>
-<p>We can start our training by creating a EC2RemoteRunner and then launch it. This will then start our AWS EC2 DL1 instance and run our run_mlm.py script on it using the huggingface/optimum-habana:latest container.</p>
-<p>In our hyperparameters we defined a max_steps property, which limited the pre-training to only 100_000 steps. The 100_000 steps with a global batch size of 256 took around 12,5 hours.</p>
-<p>BERT was originally pre-trained on 1 Million Steps with a global batch size of 256:</p>
-<p>We train with batch size of 256 sequences (256 sequences * 512 tokens = 128,000 tokens/batch) for 1,000,000 steps, which is approximately 40 epochs over the 3.3 billion word corpus.</p>
-<p>Meaning if we want to do a full pre-training it would take around 125h hours (12,5 hours * 10) and would cost us around ~$1,650 using  Habana Gaudi on AWS, which is extremely cheap.</p>
-<p>For comparison, the DeepSpeed Team, who holds the record for the fastest BERT-pretraining, reported that pre-training BERT on 1 DGX-2 (powered by 16 NVIDIA V100 GPUs with 32GB of memory each) takes around 33,25 hours.</p>
-<p>To compare the cost we can use the p3dn.24xlarge as reference, which comes with 8x NVIDIA V100 32GB GPUs and costs ~31,22$/h. We would need two of these instances to have the same "setup" as the one DeepSpeed reported, for now we are ignoring any overhead created to the multi-node setup (I/O, Network etc.).
-This would bring the cost of the DeepSpeed GPU based training on AWS to around ~$2,075, which is 25% more than what Habana Gaudi currently delivers.</p>
-<p>Something to note here is that using DeepSpeed in general improves the performance by a factor of ~1.5 - 2. A factor of ~1.5 - 2x, means that the same pre-training job without DeepSpeed would likely take twice as long and cost twice as much or ~$3-4k.</p>
-<p>We are looking forward on to do the experiment again once the Gaudi DeepSpeed integration is more widely available.</p>
-<p>That's it for this Tutorial. Now you know the basics on how to pre-train BERT from scratch using Hugging Face Transformers and Habana Gaudi. You also saw how easy it is to migrate from the Trainer to the GaudiTrainer.</p>
-<p>We compared our implementation with the fastest BERT-pretraining results and saw that Habana Gaudi still delivers a 25% cost reduction and allows us to pre-train BERT for ~$1,650.</p>
-<p>Those results are incredible since it will allow companies to adapt their pre-trained models to their language and domain to improve accuracy up to 10% compared to the general BERT models.</p>
-<p>If you are interested in training your own BERT or other Transformers models from scratch to reduce cost and improve accuracy, contact our experts to learn about our Expert Acceleration Program. To learn more about Habana solutions, read about our partnership and how to contact them.</p>
-<p>Thanks for reading! If you have any questions, feel free to contact me, through Github, or on the forum. You can also connect with me on Twitter or LinkedIn.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/pretraining-bert" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/tf_tpu" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
