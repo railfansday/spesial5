@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Modding Linux to use SIGKILL on every process</title>
+    <title>Git security vulnerabilities announced</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9851.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,286 +15,119 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Modding Linux to use SIGKILL on every process</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Git security vulnerabilities announced</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="/favicon.png" alt="Modding Linux to use SIGKILL on every process" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2026/01/generic-security-github-logo-blue.png" alt="Git security vulnerabilities announced" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="/favicon.png" alt="Modding Linux to use SIGKILL on every process" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2026/01/generic-security-github-logo-blue.png" alt="Git security vulnerabilities announced" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Sometimes, a thought occurs to you: what if i did the thing nobody's supposed to do?</p>
-<p>i was recently having a discussion online about different perspectives on
-signals. It led to a question me and someone else asked simultaneously: what if
-you could ignore or handle the absolute, unstoppable order from the kernel
-to be killed or stopped?</p>
-<p>Signals in POSIX are a form of IPC
- that allows
-userland processes (and the kernel) to send each other simple indications of
-actions to take. The Linux kernel, at the time of writing, handles about 31 of
-those
-on the x86(-64) architecture. The most frequent situation where you might
-encounter signals as a developer is when making handlers for these signals:
-callbacks which are to be executed upon the reception of a signal by your
-process. You may also mask these signals to stop them from triggering anything
-on your program.</p>
-<p>There are, however, two signals that cannot be stopped or handled: SIGKILL and
-SIGSTOP.</p>
-<p>SIGKILL is an indication to terminate immediately and messily. Essentially,
-the process receiving this signal is abruptly ended, and marked as dead. Its
-parent must then, at some point, reap it so that resources can be freed.</p>
-<p>SIGSTOP is a weirder signal. When a process is running on a CPU and receives
-SIGSTOP, it is marked as blocked and removed from the running CPU (or moved in
-the background from the point of view of the user). After getting stopped, a
-process remains stuck until receiving a SIGCONT signal. Multiple
-signals
-can indicate a block, but SIGSTOP is the only unavoidable one of those. You
-may know that you can stop a process in a shell, via ^Z. Shells usually do not
-throw SIGSTOP directly, but SIGTSTP, which may be caught or fail. SIGSTOP
-is considered âreservedâ for the kernel only to throw.</p>
-<p>So, what if we could ignore, or even handle SIGKILL and SIGSTOP? Surely,
-because everyone in userspace made sure to never register a handler on those
-signals or ignore them, things shouldnât go wrong, right?</p>
-<p>My initial idea was to go into the signal handling code of Linux and remove
-anything that treats SIGKILL or SIGSTOP differently from other signals. i
-had originally wondered what exactly makes these two signals specials. It did
-not take long to realize that Linuxâs signal handling code explicitly treats
-them very differently.</p>
-<p>Letâs go through a simple overview of how signals firing are handled by the
-Linux kernel. For the sake of clarity, have a little diagram, so you can follow
-along:</p>
-<p>Linuxâs implementation of signals explicitly refuses that user processes mask
-SIGKILL and SIGSTOP or handle them. About all of that logic is located in
-kernel/signal.c and in the appropriate arch/$ARCH/kernel/signal(_?(32|64)?.c
-file. i will give examples in arch/x86/kernel/signal.c.</p>
-<p>When the kernel is about to leave kernelspace, in kernel/entry/common.câs
-exit_to_user_mode_loop,
-it checks for work left over to handle. That includes pending
-signals
-to be sent or handled. When some signals are pending, Linux will next run
-arch_do_signal_or_restart
-for the current architecture. There are essentially three steps in that
-function: getting the signal and handling the signal if a user-defined
-handler was found.</p>
-<p>get_signal
-runs a loop to dequeue signals that are not masked and process them. Right after
-dequeuing, the potential
-handler is
-retrieved. And, if that handler is not the default handler that ignores the
-signal (SIG_IGN), it is stored in a ksignal structure and get_signal
-returns. Otherwise, the code checks for, among other things, whether the target
-process is a global init and the signal can be ignored, and whether the signal
-is a kind of stop. If that latter case is true, we prepare the process to be
-stopped and call do_signal_stop, which handles all stop signals. Finally, if
-the signal is not a kind of stop and was not handled, its default behaviour is
-killing the process, which is done via do_group_exit. While scouring Linuxâs
-code initially, his gave me a first intuition: the kernel expects that there
-is no user-set handler for SIGSTOP and SIGKILL in order to fall back on
-default behaviour. If there was a user-set handler, they would be handled like
-regular signals. Either there is logic right at the entry of handler setup code
-that explicitly removes SIGSTOP and SIGKILL, or that check is outside of
-Linux, which could mean having to rewrite parts of libc, or using raw syscalls.</p>
-<p>If the signal is not handled by the kernel in get_signal, i.e. a handler is
-set in ksig, the kernel then calls handle_signal. Just as with many other
-functions in Linux, the name is deceptive: no signal is actually handled in
-there (in fact, as far as i have seen, it is the only part of the top-level
-signal handling function arch_do_signal_or_restart that never handles
-signals). What handle_signal does is that it sets up the stack frame of the
-signal handler and sets and saves pointers to restart execution in user mode
-later. The process goes through handle_signal as defined in your current
-architecture,
-which, on x86(-64), then calls
-setup_rt_frame
-to set up a return frame with the correct ABI
- for the signal. On x86, the state of the FPU
- is also saved and reset. Down
-at the last function in the call chain for frame setup, the instruction pointer
-is
-set
-to ksig->ka.sa.sa_handler, so that when those registers are restored the
-machine immediately executes your handler. After all of that is done,
-signal_setup_done
-is called to change some internal states, and the frame setup is done.</p>
-<p>At the end of an iteration of the work loop in exit_to_user_mode_loop, the
-kernel returns to user
-mode
-to execute the necessary work.</p>
-<p>Userspace programs use the
-rt_sigaction
-syscall as the entry point to set a handler for a signal. This one does not
-specifically exclude our signals until you look at
-do_sigaction,
-which checks for something called
-sig_kernel_only.
-That macro checks if the signal is one of SIGKILL or SIGSTOP and throws out
-a -EINVAL if that is true. This means that, as expected, there was logic
-somewhere early when the kernel receives a handler setup syscall that explicitly
-prevents setting one for SIGKILL or SIGSTOP.</p>
-<p>As for setting masks, the set of signals ignored for a given task, the kernel
-entry point is
-rt_sigprocmask.
-It explicitly
-prevents
-blocking either SIGKILL or SIGSTOP before calling
-sigprocmask.
-When a signal is sent, before queuing,
-prepare_signal
-is called. One of its roles is checking that a signal is blocked or cannot be
-delivered (global init is the target, the target is unkillable in some way,
-etc). Surprisingly, blocked signals are always queued, because the signal mask
-and handling might change between queueing and dequeueing. However, if the
-signal is not masked but no handler is
-set, it will
-get
-dropped.</p>
-<p>From reading the code that handles signals, signal masking and signal handlers,
-itâs clear that there are multiple places that explicitly exclude setting
-handlers for and masking SIGKILL and SIGSTOP.</p>
-<p>i begin with creating a simple KConfig key in the âKernel
-Hackingâ
-menu in lib/Kconfig.debug. This is the first part of my patch:</p>
-<p>Starting from there, i can hide or replace any part of signal handling code that
-explicitly refuses SIGSTOP or SIGKILL using something like:</p>
-<p>Your machine enters the signal masking procedure via the
-rt_sigprocmask
-syscall (previously sigprocmask before real-time signals were introduced):</p>
-<p>In that function, after some declarations and tests, if the nset argument is
-true, we proceed to call sigprocmask after copying the new_set of signals:</p>
-<p>If you donât blink, you can actually catch an explicit reference to our kernel
-signals! Right before moving to the actual handler of the syscallâs operation,
-we see a call to sigdelsetmask, which is more or less a âremove from setâ
-operationâ (a set negation and store). It is actually implemented as sig &= ~mask.</p>
-<p>sigprocmask can actually perform different operations depending on how,
-which can be any of SIG_BLOCK, SIG_UNBLOCK, and SIG_SETMASK. The first two
-are operations over the existing mask, whereas the last one sets the mask from
-exactly what you give.</p>
-<p>The code of that function, in
-kernel/signal.c
-(again) then does the following. It sets oldset to the old set, and then
-dispatches over the value of how to perform the correct binary operation
-between the oldset and the set it is given:</p>
-<p>As the comment points out, this function will âhappy block âunblockableâ
-signals like SIGKILL and friendsâ. As such, thereâs no need to keep going in the
-chain of calls. In fact, the rest of the calls only deal with taking locks,
-setting sets, and such.</p>
-<p>There are other places where SIGSTOP and SIGKILL are mentioned for masking:</p>
-<p>Similarly to before, the syscall for entry is
-rt_sigaction:</p>
-<p>Nothing in the code explicitly talks about SIGSTOP or SIGKILL, so let us
-inspect the next step:</p>
-<p>In do_sigaction,
-the code goes as follows:</p>
-<p>There is a check that the signal number is not valid (too big), or inferior to 1
-(also invalid), or that there is a new k_sigaction to setup and the signal
-is kernel only.</p>
-<p>sig_kernel_only
-is defined as a call to siginmask, with the set of signals
-SIG_KERNEL_ONLY_MASK, defined
-here:</p>
-<p>So, if we change that definitionâ¦ we would no longer be treating SIGKILL
-and SIGSTOP differently anywhere that this is used:</p>
-<p>Conveniently, there are multiple places in kernel/signal.c where
-sig_kernel_only is used:</p>
-<p>With this change, when a new handler is to be set from userspace, we will no
-longer reject the attempt if the target signal is SIGKILL or SIGSTOP.</p>
-<p>There is one last syscall that needs to change its behaviour regarding signals:
-timedwait.</p>
-<p>rt_sigtimedwait
-lets a process synchronously waits for one of the provided signals to become
-pending (i.e. in queue). It then performs some checks, and goes into
-do_sigtimedwait.
-A process is also not allowed to wait for SIGKILL or SIGSTOP, because it
-is not supposed to react to these signals. Consequently, the set of signals to
-wait for is deprived of these two signals at the start of do_sigtimedwait:</p>
-<p>The set of signals to wait for is inverted, and provided to dequeue_signal.
-That function waits for a signal not in the set, and returns it. Changing the
-line removing our two signals is all we need to remove the second to last
-reference to SIGSTOP in kernel/signal.c:</p>
-<p>As mentioned before, the first thing done when a signal is pending is calling
-get_signal. In the main loop, the handler is retrieved. If no handler is
-present, we keep applying defaults. For all stopping signals, this is done here:</p>
-<p>Here, SIGSTOP is treated differently from other signals because it
-supposedly always works. In our world, it does not, so it will have the same
-behaviour as other stop signals on those orphaned pgrps:</p>
-<p>Remember, always strip your modules in
-production. i also
-preemptively went in to disable CONFIG_LOCALVERSION_AUTO, and set
-CONFIG_LOCALVERSION to "-killstop", to better identify this kernel. i built
-my
-mod
-over a Linux 6.13.0 tree straight from the repos of Linus Torvalds himself.</p>
-<p>As i am on Arch Linux, i run a good old sudo mkinitcpio -g /boot/initramfs-killstop.img --kernelimage /boot/vmlinuz-killstop -k 6.13.0-killstop-dirty,
-then sudo grub-mkconfig -o /boot/grub/grub.cfg, cross the fingers on my paws,
-and reboot.</p>
-<p>i booted. And nothing happened. Nothing dramatically exploded. Nothing stopped.
-Everything was normal. i had booted on the stock Arch Linux by accident while
-running back to my bedroom to grab the dog collar that holds my authentication
-token.</p>
-<p>The second time around, i booted, and nothing happened. Nothing dramatically
-exploded, nothing stopped. Everything was normal. i ran uname -r and was
-greeted by</p>
-<p>Manipulating signals in Linux userland programs feel somewhat archaic. They kind
-of are in a sense. The functions you are supposed to use differ a lot from
-those i was taught in college. In fact, the ones i used here are much more
-convenient and stick with the conventions of the syscalls. They are found in
-signal.h.</p>
-<p>Now, i want to write a program that can do one of two things: mask or handle
-SIGINT, SIGKILL, SIGSEGV, SIGTERM and SIGSTOP. i am leaving SIGUSR1
-and SIGHUP to still have an out to kill my program. i will have a main, and
-i can write either mask() or handle() in it to pick what i do.</p>
-<p>The handle() function, as well as some boilerplate for later, look like this:</p>
-<p>First we setup handlers for all our signals and point to catch_function, shown
-below, using signal(2). Then, we simply get the pid of the process with
-getpid(2) from unistd.h, and prompt the user to wreck the shit out of give all they can to kill the
-current process. Finally, we spin forever. If for some reason that loop ends, we
-exit successfully.</p>
-<p>The catch function will have customized messages for every single one of the
-POSIX signals we catch:</p>
-<p>For masking, we use sigset_t to create a set of signals. It is very
-important to call
-sigemptyset(3) or sigfillset(3) on it, or you will suffer the wrath of
-uninitialized memory:</p>
-<p>Then, i add the signals i want in my set with sigaddset(3):</p>
-<p>i then call sigprocmask(2) using that set:</p>
-<p>i then call please_kill() the same way i do for signal handling before, so
-that i can prompt my user to kill my process in many colourful ways, then spin
-forever.</p>
-<p>The result, at least for signal handling, is something like
-this: a process that
-can handle, for example, SIGKILL. As a result, conventional means of killing a
-program are completely ineffective against it, as expected.</p>
-<p>There are many things i havenât touched on. SIGSTOP is actually referenced a
-whole lot, and same
-for SIGKILL. i
-figured the files i touched are the part i was mostly interested in, but other
-things could be worth looking into. ptrace(2) reacts on signals, so does
-strace(1). There are specific trap
-invocations
-that are supposed to notify ptrace upon signals being fired, and all kinds of
-things. signalfd
-is something i could have looked into as well, but i did not. kernel/ptrace.c
-also sometimes explicitly singles out kernel signals for some actions. By all means, my patches are not complete. Yet, they will let you do
-what i set out to do when i started this: handle and mask the two signals that
-nobody is supposed to mask or handle.</p>
-<p>And you know? It turned out fine. Nothing exploded on my system. As i could
-predict, because this was otherwise impossible, nobody did it. The signal
-system was setup in such a way that you would most likely realize something you
-were doing was wrong, and not try it.</p>
-<p>To pull back further, it is interesting to notice how the rules we all take for
-granted are just set somewhere in code. They were written by someone, at some
-point. If there is code restricting you from doing something, someone wrote it.
-Either they did not think anyone would want to do that thing, or they
-specifically prevented you from doing it. Those rules are written somewhere, and
-you can take it in your paws to go sniff around the code, pull out the relevant
-parts, and hack around the things that bother you. For fun, learning, or
-convenience.</p>
-<p>Snoop around. Sniff code. Put your paws in it. Hack shit.</p>
-<p>CC-BY-NC-SA 4.0 lymkwi —
-		contact<at>{this domain} | Powered by
-		Zola and the
-		tilde theme</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Git is releasing updates addressing six security vulnerabilities affecting recursive clones, reference handling, merges, binary patches, and imports. Here is what users need to know.</p>
+<p>Today, the Git project is releasing new versions to address six security vulnerabilities. These include arbitrary code execution when recursively cloning a malicious repository, writes to unintended files, and memory corruption when processing merges or binary patches.</p>
+<p>The fixes are included in Git 2.56.1, with backports to Git 2.55.1, 2.54.1, 2.53.1, 2.52.1, 2.51.3, and 2.50.2. We recommend updating to Git 2.56.1 or the patched release for your maintenance series, and updating any applications that bundle Git.</p>
+<p>Git checks paths before writing files into a working tree, including rejecting paths that would overwrite its own repository metadata. However, an integer truncation in Git’s index handling can cause an extremely long path to pass validation under one name and then be written using a shorter name.</p>
+<p>An attacker can use this discrepancy to replace a submodule’s .git file with a symbolic link pointing to a directory containing malicious configuration or hooks. When Git subsequently uses that directory, it can execute attacker-controlled code during a recursive clone.</p>
+<p>The fix rejects extremely long index entry paths before their lengths can be truncated.</p>
+<p>When cloning an empty repository using Git protocol v2, the server can advertise a HEAD symref pointing to an unborn branch (one that has no commits yet). Git did not validate the symref’s target before storing it locally.</p>
+<p>A malicious server can supply a name containing path-traversal components. With the files reference backend, a later operation that updates the branch can write outside the intended reference directory.</p>
+<p>Git now validates the advertised target before accepting it. The release also validates other reference names and symbolic-reference targets received through protocol v2.</p>
+<p>When stripping GPG signatures from a message, Git assumed there would be at most two signatures. A specially crafted message containing more than two signatures can cause Git to write past the end of a fixed-size stack array.</p>
+<p>This can be triggered by merging a tag containing more than two signatures, causing memory corruption and a potential denial of service. Hosting services that perform these merges on behalf of users can also be affected.</p>
+<p>The fix removes the fixed-size array and handles messages with any number of signatures.</p>
+<p>Git rejects patches larger than approximately 1 GiB because its patch application code cannot safely handle larger inputs. However, this check only considered the size of the patch as supplied.</p>
+<p>Binary patches are compressed and encoded, so a relatively small patch can expand beyond that limit. A crafted patch can bypass the input-size check and cause an out-of-bounds read, crashing Git.</p>
+<p>Git now also checks the declared uncompressed size before processing a binary patch.</p>
+<p>Git’s merge machinery calculates how much memory it needs for a merge result before writing the output. That calculation can overflow when the result is very large, including when many conflicts are combined with a large conflict-marker-size attribute.</p>
+<p>The overflow can cause Git to allocate a buffer that is too small, then write outside it, corrupting heap memory. This affects applications and hosting services that use Git to merge untrusted content, as well as local merges.</p>
+<p>The fix uses size-appropriate types and checked arithmetic, rejecting merges whose output size cannot be represented safely.</p>
+<p>git fast-import reads a stream of commands to build a repository. Some commands can access files outside the repository, so Git already restricts them when they appear in an untrusted input stream.</p>
+<p>Three additional features lacked that protection. The rewrite-submodules-from and rewrite-submodules-to features can read arbitrary files, potentially exposing their contents through error messages. The export-pack-edges option can create files or append data to existing files.</p>
+<p>These features are now rejected when supplied through the input stream unless the caller explicitly enables --allow-unsafe-features. Only enable that option when you trust the program generating the stream.</p>
+<p>Alongside these fixes, the release adds overflow checks to related index entry allocations during checkout and tree processing. These checks complement the path-length limits above, preventing allocation sizes from being truncated or overflowing before Git copies a path into memory.</p>
+<p>Updating is the most effective way to protect against these vulnerabilities. Install a patched version from your operating system or Git distributor, and update applications that include their own copy of Git. Administrators should also update Git installations used by automation and services that process repositories on behalf of users.</p>
+<p>If you cannot update immediately, clone only from trusted servers and avoid recursive clones of untrusted repositories. Avoid merging untrusted content or tags, or processing binary patches or fast-import streams from untrusted sources. These precautions do not replace installing the fixes.</p>
+<p>Elijah Newren is a Staff Software Engineer at GitHub. He is the designer and implementer of merge-ort, Git's default merge strategy since 2.34, author of git-filter-repo—the history rewriting tool the Git project officially recommends—and a driving force behind sparse-checkout.</p>
+<p>GitHub’s new Git storage architecture is built so thousands of agents can push to a single repository at once. Here’s how it works.</p>
+<p>We moved a copy of 99.99999% of GitHub’s repositories to Azure. Here’s how per-reference quorums will bring over the rest, and how object storage lets reads scale independently.</p>
+<p>GitHub now highlights ACCESSIBILITY.md files and helps maintainers document accessibility goals, known barriers, supported environments, contributor expectations, and reporting processes.</p>
+<p>Louis Erbkamm built the first prototype in his free time. Now GitHub Copilot helps him maintain it alone.</p>
+<p>GitHub’s annual month-long game jam is back for its 14th year! This November, make a game inspired by the theme SHIFT. Change gears, swap perspectives, bend reality, or just press a certain key.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://vulpinecitrus.info/blog/what-if-you-could-handle-sigkill/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/open-source/git/git-security-vulnerabilities-announced-7/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

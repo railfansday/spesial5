@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Japanese Stable Diffusion</title>
+    <title>Optimization story: Bloom inference</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11092.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,285 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Japanese Stable Diffusion</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Optimization story: Bloom inference</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/bloom-inference-pytorch-scripts/thumbnail.png" alt="Optimization story: Bloom inference" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/bloom-inference-pytorch-scripts/thumbnail.png" alt="Optimization story: Bloom inference" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>This article gives you the behind-the-scenes of how we made an efficient inference server that powers bloom.
+inference server that powers https://huggingface.co/bigscience/bloom.</p>
+<p>We achieved a 5x latency reduction over several weeks (and 50x more throughput). We wanted to share all the struggles and epic wins we went through to achieve such speed improvements.</p>
+<p>A lot of different people were involved at many stages so not everything will be covered here. And please bear with us, some of the content might be outdated or flat out wrong because
+we're still learning how to optimize extremely large models and lots of new
+hardware features and content keep coming out regularly.</p>
+<p>If your favorite flavor of optimizations
+is not discussed or improperly represented, we're sorry, please share it with us
+we're more than happy to try out new stuff and correct our mistakes.</p>
+<p>This goes without saying but without the large model being accessible in the first
+place, there would be no real reasons to optimize inference for it. This was an
+incredible effort led by many different people.</p>
+<p>To maximize the GPU during training, several solutions were explored
+and in the end, Megatron-Deepspeed was chosen to train the end model.
+This meant that the code as-is wasn't necessarily compatible with the transformers
+library.</p>
+<p>Because of the original training code, we set out to do something which we regularly
+do:  port an existing model to transformers. The goal was to extract from the
+training code the relevant parts and implement it within transformers.
+This effort was tackled by Younes.
+This is by no means a small effort as it took almost a month and 200 commits to get there.</p>
+<p>There are several things to note that will come back later:</p>
+<p>We needed to have smaller models bigscience/bigscience-small-testing and bigscience/bloom-560m.
+This is extremely important because they are smaller, so everything is faster when 
+working with them.</p>
+<p>First, you have to abandon all hope to have exactly the same logits at the end down
+to the bytes. PyTorch versions can change the kernels and introduce subtle differences, and different hardware
+might yield different results because of different architecture (and you probably
+don't want to develop on a A100 GPU all the time for cost reasons).</p>
+<p>Getting a good strict test suite is really important for all models</p>
+<p>The best test we found was having a fixed set of prompts. You know the prompt,
+you know the completion that needs to be deterministic so greedy.
+If two generations are identical, you can basically ignore small logits differences
+Whenever you see a drift, you need to investigate. It could be that your code
+is not doing what it should OR that you are actually out of domain for that model
+and therefore the model is more sensitive to noise. If you have several prompts
+and long enough prompts, you're less likely to trigger that for all prompts by
+accident. The more prompts the better, the longer the better.</p>
+<p>The first model (small-testing) is in bfloat16 like the big bloom so 
+everything should be very similar, but it wasn't trained a lot or just doesn't perform
+well, so it highly fluctuates in outputs. That means we had issues with those generation
+tests. The second model is more stable but was trained and saved in float16 instead
+of bfloat16. That's more room for error between the two.</p>
+<p>To be perfectly fair bfloat16 -> float16 conversion seemed to be OK in inference
+mode (bfloat16 mostly exists to handle large gradients, which do not exist in inference).</p>
+<p>During that step, one important tradeoff was discovered and implemented.
+Because bloom was trained in a distributed setting, part of the code was doing
+Tensor parallelism on a Linear layer meaning running the same operation as a single
+operation on a single GPU was giving different results.
+This took a while to pinpoint and either we went for 100% compliance and the model
+was much slower, or we would take a small difference in generation
+but was much faster to run and simpler code. We opted for a configurable flag.</p>
+<p>Now we have a workable transformers clean version of the start
+working on running this.</p>
+<p>Bloom is a 352GB (176B parameters in bf16) model, we need at least that much
+GPU RAM to make it fit. We briefly explored offloading to CPU on smaller machines
+but the inference speed was orders of magnitude slower so we discarded it.</p>
+<p>Then we wanted to basically use the pipeline.
+So it's dogfooding and this is what the API uses under the hood all the time.</p>
+<p>However pipelines are not distributed aware (it's not their goal). After briefly
+discussing options, we ended up using accelerate newly
+created device_map="auto" to manage the sharding of the model. We had to iron
+out a few bugs, and fix the transformers code a bit to help accelerate do the right job.</p>
+<p>It works by splitting the various layers of the transformers and giving part of
+the model to each GPU. So GPU0 gets to work, then hands it over to GPU1 so on
+and so forth.</p>
+<p>In the end, with a small HTTP server on top, we could start serving bloom (the big model) !!</p>
+<p>But we haven't even started discussing optimizations yet!</p>
+<p>We actually have quite a bit, all this process is a castle of cards. During
+optimizations we are going to make modifications to the underlying code, being 
+extra sure you're not killing the model in one way or the other is really important
+and easier to do than you think.</p>
+<p>So we are now at the very first step of optimizations and we need to start measuring
+and keep measuring performance. So we need to consider what we care about.
+For an open inference server supporting many options, we expect users to send
+many queries with different parameters and what we care about are:</p>
+<p>The number of users we can serve at the same time (throughput)
+How long does it take for an average user to be served (latency)?</p>
+<p>We made a testing script in locust which is exactly this:</p>
+<p>**Note: This is not the best nor the only load testing we used, but it was
+always the first to be run so that it could compare fairly across approaches.
+Being the best on this benchmark does NOT mean it is the best solution. Other
+more complex scenarios had to be used in addition to actual real-world performance.
+**</p>
+<p>We wanted to observe the ramp-up for various implementations and also make sure
+that underload the server properly circuit breaked. Circuit breaking means
+that the server can answer (fast) that it will not answer your query because too
+many people are trying to use it at the same time.
+It's extremely important to avoid the hug of death.</p>
+<p>On this benchmark the initial performance was (on 16xA100 40Go on GCP which is the machine used throughout):</p>
+<p>Requests/s : 0.3 (throughput)
+Latency: 350ms/token (latency)</p>
+<p>Those numbers are not that great. Before getting to work let's estimate
+the best we can imagine achieving.
+The formula for amount of operations is 24Bsh^2 + 4𝐵s^2h24Bsh^2 + 4𝐵s^2h where B is
+the batch size, s the sequence length, and h the hidden dimension.</p>
+<p>Let's do the math and we are getting 17 TFlop for a single forward pass.
+Looking at the specs of A100 it claims 312 TFLOPS for a single card.
+That means a single GPU could potentially run at 17 / 312 = 54ms/token. We're using 16 of those so 3ms/token on the overall
+machine. Take all these numbers with a big grain of salt, it's never possible to reach those numbers,
+and real-life performance rarely matches the specs. Also if computation is not your limiting
+factor then this is not the lowest you can get. It's just good practice to know how far you are from 
+your target. In this case, we're 2 orders of magnitude so pretty far. Also, this estimate puts
+all the flops at the service of latency which means only a single request can go at a time (it's ok since you're maximizing your machine
+so there's not much else to be done, but we can have higher latency and get throughput back through batching much more easily).</p>
+<p>Now that we have a good understanding of where we stand it's time to get to work.</p>
+<p>We tried many different things based on the people and our various knowledge.</p>
+<p>ALL endeavors deserve their own blog post so I'll just list them, explain the
+few final learnings and delve into the details of only what went into the current
+server. Moving from Pipeline Parallelism (PP) to Tensor Parallelism (TP) is 
+one big interesting change for latency. Each GPU will own part of the parameters
+and all will be working at the same time. So the latency should decrease drastically
+but the price to pay is the communication overhead since they regularly need
+to communicate with each other about their results.</p>
+<p>It is to note that this is a very wide range of approaches and the intent
+was deliberately to learn more about each tool and how it could fit in later
+endeavors.</p>
+<p>The first item on the list was removing unnecessary operations in the first implementations
+Some can be seen by just looking at the code and figuring out obvious flaws:</p>
+<p>This is a 10x speedup and the latest version includes padding too!
+Since this step is only computed once, the actual speed is not important
+but overall reducing the number of operations and tensor creation is a good direction.</p>
+<p>Other parts come out more clearly when you start profiling and we used quite extensively the tensorboard extension</p>
+<p>This provides this sort of image which give insights:</p>
+<p>Removing a lot of reshape/transpose, for instance, we figured out that:
+    - The attention is the hot path (it's expected but always good to verify).
+    - In the attention, a lot of kernels were actual copies due to the massive amount of reshapes
+    - We could remove the reshapes by reworking the weights themselves and the past.
+    This is a breaking change but it did improve performance quite a bit!</p>
+<p>Ok, we have removed most of the low-hanging fruits now we went roughly from 350ms/token
+latency to 300ms/token in PP. That's a 15% reduction in latency, but it actually provided
+more than that, but we were not extremely rigorous in our measuring initially so let's stick to that figure.</p>
+<p>Then we went on to provide a TP implementation. Turned out to be much faster
+than we anticipated the implementation took half a day of a single (experienced) dev.
+The result is here. We were also able to reuse code from other projects which helped.</p>
+<p>The latency went directly from 300ms/token to 91ms/token which is a huge improvement in user experience.
+A simple 20 tokens request went from 6s to 2s which went from a "slow" experience to slightly delayed.</p>
+<p>Also, the throughput went up a lot to 10RPS. The throughput comes from the fact
+that running a query in batch_size=1 takes the same time as batch_size=32 
+and throughput becomes essentially free in latency cost at this point.</p>
+<p>Now that we had a TP implementation, we could start profiling and optimizing again.
+It's a significant enough shift that we had to start from scratch again.</p>
+<p>The first thing that stood out, is that synchronization (ncclAllReduce) starts
+to become a preponderant part of the load, which is expected, this is the synchronization
+part and it is taking some time. We never tried to look and optimize this as it's
+already using nccl but there might still be some room for improvement there.
+We assumed it would be hard to do much better.</p>
+<p>The second thing is that Gelu operator was launching many elementwise
+kernels and overall it was taking a bigger share of compute than we expected.</p>
+<p>This transforms the operations from multiple small element-wise kernels (and hence tensor copies)
+to a single kernel operation!</p>
+<p>This provided a 10% latency improvement from 91ms/token to 81ms/token, right there!</p>
+<p>Be careful though, this is not some magic black box you can just throw everywhere, 
+the kernel fusion will not necessarily happen or the previously used operations 
+are already extremely efficient.</p>
+<p>We also had some points, during our testing periods, where we ended up seeing some consistent
+25% lower latency for the Rust server compared to the Python one. This was rather
+odd, but because it was consistently measured, and because removing kernels provided a speed
+up, we were under the impression that maybe dropping the Python overhead could
+provide a nice boost.</p>
+<p>We started a 3-day job to reimplement the necessary parts of torch.distributed
+To get up and running in the Rust world nccl-rs.
+We had the version working but something was off in the generations compared to its 
+Python counterpart. During the investigation of the issues, we figured...
+that we had forgotten to remove the profiler in the Pytorch measurements...</p>
+<p>That was the epic fail because removing it gave us back the 25% and then both
+codes ran just as fast.  This is what we initially expected, that python mustn't
+be a performance hit, since it's mostly running torch cpp's code. In the end,
+3 days is not the end of the world, and it might become useful sometime in the
+future but still pretty bad.
+This is quite common when doing optimizations to do wrong or misrepresentative
+measurements which end up being disappointing or even detrimental to the overall
+product. This is why doing it in small steps and having expectations about the
+outcome as soon as possible helps contain that risk.</p>
+<p>Another place where we had to be extra careful, was the initial forward pass (without
+past) and the later forward passes (with past). If you optimize the first one, 
+you're most certainly going to be slowing down the later ones which are much more
+important and account for most of the runtime.
+Another pretty common culprit is measuring times which are CPU times, and not
+actual CUDA times, so you need to torch.cuda.synchronize() when doing
+runs to be sure that the kernels complete.</p>
+<p>So far, we had achieved close to DeepSpeed performance without any custom code 
+outside of PyTorch! Pretty neat. We also didn't have to make any compromise
+on the flexibility of the run time batch size!</p>
+<p>But given the DeepSpeed experience, we wanted to try and write a custom kernel
+to fuse a few operations in the hot path where torch.jit.script wasn't able to
+do it for us. Essentially the following two lines:</p>
+<p>The first masked fill is creating a new tensor, which is here only to 
+say to the softmax operator to ignore those values. Also, the softmax needs to be calculated
+on float32 (for stability) but within a custom kernel, we could limit the amount of 
+upcasting necessary so we limit them to the actual sums and accumulated needed.</p>
+<p>Code can be found here.
+Keep in mind we had a single GPU architecture to target so we could focus on this
+and we are not experts (yet) at writing kernels, so there could be better ways
+to do this.</p>
+<p>This custom kernel provided yet another 10% latency increase moving down from
+81ms/token to 71ms/token latency. All the while keeping our flexibility.</p>
+<p>After that, we investigated and explored other things like fusing more operators
+removing other reshapes, or putting them in other places. But no attempt ever made
+a significant enough impact to make it to the final versions.</p>
+<p>Just like the Rust counterpart, we had to implement the batching of requests
+with different parameters. Since we were in the PyTorch world, we have pretty
+much full control of what's going on. 
+Since we're in Python, we have the limiting factor that the torch.distributed 
+needs to run on several processes instead of threads, which means it's slightly
+harder to communicate between processes. In the end, we opted to communicate
+raw strings over a Redis pub/sub to distribute the requests to all processes at once.
+Since we are in different processes it's easier to do it that way than communicating
+tensors (which are way bigger) for instance.</p>
+<p>Then we had to drop the use generate since
+this applies the parameters to all members of the batch, and we actually
+want to apply a different set of parameters.
+Thankfully, we can reuse lower-level items like the LogitsProcessor
+to save us a lot of work.</p>
+<p>So we reconstructed a generate function that takes a list of parameters
+and applies them to each member of the batch.</p>
+<p>Another really important aspect of the final UX is latency.
+Since we have different parameter sets for different requests, we might have</p>
+<p>1 request for 20 tokens and the other for 250 tokens. Since it takes
+75ms/token latency one request takes 1.5s and the other 18s. If we were
+batching all the way, we would be making the user that asked to wait for 18s 
+and making it appear to him as if we were running at 900ms/token which is quite slow!</p>
+<p>Since we're in a PyTorch world with extreme flexibility, what we can do instead
+is extract from the batch the first request as soon as we generated to first 20
+tokens, and return to that user within the requested 1.5s! We also happen to save 230 tokens worth of computation.</p>
+<p>So flexibility is important to get the best possible latency out there.</p>
+<p>Optimization is a never-ending job, and like any other project, 20% of work
+will usually yield 80% of the results.
+At some point, we started having a small testing strategy to figure out 
+potential yields of some idea we had, and if the tests didn't yield significant
+results then we discarded the idea. 1 day for a 10% increase is valuable enough, 2 weeks for 10X
+is valuable enough. 2 weeks for 10% is not so interesting.</p>
+<p>Stuff we know exists and haven't used because of various reasons. It 
+could be it felt like it wasn't adapted to our use case, it was too much
+work, the yields weren't promising enough, or even simply we had too many
+options to try out from and discarded some for no particular reasons and just
+lack of time. The following are in no particular order:</p>
+<p>Please feel free to reach out if your favorite tool is missing from
+here or if you think we missed out on something important that could
+prove useful!</p>
+<p>We have briefly looked at integrating flash attention, and while it performs extremely
+well on the first forward pass (without past_key_values) it didn't yield as big improvements
+when running when using past_key_values. Since we needed to adapt it to include the alibi tensor
+in the calculation we decide to not do the work (at least not yet).</p>
+<p>Triton is a great framework for building custom kernels 
+in Python. We want to get to use it more but we haven't so far. We would
+be eager to see if it performs better than our Cuda kernel. Writing directly in
+Cuda seemed like the shortest path for our goal when we considered our options
+for that part.</p>
+<p>As mentioned throughout this article, every tensor copy has a cost and another
+hidden cost of running production is padding. When two queries come in with very
+different lengths, you have to pad (use a dummy token) to make them fit a square.
+This leads to maybe a lot of unnecessary calculations. More information.</p>
+<p>Ideally, we would be able to not do those calculations at all, and never have reshapes.
+Tensorflow has the concept of RaggedTensor and
+Pytorch Nested tensors. Both of these
+seem not as streamlined as regular tensors but might enable us to do less computation
+which is always a win.</p>
+<p>In an ideal world, the entire inference would be written in CUDA or pure GPU implementation.
+Considering the performance improvements yielded when we could fuse operations it looks desirable.
+But to what extent this would deliver, we have no idea. If smarter GPU people have
+ideas we are listening!</p>
+<p>All this work results of the collaboration of many HF team members. In no particular
+order, @ThomasWang @stas
+@Nouamane @Suraj
+@Sanchit @Patrick
+@Younes @Sylvain
+@Jeff (Microsoft) @Reza
+And all the BigScience organization.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/japanese-stable-diffusion" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/bloom-inference-optimization" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

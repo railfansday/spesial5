@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Image Similarity with Hugging Face Datasets and Transformers</title>
+    <title>Universal Image Segmentation with Mask2Former and OneFormer</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11057.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Image Similarity with Hugging Face Datasets and Transformers</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Universal Image Segmentation with Mask2Former and OneFormer</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/127_mask2former/thumbnail.png" alt="Universal Image Segmentation with Mask2Former and OneFormer" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/127_mask2former/thumbnail.png" alt="Universal Image Segmentation with Mask2Former and OneFormer" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>This guide introduces Mask2Former and OneFormer, 2 state-of-the-art neural networks for image segmentation. The models are now available in 🤗 transformers, an open-source library that offers easy-to-use implementations of state-of-the-art models. Along the way, you'll learn about the difference between the various forms of image segmentation.</p>
+<p>Image segmentation is the task of identifying different "segments" in an image, like people or cars. More technically, image segmentation is the task of grouping pixels with different semantics. Refer to the Hugging Face task page for a brief introduction.</p>
+<p>Image segmentation can largely be split into 3 subtasks - instance, semantic and panoptic segmentation - with numerous methods and model architectures to perform each subtask.</p>
+<p>The figure below illustrates the difference between the 3 subtasks (taken from this blog post).</p>
+<p>Over the last years, researchers have come up with several architectures that were typically very tailored to either instance, semantic or panoptic segmentation. Instance and panoptic segmentation were typically solved by outputting a set of binary masks + corresponding labels per object instance (very similar to object detection, except that one outputs a binary mask instead of a bounding box per instance). This is oftentimes called "binary mask classification". Semantic segmentation on the other hand was typically solved by making models output a single "segmentation map" with one label per pixel. Hence, semantic segmentation was treated as a "per-pixel classification" problem. Popular semantic segmentation models which adopt this paradigm are SegFormer, on which we wrote an extensive blog post, and UPerNet.</p>
+<p>Luckily, since around 2020, people started to come up with models that can solve all 3 tasks (instance, semantic and panoptic segmentation) with a unified architecture, using the same paradigm. This started with DETR, which was the first model that solved panoptic segmentation using a "binary mask classification" paradigm, by treating "things" and "stuff" classes in a unified way. The key innovation was to have a Transformer decoder come up with a set of binary masks + classes in a parallel way. This was then improved in the MaskFormer paper, which showed that the "binary mask classification" paradigm also works really well for semantic segmentation.</p>
+<p>Mask2Former extends this to instance segmentation by further improving the neural network architecture. Hence, we've evolved from separate architectures to what researchers now refer to as "universal image segmentation" architectures, capable of solving any image segmentation task. Interestingly, these universal models all adopt the "mask classification" paradigm, discarding the "per-pixel classification" paradigm entirely. A figure illustrating Mask2Former's architecture is depicted below (taken from the original paper).</p>
+<p>In short, an image is first sent through a backbone (which, in the paper could be either ResNet or Swin Transformer) to get a list of low-resolution feature maps. Next, these feature maps are enhanced using a pixel decoder module to get high-resolution features. Finally, a Transformer decoder takes in a set of queries and transforms them into a set of binary mask and class predictions, conditioned on the pixel decoder's features.</p>
+<p>Note that Mask2Former still needs to be trained on each task separately to obtain state-of-the-art results. This has been improved by the OneFormer model, which obtains state-of-the-art performance on all 3 tasks by only training on a panoptic version of the dataset (!), by adding a text encoder to condition the model on either "instance", "semantic" or "panoptic" inputs. This model is also as of today available in 🤗 transformers. It's even more accurate than Mask2Former, but comes with greater latency due to the additional text encoder. See the figure below for an overview of OneFormer. It leverages either Swin Transformer or the new DiNAT model as backbone.</p>
+<p>Usage of Mask2Former and OneFormer is pretty straightforward, and very similar to their predecessor MaskFormer. Let's instantiate a Mask2Former model from the hub trained on the COCO panoptic dataset, along with its processor. Note that the authors released no less than 30 checkpoints trained on various datasets.</p>
+<p>Next, let's load the familiar cats image from the COCO dataset, on which we'll perform inference.</p>
+<p>We prepare the image for the model using the image processor, and forward it through the model.</p>
+<p>The model outputs a set of binary masks and corresponding class logits. The raw outputs of Mask2Former can be easily postprocessed using the image processor to get the final instance, semantic or panoptic segmentation predictions:</p>
+<p>In panoptic segmentation, the final prediction contains 2 things: a segmentation map of shape (height, width) where each value encodes the instance ID of a given pixel, as well as a corresponding segments_info. The  segments_info contains more information about the individual segments of the map (such as their class / category ID). Note that Mask2Former outputs binary mask proposals of shape (96, 96) for efficiency and the target_sizes argument is used to resize the final mask to the original image size.</p>
+<p>Here, we can see that the model is capable of detecting the individual cats and remotes in the image. Semantic segmentation on the other hand would just create a single mask for the "cat" category.</p>
+<p>To perform inference with OneFormer, which has an identical API except that it also takes an additional text prompt as input, we refer to the demo notebook.</p>
+<p>For fine-tuning Mask2Former/OneFormer on a custom dataset for either instance, semantic and panoptic segmentation, check out our demo notebooks. MaskFormer, Mask2Former and OneFormer share a similar API so upgrading from MaskFormer is easy and requires minimal changes.</p>
+<p>The demo notebooks make use of MaskFormerForInstanceSegmentation to load the model whereas you'll have to switch to using either Mask2FormerForUniversalSegmentation or OneFormerForUniversalSegmentation. In case of image processing for Mask2Former, you'll also have to switch to using Mask2FormerImageProcessor. You can also load the image processor using the AutoImageProcessor class which automatically takes care of loading the correct processor corresponding to your model. OneFormer on the other hand requires a OneFormerProcessor, which prepares the images, along with a text input, for the model.</p>
+<p>That's it! You now know about the difference between instance, semantic and panoptic segmentation, as well as how to use "universal architectures" such as Mask2Former and OneFormer using the 🤗 transformers library.</p>
+<p>We hope you enjoyed this post and learned something. Feel free to let us know whether you are satisfied with the results when fine-tuning Mask2Former or OneFormer.</p>
+<p>If you liked this topic and want to learn more, we recommend the following resources:</p>
+<p>Segment images into objects, instances, or scenes</p>
+<p>Segment images into objects, instances, or scenes</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/image-similarity" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/mask2former" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

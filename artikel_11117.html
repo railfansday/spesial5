@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Introducing new audio and vision documentation in 🤗 Datasets</title>
+    <title>Nyströmformer: Approximating self-attention in linear time and memory via the Nyström method</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11117.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,41 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Introducing new audio and vision documentation in 🤗 Datasets</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Nyströmformer: Approximating self-attention in linear time and memory via the Nyström method</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/86_nystromformer/thumbnail.png" alt="Nyströmformer: Approximating self-attention in linear time and memory via the Nyström method" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/86_nystromformer/thumbnail.png" alt="Nyströmformer: Approximating self-attention in linear time and memory via the Nyström method" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Transformers have exhibited remarkable performance on various Natural Language Processing and Computer Vision tasks. Their success can be attributed to the self-attention mechanism, which captures the pairwise interactions between all the tokens in an input. However, the standard self-attention mechanism has a time and memory complexity of O(n2)O(n^2)O(n2) (where nnn is the length of the input sequence), making it expensive to train on long input sequences.</p>
+<p>The Nyströmformer is one of many efficient Transformer models that approximates standard self-attention with O(n)O(n)O(n) complexity. Nyströmformer exhibits competitive performance on various downstream NLP and CV tasks while improving upon the efficiency of standard self-attention. The aim of this blog post is to give readers an overview of the Nyström method and how it can be adapted to approximate self-attention.</p>
+<p>At the heart of Nyströmformer is the Nyström method for matrix approximation. It allows us to approximate a matrix by sampling some of its rows and columns. Let's consider a matrix Pn×nP^{n \times n}Pn×n, which is expensive to compute in its entirety. So, instead, we approximate it using the Nyström method. We start by sampling mmm rows and columns from PPP. We can then arrange the sampled rows and columns as follows:</p>
+<p>We now have four submatrices: AP,BP,FP,A_P, B_P, F_P,AP​,BP​,FP​, and CPC_PCP​, with sizes m×m,m×(n−m),(n−m)×mm \times m, m \times (n - m), (n - m) \times mm×m,m×(n−m),(n−m)×m and  (n−m)×(n−m)(n - m) \times (n - m)(n−m)×(n−m) respectively. The mmm sampled columns are contained in APA_PAP​ and FPF_PFP​, whereas the mmm sampled rows are contained in APA_PAP​ and BPB_PBP​. So, the entries of AP,BP,A_P, B_P,AP​,BP​, and FPF_PFP​ are known to us, and we will estimate CPC_PCP​. According to the Nyström method, CPC_PCP​ is given by:</p>
+<p>CP=FPAP+BPC_P = F_P A_P^+ B_PCP​=FP​AP+​BP​</p>
+<p>Here, +++ denotes the Moore-Penrose inverse (or pseudoinverse). 
+Thus, the Nyström approximation of P,P^P, \hat{P}P,P^ can be written as:</p>
+<p>As shown in the second line, P^\hat{P}P^ can be expressed as a product of three matrices. The reason for doing so will become clear later.</p>
+<p>Our goal is to ultimately approximate the softmax matrix in standard self attention: S = softmax QKTd \frac{QK^T}{\sqrt{d}} d​QKT​</p>
+<p>Here, QQQ and KKK denote the queries and keys respectively. Following the procedure discussed above, we would sample mmm rows and columns from SSS, form four submatrices, and obtain S^\hat{S}S^:</p>
+<p>But, what does it mean to sample a column from SSS? It means we select one element from each row. Recall how S is calculated: the final operation is a row-wise softmax. To find a single entry in a row, we must access all other entries (for the denominator in softmax). So, sampling one column requires us to know all other columns in the matrix. Therefore, we cannot directly apply the Nyström method to approximate the softmax matrix.</p>
+<p>Instead of sampling from SSS, the authors propose to sample landmarks (or Nyström points) from queries and keys. We denote the query landmarks and key landmarks as Q~\tilde{Q}Q~​ and K~\tilde{K}K~ respectively. Q~\tilde{Q}Q~​ and K~\tilde{K}K~ can be used to construct three matrices corresponding to those in the Nyström approximation of SSS. We define the following matrices:</p>
+<p>F~=softmax(QK~Td)A~=softmax(Q~K~Td)+B~=softmax(Q~KTd)\tilde{F} = softmax(\frac{Q\tilde{K}^T}{\sqrt{d}}) \hspace{40pt} \tilde{A} = softmax(\frac{\tilde{Q}\tilde{K}^T}{\sqrt{d}})^+ \hspace{40pt} \tilde{B} = softmax(\frac{\tilde{Q}K^T}{\sqrt{d}})F~=softmax(d​QK~T​)A~=softmax(d​Q~​K~T​)+B~=softmax(d​Q~​KT​)</p>
+<p>The sizes of F~\tilde{F}F~, A~\tilde{A}A~, and B~)are(n×m,m×m,\tilde{B}) are \\(n \times m, m \times m,B~)are(n×m,m×m, and m×nm \times nm×n respectively. 
+We replace the three matrices in the Nyström approximation of SSS with the new matrices we have defined to obtain an alternative Nyström approximation:</p>
+<p>S^=F~A~B~=softmax(QK~Td)softmax(Q~K~Td)+softmax(Q~KTd)\begin{aligned}\hat{S} &= \tilde{F} \tilde{A} \tilde{B} \\ &= softmax(\frac{Q\tilde{K}^T}{\sqrt{d}}) softmax(\frac{\tilde{Q}\tilde{K}^T}{\sqrt{d}})^+  softmax(\frac{\tilde{Q}K^T}{\sqrt{d}}) \end{aligned}S^​=F~A~B~=softmax(d​QK~T​)softmax(d​Q~​K~T​)+softmax(d​Q~​KT​)​</p>
+<p>This is the Nyström approximation of the softmax matrix in the self-attention mechanism. We multiply this matrix with the values ( VVV) to obtain a linear approximation of self-attention. Note that we never calculated the product QKTQK^TQKT, avoiding the O(n2)O(n^2)O(n2) complexity.</p>
+<p>Instead of sampling mmm rows from QQQ and KKK, the authors propose to construct Q~\tilde{Q}Q~​ and K~\tilde{K}K~
+using segment means. In this procedure, nnn tokens are grouped into mmm segments, and the mean of each segment is computed. Ideally, mmm is much smaller than nnn. According to experiments from the paper, selecting just 323232 or 646464 landmarks produces competetive performance compared to standard self-attention and other efficient attention mechanisms, even for long sequences lengths ( n=4096n=4096n=4096 or 819281928192).</p>
+<p>The overall algorithm is summarised by the following figure from the paper:</p>
+<p>The three orange matrices above correspond to the three matrices we constructed using the key and query landmarks. Also, notice that there is a DConv box. This corresponds to a skip connection added to the values using a 1D depthwise convolution.</p>
+<p>The original implementation of Nyströmformer can be found here and the HuggingFace implementation can be found here. Let's take a look at a few lines of code (with some comments added) from the HuggingFace implementation. Note that some details such as normalization, attention masking, and depthwise convolution are avoided for simplicity.</p>
+<p>Nyströmformer for Masked Language Modeling (MLM) is available on HuggingFace. Currently, there are 4 checkpoints, corresponding to various sequence lengths: nystromformer-512, nystromformer-1024, nystromformer-2048, and nystromformer-4096. The number of landmarks, mmm, can be controlled using the num_landmarks parameter in the NystromformerConfig. Let's take a look at a minimal example of Nyströmformer for MLM:</p>
+<p>Alternatively, we can use the pipeline API (which handles all the complexity for us):</p>
+<p>Nyströmformer offers an efficient approximation to the standard self-attention mechanism, while outperforming other linear self-attention schemes. In this blog post, we went over a high-level overview of the Nyström method and how it can be leveraged for self-attention. Readers interested in deploying or fine-tuning Nyströmformer for downstream tasks can find the HuggingFace documentation here.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/datasets-docs-update" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/nystromformer" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

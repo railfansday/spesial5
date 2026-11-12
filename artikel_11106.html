@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Deploying 🤗 ViT on Vertex AI</title>
+    <title>Stable Diffusion with 🧨 Diffusers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11106.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,117 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Deploying 🤗 ViT on Vertex AI</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Stable Diffusion with 🧨 Diffusers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/98_stable_diffusion/thumbnail.png" alt="Stable Diffusion with 🧨 Diffusers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/98_stable_diffusion/thumbnail.png" alt="Stable Diffusion with 🧨 Diffusers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Stable Diffusion is a text-to-image latent diffusion model created by the researchers and engineers from CompVis, Stability AI and LAION. 
+It is trained on 512x512 images from a subset of the LAION-5B database.
+LAION-5B is the largest, freely accessible multi-modal dataset that currently exists.</p>
+<p>In this post, we want to show how to use Stable Diffusion with the 🧨 Diffusers library, explain how the model works and finally dive a bit deeper into how diffusers allows
+one to customize the image generation pipeline.</p>
+<p>Note: It is highly recommended to have a basic understanding of how diffusion models work. If diffusion 
+models are completely new to you, we recommend reading one of the following blog posts:</p>
+<p>Now, let's get started by generating some images 🎨.</p>
+<p>Before using the model, you need to accept the model license in order to download and use the weights. Note: the license does not need to be explicitly accepted through the UI anymore.</p>
+<p>The license is designed to mitigate the potential harmful effects of such a powerful machine learning system. 
+We request users to read the license entirely and carefully. Here we offer a summary:</p>
+<p>First, you should install diffusers==0.10.2 to run the following code snippets:</p>
+<p>In this post we'll use model version v1-4, but you can also use other versions of the model such as 1.5, 2, and 2.1 with minimal code changes.</p>
+<p>The Stable Diffusion model can be run in inference with just a couple of lines using the StableDiffusionPipeline pipeline. The pipeline sets up everything you need to generate images from text with 
+a simple from_pretrained function call.</p>
+<p>If a GPU is available, let's move it to one!</p>
+<p>Note: If you are limited by GPU memory and have less than 10GB of GPU RAM available, please
+make sure to load the StableDiffusionPipeline in float16 precision instead of the default
+float32 precision as done above.</p>
+<p>You can do so by loading the weights from the fp16 branch and by telling diffusers to expect the 
+weights to be in float16 precision:</p>
+<p>To run the pipeline, simply define the prompt and call pipe.</p>
+<p>The previous code will give you a different image every time you run it.</p>
+<p>If at some point you get a black image, it may be because the content filter built inside the model might have detected an NSFW result. 
+If you believe this shouldn't be the case, try tweaking your prompt or using a different seed. In fact, the model predictions include information about whether NSFW was detected for a particular result. Let's see what they look like:</p>
+<p>If you want deterministic output you can seed a random seed and pass a generator to the pipeline. 
+Every time you use a generator with the same seed you'll get the same image output.</p>
+<p>You can change the number of inference steps using the num_inference_steps argument.</p>
+<p>In general, results are better the more steps you use, however the more steps, the longer the generation takes.
+Stable Diffusion works quite well with a relatively small number of steps, so we recommend using the default number of inference steps of 50. 
+If you want faster results you can use a smaller number. If you want potentially higher quality results, 
+you can use larger numbers.</p>
+<p>Let's try out running the pipeline with less denoising steps.</p>
+<p>Note how the structure is the same, but there are problems in the astronauts suit and the general form of the horse.
+This shows that using only 15 denoising steps has significantly degraded the quality of the generation result. As stated earlier 50 denoising steps is usually sufficient to generate high-quality images.</p>
+<p>Besides num_inference_steps, we've been using another function argument, called guidance_scale in all 
+previous examples. guidance_scale is a way to increase the adherence to the conditional signal that guides the generation (text, in this case) as well as overall sample quality. 
+It is also known as classifier-free guidance, which in simple terms forces the generation to better match the prompt potentially at the cost of image quality or diversity. 
+Values between 7 and 8.5 are usually good choices for Stable Diffusion.  By default the pipeline
+uses a guidance_scale of 7.5.</p>
+<p>If you use a very large value the images might look good, but will be less diverse. 
+You can learn about the technical details of this parameter in this section of the post.</p>
+<p>Next, let's see how you can generate several images of the same prompt at once. 
+First, we'll create an image_grid function to help us visualize them nicely in a grid.</p>
+<p>We can generate multiple images for the same prompt by simply using a list with the same prompt repeated several times. We'll send the list to the pipeline instead of the string we used before.</p>
+<p>By default, stable diffusion produces images of 512 × 512 pixels. It's very easy to override the default using the height and width arguments to create rectangular images in portrait or landscape ratios.</p>
+<p>When choosing image sizes, we advise the following:</p>
+<p>Having seen the high-quality images that stable diffusion can produce, let's try to understand 
+a bit better how the model functions.</p>
+<p>Stable Diffusion is based on a particular type of diffusion model called Latent Diffusion, proposed in High-Resolution Image Synthesis with Latent Diffusion Models.</p>
+<p>Generally speaking, diffusion models are machine learning systems that are trained to denoise random Gaussian noise step by step, to get to a sample of interest, such as an image. For a more detailed overview of how they work, check this colab.</p>
+<p>Diffusion models have shown to achieve state-of-the-art results for generating image data. But one downside of diffusion models is that the reverse denoising process is slow because of its repeated, sequential nature. In addition, these models consume a lot of memory because they operate in pixel space, which becomes huge when generating high-resolution images. Therefore, it is challenging to train these models and also use them for inference.</p>
+<p>Latent diffusion can reduce the memory and compute complexity by applying the diffusion process over a lower dimensional latent space, instead of using the actual pixel space. This is the key difference between standard diffusion and latent diffusion models: in latent diffusion the model is trained to generate latent (compressed) representations of the images.</p>
+<p>There are three main components in latent diffusion.</p>
+<p>The VAE model has two parts, an encoder and a decoder. The encoder is used to convert the image into a low dimensional latent representation, which will serve as the input to the U-Net model.
+The decoder, conversely, transforms the latent representation back into an image.</p>
+<p>During latent diffusion training, the encoder is used to get the latent representations (latents) of the images for the forward diffusion process, which applies more and more noise at each step. During inference, the denoised latents generated by the reverse diffusion process are converted back into images using the VAE decoder. As we will see during inference we only need the VAE decoder.</p>
+<p>The U-Net has an encoder part and a decoder part both comprised of ResNet blocks.
+The encoder compresses an image representation into a lower resolution image representation and the decoder decodes the lower resolution image representation back to the original higher resolution image representation that is supposedly less noisy.
+More specifically, the U-Net output predicts the noise residual which can be used to compute the predicted denoised image representation.</p>
+<p>To prevent the U-Net from losing important information while downsampling, short-cut connections are usually added between the downsampling ResNets of the encoder to the upsampling ResNets of the decoder.
+Additionally, the stable diffusion U-Net is able to condition its output on text-embeddings via cross-attention layers. The cross-attention layers are added to both the encoder and decoder part of the U-Net usually between ResNet blocks.</p>
+<p>The text-encoder is responsible for transforming the input prompt, e.g. "An astronaut riding a horse" into an embedding space that can be understood by the U-Net. It is usually a simple transformer-based encoder that maps a sequence of input tokens to a sequence of latent text-embeddings.</p>
+<p>Inspired by Imagen, Stable Diffusion does not train the text-encoder during training and simply uses an CLIP's already trained text encoder, CLIPTextModel.</p>
+<p>Why is latent diffusion fast and efficient?</p>
+<p>Since latent diffusion operates on a low dimensional space, it greatly reduces the memory and compute requirements compared to pixel-space diffusion models. For example, the autoencoder used in Stable Diffusion has a reduction factor of 8. This means that an image of shape (3, 512, 512) becomes (4, 64, 64) in latent space, which means the spatial compression ratio is 8 × 8 = 64.</p>
+<p>This is why it's possible to generate 512 × 512 images so quickly, even on 16GB Colab GPUs!</p>
+<p>Putting it all together, let's now take a closer look at how the model works in inference by illustrating the logical flow.</p>
+<p>The stable diffusion model takes both a latent seed and a text prompt as an input. The latent seed is then used to generate random latent image representations of size 64×64 64 \times 64 64×64 where as the text prompt is transformed to text embeddings of size 77×768 77 \times 768 77×768 via CLIP's text encoder.</p>
+<p>Next the U-Net iteratively denoises the random latent image representations while being conditioned on the text embeddings. The output of the U-Net, being the noise residual, is used to compute a denoised latent image representation via a scheduler algorithm. Many different scheduler algorithms can be used for this computation, each having its pro- and cons. For Stable Diffusion, we recommend using one of:</p>
+<p>Theory on how the scheduler algorithm function is out-of-scope for this notebook, but in short one should remember that they compute the predicted denoised image representation from the previous noise representation and the predicted noise residual.
+For more information, we recommend looking into Elucidating the Design Space of Diffusion-Based Generative Models</p>
+<p>The denoising process is repeated ca. 50 times to step-by-step retrieve better latent image representations.
+Once complete, the latent image representation is decoded by the decoder part of the variational auto encoder.</p>
+<p>After this brief introduction to Latent and Stable Diffusion, let's see how to make advanced use of 🤗 Hugging Face diffusers library!</p>
+<p>Finally, we show how you can create custom diffusion pipelines with diffusers.
+Writing a custom inference pipeline is an advanced use of the diffusers library that can be useful to switch out certain components, such as the VAE or scheduler explained above.</p>
+<p>For example, we'll show how to use Stable Diffusion with a different scheduler, namely Katherine Crowson's K-LMS scheduler added in this PR.</p>
+<p>The pre-trained model includes all the components required to setup a complete diffusion pipeline. They are stored in the following folders:</p>
+<p>We can load the components by referring to the folder they were saved, using the subfolder argument to from_pretrained.</p>
+<p>Now instead of loading the pre-defined scheduler, we load the K-LMS scheduler with some fitting parameters.</p>
+<p>We now define the parameters we'll use to generate images.</p>
+<p>Note that guidance_scale is defined analog to the guidance weight w of equation (2) in the Imagen paper. guidance_scale == 1 corresponds to doing no classifier-free guidance. Here we set it to 7.5 as also done previously.</p>
+<p>In contrast to the previous examples, we set num_inference_steps to 100 to get an even more defined image.</p>
+<p>First, we get the text_embeddings for the passed prompt. 
+These embeddings will be used to condition the UNet model and guide the image generation towards something that should resemble the input prompt.</p>
+<p>We'll also get the unconditional text embeddings for classifier-free guidance, which are just the embeddings for the padding token (empty text). They need to have the same shape as the conditional text_embeddings (batch_size and seq_length)</p>
+<p>For classifier-free guidance, we need to do two forward passes: one with the conditioned input (text_embeddings), and another with the unconditional embeddings (uncond_embeddings). In practice, we can concatenate both into a single batch to avoid doing two forward passes.</p>
+<p>Next, we generate the initial random noise.</p>
+<p>If we examine the latents at this stage we'll see their shape is torch.Size([1, 4, 64, 64]), much smaller than the image we want to generate. The model will transform this latent representation (pure noise) into a 512 × 512 image later on.</p>
+<p>Next, we initialize the scheduler with our chosen num_inference_steps.
+This will compute the sigmas and exact time step values to be used during the denoising process.</p>
+<p>The K-LMS scheduler needs to multiply the latents by its sigma values. Let's do this here:</p>
+<p>We are ready to write the denoising loop.</p>
+<p>We now use the vae to decode the generated latents back into the image.</p>
+<p>And finally, let's convert the image to PIL so we can display or save it.</p>
+<p>We've gone from the basic use of Stable Diffusion using 🤗 Hugging Face Diffusers to more advanced uses of the library, and we tried to introduce all the pieces in a modern diffusion system. If you liked this topic and want to learn more, we recommend the following resources:</p>
+<p>Convert PDFs into web-friendly HTML pages</p>
+<p>A delicious juicy cheeseburger with lettuce, tomato, and melted cheese, designed in a Tiny Figures style. Cute miniature characters are interacting with the burger, some climbing the bun, others holding tiny utensils. Bright colors, playful composition, highly detailed, 3D cartoon style, soft lighting, commercial product photography vibe.</p>
+<p>A delicious juicy cheeseburger with lettuce, tomato, and melted cheese, designed in a Tiny Figures style. Cute miniature characters are interacting with the burger, some climbing the bun, others holding tiny utensils. Bright colors, playful composition, highly detailed, 3D cartoon style, soft lighting, commercial product photography vibe.</p>
+<p>Convert PDFs into web-friendly HTML pages</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/deploy-vertex-ai" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/stable_diffusion" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

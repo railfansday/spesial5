@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>From HTTP to SSH: Finding a Host-Level Attack Path in OpenPLC v3</title>
+    <title>The 12 best recipes to bake in October: It’s peak baking season — here’s what to make.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9546.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,118 +15,106 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>From HTTP to SSH: Finding a Host-Level Attack Path in OpenPLC v3</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>The 12 best recipes to bake in October: It’s peak baking season — here’s what to make.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/PMUKGjUIQmgkJbHTCnFk64jn7ds1-cfe2btc.png" alt="From HTTP to SSH: Finding a Host-Level Attack Path in OpenPLC v3" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/Pumpkin-Milk-Bread_2026_Lifestyle_H_3153.jpg" alt="The 12 best recipes to bake in October: It’s peak baking season — here’s what to make." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/PMUKGjUIQmgkJbHTCnFk64jn7ds1-cfe2btc.png" alt="From HTTP to SSH: Finding a Host-Level Attack Path in OpenPLC v3" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/Pumpkin-Milk-Bread_2026_Lifestyle_H_3153.jpg" alt="The 12 best recipes to bake in October: It’s peak baking season — here’s what to make." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
-<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
-<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
-<p>A software PLC does not need a physical controller sitting inside a cabinet to execute industrial control logic. Its runtime can live entirely on a conventional computer, communicating with other systems through familiar industrial protocols while relying on an ordinary operating system underneath, and that changes the security picture.</p>
-<p>When assessing a SoftPLC, it is easy to concentrate on the services it exposes: Modbus TCP, management interfaces, perhaps a programming environment. Yet the control logic has to get onto the machine somehow. It has to be stored, compiled, and loaded into a runtime. The host operating system participates in every one of those operations.</p>
-<p>I wanted to investigate what happens when an attacker can reach that layer.</p>
-<p>The question guiding this research was simple: could someone modify a SoftPLC's active control logic through its deployment environment, replace the existing program, and execute the altered logic without following the usual management workflow?</p>
-<p>I began with Beremiz. That did not go particularly well. After nearly nine hours spent trying to understand its internal architecture and communication mechanisms, I changed targets and moved to OpenPLC v3. Even then, my first approach ran into trouble. I eventually abandoned the management API route, turned my attention to SSH, and spent another long stretch figuring out how to make the entire process work remotely.</p>
-<p>The resulting proof of concept replaced the active Structured Text program, compiled the substituted logic, restarted the runtime, and verified the resulting process-image changes through Modbus TCP. This is how I got there.</p>
-<p>Beremiz was my original target for this investigation. I wanted to examine whether an attacker could modify a SoftPLC's control logic through its deployment environment and demonstrate the result in an isolated lab.</p>
-<p>The difficulty appeared before I could properly reach that question.</p>
-<p>Beremiz has a fairly involved architecture. Its IDE-to-runtime communication relies on an Embedded Remote Procedure Call (eRPC) subsystem and custom target connectors. Understanding that communication path became a substantial undertaking in itself. The transport and framing mechanisms were not especially convenient to inspect or reproduce manually.</p>
-<p>Its deployment workflow also introduced more friction than I wanted for this particular experiment. I was aiming for lightweight, script-driven testing. Instead, I found myself trying to understand the machinery connecting the IDE, target, and runtime before I could meaningfully investigate the control-logic execution path. Nearly nine hours went into that effort.</p>
-<p>Eventually, I decided to stop and change targets. I wasn't getting the evidence I wanted, and continuing to reverse-engineer the deployment infrastructure would have consumed even more time. I moved to OpenPLC v3.</p>
-<p>OpenPLC v3 offered a more accessible environment for the investigation. Its management application, project storage, compilation process, and runtime gave me several concrete components to examine.</p>
-<p>I provisioned an isolated Ubuntu 24.04 virtual machine using Multipass. The machine was deliberately modest: two virtual CPUs, 2 GB of memory, and a 10 GB virtual disk. Nothing elaborate. I needed a target I could inspect, modify, stop, and restart without disturbing my workstation.</p>
-<p>After provisioning the VM, I installed the build dependencies, cloned the OpenPLC v3 repository, installed the Linux runtime, and started the application.</p>
-<p>The management dashboard was then accessible from my host workstation over HTTP.</p>
-<p>With the target operational, I could begin mapping its exposed services and deciding where to start.</p>
-<p>I started from the host workstation with network reconnaissance. The immediate objective was to identify the services listening on the target and determine which ones might provide a route into the OpenPLC deployment.</p>
-<p>The HTTP application was served by Werkzeug on port 8080. Modbus TCP was reachable on port 502, and SSH was available on port 22.</p>
-<p>That last service would become particularly important later. At this point, however, I was more interested in the management application. It was the obvious place to begin examining how programs were uploaded, compiled, and started.</p>
-<p>I began inspecting the HTTP application and its routes.</p>
-<p>Several endpoints redirected unauthenticated requests to the login page. These included routes associated with program management, hardware configuration, compilation logs, and application settings.</p>
-<p>My next objective was to reproduce the relevant dashboard operations through HTTP requests. If I could automate the deployment workflow, I could use it to deliver and execute a modified control program. That was the plan, anyway.</p>
-<p>I started interacting with the management interface programmatically.</p>
-<p>Authentication worked. I obtained a session and explored the endpoints involved in program management and compilation. The intention was to reproduce the sequence that would normally happen through the browser, including triggering compilation.</p>
-<p>Then the session behavior began getting in the way.</p>
-<p>During my attempts to trigger compilation, the session kept getting refreshed or invalidated. Subsequent requests were redirected to the login page, interrupting the sequence. I could authenticate and reach the management interface, but I couldn't get the automated workflow to proceed consistently.</p>
-<p>It was an irritating obstacle. I spent time trying to work around it, but I wasn't getting a reliable result.</p>
-<p>There is something worth preserving here, though. I observed session-related interruptions while automating the management workflow. I did not establish the underlying cause, nor did I demonstrate a vulnerability in OpenPLC's session-management implementation.</p>
-<p>I had another option sitting right in front of me.</p>
-<p>The HTTP dashboard was exposed. I had authenticated successfully. The normal program-management workflow was available through the browser. I could upload a replacement program, compile it, and start the runtime.</p>
-<p>I mean, it was straightforward, but then I hesitated.</p>
-<p>The dashboard route felt almost too obvious. I wanted to know whether the same result could be achieved through another access path, particularly one that interacted with the host rather than relying on the management application.</p>
-<p>During reconnaissance, I had also identified SSH on the target. I started wondering whether I could use it to perform the same operations directly. I didn't have a complete attack plan. I wasn't sitting there with a finished sequence of commands. It was just a question: Could I do this through SSH instead?</p>
-<p>That question sent the investigation in a different direction.</p>
-<p>SSH provided a way to interact with the Ubuntu host independently of the Flask dashboard.</p>
-<p>For this experiment, I adopted a specific threat scenario: an attacker had already obtained valid SSH credentials for an account with sufficient privileges to modify the OpenPLC project and manage the runtime process. I was not attempting to steal credentials, bypass SSH authentication, or demonstrate an unauthenticated compromise. Those were outside the scope of this experiment.</p>
-<p>What I wanted to establish was whether that level of host access could be used to substitute the active control logic and execute it.</p>
-<p>The practical requirements began to take shape:</p>
-<p>✔ Transfer a replacement Structured Text program to the target.✔ Replace the active project file in OpenPLC's storage directory.✔ Invoke the compilation pipeline.✔ Stop the existing runtime process.✔ Launch the newly compiled runtime.✔ Verify the modified program through Modbus TCP.</p>
-<p>On paper, the sequence was fairly compact. Getting it to work was another matter.</p>
-<p>One of the first obstacles appeared in the Structured Text program itself.</p>
-<p>My replacement program kept failing during compilation. The error was particularly frustrating because the problem was a small syntactical difference at the end of the configuration block.</p>
-<p>I had written: END CONFIGURATION but OpenPLC expected: END_CONFIGURATION. That underscore made all the difference.</p>
-<p>What made this confusing was that my original baseline program also used END CONFIGURATION. It was already running in the lab, so I initially assumed the same structure would be accepted by the compiler. The existing runtime continued executing its previously compiled program, even though subsequent compilation attempts were reporting errors. That distinction wasn't immediately obvious to me.</p>
-<p>I spent nearly an hour trying to understand what was wrong. I went through the source code, looking for an explanation, but the issue wasn't immediately apparent. Eventually, I examined the compiler's source more closely and traced the problem back to the expected syntax. It was a small detail, but it held up the entire experiment.</p>
-<p>Once I corrected the terminator to END_CONFIGURATION, I could move forward with the deployment work.</p>
-<p>There was no elegant shortcut. I kept investigating, adjusting the approach, and trying to make the individual operations work together. Eventually, I had enough of the deployment process understood to automate it.</p>
-<p>I created a Structured Text payload named malicious_blink.st.</p>
-<p>The program needed to produce an observable change. I didn't need an elaborate control routine; I needed a small piece of logic that would make it possible to distinguish the modified program from the baseline.</p>
-<p>This maps the variable to memory word zero in the OpenPLC process image.</p>
-<p>The payload uses a counter-based mechanism to toggle the value of ExploitTrigger between zero and one after every five execution cycles. This gave me a predictable state change that I could inspect externally through Modbus TCP.</p>
-<p>The payload was ready. The remaining task was to get it into the active project, compile it, and bring the runtime back up.</p>
-<p>I built a Python script called deploy_and_verify.py to automate the SSH-based workflow.</p>
-<p>It used SCP to transfer the payload and SSH to perform the privileged operations on the target. The script handled the replacement of the active project file, compilation, and runtime restart.</p>
-<p>The script first staged malicious_blink.st on the target VM.</p>
-<p>This left the local research payload separate from the active OpenPLC project until the replacement step.</p>
-<p>The staged file was copied into OpenPLC's Structured Text storage directory:</p>
-<p>The script then replaced the active Structured Text file.</p>
-<p>With the replacement file in place, the script invoked OpenPLC's compilation pipeline.</p>
-<p>The compiler generated the C source files and supporting artifacts required to build the runtime:</p>
-<p>One line in the output was particularly relevant:</p>
-<p>The compiler had recognized the located memory variable and its integer type. The compilation then completed successfully.</p>
-<p>This was an important checkpoint. The replacement logic had made it through the compilation process.</p>
-<p>After compilation, the script terminated the existing core/openplc process and launched the newly compiled runtime binary.</p>
-<p>The difference here matters. This was a process restart, not a live update of an executing control program. The old runtime was stopped, and the newly compiled binary was started.</p>
-<p>The terminal output showed that the payload had been staged, the compilation had completed, and the runtime had been reloaded successfully. Now I needed to verify what was actually executing.</p>
-<p>A successful compiler run did not, by itself, prove that the modified logic was executing. I needed an independent observation from the runtime.</p>
-<p>Before deploying the replacement program, I had queried two holding registers through Modbus TCP. Both returned zero. I retained a screenshot of that baseline observation.</p>
-<p>After the deployment, I ran the same query:</p>
-<p>This queried two 16-bit holding registers, beginning at reference 1024.</p>
-<p>Register 1024 alternated between zero and one. Register 1025 remained at zero. All six Modbus requests received valid responses, with no frame loss.</p>
-<p>The compiler output and the Modbus observations support the result together.</p>
-<p>The compiler identified the located variable as __MW0 with type INT. After the replacement program was compiled and the runtime restarted, the holding register associated with that variable began changing as expected.</p>
-<p>In this lab configuration, %MW0 was observable through Modbus TCP at holding register 1024.</p>
-<p>The baseline observation showed both queried registers at zero. Following deployment, register 1024 began alternating between zero and one. That behavior matched the payload's intended operation.</p>
-<p>This is evidence that the replacement logic was compiled, loaded by the restarted runtime, and executing in a way that changed the exposed process image.</p>
-<p>I did not connect physical PLC hardware or an actuator to the experiment. The demonstrated result was a modification of the software PLC's process image, observed through its Modbus interface. I am not claiming a physical process response.</p>
-<p>The experiment established a working host-level path for unauthorized control-logic modification in my OpenPLC v3 lab.</p>
-<p>With valid SSH credentials and sufficient privileges, the deployment could be modified remotely. The proof of concept performed the following operations:</p>
-<p>The important finding concerns the trust placed in the host environment surrounding the SoftPLC.</p>
-<p>The management dashboard is one way to deploy control logic. It is not the only component capable of affecting what ultimately executes. Project files reside on the host. Compilation happens there. The runtime is a host process. Anyone who obtains sufficient control over those components may be able to change the program that the SoftPLC executes.</p>
-<p>SSH being reachable does not automatically make a SoftPLC vulnerable to control-logic substitution.</p>
-<p>The attack path I demonstrated required valid credentials and enough privileges to modify the project, invoke compilation, and manage the runtime. Without those conditions, the specific workflow would not have been possible as implemented.</p>
-<p>There are several ways an attacker might obtain credentials in a real environment: a compromised administrator workstation, credential reuse, credentials exposed in automation scripts, accidental disclosure, or misuse of an account that already has administrative privileges. Those are plausible acquisition scenarios, not findings from this experiment. I did not test them.</p>
-<p>The demonstrated weakness lies in what an attacker can do after obtaining the required host access. If SSH access is insufficiently restricted and a privileged account is compromised, the attacker may gain the ability to replace the control logic itself.</p>
-<p>The initial investigation focused on the HTTP management application. The final proof of concept took another route.</p>
-<p>I did not exploit the dashboard's upload endpoint, bypass its authentication, or rely on its manual deployment workflow. I used SSH to interact with the underlying operating system and modify the active OpenPLC project directly. These are distinct access paths with different security boundaries.</p>
-<p>A dashboard-based attack would depend on access to the management application and its deployment functions. The SSH-based route depends on host authentication and operating-system privileges. The latter was the path I successfully demonstrated.</p>
-<p>The results need to be understood within the boundaries of the experiment.</p>
-<p>These boundaries describe what was and was not established. The host-level control-logic substitution itself was demonstrated.</p>
-<p>I started with Beremiz, spent nearly nine hours trying to understand its internals, and eventually changed targets. OpenPLC v3 gave me a more accessible environment, although the first approach I tried there didn't work as smoothly as I had hoped.</p>
-<p>I initially attempted to automate the management interface. The session interruptions and repeated redirects made that workflow unreliable. The dashboard itself was available, and I could have used it directly. Instead, I wondered whether SSH could provide another route.</p>
-<p>That question cost me another seven hours.</p>
-<p>I had to work out how to stage the replacement program, identify the active project file, invoke the compiler, and restart the runtime remotely. Once those pieces came together, I automated the process and ran it against the target.</p>
-<p>The compiler completed successfully. The runtime restarted. Modbus polling showed the expected changes in the process image.</p>
-<p>The experiment demonstrated that an attacker with valid SSH credentials and sufficient host privileges could substitute the active control logic in this OpenPLC v3 deployment, compile it, and execute it without using the dashboard's manual upload workflow.</p>
-<p>There is a broader lesson here for SoftPLC deployments. The security of the control runtime cannot be considered separately from the machine hosting it. Administrative access, project-file integrity, compiler execution, and runtime management all influence what logic eventually runs.</p>
-<p>Understanding Software PLCs: Architecture, Execution, and Security Boundaries</p>
-<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
+                <p>What do jobs, school, sports practices, and commuting have in common? They all prevent us from baking as much or as often as we’d like. But when we do get the chance, we want a slam-dunk recipe — or 12. Here’s a dozen of the favorite fall recipes we’ll be making this month: from pumpkin cake bars to spooky fudge brownies to a crowd-pleasing vegetarian quiche.</p>
+<p>It’s the Great Pumpkin, Charlie Brown! Only this version comes in cake form. The decoration is deceptively easy: Stack two small Bundts, frost the entire thing, and add a chocolate-dipped ice cream cone for the stem.</p>
+<p>Get the recipe: The Great Pumpkin Bundt Cake</p>
+<p>To make this recipe, you’ll need: Golden Wheat Flour and Pumpkin Pie Spice</p>
+<p>If you like this recipe, you may also like: Pumpkin Espresso Bundt Cake, Gluten-Free Pumpkin Cake</p>
+<p>To make this recipe, you’ll need:  Black Cocoa and Supernatural Plant-Based Food Colors</p>
+<p>These bite-sized pies are a charming addition to any occasion. The boiled cider and spices in the filling ensure a full depth of apple flavor for maximum fall vibes. If you're tight on time, swap the lattice treatment for a buttery crumb topping instead.</p>
+<p>To make this recipe, you’ll need: Boiled Cider and Apple Pie Spice</p>
+<p>If you like this recipe, you may also like: Apple Pie Bars, Tiny Apple Tarts for Two</p>
+<p>Step aside, soup: Butternut squash truly shines in this autumnal quiche. Caramelized onions finished with balsamic vinegar and fresh baby spinach round out the filling, while our Classic Single Pie Crust recipe ensures a tender, golden crust. Elevate the edges with the pie crust decorating technique of your choice.</p>
+<p>Get the recipe: Roasted Butternut Squash & Spinach Quiche</p>
+<p>To make this recipe, you’ll need: 9" Pie Pan</p>
+<p>If you like this recipe, you may also like: Vegetable Quiche, Delicata Squash Galette with Cheese and Herbs</p>
+<p>Ready to test the theory that only white flour can make rolls light and fluffy? A bit of bread flour and vital wheat gluten give these whole wheat rolls a lofty rise, while the milk, butter, and honey create a plush crumb that stays soft for days. Add a salted honey butter wash to the tops of a freshly baked batch, and you may not have any leftover.</p>
+<p>Get the recipe: Super-Soft Whole Wheat Rolls</p>
+<p>To make this recipe, you’ll need: Golden Wheat Flour and Bread Flour</p>
+<p>If you like this recipe, you may also like: Whole Grain Dinner Rolls, Soft White Dinner Rolls</p>
+<p>"Tassie" means "small cup" in Scottish, and these dainty pecan pies pack a nutty punch. The cream cheese pastry crust is cut into rounds and placed in a mini muffin pan before the pecan pie filling is spooned into each well. With only 30 minutes of hands-on time, these two dozen tassies come together quickly on a crisp fall afternoon.</p>
+<p>To make this recipe, you’ll need: Mini Muffin Pan</p>
+<p>If you like this recipe, you may also like: Easy Pecan Pie Bars, Old-Fashioned Pecan Pie</p>
+<p>Need a spooky treat, stat? You can transform a plain batch of brownies into a Halloween-themed dessert in a pinch. A simple piping technique creates a spider web effect and adds a touch of rich tang to chocolatey brownies.</p>
+<p>To make this recipe, you’ll need: 9" x 13" Pan</p>
+<p>If you like this recipe, you may also like: Fudge Brownies, Chocolate Cheesecake Brownies</p>
+<p>You’ll notice a lot of similarities between this pumpkin cake and carrot cake: moist, spiced cake, toasted walnuts, and rich cream cheese frosting. These bars are great for delighting a crowd, as this recipe yields three to four dozen bars, depending on how big you slice them. You can easily make them gluten-free, too.</p>
+<p>Get the recipe: Pumpkin Cake Bars with Cream Cheese Frosting</p>
+<p>To make this recipe, you’ll need: Pumpkin Pie Spice and Maple Syrup</p>
+<p>If you like this recipe, you may also like: Pumpkin Spice Latte Bars, Chocolate-Pumpkin Crumb Cake</p>
+<p>'Tis the season for hand pies to be mummified! A shortening-based pie crust helps the lattice strips stay together, while jam or pie filling allows for customizable flavors. Pop on a few sugar eyes, and you'll be sure to have treats instead of tricks.</p>
+<p>To make this recipe, you’ll need: Double Pastry Wheel or Pizza Cutter</p>
+<p>If you like this recipe, you may also like: Flaky Apple Hand Pies, Autumn Apple Turnovers</p>
+<p>With a luxuriously creamy maple filling and a buttery pecan crust, this cheesecake balances richness with subtle flavors. Meanwhile, the candied pecan garnish adds visual interest and a complementary crunch. Be sure to leave time for an overnight chill and keep your cheesecake from cracking with these tips. (Find more seasonal maple recipes in our Fall Flavor Edit.)</p>
+<p>To make this recipe, you’ll need: Springform Pan</p>
+<p>If you like this recipe, you may also like: Caramel Pecan Cheesecake, Maple Cream Pie</p>
+<p>No need to choose between chocolate or caramel; these cupcakes bring both bold flavors together in a luscious combination. Making caramel from scratch is worth it for the irreplaceable flavor, and those few extra steps are easily done ahead of time. Substitute in Gluten-Free Measure for Measure Flour to make these cupcakes gluten-free. (Find more seasonal caramel recipes in our Fall Flavor Edit.)</p>
+<p>Get the recipe: Chocolate Cupcakes with Whipped Caramel Frosting</p>
+<p>To make this recipe, you’ll need: Muffin Pan and Pastry Brush</p>
+<p>If you like this recipe, you may also like: Chocolate Cupcakes with Pecan Caramel , S’more Cupcakes</p>
+<p>This milk bread incorporates all the flavor and color of pumpkin, while still keeping an airy texture. You can shape the dough into pull-apart rolls or a loaf, and topping with a milk wash and pumpkin seeds adds a nutty crunch. Wrap it well at room temperature, and this bread will stay soft for days.</p>
+<p>To make this recipe, you’ll need: Round Pan or Loaf Pan</p>
+<p>If you like this recipe, you may also like: Japanese Milk Bread, Pumpkin Yeast Bread</p>
+<p>Cover photo by Patrick Marinello; food styling by Kaitlin Wayne.</p>
+<p>Top tips from the Things Bakers Know podcast.</p>
+<p>Mini pies may be the secret to a stress-free celebration.</p>
+<p>See our complete collection of Recipes posts.</p>
+<p>Facebook
+
+
+
+TikTok
+
+
+
+Instagram
+
+
+
+Threads
+
+
+
+Pinterest
+
+
+
+LinkedIn
+
+
+
+YouTube
+
+
+
+
+
+
+
+
+
+
+Reddit
+
+
+
+
+
+
+
+
+
+Substack</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/from-http-to-ssh-finding-a-host-level-attack-path-in-openplc-v3?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.kingarthurbaking.com/blog/2026/10/01/fall-recipes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

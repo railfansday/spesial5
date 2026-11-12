@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Gold and silver won 2025</title>
+    <title>Bitcoin Covenants Part 5: MATT and OP_CHECKCONTRACTVERIFY — How Bitcoin could carry state across transactions</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_4992.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,33 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Gold and silver won 2025</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Bitcoin Covenants Part 5: MATT and OP_CHECKCONTRACTVERIFY — How Bitcoin could carry state across transactions</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://s3-images.ctmedia.io/media/article-covers/2026/10/01M5YMN410HHB04XQCTHZ2P4NF/crypto-bitcoin-storage.jpg" alt="Bitcoin Covenants Part 5: MATT and OP_CHECKCONTRACTVERIFY — How Bitcoin could carry state across transactions" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://s3-images.ctmedia.io/media/article-covers/2026/10/01M5YMN410HHB04XQCTHZ2P4NF/crypto-bitcoin-storage.jpg" alt="Bitcoin Covenants Part 5: MATT and OP_CHECKCONTRACTVERIFY — How Bitcoin could carry state across transactions" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Gold is having its best year since 1979, while many DeFi names are trading near multi-year lows</p>
+                <p>OP_CCV embeds contract state directly into Taproot output keys and enforces valid state transitions onchain. This makes it possible to achieve stateful contracts and compact fraud proofs.</p>
+<p>This is Part 5 in the technical article series about Bitcoin covenants by Cointelegraph Research. To read the previous article click here.</p>
+<p>MATT (Merkleize All The Things) is a smart contract framework for Bitcoin that enables stateful contracts and scalable fraud proofs. A stateful contract carries information forward across multiple transactions and can update this information as the contract evolves. Standard Bitcoin scripts do not provide this capability, because each transaction is evaluated independently with no memory of previous executions.</p>
+<p>Every covenant proposal allows state-carrying UTXOs to an extent, as illustrated by scripting languages such as Sapio, which builds on OP_CTV. This works by using addresses to represent a finite state automaton, where transactions function as the state transitions. However, there is no way to elegantly implement numerical logic in this paradigm, a gap filled by MATT, and in particular its proposed implementation through OP_CCV. Because MATT allows committed data to be computed at spend time and re-embedded into the next output, each spend can derive a new state dynamically, instead of choosing from a predetermined set of states.</p>
+<p>To understand the MATT proposal, it is useful to first review how Taproot commits data through public keys. Every Taproot output contains a base public key, called the internal key, which can be cryptographically modified or “tweaked” to commit to extra information. Formally, the tweaked public key is Q = P + t·G, where P is the internal key, G is the generator of the secp256k1 elliptic curve, and t is a tagged hash of P and the committed data.</p>
+<p>In a regular Taproot output, this commitment typically encodes the Merkle root of a taptree, which contains hidden spending paths. MATT builds on this mechanism to also embed contract state into the key. Instead of embedding complex logic directly in Bitcoin’s scripting language, MATT encodes computation as a sequence of state commitments, and the chain verifies only that each state transition is valid.</p>
+<p>MATT can be realized through different opcode combinations. The most direct and well-specified implementation relies on OP_CHECKCONTRACTVERIFY (OP_CCV). OP_CCV provides the primitive that makes state-carrying UTXOs feasible within Taproot.  OP_CCV allows a script to verify that a Taproot input or output key has been tweaked to commit to a specific piece of state data. The internal key is first tweaked with a hash of the contract’s current state, and then Taproot’s standard taptree tweak is applied on top. The resulting output key therefore commits to both the tapscript  (the set of spending conditions) and the current state of the contract.</p>
+<p>OP_CCV can then enforce what state is carried forward into the next output. It allows the script to inspect the state data provided on the witness stack, perform computations on it, and require that the resulting updated state is correctly re-committed in a specified output. This is how state transitions are enforced on-chain. The stack format is:</p>
+<p><data> <index> <pk> <taptree> <mode> OP_CHECKCONTRACTVERIFY</p>
+<p>The opcode supports three modes for checking an output as well as a separate input mode. In default mode, the entire BTC value of the input UTXO is allocated to the specified output; in deduct mode, only a portion equal to the output’s amount is assigned, leaving the remainder available for further outputs; and in ignore mode, the script and data commitment are verified without constraining the amount.  Because default and deduct modes are designed to preserve value across checked outputs, transaction fees must be paid through separate fee-paying inputs. A dedicated fee input and change output can be added to the transaction without conflicting with the covenant’s constraints. This prevents the accidental burning of funds that can occur in more primitive covenant implementations, such as OP_CTV or SIGHASH_ANYPREVOUT. It also addresses a major limitation of presigned-transaction-style covenants, which typically define amounts upfront and therefore cannot accommodate dynamic fee adjustments or partial unvaults.</p>
+<p>When OP_CCV is combined with OP_CAT, the full MATT framework becomes even more expressive. OP_CAT enables byte concatenation in Script, which makes it possible to construct and verify Merkle proofs directly on-chain. Two distinct Merkle trees are associated with a Taproot output in such an arrangement. The first is the familiar Taproot script tree (the taptree), whose leaves are the contract’s spending scripts. The second is a separate state tree, whose leaves are the contract’s data, such as the intermediate steps of a computation.  The OP_CCV + OP_CAT script can verify a Merkle proof against the current state tree root, compute the updated root after a transition, and use OP_CCV to force the next output to commit to it.</p>
+<p>This construction enables fraud-proof systems with a slashing condition in which a long computation is committed off-chain, and only the specific disputed step (with its path in the binary tree) needs to be revealed and verified on-chain. Similar systems exist as optimistic rollups on other blockchain systems: the full computation runs off-chain, and the on-chain contract only intervenes when someone raises a challenge. Fraud proofs require that the computation be compiled down to a binary circuit or equivalent step-by-step representation that can be committed to in a Merkle tree. OP_CCV + OP_CAT would avoid the need for the Lamport one-time signatures and pre-signed transaction graphs that BitVM relies on to enforce state consistency.</p>
+<p>Beyond fraud proofs, the OP_CCV and OP_CAT combination also has implications for vaults. OP_CCV alone can implement vaults, but when combined with OP_CAT, it allows fully featured vaults that are essentially equivalent to the functionality proposed by OP_VAULT. As James O’Beirne, the author of OP_VAULT, has noted, OP_CCV represents a more general and robust design that effectively supersedes his earlier proposal.</p>
+<p>In the next article in this series, we will move on from general covenant proposals to review application-specific opcodes such as OP_VAULT, OP_UNVAULT, and OP_EVICT. Each of the opcodes are designed to solve a specific problem rather than provide broad programmability.</p>
+<p>Magazine: Bitcoin holders have received eCash — What can you do with it?</p>
+<p>Cointelegraph is committed to providing independent, high-quality journalism across the crypto, blockchain, AI, and fintech industries.</p>
+<p>All news, reviews, and analyses are produced with full journalistic independence and integrity. For more details on our standards and processes, please read our Editorial Policy.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://blockworks.com/news/gold-silver-won-2025" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://cointelegraph.com/research/bitcoin-covenants-part-5-matt-op-ccv?utm_source=rss_feed&utm_medium=rss&utm_campaign=rss_partner_inbound" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

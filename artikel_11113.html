@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Proximal Policy Optimization (PPO)</title>
+    <title>Deploying 🤗 ViT on Kubernetes with TF Serving</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11113.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,253 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Proximal Policy Optimization (PPO)</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Deploying 🤗 ViT on Kubernetes with TF Serving</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/94_tf_serving_kubernetes/thumb.png" alt="Deploying 🤗 ViT on Kubernetes with TF Serving" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/94_tf_serving_kubernetes/thumb.png" alt="Deploying 🤗 ViT on Kubernetes with TF Serving" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>In the previous post, we showed how
+to deploy a Vision Transformer (ViT)
+model from 🤗 Transformers locally with TensorFlow Serving. We covered
+topics like embedding preprocessing and postprocessing operations within
+the Vision Transformer model, handling gRPC requests, and more!</p>
+<p>While local deployments are an excellent head start to building
+something useful, you’d need to perform deployments that can serve many
+users in real-life projects. In this post, you’ll learn how to scale the
+local deployment from the previous post with Docker and Kubernetes.
+Therefore, we assume some familiarity with Docker and Kubernetes.</p>
+<p>This post builds on top of the previous post, so, we highly
+recommend reading it first. You can find all the code
+discussed throughout this post in this repository.</p>
+<p>The basic workflow of scaling up a deployment like ours includes the
+following steps:</p>
+<p>Containerizing the application logic: The application logic
+involves a served model that can handle requests and return
+predictions. For containerization, Docker is the industry-standard
+go-to.</p>
+<p>Deploying the Docker container: You have various options here. The most
+widely used option is deploying the Docker container on a Kubernetes
+cluster. Kubernetes provides numerous deployment-friendly features
+(e.g. autoscaling and security). You can use a solution like
+Minikube to
+manage Kubernetes clusters locally or a serverless solution like
+Elastic Kubernetes Service (EKS).</p>
+<p>You might be wondering why use an explicit setup like this in the age
+of Sagemaker, Vertex AI
+that provides ML deployment-specific features right off the bat. It is fair to think
+about it.</p>
+<p>The above workflow is widely adopted in the industry, and many
+organizations benefit from it. It has already been battle-tested for
+many years. It also lets you have more granular control of your
+deployments while abstracting away the non-trivial bits.</p>
+<p>This post uses Google Kubernetes Engine (GKE)
+to provision and manage a Kubernetes cluster. We assume you already have a
+billing-enabled GCP project if you’re using GKE. Also, note that you’d need to
+configure the gcloud utility for
+performing the deployment on GKE. But the concepts discussed in this post
+equally apply should you decide to use Minikube.</p>
+<p>Note: The code snippets shown in this post can be executed on a Unix terminal
+as long as you have configured the gcloud utility along with Docker and kubectl.
+More instructions are available in the accompanying repository.</p>
+<p>The serving model can handle raw image inputs as bytes and is capable of preprocessing and
+postprocessing.</p>
+<p>In this section, you’ll see how to containerize that model using the
+base TensorFlow Serving Image. TensorFlow Serving consumes models
+in the SavedModel format. Recall how you
+obtained such a SavedModel in the previous post. We assume that
+you have the SavedModel compressed in tar.gz format. You can fetch
+it from here
+just in case. Then SavedModel should be placed in the special directory
+structure of <MODEL_NAME>/<VERSION>/<SavedModel>. This is how TensorFlow Serving simultaneously manages multiple deployments of different versioned models.</p>
+<p>The shell script below places the SavedModel in hf-vit/1 under the
+parent directory models. You'll copy everything inside it when preparing
+the Docker image. There is only one model in this example, but this
+is a more generalizable approach.</p>
+<p>Below, we show how the models directory is structured in our case:</p>
+<p>The custom TensorFlow Serving image should be built on top of the base one.
+There are various approaches for this, but you’ll do this by running a Docker container as illustrated in the
+official document. We start by running tensorflow/serving image in background mode, then the entire models directory is copied to the running container
+as below.</p>
+<p>We used the official Docker image of TensorFlow Serving as the base, but
+you can use ones that you have built from source
+as well.</p>
+<p>Note: TensorFlow Serving benefits from hardware optimizations that leverage instruction sets such as
+AVX512. These
+instruction sets can speed up deep learning model inference. So,
+if you know the hardware on which the model will be deployed, it’s often
+beneficial to obtain an optimized build of the TensorFlow Serving image
+and use it throughout.</p>
+<p>Now that the running container has all the required files in the
+appropriate directory structure, we need to create a new Docker image
+that includes these changes. This can be done with the docker commit command below, and you'll have a new Docker image named $NEW_IMAGE.
+One important thing to note is that you need to set the MODEL_NAME
+environment variable to the model name, which is hf-vit in this
+case. This tells TensorFlow Serving what model to deploy.</p>
+<p>Lastly, you can run the newly built Docker image locally to see if it
+works fine. Below you see the output of the docker run command. Since
+the output is verbose, we trimmed it down to focus on the important
+bits. Also, it is worth noting that it opens up 8500 and 8501
+ports for gRPC and HTTP/REST endpoints, respectively.</p>
+<p>The final step here is to push the Docker image to an image repository.
+You'll use Google Container Registry (GCR) for this
+purpose. The following lines of code can do this for you:</p>
+<p>Since we’re using GCR, you need to prefix the
+Docker image tag (note the other formats too) with gcr.io/<GCP_PROJECT_ID> . With the Docker image prepared and pushed to GCR, you can now proceed to deploy it on a
+Kubernetes cluster.</p>
+<p>Deployment on a Kubernetes cluster requires the following:</p>
+<p>Provisioning a Kubernetes cluster, done with Google Kubernetes Engine (GKE) in
+this post. However, you’re welcome to use other platforms and tools
+like EKS or Minikube.</p>
+<p>Connecting to the Kubernetes cluster to perform a deployment.</p>
+<p>Performing deployment with the manifests with a utility tool,
+kubectl.</p>
+<p>You can use a shell script like so for this (available
+here):</p>
+<p>GCP offers a variety of machine types to configure the deployment in a
+way you want. We encourage you to refer to the
+documentation
+to learn more about it.</p>
+<p>Once the cluster is provisioned, you need to connect to it to perform
+the deployment. Since GKE is used here, you also need to authenticate
+yourself. You can use a shell script like so to do both of these:</p>
+<p>The gcloud container clusters get-credentials command takes care of
+both connecting to the cluster and authentication. Once this is done,
+you’re ready to write the manifests.</p>
+<p>Kubernetes manifests are written in YAML
+files. While it’s possible to use a single manifest file to perform the
+deployment, creating separate manifest files is often beneficial for
+delegating the separation of concerns. It’s common to use three manifest
+files for achieving this:</p>
+<p>deployment.yaml defines the desired state of the Deployment by
+providing the name of the Docker image, additional arguments when
+running the Docker image, the ports to open for external accesses,
+and the limits of resources.</p>
+<p>service.yaml defines connections between external clients and
+inside Pods in the Kubernetes cluster.</p>
+<p>hpa.yaml defines rules to scale up and down the number of Pods
+consisting of the Deployment, such as the percentage of CPU
+utilization.</p>
+<p>You can find the relevant manifests for this post
+here.
+Below, we present a pictorial overview of how these manifests are
+consumed.</p>
+<p>Next, we go through the important parts of each of these manifests.</p>
+<p>You can configure the names like tfs-server, tfs-k8s any way you
+want. Under containers, you specify the Docker image URI the
+deployment will use. The current resource utilization gets monitored by
+setting the allowed bounds of the resources for the container. It
+can let Horizontal Pod Autoscaler (discussed later) decide to scale up or down the number of
+containers. requests.cpu is the minimal amount of CPU resources to
+make the container work correctly set by operators. Here 800m means 80%
+of the whole CPU resource. So, HPA monitors the average CPU utilization
+out of the sum of requests.cpu across all Pods to make scaling
+decisions.</p>
+<p>Besides Kubernetes specific configuration, you can specify TensorFlow
+Serving specific options in args.In this case, you have two:</p>
+<p>tensorflow_inter_op_parallelism, which sets the number of threads
+to run in parallel to execute independent operations. The
+recommended value for this is 2.</p>
+<p>tensorflow_intra_op_parallelism, which sets the number of threads
+to run in parallel to execute individual operations. The recommended
+value is the number of physical cores the deployment CPU has.</p>
+<p>You can learn more about these options (and others) and tips on tuning
+them for deployment from
+here and
+here.</p>
+<p>We made the service type ‘LoadBalancer’ so the endpoints are
+exposed externally to the Kubernetes cluster. It selects the
+‘tfs-server’ Deployment to make connections with external clients via
+the specified ports. We open two ports of ‘8500’ and ‘8501’ for gRPC and
+HTTP/REST connections respectively.</p>
+<p>HPA stands for Horizontal Pod Autoscaler. It sets criteria
+to decide when to scale the number of Pods in the target Deployment. You
+can learn more about the autoscaling algorithm internally used by
+Kubernetes here.</p>
+<p>Here you specify how Kubernetes should handle autoscaling. In
+particular, you define the replica bound within which it should perform
+autoscaling – minReplicas\ and maxReplicas and the target CPU
+utilization. targetCPUUtilizationPercentage is an important metric
+for autoscaling. The following thread aptly summarizes what it means
+(taken from here):</p>
+<p>The CPU utilization is the average CPU usage of all Pods in a
+deployment across the last minute divided by the requested CPU of this
+deployment. If the mean of the Pods' CPU utilization is higher than the
+target you defined, your replicas will be adjusted.</p>
+<p>Recall specifying resources in the deployment manifest. By
+specifying the resources, the Kubernetes control plane starts
+monitoring the metrics, so the targetCPUUtilization works.
+Otherwise, HPA doesn't know the current status of the Deployment.</p>
+<p>You can experiment and set these to the required numbers based on your
+requirements. Note, however, that autoscaling will be contingent on the
+quota you have available on GCP since GKE internally uses Google Compute Engine
+to manage these resources.</p>
+<p>Once the manifests are ready, you can apply them to the currently
+connected Kubernetes cluster with the 
+kubectl apply
+command.</p>
+<p>While using kubectl is fine for applying each of the manifests to
+perform the deployment, it can quickly become harder if you have many
+different manifests. This is where a utility like
+Kustomize can be helpful. You simply
+define another specification named kustomization.yaml like so:</p>
+<p>Then it’s just a one-liner to perform the actual deployment:</p>
+<p>Complete instructions are available
+here.
+Once the deployment has been performed, we can retrieve the endpoint IP
+like so:</p>
+<p>Note down the external IP when it becomes available.</p>
+<p>And that sums up all the steps you need to deploy your model on
+Kubernetes! Kubernetes elegantly provides abstractions for complex bits
+like autoscaling and cluster management while letting you focus on
+the crucial aspects you should care about while deploying a model. These
+include resource utilization, security (we didn’t cover that here),
+performance north stars like latency, etc.</p>
+<p>Given that you got an external IP for the endpoint, you can use the
+following listing to test it:</p>
+<p>If you’re interested to know how this deployment would perform if it
+meets more traffic then we recommend you to check this article.
+Refer to the corresponding repository
+to know more about running load tests with Locust and visualize the results.</p>
+<p>TensorFlow Serving
+provides
+various options to tailor the deployment based on your application use
+case. Below, we briefly discuss some of them.</p>
+<p>enable_batching enables the batch inference capability that
+collects incoming requests with a certain amount of timing window,
+collates them as a batch, performs a batch inference, and returns the
+results of each request to the appropriate clients. TensorFlow Serving
+provides a rich set of configurable options (such as max_batch_size,
+num_batch_threads) to tailor your deployment needs. You can learn
+more about them
+here. Batching is
+particularly beneficial for applications where you don't need predictions from a model
+instantly. In those cases, you'd typically gather together multiple samples for prediction in batches and
+then send those batches for prediction. Lucky for us, TensorFlow Serving can configure all of these
+automatically when we enable its batching capabilities.</p>
+<p>enable_model_warmup warms up some of the TensorFlow components
+that are lazily instantiated with dummy input data. This way, you can
+ensure everything is appropriately loaded up and that there will be no
+lags during the actual service time.</p>
+<p>In this post and the associated repository, 
+you learned about deploying the Vision Transformer model
+from 🤗 Transformers on a Kubernetes cluster. If you’re doing this for
+the first time, the steps may appear to be a little daunting, but once
+you get the grasp, they’ll soon become an essential component of your
+toolbox. If you were already familiar with this workflow, we hope this post was still beneficial
+for you.</p>
+<p>We applied the same deployment workflow for an ONNX-optimized version of the same
+Vision Transformer model. For more details, check out this link. ONNX-optimized models are especially beneficial if you're using x86 CPUs for deployment.</p>
+<p>In the next post, we’ll show you how to perform these deployments with
+significantly less code with Vertex AI – more like
+model.deploy(autoscaling_config=...) and boom! We hope you’re just as
+excited as we are.</p>
+<p>Thanks to the ML Developer Relations Program team at Google, which
+provided us with GCP credits for conducting the experiments.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/deep-rl-ppo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/deploy-tfserving-kubernetes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

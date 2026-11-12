@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Introduction to Graph Machine Learning</title>
+    <title>Image Similarity with Hugging Face Datasets and Transformers</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11059.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,55 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Introduction to Graph Machine Learning</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Image Similarity with Hugging Face Datasets and Transformers</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/image_similarity/thumbnail.png" alt="Image Similarity with Hugging Face Datasets and Transformers" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/image_similarity/thumbnail.png" alt="Image Similarity with Hugging Face Datasets and Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>In this post, you'll learn to build an image similarity system with 🤗 Transformers. Finding out the similarity between a query image and potential candidates is an important use case for information retrieval systems, such as reverse image search, for example. All the system is trying to answer is that, given a query image and a set of candidate images, which images are the most similar to the query image.</p>
+<p>We'll leverage the 🤗 datasets library as it seamlessly supports parallel processing which will come in handy when building this system.</p>
+<p>Although the post uses a ViT-based model (nateraw/vit-base-beans) and a particular dataset (Beans), it can be extended to use other models supporting vision modality and other image datasets. Some notable models you could try:</p>
+<p>Also, the approach presented in the post can potentially be extended to other modalities as well.</p>
+<p>To study the fully working image-similarity system, you can refer to the Colab Notebook linked at the beginning.</p>
+<p>To build this system, we first need to define how we want to compute the similarity between two images. One widely popular practice is to compute dense representations (embeddings) of the given images and then use the cosine similarity metric to determine how similar the two images are.</p>
+<p>For this post, we'll use “embeddings” to represent images in vector space. This gives us a nice way to meaningfully compress the high-dimensional pixel space of images (224 x 224 x 3, for example) to something much lower dimensional (768, for example). The primary advantage of doing this is the reduced computation time in the subsequent steps.</p>
+<p>To compute the embeddings from the images, we'll use a vision model that has some understanding of how to represent the input images in the vector space. This type of model is also commonly referred to as image encoder.</p>
+<p>For loading the model, we leverage the AutoModel class. It provides an interface for us to load any compatible model checkpoint from the Hugging Face Hub. Alongside the model, we also load the processor associated with the model for data preprocessing.</p>
+<p>In this case, the checkpoint was obtained by fine-tuning a Vision Transformer based model on the beans dataset.</p>
+<p>Q1: Why did we not use AutoModelForImageClassification?</p>
+<p>This is because we want to obtain dense representations of the images and not discrete categories, which are what AutoModelForImageClassification would have provided.</p>
+<p>As mentioned earlier, we're using a specific dataset to build the system. So, instead of using a generalist model (like the ones trained on the ImageNet-1k dataset, for example), it's better to use a model that has been fine-tuned on the dataset being used. That way, the underlying model better understands the input images.</p>
+<p>Note that you can also use a checkpoint that was obtained through self-supervised pre-training. The checkpoint doesn't necessarily have to come from supervised learning. In fact, if pre-trained well, self-supervised models can yield impressive retrieval
+performance.</p>
+<p>Now that we have a model for computing the embeddings, we need some candidate images to query against.</p>
+<p>In some time, we'll be building hash tables mapping the candidate images to hashes. During the query time, we'll use these hash tables. We'll talk more about hash tables in the respective section but for now, to have a set of candidate images, we will use the train split of the beans dataset.</p>
+<p>This is how a single sample from the training split looks like:</p>
+<p>To demonstrate the image similarity system, we'll use 100 samples from the candidate image dataset to keep
+the overall runtime short.</p>
+<p>Below, you can find a pictorial overview of the process underlying fetching similar images.</p>
+<p>Breaking down the above figure a bit, we have:</p>
+<p>We can write a simple utility and map() it to our dataset of candidate images to compute the embeddings efficiently.</p>
+<p>And we can map extract_embeddings() like so:</p>
+<p>Next, for convenience, we create a list containing the identifiers of the candidate images.</p>
+<p>We'll use the matrix of the embeddings of all the candidate images for computing the similarity scores with a query image. We have already computed the candidate image embeddings. In the next cell, we just gather them together in a matrix.</p>
+<p>We'll use cosine similarity to compute the similarity score in between two embedding vectors. We'll then use it to fetch similar candidate samples given a query sample.</p>
+<p>Given all the utilities, we're equipped to do a similarity search. Let's have a query image from the test split of
+the beans dataset:</p>
+<p>Seems like our system got the right set of similar images. When visualized, we'd get:</p>
+<p>We now have a working image similarity system. But in reality, you'll be dealing with a lot more candidate images. Taking that into consideration, our current procedure has got multiple drawbacks:</p>
+<p>If we can somehow reduce the dimensionality of the embeddings without disturbing their meaning, we can still maintain a good trade-off between speed and retrieval quality. The accompanying Colab Notebook of this post implements and demonstrates utilities for achieving this with random projection and locality-sensitive hashing.</p>
+<p>🤗 Datasets offers direct integrations with FAISS which further simplifies the process of building similarity systems. Let's say you've already extracted the embeddings of the candidate images (the beans dataset) and stored them 
+inside a feature called embeddings. You can now easily use the add_faiss_index() of the dataset to build a dense index:</p>
+<p>Once the index is built, dataset_with_embeddings can be used to retrieve the nearest examples given query embeddings with get_nearest_examples():</p>
+<p>The method returns scores and corresponding candidate examples. To know more, you can check out the official documentation and this notebook.</p>
+<p>Finally, you can try out the following Space that builds a mini image similarity application:</p>
+<p>In this post, we ran through a quickstart for building image similarity systems. If you found this post interesting, we highly recommend building on top of the concepts we discussed here so you can get more comfortable with the inner workings.</p>
+<p>Still looking to learn more? Here are some additional resources that might be useful for you:</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/intro-graphml" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/image-similarity" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

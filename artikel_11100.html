@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Train your first Decision Transformer</title>
+    <title>Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11100.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,73 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Train your first Decision Transformer</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/bloom-inference-pytorch-scripts/thumbnail.png" alt="Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/bloom-inference-pytorch-scripts/thumbnail.png" alt="Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>This article shows how to get an incredibly fast per token throughput when generating with the 176B parameter BLOOM model.</p>
+<p>As the model needs 352GB in bf16 (bfloat16) weights (176*2), the most efficient set-up is 8x80GB A100 GPUs. Also 2x8x40GB A100s or 2x8x48GB A6000 can be used. The main reason for using these GPUs is that at the time of this writing they provide the largest GPU memory, but other GPUs can be used as well. For example, 24x32GB V100s can be used.</p>
+<p>Using a single node will typically deliver a fastest throughput since most of the time intra-node GPU linking hardware is faster than inter-node one, but it's not always the case.</p>
+<p>If you don't have that much hardware, it's still possible to run BLOOM inference on smaller GPUs, by using CPU or NVMe offload, but of course, the generation time will be much slower.</p>
+<p>We are also going to cover the 8bit quantized solutions, which require half the GPU memory at the cost of slightly slower throughput. We will discuss BitsAndBytes and Deepspeed-Inference libraries there.</p>
+<p>Without any further delay let's show some numbers.</p>
+<p>For the sake of consistency, unless stated differently, the benchmarks in this article were all done on the same 8x80GB A100 node w/ 512GB of CPU memory on Jean Zay HPC. The JeanZay HPC users enjoy a very fast IO of about 3GB/s read speed (GPFS). This is important for checkpoint loading time. A slow disc will result in slow loading time. Especially since we are concurrently doing IO in multiple processes.</p>
+<p>All benchmarks are doing greedy generation of 100 token outputs:</p>
+<p>The input prompt is comprised of just a few tokens. The previous token caching is on as well, as it'd be quite slow to recalculate them all the time.</p>
+<p>First, let's have a quick look at how long did it take to get ready to generate - i.e. how long did it take to load and prepare the model:</p>
+<p>Deepspeed-Inference comes with pre-sharded weight repositories and there the loading takes about 1 minuted. Accelerate's loading time is excellent as well - at just about 2 minutes. The other solutions are much slower here.</p>
+<p>The loading time may or may not be of importance, since once loaded you can continually generate tokens again and again without an additional loading overhead.</p>
+<p>Next the most important benchmark of token generation throughput. The throughput metric here is a simple - how long did it take to generate 100 new tokens divided by 100 and the batch size (i.e. divided by the total number of generated tokens).</p>
+<p>Here is the throughput in msecs on 8x80GB GPUs:</p>
+<p>where OOM == Out of Memory condition where the batch size was too big to fit into GPU memory.</p>
+<p>Getting an under 1 msec throughput with Deepspeed-Inference's Tensor Parallelism (TP) and custom fused CUDA kernels! That's absolutely amazing! Though using this solution for other models that it hasn't been tried on may require some developer time to make it work.</p>
+<p>Accelerate is super fast as well. It uses a very simple approach of naive Pipeline Parallelism (PP) and because it's very simple it should work out of the box with any model.</p>
+<p>Since Deepspeed-ZeRO can process multiple generate streams in parallel its throughput can be further divided by 8 or 16, depending on whether 8 or 16 GPUs were used during the generate call. And, of course, it means that it can process a batch size of 64 in the case of 8x80 A100 (the table above) and thus the throughput is about 4msec - so all 3 solutions are very close to each other.</p>
+<p>Let's revisit again how these numbers were calculated. To generate 100 new tokens for a batch size of 128 took 8832 msecs in real time when using Deepspeed-Inference in fp16 mode. So now to calculate the throughput we did: walltime/(batch_size*new_tokens) or 8832/(128*100) = 0.69.</p>
+<p>Now let's look at the power of quantized int8-based models provided by Deepspeed-Inference and BitsAndBytes, as it requires only half the original GPU memory of inference in bfloat16 or float16.</p>
+<p>To reproduce the benchmark results simply add --benchmark to any of these 3 scripts discussed below.</p>
+<p>In this article we are going to use 3 scripts located under bloom-inference-scripts/.</p>
+<p>The framework-specific solutions are presented in an alphabetical order:</p>
+<p>Accelerate handles big models for inference in the following way:</p>
+<p>It then ensures the model runs properly with hooks that transfer the inputs and outputs on the right device and that the model weights offloaded on the CPU (or even the disk) are loaded on a GPU just before the forward pass, before being offloaded again once the forward pass is finished.</p>
+<p>In a situation where there are multiple GPUs with enough space to accommodate the whole model, it switches control from one GPU to the next until all layers have run. Only one GPU works at any given time, which sounds very inefficient but it does produce decent throughput despite the idling of the GPUs.</p>
+<p>It is also very flexible since the same code can run on any given setup. Accelerate will use all available GPUs first, then offload on the CPU until the RAM is full, and finally on the disk. Offloading to CPU or disk will make things slower. As an example, users have reported running BLOOM with no code changes on just 2 A100s with a throughput of 15s per token as compared to 10 msecs on 8x80 A100s.</p>
+<p>You can learn more about this solution in Accelerate documentation.</p>
+<p>To activate the 8bit quantized solution from BitsAndBytes first install bitsandbytes:</p>
+<p>and then add --dtype int8 to the previous command line:</p>
+<p>if you have more than 4 GPUs you can tell it to use only 4 with:</p>
+<p>The highest batch size we were able to run without OOM was 40 in this case. If you look inside the script we had to tweak the memory allocation map to free the first GPU to handle only activations and the previous tokens' cache.</p>
+<p>DeepSpeed-Inference uses Tensor-Parallelism and efficient fused CUDA kernels to deliver a super-fast <1msec per token inference on a large batch size of 128.</p>
+<p>1a.
+if you want to run the original bloom checkpoint, which once loaded will run at the same throughput as the previous solution, but the loading will take 10-20min:</p>
+<p>2a. The 8bit quantized version requires you to have only half the GPU memory of the normal half precision version:</p>
+<p>Here we used microsoft/bloom-deepspeed-inference-int8 and also told the script to run in int8.</p>
+<p>And of course, just 4x80GB A100 GPUs is now sufficient:</p>
+<p>The highest batch size we were able to run without OOM was 128 in this case.</p>
+<p>You can see two factors at play leading to better performance here.</p>
+<p>The throughput here was improved by using Tensor Parallelism (TP) instead of the Pipeline Parallelism (PP) of Accelerate. Because Accelerate is meant to be very generic it is also unfortunately hard to maximize the GPU usage. All computations are done first on GPU 0, then on GPU 1, etc. until GPU 8, which means 7 GPUs are idle all the time. DeepSpeed-Inference on the other hand uses TP, meaning it will send tensors to all GPUs, compute part of the generation on each GPU and then all GPUs communicate to each other the results, then move on to the next layer. That means all GPUs are active at once but they need to communicate much more.</p>
+<p>DeepSpeed-Inference also uses custom CUDA kernels to avoid allocating too much memory and doing tensor copying to and from GPUs. The effect of this is lesser memory requirements and fewer kernel starts which improves the throughput and allows for bigger batch sizes leading to higher overall throughput.</p>
+<p>If you are interested in more examples you can take a look at Accelerate GPT-J inference with DeepSpeed-Inference on GPUs or Accelerate BERT inference with DeepSpeed-Inference on GPUs.</p>
+<p>Deepspeed ZeRO uses a magical sharding approach which can take almost any model and scale it across a few or hundreds of GPUs and the do training or inference on it.</p>
+<p>Note that the script currently runs the same inputs on all GPUs, but you can run a different stream on each GPU, and get n_gpu times faster throughput. You can't do that with Deepspeed-Inference.</p>
+<p>Please remember that with ZeRO the user can generate multiple unique streams at the same time - and thus the overall performance should be throughput in secs/token divided by number of participating GPUs - so 8x to 16x faster depending on whether 8 or 16 GPUs were used!</p>
+<p>You can also try the offloading solutions with just one smallish GPU, which will take a long time to run, but if you don't have 8 huge GPUs this is as good as it gets.</p>
+<p>make sure to adjust /path/to/nvme_offload to somewhere you have ~400GB of free memory on a fast NVMe drive.</p>
+<p>At transformers-bloom-inference you will find more very efficient solutions, including server solutions.</p>
+<p>Mayank Mishra took all the demo scripts discussed in this blog post and turned them into a webserver package, which you can download from here</p>
+<p>Nicolas Patry has developed a super-efficient Rust-based webserver solution.</p>
+<p>Thomas Wang is developing a very fast custom CUDA kernel BLOOM model.</p>
+<p>The JAX team @HuggingFace has developed a JAX-based solution</p>
+<p>As this blog post is likely to become outdated if you read this months after it was published please
+use transformers-bloom-inference to find the most up-to-date solutions.</p>
+<p>Huge thanks to the following kind folks who asked good questions and helped improve the readability of the article:
+Olatunji Ruwase and Philipp Schmid.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/train-decision-transformers" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/bloom-inference-pytorch-scripts" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

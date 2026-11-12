@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Memory Safety Bugs in Rust Standard Library</title>
+    <title>Inside GitHub’s new Git storage architecture</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9857.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,318 +15,135 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Memory Safety Bugs in Rust Standard Library</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Inside GitHub’s new Git storage architecture</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
-            <img src="https://forge-blog.github.io/images/forge.png" alt="Memory Safety Bugs in Rust Standard Library" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2026/01/4ba0cd42388a255e04c78e5143548f22e577d68e0f15f68e6a3c76c18b927981-1920x1080-1.png" alt="Inside GitHub’s new Git storage architecture" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://forge-blog.github.io/images/forge.png" alt="Memory Safety Bugs in Rust Standard Library" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2026/01/4ba0cd42388a255e04c78e5143548f22e577d68e0f15f68e6a3c76c18b927981-1920x1080-1.png" alt="Inside GitHub’s new Git storage architecture" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>By Yechan Bae
-/ November 9, 2026
-/ 19 min read</p>
-<p>Microsoft’s FORGE Lab found several memory safety issues in Rust’s standard library (std and core), including cases where code written entirely in safe Rust can trigger undefined behavior. The research used Hyenas, FORGE’s frontier research version of codename MDASH, an AI-powered vulnerability-scanning system. The findings reveal three recurring patterns of misplaced trust in unsafe code: trusting code not to panic, trusting user-provided implementations to be correct, and trusting the underlying system.</p>
-<p>Rust’s safety guarantees are precisely what make these findings interesting. Its rich type system and ownership model rule out whole classes of memory-safety issues, but much of the standard library relies on unsafe code underneath its safe APIs. When that code breaks its safety contract, even safe Rust can encounter behavior the language is designed to prevent.</p>
-<p>Rust’s memory-safety guarantees are increasingly important as the language
-becomes part of software that billions of people rely on every day. Billions of
-people are estimated to interact with Rust-based software or operating systems
-daily, often without knowing it.
-Microsoft made Rust a
-Tier-1 internal language
-alongside C++, C#, and TypeScript, GitHub
-rewrote the Copilot agent runtime in Rust,
-and Bun,
-Android,
-the Linux kernel, and
-Cloudflare are
-moving code to it as well. Much of this software relies on Rust’s foundational
-libraries, core and std, and the safety guarantees of the APIs they provide.
-Bugs in those libraries can have consequences well beyond the code where they
-originate.</p>
-<p>Unsafe Rust has been a long-running interest for us. Our team includes the
-people behind Rudra, a static
-analyzer that looked for memory-safety bugs across the Rust ecosystem in 2021.
-We also write many of our own tools in Rust, so its safety is more than a
-research topic for us. This year, we took a closer look at the standard library
-to see what kinds of mistakes still show up in its unsafe code today.</p>
-<p>In this post, we share some of the bugs we reported to the Rust issue tracker.
-We use them to discuss what Rust does and doesn’t guarantee, why writing correct
-unsafe Rust is so difficult, and why Rust’s safety model still matters even
-though its memory safety isn’t perfect.</p>
-<p>At Microsoft FORGE Lab, we study vulnerabilities in complex software, including the Rust standard library. Our team combines years of experience in vulnerability research with AI-assisted tools that help us investigate code and find bugs that are difficult to uncover through traditional analysis alone.</p>
-<p>Some of the bugs in this post were found with help from Hyenas, our research version of codename MDASH. Our researchers investigated the underlying code, reproduced the bugs, assessed their potential security impact, and worked with Rust maintainers to report and fix them.</p>
-<p>This post focuses on soundness bugs in the standard library’s unsafe code. Bugs in the compiler itself, such as miscompilations and holes in the type system, are a different topic that we don’t cover here.</p>
-<p>A note on open issues. At publication, two of the issues reported by our team
-remain open. The article also references related issues reported by others and
-fixes that are still under review. The Rust maintainers triaged and responded to
-our reports quickly, and we believe maintainers
-and the contributors working on these issues are doing their best and making
-the right tradeoffs among the many bugs they handle.</p>
-<p>If you’re interested in an open issue, please comment only when you have
-something genuinely new to contribute, such as new information or an affected
-real-world use case.</p>
-<p>At the lowest level, Rust uses
-unsafe blocks to
-work with raw pointers and interact directly with the operating system.
-Much of the standard library, including Vec and String,
-is built from small unsafe pieces wrapped in safe APIs.
-Inside an unsafe block, the programmer takes responsibility for the guarantees
-the compiler can’t check, and that responsibility extends to the safe API built
-around it. That API must be
-sound: no matter
-how safe code uses it, it must be impossible to trigger undefined behavior.</p>
-<p>Upholding that promise is harder than it looks. Consider a function that returns
-the byte at idx from any type that can be viewed as a byte slice, skipping the
-redundant bounds check after doing its own:</p>
-<p>The hard part of unsafe Rust is knowing what you can trust. The function above
-looks correct, but it assumes that two calls to as_ref return the same slice.
-Because S is chosen by the caller, a safe AsRef
-implementation can return a long slice the first time and an empty one the
-second, and get reads out of bounds. Unsafe code must be careful with every
-call it makes, and the bugs we found fall into three patterns of misplaced
-trust: trusting code not to panic, trusting user-provided implementations to be
-correct, and trusting the underlying system.</p>
-<p>Unsafe code often breaks an invariant for a moment and restores it afterward;
-for example, it may allocate an uninitialized buffer and fill it directly,
-avoiding redundant writes to zero the memory first. That’s fine as long as the
-function runs to the end. But many operations in Rust can panic,
-from out-of-bounds indexing to calls into user-provided code, and by default a
-panic unwinds: it leaves the function early while still running destructors.
-Unwinding inside that window becomes an invisible exit that exposes the broken
-invariant to code that trusts it. Bugs of this kind are called panic safety
-bugs.</p>
-<p>We identified
-a panic safety issue in MapWindows::clone.
-Iterator::map_windows,
-a nightly API, yields overlapping windows of N items. It keeps the current
-window in a Buffer whose destructor drops the N items starting at start.
-In Rust 1.97.0,
-library/core/src/iter/adapters/map_windows.rs
-defines it as:</p>
-<p>Buffer::clone,
-in the same file, built the new buffer first and filled it afterward:</p>
-<p>After line 197, buffer breaks its own invariant: its slots are uninitialized,
-but its destructor is already armed. The clone() call on line 201 runs the
-user’s T::clone before the slots are written. If that call panics, unwinding
-drops buffer and runs drop_in_place on N uninitialized values. Our proof of
-concept uses only safe code: an element type whose clone always panics, which causes
-a crash when the destructor accesses uninitialized memory. The
-fix
-holds the new buffer in ManuallyDrop until it is fully written, so unwinding
-leaks the half-built buffer instead of dropping it.</p>
-<p>The general lesson is to treat every call to code you don’t control, such as
-clone, drop, comparisons, closures, and iterator methods, as a possible early
-exit. Either finish the work that may panic before breaking an invariant, or
-make the broken state safe to unwind through: hold it in ManuallyDrop, or use
-a guard whose destructor restores the invariant, like Vec’s internal
-SetLenOnDrop. The Rustonomicon covers this under
-exception safety.</p>
-<p>The recently stabilized Allocator API shows how hard panic safety is to get
-right. With std, an allocation failure
-aborts the process
-by default instead of unwinding, so much of the standard library’s unsafe code
-assumes allocation never unwinds. Custom allocators can break that assumption.
-While the API was being stabilized, we reported
-one place in BTreeMap::insert
-that becomes unsound when an allocator unwinds, and others reported more
-(#159334,
-#159368,
-#159370). Fixing them one by
-one would mean auditing everything that allocates, so the
-stabilization, shipping in
-Rust 1.100 on November 12, instead requires implementors never to unwind from
-the trait’s methods or from drop. The proposal notes that “unwinding out of
-many allocation-related methods was found to be a pervasive source of
-unsoundness.”</p>
-<p>Unsafe code often calls into code its caller provides: a comparator, a trait
-implementation, a closure. That code is safe, but safe doesn’t mean correct, and
-it can return inconsistent or plainly wrong answers. The question is who is
-responsible when it does. In C++, it’s the caller. std::sort requires its
-comparator to be a strict weak ordering, and breaking that rule is undefined
-behavior. With libstdc++, sorting equal elements with <= reads past the end of
-the vector:</p>
-<p>The same comparator passed to Rust’s
-sort_by
-is only a logic error. The sort may panic or leave the slice in an unspecified
-order, but it never causes undefined behavior. The responsibility sits with the
-unsafe code. The comparator is safe code supplied by the caller, so the unsafe
-code inside the sort must stay sound no matter what it returns. The same goes for every safe
-trait a user can implement: comparisons can be inconsistent, an
-ExactSizeIterator can report a length that doesn’t match the items it yields,
-and Borrow can return a different value on each call.</p>
-<p>Another of our bug reports shows how easy this trust is to miss:
-str::replace with a custom Pattern can create a non-UTF-8 String.
-String search APIs accept any type that implements the nightly Pattern trait,
-and a pattern can describe itself through as_utf8_pattern. str::replace uses
-that description to take a fast path when replacing one ASCII byte with another.
-In Rust 1.96.0, the fast path in
-library/alloc/src/str.rs
-looked like this:</p>
-<p>replace_ascii,
-in the same file, then rewrites the bytes:</p>
-<p>The CharPattern branch on line 272 checks that the character is ASCII, but the
-StringPattern branch on line 271 assumes a one-byte string pattern must be
-ASCII. That holds for &str patterns, but StringPattern stored &[u8], and
-as_utf8_pattern is a safe method any Pattern can implement. In our proof of
-concept, a custom pattern reports the single byte 0x80, which only appears
-inside multibyte UTF-8 sequences:</p>
-<p>str::replace rewrites the continuation bytes and returns a String that isn’t
-valid UTF-8, and later string operations that rely on UTF-8 reach undefined
-behavior. The
-fix changed StringPattern to
-hold &str instead of &[u8], so the type itself now guarantees UTF-8.</p>
-<p>When unsafe code depends on a property of a user-provided implementation, don’t
-take it on faith. Call the implementation once and keep the result, validate
-what it returns, or encode the property in a type that safe code can’t forge, as
-this fix did. If none of those work, make the trait unsafe so implementors
-explicitly promise to uphold it.</p>
-<p>join shows how easy it is to fix this kind of bug only partway. In 2020, we
-reported that it trusted Borrow::borrow to return the same string on each call
-(CVE-2020-36323), and the
-fix handled strings that shrink between calls. In April 2026, the same function
-needed another fix: join
-borrows the first element twice, and if it grows on the second call, the
-remaining-length calculation underflows into a heap overflow. The earlier fix
-had never covered that path.</p>
-<p>Others reported similar problems in the Pattern API this year. A safe
-Pattern can hand back a valid searcher built for a different string, and
-consumers such as strip_prefix_of apply its ranges to the original string
-unchecked, reading out of bounds
-(#158265). The same problem
-turned up in split_once
-(#165076) after a report that
-the Searcher contract doesn’t spell out what str::split relies on
-(#164904). Both bugs are
-still open.</p>
-<p>The first two patterns stay inside Rust code. The third sits at the boundary
-with the operating system, where unsafe code trusts process-wide state such as
-signal stacks, memory mappings, and the environment, which other threads, C
-libraries, or the kernel can touch at any time. These bugs have been hard to
-find automatically, because a static analyzer would need to model all of that
-surrounding behavior. AI agents change the picture: they understand enough about
-the environment the code runs in to make this area practical to search. We
-started exploring it and found some interesting bugs.</p>
-<p>When a thread overflows its stack, Rust prints a clear message and aborts
-instead of crashing with a bare segmentation fault:</p>
-<p>This relies on a few pieces of process-wide state. Each thread’s stack ends in a
-guard page, an inaccessible region just past the stack’s limit: pthread
-reserves one for every spawned thread, and on Linux the kernel’s own stack guard
-plays that role for the main thread. Touching it raises SIGSEGV, and Rust
-registers a handler for that signal. The handler can’t run on the stack that just
-overflowed, so Rust also gives each thread an alternate signal stack, a small
-separate mapping with a guard page of its own, which the kernel switches to when
-it delivers the signal. The handler checks that the faulting address is inside
-the guard page, prints the message, and aborts.</p>
-<p>We found that calling
-process::exit from a child thread tears down the main thread’s alternate stack
-while the main thread is still running. process::exit runs the runtime’s
-cleanup before calling libc’s exit, and in Rust 1.98.0 that cleanup ends in
-library/std/src/sys/pal/unix/stack_overflow.rs:</p>
-<p>Line 202 passes MAIN_ALTSTACK, the main thread’s alternate stack, to
-drop_handler:</p>
-<p>Line 298 disables the alternate stack of the calling thread, but line 301 unmaps
-the main thread’s. The code assumes it runs on the main thread, which isn’t true
-when a child thread calls process::exit. The main thread keeps running until
-libc’s exit finishes, with its signal stack registration still pointing at
-unmapped memory. If it overflows its stack in that window, the kernel can’t
-deliver the signal, and our proof of concept dies with a plain segmentation
-fault instead of Rust’s message. The bug dates back to
-2015, and the
-fix stops cleaning up the main
-thread’s alternate stack altogether.</p>
-<p>We also checked whether this could become a security issue. In theory, it could
-lead to code execution: if a writable mapping landed at the old alternate
-stack’s address, the kernel would deliver the main thread’s next signal onto it,
-and another thread could overwrite the handler’s frame, such as its return
-address, while it runs. In practice, the conditions are very tight. Everything
-has to happen in the brief window before libc’s exit finishes, the new mapping
-must have exactly the right size to reuse that address, and overwriting the
-frame takes a second race inside a short handler. For issue #161018, our testing
-found no reliable exploitation path under the conditions examined, and we
-assessed practical exploitation as unlikely. This assessment does not
-automatically apply to the other issues discussed.
-The issue has more details in
-its security impact analysis.</p>
-<p>Our other report involves the
-process environment. On Unix, CommandExt::exec replaces the current process
-with a new program. When the command has its own environment variables, exec
-points the process-global environ at a new array, calls execvp, and restores
-environ if execvp fails. In Rust 1.99.0, Command::exec takes the
-environment lock in
-library/std/src/sys/process/unix/unix.rs:</p>
-<p>Command::do_exec,
-in the same file, then swaps the environment:</p>
-<p>Line 242 takes only the read side of the environment lock, yet line 410 writes
-the process-global environ; line 409 saves the old value so it can be restored
-if execvp on line 413 fails. Writing environ under a read lock lets other
-threads in. A thread calling env::var takes the same read lock and can see
-variables meant only for the new program, and two failed exec calls racing
-each other can leave environ pointing at a freed array that a later
-env::vars_os() reads. Both proofs of concept use only safe Rust. A
-2018 fix held an exclusive lock
-here, but when the environment lock became a
-read-write lock in 2021, exec
-kept the read side. A fix that avoids touching environ by calling execve
-directly is in review.</p>
-<p>The environment has caused trouble before. After a
-discussion that began in 2015,
-the 2024 edition
-marked env::set_var as unsafe,
-because C functions on most Unix platforms read the environment without going
-through Rust’s lock.</p>
-<p>Getting this boundary right is hard, and more problems are still open. While
-exploring this area, we independently ran into a double free in safe code that
-process::exit can cause through thread-local destructors. It was reported by
-someone else (#164243), but
-it’s worth mentioning here. libc’s exit first runs the calling thread’s
-thread-local destructors, as C++ requires, and Rust registers its destructors
-the same way. If a destructor calls process::exit while a thread local is
-being replaced, libc drops that thread local a second time. A
-proposed fix switches
-process::exit to POSIX _exit, which ends the process without running these
-handlers.</p>
-<p>Every unsafe block rests on assumptions about the code around it. The bugs in
-this post came from three kinds of misplaced trust:</p>
-<p>The first two patterns are well studied. Rudra looked for both in 2021, and the standard library was already fixing panic safety bugs in 2015 (CVE-2015-20001). They remain challenging to avoid because any call inside unsafe code might unwind or run code the caller supplied.</p>
-<p>What we saw this year was mixed. On the positive side, the nightly process is
-working. Many reports were caught while the affected APIs were still unstable,
-and several were fixed by changing the design before stabilization.
-StringPattern now holds &str instead of &[u8],
-and Allocator was
-stabilized with a rule that
-implementors must not unwind. At the same time, bugs in these patterns still
-reach stable releases, and their fixes aren’t always complete. join was fixed
-in 2020 and
-needed another fix in 2026 for
-a path the first fix had missed.</p>
-<p>The third pattern is different. Its bugs live where Rust meets the layers below
-it: the kernel, through system calls such as sigaltstack and munmap, and the
-C library, through process-wide state such as environ and the cleanup that
-libc’s exit runs. Getting them right takes knowledge that lives outside
-Rust’s type system, which has made these bugs difficult to find with
-traditional static analysis. That may also be why they last so long. The
-process::exit signal stack bug was in the standard library for nearly 11
-years, and exec has written environ under a read lock since 2021. Unlike our
-reports in the first two patterns, both affect stable Rust.</p>
-<p>Language models already know a great deal about how these interfaces behave, so
-agentic scanners can check unsafe code against the system it runs on, not just
-the language. We
-think this boundary is one of the most promising places for agentic security
-research, in Rust and beyond.</p>
-<p>Rust holds its safe APIs to a stricter standard than C and C++. Safe code must never be able to cause undefined behavior, no matter how it uses an API. In C++, a comparator that breaks std::sort’s ordering requirement causes undefined behavior, while Rust’s sort must stay memory-safe with any Ord implementation. POSIX doesn’t guarantee that setenv is safe to call while another thread reads the environment. That makes memory safety bugs in Rust hard to compare one-to-one with bugs in other languages.</p>
-<p>For the same reason, a soundness bug in the standard library isn’t automatically
-a vulnerability in the programs that use it. Each bug in this post needs an
-unusual setup to trigger, such as a panic at exactly the wrong moment, a
-deliberately misbehaving implementation, or calling process::exit from a child
-thread. It becomes a serious vulnerability only if a real program reaches the
-API in that way.</p>
-<p>Rust’s safety standard is strict and difficult to meet, but it’s also useful. It gives an unambiguous answer to what counts as a soundness bug, so problems can be fixed and prevented once in the library, instead of in every program that uses it. Rust’s safety model strikes the right balance between control, safety, and performance for systems programming, which is why so many projects choose it.</p>
-<p>At Microsoft FORGE Lab, we’re exploring how technology such as codename MDASH can help researchers find bugs like the ones in this post at greater scale. Rust’s standard library is one of several foundational open source projects where we’re applying this approach.</p>
-<p>This research also extends beyond the lab. It helps inform the development of codename MDASH, which brings agentic vulnerability discovery into Microsoft Defender. These findings can also serve as inputs to Microsoft Perception, our new multi-agent security system, where specialized agents work together across broader security workflows. For example, the Web App Pen Test Agent can use codename MDASH findings to help prioritize testing, validate exploitability against live applications, and produce actionable vulnerabilities that downstream agents can use to prioritize and support remediation. This connects AI-powered code analysis with real-world security validation and response, helping security teams move from identifying potential vulnerabilities to understanding and addressing actual risk.</p>
-<p>Our goal isn’t to simply find more bugs, it’s to identify meaningful issues, turn those findings into actionable research, and improve the safety of foundational software that developers and organizations depend on.</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>GitHub’s new Git storage architecture is built so thousands of agents can push to a single repository at once. Here’s how it works.</p>
+<p>Last week at GitHub Universe, we announced our new Git storage architecture, capable of handling thousands of writes per second with reads that scale on demand. Through internal testing, we’ve demonstrated the ability to support 5,000 concurrent agents working on a repository, sending 7,200 pushes per second to a repo, all while serving read traffic with consistently low latency. This new architecture is the foundation for GitHub to support agentic development for hundreds of millions of developers, and we’ve been building it underneath GitHub while it keeps running.</p>
+<p>Over the past year, agents changed what a busy repository looks like on GitHub. In our first post in this series, we laid out the two principles behind our next-generation Git storage architecture: minimize coordination, and decouple storage from compute. In our last post, we covered the bridge: moving 99.99999% of repositories into Azure, scoping the write quorum to individual references, and standing up virtual replicas backed by Azure Blob Storage.</p>
+<p>We also left off with an observation: very little of a write needs to be ordered. Git objects are immutable and named by their contents, meaning two writers can store them at the same time without agreeing on anything. The part of a push that needs agreement is the reference update, and a reference update is tiny in comparison. Virtual replicas were the first step toward building around that, and the means by which we onboard repositories to the new architecture.</p>
+<p>The rest of the architecture builds on that observation. Only reference updates need agreement. That lets the parts of Git infrastructure that used to be tightly coupled (storing data, serving requests, and maintaining repositories) scale independently. For developers, Git stays Git: they push, fetch, and branch the same way, with the same protections in place. Below, we walk through the requirements behind the design, follow a request through the system, and dive deep into two of its components.</p>
+<p>We think about the scale of the GitHub platform along two axes:</p>
+<p>Today, the busiest repositories on GitHub.com receive at most dozens of writes in a single second, typically in short bursts. As more of that work shifts to agents running in parallel and around the clock, we expect those bursts to become a sustained rate within the next year. Each push leads to more reads: CI runs, deployment systems pull the new commit, and other agents fetch it for context. This read fan-out results in a large amplification effect on overall traffic that scales with writes.</p>
+<p>We’re already seeing this trend play out on repositories at the top of the curve. The chart below shows daily requests to one repository on GitHub from March to May, when its traffic grew about 4x. Its growth has continued on an exponential trajectory since then.</p>
+<p>We have to plan for a world where agent-driven development keeps accelerating at this speed. Instead of planning for the next increment, we set a target of at least two orders of magnitude more scale. For a single repository, that meant the new architecture needed to:</p>
+<p>On top of that, the system had to be able to improve overall reliability and scale globally.</p>
+<p>In May of 2026, hot on the heels of the initial Azure migration, we started working on a design that could meet those demands. We tried several approaches. In all of them, pack data lived in Azure Blob Storage, and in some we experimented with keeping reference state there too. We’ll cover some of the trade-offs we found below, but we settled on a design we felt maximized throughput while preserving the correctness, durability, availability, and latency guarantees a platform like GitHub requires. We called it “Rubicon,” a nod to the point of no return the industry crossed with agentic development.</p>
+<p>Let’s walk through Rubicon from the top down. Many things stay the same: requests from Git clients, the API, and the web UI arrive at Spokes, which still handles routing and load balancing, and serves the internal API that the rest of GitHub uses to read and write repository data. Spokes also maintains its role as a placement and balancing service, maintaining the partitioning, isolation, and tenant fairness required for horizontal scale. The data plane underneath Spokes, in contrast, is new.</p>
+<p>Spokes routes each request to one of a small group of virtual replicas assigned to that repository. Virtual replicas are a single fleet of disposable compute that serves reads, writes, or both. A virtual replica’s local disk is a cache that can be rebuilt at any time.</p>
+<p>Spokes routes a repository’s traffic to the same virtual replicas when it can, which keeps their caches warm and latency low, but nothing about correctness depends on a request landing on any particular virtual replica. When a virtual replica goes away, the repository’s other virtual replicas keep serving, and a replacement fills its cache as traffic arrives.</p>
+<p>When a repository gets busy, we add more virtual replicas. Separately, a fleet of compaction nodes works in the background, directly against Blob Storage and Ref-CAS, to merge each repository’s packs and remove unreachable objects. That work never runs on a virtual replica, meaning their CPU and memory can be almost entirely dedicated to serving requests.</p>
+<p>Let’s walk the architecture from the perspective of a write and a read:</p>
+<p>There are many distinct approaches we’ve taken within the new architecture, from the software stack on the virtual replicas to how traffic routing and workload scheduling are tuned for different use cases (e.g., many small repos vs. one large one). Let’s dive deep into two components of the architecture and tell their stories centered on the two design principles.</p>
+<p>Object storage services like Azure Blob Storage are incredibly good at what they do, and natural fits for many data-heavy applications like source code storage. They are durable and replicated, hold as much as we need them to, have a relatively low cost per byte, and deliver exceptionally high aggregate throughput so long as traffic is spread across many keys. As a result, nearly everything durable in the new Git storage architecture lives in Azure Blob Storage, including:</p>
+<p>Most of that data is written once to a distinct key and never changes afterward, which is what makes it highly suitable for Blob Storage.</p>
+<p>References are the opposite. A busy repository’s references are a relatively small piece of state that many writes race to update at the same time. That access pattern is harder to serve from Blob Storage, and our first prototypes showed us why. Object storage for this kind of workload is an intuitive choice, and one that works well up to a certain level of scale: conditional writes give a compare-and-swap for free, and the data is already durable and replicated. However, we ran into a difficult set of choices, illustrated below by two approaches we tried.</p>
+<p>Our first approach was a write-ahead log for all of a repository’s references, indexed by a single blob. Every update is a conditional write against that blob. It’s correct, and reads are cheap: a virtual replica asks whether the blob has changed, and if it hasn’t, it’s done. Writes are where it falls short. Only one conditional write to a blob can be in flight at a time, so even when we batch every push that arrives during a write into the next one, the repository’s write ceiling is one write per round trip to a single blob. In practice, this netted us write throughput in the mid-hundreds per second.</p>
+<p>Our second approach split the references across several segment blobs, with each reference hashing to one of them. Writes to references in different segments no longer wait on each other, which raises the ceiling. But a read now has to check every segment to know whether anything changed, and it’s only as fast as the slowest segment. We’d traded write latency for read latency, and reads outnumber writes by orders of magnitude. We can visualize this by showing multiple writes and a read side by side:</p>
+<p>Neither option met every requirement, so we built something else: a replicated log service dedicated to references, or the Ref-CAS service. This is the (small) consensus group we said at the end of the last post was still somewhere in the stack. Here’s how it works.</p>
+<p>Each reference update in Ref-CAS is a compare-and-swap committed by a quorum. A transaction locks only the references it touches, checks that each one still has the value the writer expects, and becomes visible once a majority of the log’s replicas have recorded it. Agents mostly push to their own branches, so most updates don’t contend, and they replicate in parallel. When two pushes do update the same reference, only one will append to the log.</p>
+<p>Each commit to Ref-CAS gets a log sequence number (LSN), and the repository’s version is the LSN of its latest commit. Reads start with a version check against that version. A virtual replica sends the version of the reference state it already holds. If that version is still current, the reply carries no references at all, and an unchanged repository costs a single comparison. If the virtual replica is behind, it gets back the current references and version, along with pointers to pack data and anything else that needs to be known, such as when the last garbage collection cycle occurred.</p>
+<p>Unlike the consensus group in our legacy architecture, Ref-CAS never holds or validates object data. It only stores pointers to it. A virtual replica uploads a push’s pack to Blob Storage before it commits the reference transaction. A reference only ever points at objects that are already durable.</p>
+<p>These approaches allow us to transact reference state alone in the tens of thousands of operations per second, and provide a baseline for additional annotations on the replication log that help reads decide what to download for a given request.</p>
+<p>But supporting thousands of writes per second on a single repository creates a second-order problem: maintaining the performance of reads and writes. For that, we needed a different approach to compaction.</p>
+<p>Every push adds a pack to Blob Storage. Git can serve a repository from many packs, but each additional pack makes lookups slightly more expensive, so the pack count can’t grow without bound. In our legacy architecture, compaction runs on the same replicas that serve traffic, and it has to run on every replica. In the new architecture, it runs entirely in the background on separate nodes, directly against durable storage, using the Ref-CAS service to notify virtual replicas of the evolving state.</p>
+<p>Compaction nodes each claim ownership over a subset of the repository’s data via a lease, which allows us to scale compaction horizontally. Here’s how one compaction node works through a single shard of a repository’s packs:</p>
+<p>The node first takes a lease on the shard in Blob Storage, so only one node compacts a shard at a time. Meanwhile, virtual replicas keep uploading packs and listing them in the pack manifest. The node reads the manifest to find new packs and collects them into an open segment, which is effectively a holding ground for data about to be compacted. When the segment reaches a defined limit based on pack count, size, or age, it seals the segment so it accepts no new packs, then combines its packs into fewer, larger ones. While compaction happens, the next segment for the shard can begin capturing its input packs. Before anything is published, the node checks that the new packs contain exactly the same objects as the inputs. It then uploads the new packs and adds them to the manifest. A second transaction removes the inputs from the manifest, and cleanup deletes them later.</p>
+<p>To scale out, this process runs independently for many shards at once. Each pack’s hash maps to a shard, so adding shards and nodes adds compaction throughput. A compacted pack that’s still under the size limit goes back into a shard by its own hash and merges again, so packs grow in tiers until they reach the limit. The net result is an effectively flat pack count while pushes climb:</p>
+<p>Compaction merges packs, but it keeps every object. Garbage collection is the step that removes objects nothing references anymore, like the ones left behind by deleted branches and force-pushes. In our new architecture, garbage collection works very similarly to compaction by using dedicated workers to handle the compute-heavy portion. It also has a few special behaviors for safely removing data, which are worthy of their own discussion.</p>
+<p>Using these approaches, we’ve been able to consistently demonstrate a flat latency curve as writes climb, and we have other planned optimizations to make the compaction and garbage collection processes themselves more performant.</p>
+<p>The two principles we started with let each part of this architecture scale on its own. We scale reads and writes by adding virtual replicas. Ref-CAS orders each reference independently instead of the whole repository. We scale maintenance by adding compaction nodes. Our goal is for every repository, from one developer’s side project to the busiest monorepo, to run on the same architecture with no special handling for the busy ones. Repositories don’t stay small. A side project can pick up a fleet of agents overnight, and it shouldn’t need a migration or special handling from us to keep up. One architecture also means every improvement we make reaches every repository at once.</p>
+<p>This foundation lets us do a lot more. We’re focused on three areas next: scaling the architecture beyond what we can predict we’ll need today, making agents more efficient at the work they do on GitHub, and evolving Git itself for agentic development.</p>
+<p>We have plans to take this architecture further. Each of these improvements lets a repository handle more activity while reducing the work behind each request:</p>
+<p>Scaling the infrastructure is one side of supporting agents. The other side is making each agent operation cheaper: fewer bytes to fetch, fewer round trips, and less waiting on changes. Each of these fast-follow items builds on the storage work in this post:</p>
+<p>We also have work to do in Git itself. GitHub has been a longtime contributor to the Git project, and we’re not stopping now. A few examples of the work we’re excited to continue:</p>
+<p>Agents have changed how software gets built. GitHub and Git are changing with it. We’re excited to take this new architecture across the starting line. It’s available in a limited private preview now, with a broader rollout early next year. We can’t wait to see what teams build when the number of agents working on a repository is limited by their ideas. We’ll keep evolving Git and GitHub alongside our customers and the Git community.</p>
+<p>Brian is a Principal Software Engineer working on the storage and core services that power all repository interactions on GitHub.</p>
+<p>Git is releasing updates addressing six security vulnerabilities affecting recursive clones, reference handling, merges, binary patches, and imports. Here is what users need to know.</p>
+<p>We moved a copy of 99.99999% of GitHub’s repositories to Azure. Here’s how per-reference quorums will bring over the rest, and how object storage lets reads scale independently.</p>
+<p>We moved a copy of 99.99999% of GitHub’s repositories to Azure. Here’s how per-reference quorums will bring over the rest, and how object storage lets reads scale independently.</p>
+<p>Put native GitHub features to work to review outside collaborator access and archive stale repositories.</p>
+<p>Our new repo star history API now provides trends without returning individual identities or requiring unbounded database work. These are the engineering tradeoffs we made.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://forge-blog.github.io/posts/rust-std-memory-safety/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/engineering/architecture-optimization/inside-githubs-new-git-storage-architecture/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

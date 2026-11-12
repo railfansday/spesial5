@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Optimum+ONNX Runtime - Easier, Faster training for your Hugging Face models</title>
+    <title>Using LoRA for Efficient Stable Diffusion Fine-Tuning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11053.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,43 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Optimum+ONNX Runtime - Easier, Faster training for your Hugging Face models</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>Using LoRA for Efficient Stable Diffusion Fine-Tuning</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/lora/thumbnail.png" alt="Using LoRA for Efficient Stable Diffusion Fine-Tuning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/lora/thumbnail.png" alt="Using LoRA for Efficient Stable Diffusion Fine-Tuning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>LoRA: Low-Rank Adaptation of Large Language Models is a novel technique introduced by Microsoft researchers to deal with the problem of fine-tuning large-language models. Powerful models with billions of parameters, such as GPT-3, are prohibitively expensive to fine-tune in order to adapt them to particular tasks or domains. LoRA proposes to freeze pre-trained model weights and inject trainable layers (rank-decomposition matrices) in each transformer block. This greatly reduces the number of trainable parameters and GPU memory requirements since gradients don't need to be computed for most model weights. The researchers found that by focusing on the Transformer attention blocks of large-language models, fine-tuning quality with LoRA was on par with full model fine-tuning while being much faster and requiring less compute.</p>
+<p>Even though LoRA was initially proposed for large-language models and demonstrated on transformer blocks, the technique can also be applied elsewhere. In the case of Stable Diffusion fine-tuning, LoRA can be applied to the cross-attention layers that relate the image representations with the prompts that describe them. The details of the following figure (taken from the Stable Diffusion paper) are not important, just note that the yellow blocks are the ones in charge of building the relationship between image and text representations.</p>
+<p>To the best of our knowledge, Simo Ryu (@cloneofsimo) was the first one to come up with a LoRA implementation adapted to Stable Diffusion. Please, do take a look at their GitHub project to see examples and lots of interesting discussions and insights.</p>
+<p>In order to inject LoRA trainable matrices as deep in the model as in the cross-attention layers, people used to need to hack the source code of diffusers in imaginative (but fragile) ways. If Stable Diffusion has shown us one thing, it is that the community always comes up with ways to bend and adapt the models for creative purposes, and we love that! Providing the flexibility to manipulate the cross-attention layers could be beneficial for many other reasons, such as making it easier to adopt optimization techniques such as xFormers. Other creative projects such as Prompt-to-Prompt could do with some easy way to access those layers, so we decided to provide a general way for users to do it. We've been testing that pull request since late December, and it officially launched with our diffusers release yesterday.</p>
+<p>We've been working with @cloneofsimo to provide LoRA training support in diffusers, for both Dreambooth and full fine-tuning methods! These techniques provide the following benefits:</p>
+<p>We are particularly excited about the last point. In order for users to share their awesome fine-tuned or dreamboothed models, they had to share a full copy of the final model. Other users that want to try them out have to download the fine-tuned weights in their favorite UI, adding up to combined massive storage and download costs. As of today, there are about 1,000 Dreambooth models registered in the Dreambooth Concepts Library, and probably many more not registered in the library.</p>
+<p>With LoRA, it is now possible to publish a single 3.29 MB file to allow others to use your fine-tuned model.</p>
+<p>(h/t to @mishig25, the first person I heard use dreamboothing as a verb in a normal conversation).</p>
+<p>Full model fine-tuning of Stable Diffusion used to be slow and difficult, and that's part of the reason why lighter-weight methods such as Dreambooth or Textual Inversion have become so popular. With LoRA, it is much easier to fine-tune a model on a custom dataset.</p>
+<p>Diffusers now provides a LoRA fine-tuning script that can run in as low as 11 GB of GPU RAM without resorting to tricks such as 8-bit optimizers. This is how you'd use it to fine-tune a model using Lambda Labs Pokémon dataset:</p>
+<p>One thing of notice is that the learning rate is 1e-4, much larger than the usual learning rates for regular fine-tuning (in the order of ~1e-6, typically). This is a W&B dashboard of the previous run, which took about 5 hours in a 2080 Ti GPU (11 GB of RAM). I did not attempt to optimize the hyperparameters, so feel free to try it out yourself! Sayak did another run on a T4 (16 GB of RAM), here's his final model, and here's a demo Space that uses it.</p>
+<p>For additional details on LoRA support in diffusers, please refer to our documentation – it will be always kept up to date with the implementation.</p>
+<p>As we've discussed, one of the major advantages of LoRA is that you get excellent results by training orders of magnitude less weights than the original model size. We designed an inference process that allows loading the additional weights on top of the unmodified Stable Diffusion model weights. Let's see how it works.</p>
+<p>First, we'll use the Hub API to automatically determine what was the base model that was used to fine-tune a LoRA model. Starting from Sayak's model, we can use this code:</p>
+<p>This snippet will print the model he used for fine-tuning, which is CompVis/stable-diffusion-v1-4. In my case, I trained my model starting from version 1.5 of Stable Diffusion, so if you run the same code with my LoRA model you'll see that the output is runwayml/stable-diffusion-v1-5.</p>
+<p>The information about the base model is automatically populated by the fine-tuning script we saw in the previous section, if you use the --push_to_hub option. This is recorded as a metadata tag in the README file of the model's repo, as you can see here.</p>
+<p>After we determine the base model we used to fine-tune with LoRA, we load a normal Stable Diffusion pipeline. We'll customize it with the DPMSolverMultistepScheduler for very fast inference:</p>
+<p>And here's where the magic comes. We load the LoRA weights from the Hub on top of the regular model weights, move the pipeline to the cuda device and run inference:</p>
+<p>Dreambooth allows you to "teach" new concepts to a Stable Diffusion model. LoRA is compatible with Dreambooth and the process is similar to fine-tuning, with a couple of advantages:</p>
+<p>To train Dreambooth with LoRA you need to use this diffusers script. Please, take a look at the README, the documentation and our hyperparameter exploration blog post for details.</p>
+<p>For a quick, cheap and easy way to train your Dreambooth models with LoRA, please check this Space by hysts. You need to duplicate it and assign a GPU so it runs fast. This process will save you from having to set up your own training environment and you'll be able to train your models in minutes!</p>
+<p>The quest for easy fine-tuning is not new. In addition to Dreambooth, textual inversion is another popular method that attempts to teach new concepts to a trained Stable Diffusion Model. One of the main reasons for using Textual Inversion is that trained weights are also small and easy to share. However, they only work for a single subject (or a small handful of them), whereas LoRA can be used for general-purpose fine-tuning, meaning that it can be adapted to new domains or datasets.</p>
+<p>Pivotal Tuning is a method that tries to combine Textual Inversion with LoRA. First, you teach the model a new concept using Textual Inversion techniques, obtaining a new token embedding to represent it. Then, you train that token embedding using LoRA to get the best of both worlds.</p>
+<p>We haven't explored Pivotal Tuning with LoRA yet. Who's up for the challenge? 🤗</p>
+<p>Train and test custom LoRA DreamBooth image generators</p>
+<p>I'm particularly excited about the lower VRAM requirements. Being able to fine-tune on an 11 GB card opens this up to so many more people who don't have access to high-end hardware. The Pokemon example is perfect for demonstrating real-world results too. https://playvio.io/</p>
+<p>Train and test custom LoRA DreamBooth image generators</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/optimum-onnxruntime-training" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/lora" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

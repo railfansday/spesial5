@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate</title>
+    <title>SetFit: Efficient Few-Shot Learning Without Prompts</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11098.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,43 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Incredibly Fast BLOOM Inference with DeepSpeed and Accelerate</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-11</p>
+        <h1>SetFit: Efficient Few-Shot Learning Without Prompts</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/103_setfit/intel_hf_logo.png" alt="SetFit: Efficient Few-Shot Learning Without Prompts" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/103_setfit/intel_hf_logo.png" alt="SetFit: Efficient Few-Shot Learning Without Prompts" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>SetFit is significantly more sample efficient and robust to noise than standard fine-tuning.</p>
+<p>Few-shot learning with pretrained language models has emerged as a promising solution to every data scientist's nightmare: dealing with data that has few to no labels 😱.</p>
+<p>Together with our research partners at Intel Labs and the UKP Lab, Hugging Face is excited to introduce SetFit: an efficient framework for few-shot fine-tuning of Sentence Transformers. SetFit achieves high accuracy with little labeled data - for example, with only 8 labeled examples per class on the Customer Reviews (CR) sentiment dataset, SetFit is competitive with fine-tuning RoBERTa Large on the full training set of 3k examples 🤯!</p>
+<p>Compared to other few-shot learning methods, SetFit has several unique features:</p>
+<p>🗣 No prompts or verbalisers: Current techniques for few-shot fine-tuning require handcrafted prompts or verbalisers to convert examples into a format that's suitable for the underlying language model. SetFit dispenses with prompts altogether by generating rich embeddings directly from a small number of labeled text examples.</p>
+<p>🏎 Fast to train: SetFit doesn't require large-scale models like T0 or GPT-3 to achieve high accuracy. As a result, it is typically an order of magnitude (or more) faster to train and run inference with.</p>
+<p>🌎 Multilingual support: SetFit can be used with any Sentence Transformer on the Hub, which means you can classify text in multiple languages by simply fine-tuning a multilingual checkpoint.</p>
+<p>For more details, check out our paper, data, and code. In this blog post, we'll explain how SetFit works and how to train your very own models. Let's dive in!</p>
+<p>SetFit is designed with efficiency and simplicity in mind. SetFit first fine-tunes a Sentence Transformer model on a small number of labeled examples (typically 8 or 16 per class). This is followed by training a classifier head on the embeddings generated from the fine-tuned Sentence Transformer.</p>
+<p>SetFit takes advantage of Sentence Transformers’ ability to generate dense embeddings based on paired sentences. In the initial fine-tuning phase stage, it makes use of the limited labeled input data by contrastive training, where positive and negative pairs are created by in-class and out-class selection. The Sentence Transformer model then trains on these pairs (or triplets) and generates dense vectors per example. In the second step, the classification head trains on the encoded embeddings with their respective class labels. At inference time, the unseen example passes through the fine-tuned Sentence Transformer, generating an embedding that when fed to the classification head outputs a class label prediction.</p>
+<p>And just by switching out the base Sentence Transformer model to a multilingual one, SetFit can function seamlessly in multilingual contexts. In our experiments, SetFit’s performance shows promising results on classification in German, Japanese, Mandarin, French and Spanish, in both in-language and cross linguistic settings.</p>
+<p>Although based on much smaller models than existing few-shot methods, SetFit performs on par or better than state of the art few-shot regimes on a variety of benchmarks. On RAFT, a few-shot classification benchmark, SetFit Roberta (using the all-roberta-large-v1 model) with 355 million parameters outperforms PET and GPT-3. It places just under average human performance and the 11 billion parameter T-few - a model 30 times the size of SetFit Roberta. SetFit also outperforms the human baseline on 7 of the 11 RAFT tasks.</p>
+<p>Prominent methods on the RAFT leaderboard (as of September 2022)</p>
+<p>On other datasets, SetFit shows robustness across a variety of tasks. As shown in the figure below, with just 8 examples per class, it typically outperforms PERFECT, ADAPET and fine-tuned vanilla transformers. SetFit also achieves comparable results to T-Few 3B, despite being prompt-free and 27 times smaller.</p>
+<p>Comparing Setfit performance against other methods on 3 classification datasets.</p>
+<p>Comparing training cost and average performance for T-Few 3B and SetFit (MPNet), with 8 labeled examples per class.</p>
+<p>Since SetFit achieves high accuracy with relatively small models, it's blazing fast to train and at much lower cost. For instance, training SetFit on an NVIDIA V100 with 8 labeled examples takes just 30 seconds, at a cost of $0.025. By comparison, training T-Few 3B requires an NVIDIA A100 and takes 11 minutes, at a cost of around $0.7 for the same experiment - a factor of 28x more. In fact, SetFit can run on a single GPU like the ones found on Google Colab and you can even train SetFit on CPU in just a few minutes! As shown in the figure above, SetFit's speed-up comes with comparable model performance. Similar gains are also achieved for inference and distilling the SetFit model can bring speed-ups of 123x 🤯.</p>
+<p>To make SetFit accessible to the community, we've created a small setfit library that allows you to train your own models with just a few lines of code. 
+The first thing to do is install it by running the following command:</p>
+<p>Next, we import SetFitModel and SetFitTrainer, two core classes that streamline the SetFit training process:</p>
+<p>Now, let's download a text classification dataset from the Hugging Face Hub. We'll use the SentEval-CR dataset, which is a dataset of customer reviews:</p>
+<p>To simulate a real-world scenario with just a few labeled examples, we'll sample 8 examples per class from the training set:</p>
+<p>Now that we have a dataset, the next step is to load a pretrained Sentence Transformer model from the Hub and instantiate a SetFitTrainer. Here we use the  paraphrase-mpnet-base-v2 model, which we found to give great results across many datasets:</p>
+<p>The last step is to train and evaluate the model:</p>
+<p>And that's it - you've now trained your first SetFit model! Remember to push your trained model to the Hub :)</p>
+<p>While this example showed how this can be done with one specific type of base model, any Sentence Transformer model could be switched in for different performance and tasks. For instance, using a multilingual Sentence Transformer body can extend few-shot classification to multilingual settings.</p>
+<p>We've shown that SetFit is an effective method for few-shot classification tasks. In the coming months, we'll be exploring how well the method generalizes to tasks like natural language inference and token classification. In the meantime, we're excited to see how industry practitioners apply SetFit to their use cases - if you have any questions or feedback, open an issue on our GitHub repo 🤗.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/bloom-inference-pytorch-scripts" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/setfit" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
