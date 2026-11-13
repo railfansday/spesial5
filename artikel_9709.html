@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kubernetes v1.37 Hardens the Volume You Already Mount</title>
+    <title>⌘+L</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9709.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,37 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Kubernetes v1.37 Hardens the Volume You Already Mount</h1>
+        <h1>⌘+L</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto/https%3A%2F%2Fblog.neticslabs.com%2Fcontent%2Fimages%2F2026%2F09%2Fthumb-kubernetes-137-container-storage-hardening-2026-09-22.webp" alt="Kubernetes v1.37 Hardens the Volume You Already Mount" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto/https%3A%2F%2Fblog.neticslabs.com%2Fcontent%2Fimages%2F2026%2F09%2Fthumb-kubernetes-137-container-storage-hardening-2026-09-22.webp" alt="Kubernetes v1.37 Hardens the Volume You Already Mount" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 13
-•
-Originally published at blog.neticslabs.com</p>
-<p>Reproduction of the official Kubernetes blog post "Kubernetes v1.37: Hardening Container Storage with Bind Mount Options and EmptyDir Permissions" (September 16, 2026); source: kubernetes.io/blog</p>
-<p>Here is the quiet fact behind the v1.37 release notes: emptyDir — the most common writable volume type in Kubernetes — created its directories with a hardcoded mode of 0777, and volumes were bind-mounted into containers with no noexec flag at all. Any process that could discover the volume could read, write, and delete everything in it, which for a ReadWriteMany-style shared scratch space is an open door between containers. Kubernetes had flags for this at the Linux level for decades: noexec (no direct execution of binaries), nosuid (no setuid/setgid bits), nodev (no device files). It just never gave users a native way to apply them to the mount the container runtime creates.</p>
-<p>The security impact is sharper than it looks. A container with readOnlyRootFilesystem: true is hardened everywhere except its writable volumes — and if those volumes lack noexec, a compromised process can download a binary, chmod +x, and execute it from the very scratch space the security model left writable. External auditors flagged exactly this in the Kubernetes 1.24 Security Audit (Finding NCC-E003660-7HM), and the gap had its own long-lived issue (#48912). Both stayed unresolved until v1.37.</p>
-<p>Original Netics diagram: the Linux VFS mount flags noexec, nosuid and nodev, and what they block on a container bind mount; source: Kubernetes v1.37 storage hardening post</p>
-<p>KEP-5855 adds a bindMountOptions field on volumeMounts in the pod spec. When set, the kubelet passes the options through the CRI Mount message to the container runtime, which includes them in the OCI runtime spec mount options — the low-level runtime then applies the flags on the bind mount inside the container. Because the field sits on volumeMounts, it works for every volume type (emptyDir, PersistentVolumes, CSI, projected, ConfigMaps, Secrets — image volumes are the only exception) and it gives per-container granularity: two containers in the same pod can mount the same volume with different options.</p>
-<p>KEP-5502 adds a mode field on emptyDir. Instead of a hardcoded 0777, you can now declare 01777 for a shared workspace that behaves like /tmp (sticky bit: each container can write, but only the file owner or root can delete), or 0750 to lock a database's scratch volume to its own group. The previous workaround — an init container running chmod — was brittle and hard to verify for compliance; the field makes the permission declarative and auditable.</p>
-<p>Reproduction of the official Kubernetes enhancement proposal KEP-5855 (Allow bind mount options on volumeMounts), kubernetes/enhancements on GitHub; source: github.com/kubernetes/enhancements</p>
-<p>Both features arrive as Alpha in v1.37, behind VolumeBindMountOptions and EmptyDirVolumeMode, enabled on the API server and the kubelet. The version-skew behavior deserves attention because the two features fail differently. For emptyDir mode: if the API server has the gate enabled but the kubelet does not, the field is accepted but silently ignored — the kubelet falls back to 0777, the exact behavior you are trying to remove. For bindMountOptions: the scheduler uses Node Declared Features to avoid placing pods on nodes without runtime support, and if a pod reaches such a node anyway, the kubelet rejects it rather than silently ignoring the options. One degrades in silence; the other fails loudly. That asymmetry is the kind of thing you only discover in a staging rollout, and it is the reason the "things to know" list in the announcement deserves a full read.</p>
-<p>Original Netics diagram: emptyDir before v1.37 (hardcoded 0777, no mount flags) and after (declared mode, noexec/nosuid/nodev); source: Kubernetes v1.37 storage hardening post</p>
-<p>There is one more interaction to plan for: fsGroup. If fsGroup is set in the pod's security context, the group permissions applied by fsGroup override the mode you specify on the emptyDir — the same behavior that already exists for defaultMode on Secret and ConfigMap volumes. And everything here is Linux-only; Windows nodes skip both fields.</p>
-<p>Start where the exposure is densest: emptyDir and /tmp mounts are the volumes every workload touches, and they are the ones attackers reach first with a payload. On one node, enable both gates, mount a scratch volume with bindMountOptions: [noexec, nosuid], and keep readOnlyRootFilesystem: true — that combination removes the download-and-execute path entirely. Second, for multi-container pods sharing a workspace (CI build containers, sidecar loggers), set mode: 01777 so a compromised container can no longer delete another container's build artifacts — the sticky bit does exactly what the shared-/tmp problem has needed for years. Third, for stateful workloads, move deliberately: PersistentVolume and CSI adoption of these flags will take longer because it shifts provisioning defaults, and the silent-0777 fallback on mixed old/new nodes means your admission logic cannot yet trust mode alone as an enforcement signal.</p>
-<p>Original Netics diagram: the operational warnings around v1.37 storage hardening — Alpha gates, silent emptyDir fallback, fsGroup override, Linux-only; source: Kubernetes v1.37 storage hardening post</p>
-<p>For teams operating Kubernetes estates, the practical question is whether these controls are enabled, observable, and safe to roll out across mixed-version nodes: ValidatingAdmissionPolicy governs what gets admitted; it cannot govern what a volume does after the pod is running. Mount flags and directory modes live at the layer admission never reaches, which is exactly why they matter more than the next API-server guardrail. For a practical pass over your volume policies, compare these controls against your node versions and rollout plan.</p>
-<p>Need sovereign AI infrastructure, cloud cost audits, or automation pipelines? We build and ship them.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            Edit your website like Figma! 
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/l?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1312557?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/neticslabs/kubernetes-v137-hardens-the-volume-you-already-mount-6fb" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/l" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Open R1: Update #2</title>
+    <title>Henry Cavill’s AI-built mustache game launches to surprisingly warm reviews</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10771.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,74 +15,30 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Open R1: Update #2</h1>
+        <h1>Henry Cavill’s AI-built mustache game launches to surprisingly warm reviews</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/update-2.png" alt="Open R1: Update #2" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.dexerto.com/cdn-image/wp-content/uploads/2026/11/11/Mustache-Protocol-.jpg" alt="Henry Cavill’s AI-built mustache game launches to surprisingly warm reviews" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/update-2.png" alt="Open R1: Update #2" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.dexerto.com/cdn-image/wp-content/uploads/2026/11/11/Mustache-Protocol-.jpg" alt="Henry Cavill’s AI-built mustache game launches to surprisingly warm reviews" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>We are now two weeks into the Open R1 project which aims to reconstruct the missing pieces of DeepSeek R1—specifically, the training pipeline and synthetic data.</p>
-<p>In this post, we are happy to share the construction of OpenR1-Math-220k: our first large-scale dataset for mathematical reasoning!</p>
-<p>We also take a look at some exciting developments from the community towards curating small, high-quality datasets for fine-tuning, along with insights into how to control the length of the chain-of-thought from reasoning models at both train-time and inference-time.</p>
-<p>One of the key advantages of DeepSeek R1 is its ability to transfer advanced reasoning capabilities to smaller models through distillation. The DeepSeek team demonstrated this by generating 600k reasoning traces and fine-tuning a series of Qwen and Llama models, showing that direct distillation from R1 can achieve competitive reasoning performance without reinforcement learning. Notably, DeepSeek-R1-Distill-Qwen-7B achieved 55.5% on AIME 2024, surpassing larger models like QwQ-32B-Preview.</p>
-<p>However, the reasoning traces used for distillation have not been released publicly, prompting the community to independently recreate similar datasets. So far, multiple open datasets have been released by the community, including OpenThoughts-114k, Bespoke-Stratos-17k, Dolphin-R1, and LIMO.</p>
-<p>🐳  Introducing OpenR1-Math-220k, a large-scale math reasoning dataset generated locally on 512 H100s, with multiple answers per problem. To create OpenR1-Math-220k, we collaborated with Numina who have developed a brand new version of their popular NuminaMath-CoT dataset.</p>
-<p>What’s new in OpenR1 dataset compared to existing datasets:</p>
-<p>By demonstrating scalable, high-quality reasoning data generation, we hope this pipeline can be extended beyond math to domains like code generation.</p>
-<p>To build OpenR1-220k, we prompt DeepSeek R1 to generate solutions for 400k problems from NuminaMath 1.5. We follow the model card’s recommended parameters and prepend the following instruction to the user prompt:</p>
-<p>"Please reason step by step, and put your final answer within \boxed{}."</p>
-<p>We set a 16k token limit per generation, as our analysis showed that only 75% of problems could be solved in under 8k tokens, and most of the remaining problems required the full 16k tokens. Initially, we used vLLM for inference, achieving a throughput of 15 generations per hour per H100, and shared our generation scripts in previous updates and on the OpenR1 repo. Recently, we started experimenting with SGLang and we were able to generate 25 solutions per hour per H100 (almost 2x speedup!), enabling us to generate 300k problem solutions per day on 512 H100s. This allowed us to produce 800k reasoning traces in just a few days.</p>
-<p>We generate two solutions per problem—and in some cases, four—to provide flexibility in filtering and training. This approach allows for rejection sampling, similar to DeepSeek R1’s methodology, and also makes the dataset suitable for preference optimisation methods like DPO.</p>
-<p>The scripts for the data generation are available here: https://github.com/huggingface/open-r1/tree/main/slurm</p>
-<p>The unfiltered dataset is available here: https://huggingface.co/datasets/open-r1/OpenR1-Math-Raw</p>
-<p>To retain only high-quality, correct reasoning traces, we leverage Math Verify, a robust mathematical expression evaluation system designed to assess LLM-generated answers. We extract the final answers from model generations and compare them against ground truth answers in the dataset.</p>
-<p>We find that 55% of problems have at least one correct answer. However, some ground truth answers in NuminaMath 1.5 were empty or not in a verifiable format, making automatic validation challenging. While we have improved Math-Verify to more accurately handle these more uncommon output formats (see Math-Verify improvements below), we also explored an alternative method to recover valid solutions from rejected samples: using Llama-3.3-70B-Instruct as a judge on a subset of rejected problems. Before running this verification step, we filter out samples that are incomplete or that contain an empty ground truth answer, ensuring that only well-formed responses with a clearly boxed final answer are considered. This process successfully retrieves 28,000 of previously rejected problems.</p>
-<p>We prompt Llama3.3-70B-Instruct as follows:</p>
-<p>By combining rule-based verification (Math Verify) with LLM-based evaluation, we improve dataset quality while maintaining scale. The final dataset consists of 220k problems with verified reasoning traces, making it a valuable resource for training reasoning models. Providing multiple solutions per problem gives the community flexibility to filter for better generations and apply more targeted refinements based on NuminaMath data sources and problem types.</p>
-<p>For rows with multiple correct answers, we also tried applying a Reward Model (RM) as a final filter to select the best response. For each row with multiple correct generations by R1, we extracted the final answer by removing the thinking tokens (<think>…</think>), and then pass the problem + the extracted answer to Qwen/Qwen2.5-Math-RM-72B served using vLLM to get an score. Using these scores, we built a ranking for each row containing more than one correct response. The top-1 correct generations were selected and included in the training dataset, but sadly the training ablations showed that this approach doesn’t help to improve model performance with respect to selecting one random correct generation. A possible improvement could be to include the reasoning trace rather than just the final answer when scoring with the RM.</p>
-<p>We fine-tune Qwen2.5-Math-Instruct for 3 epochs on the default split of the dataset using a learning rate of 5e-5. To extend the context length from 4k to 32k, we increase RoPE frequency to 300k. The training follows a linear learning rate schedule with a 10% warmup phase. The table below compares the performance of OpenR1-Qwen-7B to DeepSeek-Distill-Qwen-7B and OpenThinker-7B using lighteval.</p>
-<p>This dataset represents an initial version, providing a foundation for further refinement. The community can explore additional filtering strategies to improve performance, such as rejection sampling, which was used in DeepSeek R1 to enhance quality.</p>
-<p>We identified several failure cases in Math-Verify during our inspection of the verification results. To address these issues, we implemented significant improvements and fixes. We strongly recommend updating to the latest version (0.5.2) to benefit from these enhancements:</p>
-<p>The following is the summary of the most important improvements:</p>
-<p>This week saw the community explore GRPO from many different angles, while multiple research labs have shown that only ~1000 high quality training samples may be sufficient to elicit reasoning in existing open models.</p>
-<p>The first part of the AIME 2025 was released this week, which consists of 15 difficult math problems that are used to train high school students for the International Math Olympiad. In the past year, AIME 2024 has stood as the main benchmark to probe the mathematical capabilities of LLMs and the community was excited to see how well models performs on a new set of unseen problems:</p>
-<p>An interesting new research paper shows that by using a recurrent language model, it is possible to scale test-time compute by implicitly reasoning in latent space. This resembles Meta’s Coconut work to train language models in latent space, but now adapted to reasoning tasks. The advantage of these methods is that they are far more compute efficient: by exploring the latent, one does not need to generate huge amounts of “thinking” tokens to obtain high performance.</p>
-<p>While DeepSeek R1 leveraged 600k reasoning traces for distillation, recent work suggests that complex reasoning can emerge in language models not through massive-scale training, but through a small number of carefully curated samples.</p>
-<p>One example of this approach is the s1K dataset. It consists of 1,000 carefully selected math questions with distilled reasoning traces from Gemini Flash. The selection approach focuses on difficulty, diversity, and quality. The authors fine-tune Qwen2.5-32B-Instruct on s1K and manage to exceed OpenAI’s o1-preview on competition math benchmarks by up to 27%.</p>
-<p>Another dataset, LIMO, pushes this idea further, achieving strong performance on AIME and MATH benchmarks using only 817 training samples.  The authors hypothesize that when a model has already acquired extensive domain knowledge during pre-training, only a small number of well-structured examples may be needed to unlock advanced reasoning capabilities.</p>
-<p>One important ingredient allowing the fine-tuned Qwen2.5-32B-Instruct model from s1K to reach such strong performance is budget forcing, a test-time compute technique that either extends or truncates reasoning by appending “Wait” or an end-of-thinking token delimiter to the model’s generation, respectively. This tool allowed the authors to vary thinking time and conclude that their model exhibits test-time scaling: as thinking time increases, so does accuracy on different math benchmarks.</p>
-<p>Similarly, Demystifying Long Chain-of-Thought Reasoning in LLMs (Yeo et al.) also studies the effect of Chain-of-Thought (CoT) length on model performance. They introduce the Cosine Reward — a novel reward function that they use to incentivize shorter CoTs for correct generations and longer CoTs for wrong generations — which stabilizes RL training, particularly when the model has relatively limited max context size and average response length could explode. Repetition penalty is also employed when the model starts to show signs of reward hacking on hard questions, by artificially increasing CoT length through repetition instead of attempting to solve the problem.</p>
-<p>Now that GRPO is humming in TRL, we are running an extensive set of experiments to understand which hyperparameters and reward functions have the greatest impact on training. You can follow our progress in the community tab and will write up our findings in the next update!</p>
-<p>If you want to contribute check out the open-r1 repository on GitHub or follow the Hugging Face open-r1 org.</p>
-<p>Thanks for sharing your results and describing the background of what happened around GRPO research last week. Do you plan to test classical distillation, not just fine-tuning on reasoning traces?</p>
-<p>By combining rule-based verification (Math Verify) with LLM-based evaluation, we improve dataset quality while maintaining scale. The final dataset consists of 220k problems with verified reasoning traces, making it a valuable resource for training reasoning models</p>
-<p>I think the size should be 248k? otherwise, it seems like the LLM based evaluation hasn't been included in the final dataset.</p>
-<p>We only applied Llama verification to the default subset, those rejected by Math Verify from the extended subset didn't go through a second verification step. We can release the unfiltered data with 400k problems if the community wants to do different filtering.</p>
-<p>kind of wondering about the following statement</p>
-<p>achieving a throughput of 15 generations per hour per H100</p>
-<p>Since DeepSeek-R1 can't fit into a single H100 (and based on Update #2, the model fits into 8xH100), how do you measure the throughput of H100? maybe 15*8 = 120 by 8xH100?</p>
-<p>The model actually fits on two 8xH100 https://huggingface.co/blog/open-r1/update-1#synthetic-data-generationAnd the 15 generations per hour per H100 is the throughput on four nodes divided by 32 GPUs (4 to avoid the cache filling up)</p>
-<p>The discussions about SFT in pre training. If I understand correctly, the idea is that models that have pretraining data that contains some instruct data tend to learn to reason while those without any instruct data don't ever figure out how to reason.</p>
-<p>hello, we are the SGLang team from lmsys.org. I am Chenyang, the project manager. Together with a bunch of great people, we are working on integrating SGLang into OpenR1. We have been working on OpenR1 for over a week. And we have done work on distill label, GRPO, and lighteval.</p>
-<p>We are planning to submit PRs to you but see that you are also using SGLang in this post:</p>
-<p>https://huggingface.co/blog/open-r1/update-2</p>
-<p>We are reaching out to collaborate so that we both do not waste our time working on the same thing. Thanks!</p>
-<p>If you feel interested,  can be reached out by chenyang.zhao@sglang.ai</p>
-<p>Would also be nice to include the performance of Qwen2.5-Math-Instruct and Qwen2.5-7B-Instruct to quantify the improvement using reasoning trace SFT distillation.</p>
-<p>How exactly is the Qwen/Qwen2.5-Math-RM-72B model used? Is it solely for ranking multiple answers? Can it also serve as a tool to validate whether the answers are correct?</p>
-<p>Great work ！I have some questions about the values ​​in the performance comparison table. According to DeepSeek's paper, DeepSeek-Distill-Qwen-7B's performance in MATH-500 and AIME24 is 92.8 and 55.5 respectively, which seems to be very different from the values ​​in the table (especially AIME24). I don't know if there is any gap. Looking forward to your response, thanks</p>
-<p>📻 🎙️ Hey, I made a podcast about this blog post, check it out!</p>
-<p>This podcast is generated via ngxson/kokoro-podcast-generator, using DeepSeek-R1 and Kokoro-TTS</p>
-<p>Hi, thanks for the great work! I'm wondering if the data filtering code can be made public? I'm using Math-Verify to double check some of your labels and couldn't reproduce some labels -- it seems that some solutions are not parsed correctly with the default math_verify.parse function. Thank you! cc. @loubnabnl  @lewtun  @eliebak</p>
-<p>Thanks for this great work. Would you please explain that OpenR1-Qwen-7B is trained through LORA or full-finetune?</p>
-<p>Thanks a lot for making this available! Note that https://matharena.ai is joint work between ETH and INSAIT (not only ETH). Would be good to update this in the text.</p>
-<p>Hi, thanks for the impressive work on Open R1!</p>
-<p>I had a question about the data processing for SFT. From what I understand, the training uses the default dataset. Since this dataset contains multiple responses per question, I'm curious how the final SFT training data was constructed.</p>
-<p>Were all the responses used during training, or was there a filtering step to select only the correct or high-quality answers? Any clarification on this would be greatly appreciated.</p>
+                <p>Henry Cavill‘s Mustache Protocol video game is real, playable, and, to the surprise of its first reviewers, actually good.</p>
+<p>Brands have started treating games as more than a novelty, with Wendy’s new RPG clocking in at around 15 hours. Cavill’s project looked flimsier, a Googlebook ad masquerading as a game, built with AI tools, whose early images even sparked false rumors it was already playable. Now it’s out, and according to reviewers, it actually holds up.</p>
+<p>Google released Mustache Protocol on November 11 alongside the final episode of its behind-the-scenes series, making the game free to play in a browser on desktop and mobile.</p>
+<p>The 16-bit side-scroller tasks players with stopping rogue CGI artists from erasing every mustache on the planet, a nod to the mustache Justice League infamously scrubbed off Cavill’s face with CGI.</p>
+<p>As far as reviews go, early impressions were warm. Digital Trends called it retro, silly, and “a lot of fun,” with its reviewer admitting to some initial skepticism, only to find mechanics that were easy to learn and an AI-built game that didn’t crash.</p>
+<p>Inverse went further, describing it as “both hilarious and fun to play” for anyone who misses old-school side-scrollers.</p>
+<p>In terms of gameplay, Mustache Protocol is a retro action platformer, with players slicing through zombies using a comb-shaped sword. Grabbing a steak bulks Cavill up, unlocking punches and his famous arm reload, while his Warhammer-style armor has a red mustache emblazoned where Superman’s sigil would sit, and his dogs Kal and Baggins pop up in cameos.</p>
+<p>Google’s new AI platform lets you make games just by describing them</p>
+<p>Epic Games offers $50,000 for AI games made in vibe-coding competition</p>
+<p>Henry Cavill’s Warhammer 40K series: Production, cast, everything we know</p>
+<p>Cavill pieced it all together over three episodes with Googlebook’s AI tools, using Antigravity to turn his spoken ideas into game mechanics.</p>
+<p>There’s a charitable kicker too, as Google is donating $11 to men’s health charity Movember every time someone plays through November 30, up to $500,000.</p>
+<p>Cavill isn’t the only one building with Google’s AI either, since the company recently started letting anyone make their own Android apps with AI, no coding skills required.</p>
+<p>Sign up to Dexerto for the latest news, views & reviews</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/open-r1/update-2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.dexerto.com/gaming/henry-cavills-ai-built-mustache-game-launches-to-surprisingly-warm-reviews-3427544/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

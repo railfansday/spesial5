@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Train 400x faster Static Embedding Models with Sentence Transformers</title>
+    <title>7 Checks That Make Form Bugs Easier to Reproduce Across Teams</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10794.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,152 +15,64 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Train 400x faster Static Embedding Models with Sentence Transformers</h1>
+        <h1>7 Checks That Make Form Bugs Easier to Reproduce Across Teams</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Train 400x faster Static Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Remote_developer_onboarding_workspace_f244b84f8c.png" alt="7 Checks That Make Form Bugs Easier to Reproduce Across Teams" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Train 400x faster Static Embedding Models with Sentence Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Remote_developer_onboarding_workspace_f244b84f8c.png" alt="7 Checks That Make Form Bugs Easier to Reproduce Across Teams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>This blog post introduces a method to train static embedding models that run 100x to 400x faster on CPU than state-of-the-art embedding models, while retaining most of the quality. This unlocks a lot of exciting use cases, including on-device and in-browser execution, edge computing, low power and embedded applications.</p>
-<p>We apply this recipe to train two extremely efficient embedding models: sentence-transformers/static-retrieval-mrl-en-v1 for English Retrieval, and sentence-transformers/static-similarity-mrl-multilingual-v1 for Multilingual Similarity tasks. These models are 100x to 400x faster on CPU than common counterparts like all-mpnet-base-v2 and multilingual-e5-small, while reaching at least 85% of their performance on various benchmarks.</p>
-<p>We also discuss potential enhancements, and encourage the community to explore them and build on this work!</p>
-<p>The usage of these models is very straightforward, identical to the normal Sentence Transformers flow:</p>
-<p>Embeddings are one of the most versatile tools in natural language processing, enabling practitioners to solve a large variety of tasks. In essence, an embedding is a numerical representation of a more complex object, like text, images, audio, etc.</p>
-<p>The embedding model will always produce embeddings of the same fixed size. You can then compute the similarity of complex objects by computing the similarity of the respective embeddings.</p>
-<p>This has a large amount of use cases, and serves as the backbone for recommendation systems, retrieval, outlier detection, one-shot or few-shot learning, similarity search, clustering, paraphrase detection, classification, and much more.</p>
-<p>Many of today's embedding models consist of a handful of conversion steps. Following these steps is called "inference".</p>
-<p>The Tokenizer and Pooler are responsible for pre- and post-processing for the Encoder, respectively. The former chops texts up into tokens (a.k.a. words or subwords) which can be understood by the Encoder, whereas the latter combines the embeddings for all tokens into one embedding for the entire text.</p>
-<p>Within this pipeline, the Encoder is often a language model with attention layers, which allows each token to be computed within the context of the other tokens. For example, bank might be a token, but the token embedding for that token will likely be different if the text refers to a "river bank" or the financial institution.</p>
-<p>Large encoder models with a lot of attention layers will be effective at using the context to produce useful embeddings, but they do so at a high price of slow inference. Notably, in the pipeline, the Encoder step is generally responsible for almost all of the computational time.</p>
-<p>Static Embeddings refers to a group of Encoder models that don't use large and slow attention-based models, but instead rely on pre-computed token embeddings. Static embeddings were used years before the transformer architecture was developed. Common examples include GLoVe and word2vec. Recently, Model2Vec has been used to convert pre-trained embedding models into Static Embedding models.</p>
-<p>For Static Embeddings, the Encoder step is as simple as a dictionary lookup: given the token, return the pre-computed token embedding. Consequently, inference is suddenly no longer bottlenecked by the Encoder phase, resulting in speedups of several orders of magnitude. This blogpost shows that the hit on quality can be quite small!</p>
-<p>We set out to revisit Static Embeddings models, using modern techniques to train them. Most of our gains come from the use of a contrastive learning loss function, as we'll explain shortly. Optionally, we can get additional speed improvements by using Matryoshka Representation Learning, which makes it possible to use truncated versions of the embedding vectors.</p>
-<p>We'll be using the Sentence Transformers library for training. For a more general overview on how this library can be used to train embedding models, consider reading the Training and Finetuning Embedding Models with Sentence Transformers blogpost or the Sentence Transformers Training Overview documentation.</p>
-<p>The objective with these reimagined Static Embeddings is to experiment with modern embedding model finetuning techniques on these highly efficient embedding models. In particular, unlike GLoVe and word2vec, we will be using:</p>
-<p>Contrastive Learning: With most machine learning, you take input $X$ and expect output $Y$, and then train a model such that $X$ fed through the model produces something close to $Y$. For embedding models, we don't have $Y$: we don't know what a good embedding would be beforehand.</p>
-<p>Instead, with Contrastive Learning, we have multiple inputs $X_1$ and $X_2$, and a similarity. We feed both inputs through the model, after which we can contrast the two embeddings resulting in a predicted similarity. We can then push the embeddings further apart if the true similarity is low, or pull the embeddings closer together if the true similarity is high.</p>
-<p>Matryoshka Representation Learning (MRL): Matryoshka Embedding Models (blogpost) is a clever training approach that allows users to truncate embedding models to smaller dimensions at a minimal performance hit. It involves using the contrastive loss function not just with the normal-sized embedding, but also with truncated versions of them. Consequently, the model learns to store information primarily at the start of the embeddings.</p>
-<p>Truncated embeddings will be faster with downstream applications, such as retrieval, classification, and clustering.</p>
-<p>For future research, we leave various other modern training approaches for improving data quality. See Next Steps for concrete ideas.</p>
-<p>As shown in the Training Overview documentation in Sentence Transformers, training consists of 3 to 5 components:</p>
-<p>In the following sections, we'll go through our thought processes for each of these.</p>
-<p>In our experience, embedding models are either used 1) exclusively for retrieval or 2) for every task under the sun (classification, clustering, semantic textual similarity, etc.). We set out to train one of each.</p>
-<p>For the retrieval model, there is only a limited amount of multilingual retrieval training data available, and hence we chose to opt for an English-only model. In contrast, we decided to train a multilingual general similarity model because multilingual data was much easier to acquire for this task.</p>
-<p>For these models, we would like to use the StaticEmbedding module, which implements an efficient tokenize method that avoids padding, and an efficient forward method that takes care of computing and pooling embeddings. It's as simple as using a torch EmbeddingBag, which is nothing more than an efficient Embedding (i.e. a lookup table for embeddings) with mean pooling.</p>
-<p>We can initialize it in a few ways: StaticEmbedding.from_model2vec to load a Model2Vec model, StaticEmbedding.from_distillation to perform Model2Vec-style distillation, or initializing it with a Tokenizer and an embedding dimension to get random weights.</p>
-<p>Based on our findings, the last option works best when fully training with a large amount of data. Matching common models like all-mpnet-base-v2 or bge-large-en-v1.5, we are choosing an embedding dimensionality of 1024, i.e. our embedding vectors consist of 1024 values each.</p>
-<p>For the English Retrieval model, we rely on the google-bert/bert-base-uncased tokenizer. As such, initializing the model looks like this:</p>
-<p>The first entry in the modules list must implement tokenize, and the last one must produce pooled embeddings. Both is the case here, so we're good to start training this model.</p>
-<p>For the Multilingual Similarity model, we instead rely on the google-bert/bert-base-multilingual-uncased tokenizer, and that's the only thing we change in our initialization code:</p>
-<p>Alongside dozens of Sentence Transformer models, the Sentence Transformers organization on Hugging Face also hosts 70+ datasets (at the time of writing):</p>
-<p>Beyond that, many datasets have been tagged with sentence-transformers to mark that they're useful for training embedding models:</p>
-<p>For the English Retrieval datasets, we are primarily looking for any dataset with:</p>
-<p>For the Multilingual Similarity datasets, we aimed for datasets with:</p>
-<p>We selected the following datasets as they contain parallel sentences:</p>
-<p>And these datasets as they contain positive pairs of some kind:</p>
-<p>Loading these datasets is rather simple, e.g.:</p>
-<p>The gooaq dataset doesn't already have a train-eval split, so we can make one with train_test_split. Otherwise, we can just load a precomputed split with e.g. split="eval".</p>
-<p>Note that train_test_split does mean that the dataset has to be loaded into memory, whereas it is otherwise just kept on disk. This increased memory is not ideal when training, so it's recommended to 1) load the data, 2) split it, and 3) save it to disk with save_to_disk. Before training, you can then use load_from_disk to load it again.</p>
-<p>Within Sentence Transformers, your loss model must match your training data format. The Loss Overview is designed as an overview of which losses are compatible with which formats.</p>
-<p>In particular, we currently have the following formats in our data:</p>
-<p>For these formats, we have some excellent choices:</p>
-<p>MultipleNegativesRankingLoss (MNRL): Also known as in-batch negatives loss or InfoNCE loss, this loss has been used to train modern embedding models for a handful of years. In short, the loss optimizes the following:</p>
-<p>Given an anchor (e.g. a question), assign the highest similarity to the corresponding positive (i.e. answer) out of all positives and negatives (e.g. all answers) in the batch.</p>
-<p>If you provide the optional negatives, they will only be used as extra options (also known as in-batch negatives) from which the model must pick the correct positive. Within reason, the harder this "picking" is, the stronger the model will become. Because of this, higher batch sizes result in more in-batch negatives, which then increase performance (to a point).</p>
-<p>CachedMultipleNegativesRankingLoss (CMNRL): This is an extension of MNRL that implements GradCache, an approach that allows for arbitrarily increasing the batch size without increasing the memory.</p>
-<p>This loss is recommended over MNRL unless you can already fit a large enough batch size in memory with just MNRL. In that case, you can use MNRL to save the 20% training speed cost that CMNRL adds.</p>
-<p>GISTEmbedLoss (GIST): This is also an extension of MNRL, it uses a guide Sentence Transformer model to remove potential false negatives from the list of options that the model must "pick" the correct positive from.</p>
-<p>False negatives can hurt performance, but hard true negatives (texts that are close to correct, but not quite) can help performance, so this filtering is a fine line to walk.</p>
-<p>Because these static embedding models are extremely small, it is possible to fit our desired batch size of 2048 samples on our hardware: a single RTX 3090 with 24GB, so we don't need to use CMNRL.</p>
-<p>Additionally, because we're training such fast models, the guide from the GISTEmbedLoss would make the training much slower. Because of this, we've opted to use MultipleNegativesRankingLoss for our models.</p>
-<p>If we were to try these experiments again, we would pick a larger batch size, e.g. 16384 with CMNRL. If you try, please let us know how it goes!</p>
-<p>Beyond regular loss functions, Sentence Transformers also implements a handful of Loss modifiers. These work on top of standard loss functions, but apply them in different ways to try and instil useful properties into the trained embedding model.</p>
-<p>A very interesting one is the MatryoshkaLoss, which turns the trained model into a Matryoshka Model. This allows users to truncate the output embeddings at a minimal loss of performance, meaning that retrieval or clustering can be sped up due to the smaller dimensionalities.</p>
-<p>The MatryoshkaLoss is applied on top of a normal loss. It's recommended to also include the normal embedding dimensionality in the list of matryoshka_dims:</p>
-<p>Sentence Transformers supports a lot of training arguments, the most valuable of which have been listed in the Training Overview > Training Arguments documentation.</p>
-<p>We used the same core training parameters to train both models:</p>
-<p>Beyond these core arguments, we also set a few training arguments for tracking and debugging: eval_strategy, eval_steps, save_strategy, save_steps, save_total_limit, logging_steps, logging_first_step, and run_name.</p>
-<p>In the end, we used these SentenceTransformerTrainingArguments for the two models:</p>
-<p>If we provide an evaluation dataset to the Sentence Transformer Trainer, then upon evaluation we will get an evaluation loss. This'll be useful to track whether we're overfitting or not, but not so meaningful when it comes to real downstream performance.</p>
-<p>Because of this, Sentence Transformers additionally supports Evaluators. Unlike the training loss, these give qualitative metrics like NDCG, MAP, MRR for Information Retrieval, Spearman Correlation for Semantic Textual Similarity, or Triplet accuracy (number of samples where similarity(anchor, positive) > similarity(anchor, negative)).</p>
-<p>Due to its simplicity, we will be using the NanoBEIREvaluator for the retrieval model. This evaluator runs Information Retrieval benchmarks on the NanoBEIR collection of datasets. This dataset is a subset of the much larger (and thus slower) BEIR benchmark, which is commonly used as the Retrieval tab in the MTEB Leaderboard.</p>
-<p>Because all datasets are already pre-defined, we can load the evaluator without any arguments:</p>
-<p>We're training these models on consumer-level hardware, specifically:</p>
-<p>This section contains the final training scripts for both models with all of the previously described components (datasets, loss functions, training arguments, evaluator, trainer) combined.</p>
-<p>This script produced sentence-transformers/static-retrieval-mrl-en-v1 after 17.8 hours of training. In total, it consumed 2.6 kWh of energy and emitted 1kg of CO2. That is roughly equivalent to the amount of CO2 an average person exhales per day.</p>
-<p>See our Weights and Biases report for the training and evaluation metrics collected during training.</p>
-<p>This script produced sentence-transformers/static-similarity-mrl-multilingual-v1 after 3.1 hours of training. In total, it consumed 0.5 kWh of energy and emitted 0.2kg of CO2. That is roughly 20% of the CO2 that an average person exhales per day.</p>
-<p>See our Weights and Biases report for the training and evaluation losses collected during training.</p>
-<p>The usage of these models is very straightforward, identical to the normal Sentence Transformers flow:</p>
-<p>The upcoming Performance > English Retrieval section will show that these results are quite solid, within 15% of commonly used Transformer-based encoder models like all-mpnet-base-v2.</p>
-<p>This model only loses about 8% of performance compared to the popular but much slower multilingual-e5-small, as shown in the upcoming Performance > Multilingual Similarity section.</p>
-<p>To reduce the dimensionality of your calculated embeddings, you can simply pass the truncate_dim parameter. This works for all Sentence Transformer models.</p>
-<p>This model also works out of the box in various third party libraries, for example LangChain, LlamaIndex, Haystack, and txtai.</p>
-<p>After training, we've evaluated the final model sentence-transformers/static-retrieval-mrl-en-v1 on NanoBEIR (normal dimensionality and with Matryoshka dimensions) as well as on BEIR.</p>
-<p>We've evaluated sentence-transformers/static-retrieval-mrl-en-v1 on NanoBEIR and plotted it against the inference speed computed on our hardware. For the inference speed tests, we calculated the number of computed query embeddings of the GooAQ dataset per second, either on CPU or GPU.</p>
-<p>Attention-based dense embedding models, e.g. traditional Sentence Transformer models like all-mpnet-base-v2, bge-base-en-v1.5, and gte-large-en-v1.5.</p>
-<p>Static Embedding-based models, e.g. static-retrieval-mrl-en-v1, potion-base-8M, M2V_base_output, and glove.6B.300d.</p>
-<p>Sparse bag-of-words model, BM25, often a strong baseline.</p>
-<p>We relied on the highly efficient bm25s implementation, using model.get_scores() on tokens after tokenization and stemming with the English PyStemmer.</p>
-<p>NOTE: Many of the attention-based dense embedding models are finetuned on the training splits of the (Nano)BEIR evaluation datasets. This gives the models an unfair advantage in this benchmark and can result in lower downstream performance on real retrieval tasks.</p>
-<p>static-retrieval-mrl-en-v1 is purposefully not trained on any of these datasets.</p>
-<p>We can draw some notable conclusions from these figures:</p>
-<p>Additionally, we experimented with the results on NanoBEIR performance when we performed Matryoshka-style dimensionality reduction by truncating the output embeddings to a lower dimensionality.</p>
-<p>These findings show that reducing the dimensionality by e.g. 2x only has a 1.47% reduction in performance (0.5031 NDCG@10 vs 0.4957 NDCG@10), while realistically resulting in a 2x speedup in retrieval speed.</p>
-<p>We've additionally evaluated the final sentence-transformers/static-similarity-mrl-multilingual-v1 model on 5 languages which have a lot of benchmarks across various tasks on MTEB.</p>
-<p>We want to reiterate that this model is not intended for retrieval use cases. Instead, we evaluate on Semantic Textual Similarity (STS), Classification, and Pair Classification. We compare against the excellent and small multilingual-e5-small model.</p>
-<p>Across all measured languages, static-similarity-mrl-multilingual-v1 reaches an average 92.3% for STS, 95.52% for Pair Classification, and 86.52% for Classification relative to multilingual-e5-small.</p>
-<p>To make up for this performance reduction, static-similarity-mrl-multilingual-v1 is approximately ~125x faster on CPU and ~10x faster on GPU devices than multilingual-e5-small. Due to the super-linear nature of attention models, versus the linear nature of static embedding models, the speedup will only grow larger as the number of tokens to encode increases.</p>
-<p>Lastly, we experimented with the impacts on English STS on MTEB performance when we did Matryoshka-style dimensionality reduction by truncating the output embeddings to a lower dimensionality.</p>
-<p>As you can see, you can easily reduce the dimensionality by 2x or 4x with minor (0.15% or 0.56%) performance hits. If the speed of your downstream task or your storage costs are a bottleneck, this should allow you to alleviate some of those concerns.</p>
-<p>This blogpost described all of the steps that we undertook from ideation to finished models, in addition to details regarding usage and evaluation of the two resulting models: static-retrieval-mrl-en-v1 and static-similarity-mrl-multilingual-v1.</p>
-<p>Should you need an efficient CPU-only dense embedding model for your retrieval or similarity tasks, then static-retrieval-mrl-en-v1 and static-similarity-mrl-multilingual-v1 will be extremely performant solutions at minimal costs that get surprisingly close to the attention-based dense models.</p>
-<p>Try it out! If you already use a Sentence Transformer model somewhere, feel free to swap it out for static-retrieval-mrl-en-v1 or static-similarity-mrl-multilingual-v1. Or, better yet: train your own models on data that is representative for the task and language of your interest.</p>
-<p>Furthermore, some questions remain about the trained models:</p>
-<p>Because Static Embedding-based models aren't bottlenecked by positional embeddings or superlinear time complexity, they can have arbitrarily high maximum sequence lengths. However, at some point the law of large numbers is likely to "normalize" all embeddings for really long documents, such that they aren't useful anymore.</p>
-<p>More experiments are required to determine what a good cutoff point is. For now, we leave the maximum sequence length, chunking, etc. to the user.</p>
-<p>Additionally, there are quite a few possible extensions that are likely to improve the performance of this model, which we happily leave to other model authors. We are also open to collaborations:</p>
-<p>For training other Sentence Transformers model types, or efficiency techniques that stack with static embeddings:</p>
-<p>I would like to thank Stéphan Tulkens and Thomas van Dongen of The Minish Lab for bringing Static Embedding models to my attention via their Model2Vec work. Additionally, I would like to thank Vaibhav Srivastav and Pedro Cuenca for their assistance with this blogpost, and Antoine Chaffin for brainstorming the release checkpoints.</p>
-<p>Lastly, a big thanks to all researchers working on embedding models, datasets, and open source Python packages. You strengthen the industry, and I build on your shoulders. One day, I hope you build on mine.</p>
-<p>Nvidia: You need to buy GPUs and machines.Developer: No, we can just tweak the algorithms.Elon Musk: Look at me buying GPUs, you poor folks.</p>
-<p>Thank you very much for the post, great work,</p>
-<p>I have already trained some English and Spanish models:</p>
-<p>I would like to know how to increase or decrease the'max_length example 371'</p>
-<p>when I check 'print(model.max_seq_length) # -> Inf'.</p>
-<p>Is it possible, how?  I can't find documentation about it</p>
-<p>Nice work on those models! Am I correct in understanding that one of those models reaches 0.5623 NDCG@10 on NanoBEIR across all datasets? That's a pretty huge jump from the 0.5032 NDCG@10 for static-retrieval-mrl-en-v1.</p>
-<p>I would like to know how to increase or decrease the'max_length example 371'</p>
-<p>Are you referring to the 'max' in your model card here?</p>
-<p>That is simply some approximate statistics on the training data; taken from the first 1000 samples. Although it's not always recommended to use texts with (much) larger sequence lengths than the training data, the actual maximum sequence length is indeed infinity. It is defined here: https://github.com/UKPLab/sentence-transformers/blob/cccab8303aaf6e18f069b0da578b3d162bf8442a/sentence_transformers/models/StaticEmbedding.py#L106-L108</p>
-<p>In short: the model will never truncate sequences, because the approach</p>
-<p>So, Static Models don't have a maximum sequence length. They just require care by the user to make sure that they're not feeding documents that are too large, as all documents will eventually embed very similarly if they are long enough.</p>
-<p>This is really cool! I'm surprised you do better than model2vec - is the difference really just the use of a (better) contrastive loss pretraining formula?</p>
-<p>Yes! The architecture is identical. In fact, the StaticEmbedding module that is used for the models described in this blogpost is actually the same that is used when loading a Model2Vec model in Sentence Transformers:</p>
-<p>I tried this training on a subset of data (AllNLI, GooAQ, MSMacro, PAQ, S2ORC) with batch size 16384. Took 5 hours.</p>
-<p>w&b:https://api.wandb.ai/links/arunarumugam411-sui/dkcwm6gs</p>
-<p>seems to great, but1can you clarify idea behind . Do you calculate emceeing  for each token  and them average them ?2can you share link to NanoBEIR ?</p>
-<p>Yes, the implementation is  just https://pytorch.org/docs/stable/generated/torch.nn.EmbeddingBag.html. In short: token -> token embedding via lookup -> text embedding via mean pooling (averaging per dimension).</p>
-<p>do you have detailed description like paper pls</p>
-<p>may you clarifyfromhttps://huggingface.co/blog/Pringled/model2vecZipfAs we take a simple mean over tokens in the space, it is important that the vectors are weighted correctly. Normally, a sentence transformer would be there to correctly weight all the tokens for us given the context, but we don't have that luxury any more. Intuitively, we would like to use something like Inverse Document Frequency (IDF) to down-weight very frequent or uninteresting words. But we don't have access to a corpus over which to compute document frequencies.</p>
-<p>To overcome this, we opt to use a well-known principle from language sciences, which is that, given a frequency ranked list, the frequency of the items in that list follow a power law distribution. This is called Zipf's law. So, if we take the assumption that a vocabulary is ranked by frequency, we can accurately down-weight really frequent items without needing to have access to actual frequencies. As tokenizer vocabularies are sorted by frequency, we already have access to a ranked list, so this optimization can be applied without any additional work</p>
-<p>so for hypothetical Zipf input[ [ 0.2,0.5,0.7] , [1.2, 0.9,0.2], [0.4, 0.3, 0.2] ,[1.3, 2.4, 3.2]]you1sort input according to each vector normso you get[ [0.4, 0.3, 0.2] , [ 0.2,0.5,0.7] , [1.2, 0.9,0.2],[1.3, 2.4, 3.2] ]2you divide each vector by its norm</p>
-<p>[ [0.4, 0.3, 0.2]/n1 , [ 0.2,0.5,0.7]/n2 , [1.2, 0.9,0.2] /n3 ,[1.3, 2.4, 3.2]/n4 ]</p>
-<p>3then final embedding is mean of this down-weighted vectors ?( [0.4, 0.3, 0.2]/n1 + [ 0.2,0.5,0.7]/n2 + [1.2, 0.9,0.2] /n3 + [1.3, 2.4, 3.2]/n4) / 4</p>
-<p>Amazing work there. This technique is quite eye opening really ^^</p>
-<p>A quick comment on the title of the post though, at first, I believed that this post was about training sentence embedding model faster, not about training sentence embedding models that have a faster inference time. Just for you guys to knoew.</p>
-<p>I trained a Static Embedding Japanese model (static-embedding-japanese) by incorporating a large amount of Japanese datasets, and when we compared it using the Japanese Multilingual Text Embedding Benchmark (JMTEB), I were able to achieve scores that were only slightly lower than mE5-small.</p>
-<p>Thank you for publishing such an excellent article.</p>
-<p>That is an incredible performance, excellent work! I also appreciate your very detailed model card - I'll read through it now with a translator!</p>
-<p>With some research directions looking into tokenizer free, wondering how far one can stretch the character level similarly trained model.</p>
-<p>Also wonder, given the additional compute and time we now have, would ensemble with another static embedding model give additional quality improvements. But then, what might be the best way to ensemble, maybe domain dataset specific would help, different loss trained model?</p>
-<p>Any plans to make the model usable by text embedding inference?</p>
-<p>https://github.com/huggingface/text-embeddings-inference</p>
-<p>Hi tom , I have been trying to recreate model using the same script. I consistently see the evaluation loss to be inf . Am I doing something wrong here ?</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>A designer reports that a form’s error message overlaps its submit button. The developer opens the same page and sees no problem. Both are using the same code, but one has a narrow viewport, a translated interface, and an unusually long validation message.</p>
+<p>A screenshot records what appeared on screen. A reproducible example also preserves the inputs, responses, permissions, and environment that produced it. That distinction matters when people review work at different times or join a project without knowing its undocumented conventions.</p>
+<p>This article uses a workspace-invitation form as an example. The form accepts an email address and a role, submits a request, and displays either a confirmation or an error. The seven checks below turn its awkward states into something developers and designers can inspect together.</p>
+<p>“The form looks broken” leaves too much for the next person to discover.</p>
+<p>A useful report specifies the starting state, action, observed result, and expected behavior:</p>
+<p>Include the browser, application revision, and relevant account permissions. Explain whether “360 pixels” means the browser’s layout viewport or the dimensions of an exported screenshot.</p>
+<p>Avoid using real customer addresses in shared fixtures. A synthetic address such as member@example.test is sufficient to exercise the interface.</p>
+<p>This report gives a designer a clear layout requirement and gives a developer a precise state to recreate.</p>
+<p>A form tested only with successful submissions is missing most of its interesting behavior.</p>
+<p>Create a small set of fixtures that cover the product’s actual rules:</p>
+<p>Keep fixture values deterministic. Random addresses or constantly changing timestamps make visual comparisons harder to interpret.</p>
+<p>Record expected outcomes alongside the data. A response containing a message does not establish where the interface should display it, whether focus should move, or which fields should remain editable.</p>
+<p>Treat those as product decisions and test them explicitly.</p>
+<p>Some failures can be reproduced by passing props to a component. Others depend on the request lifecycle.</p>
+<p>Storybook args can describe inputs for isolated component states. An error-state story might supply a message, current field values, and a pending flag to a presentational form component.</p>
+<p>However, passing pending: true does not prove that the real application enters or exits that state correctly.</p>
+<p>For network-dependent behavior, use Mock Service Worker or your test runner’s request interception to supply a controlled response. Preserve the distinction between these two checks:</p>
+<p>Avoid mocking the same endpoint in several overlapping layers. When a response is unexpected, the team should be able to identify which fixture produced it.</p>
+<p>Also keep at least some integration coverage against the real API. A frontend mock that returns an outdated error shape can make the interface look reliable while hiding a broken contract.</p>
+<p>Open the failing state at the recorded viewport. Inspect the error container, its parent layout, and the submit button.</p>
+<p>Look for constraints such as fixed heights, absolute positioning, hidden overflow, and a flex or grid item that refuses to shrink.</p>
+<p>A possible layout for a message beside an action is:</p>
+<p>This pattern allows the message column to shrink and stacks the elements at a narrow width. It is not a universal fix: choose a breakpoint and arrangement that suit the surrounding form.</p>
+<p>If the error belongs to a particular field, placing it beside the submit button may be the wrong design regardless of how well it wraps.</p>
+<p>SitePoint’s browser-based CSS debugging guide explains how to inspect applied rules and layout behavior. Its guide to troubleshooting CSS with Inspect Element provides additional background.</p>
+<p>Use DevTools experiments to identify the cause, then make the lasting change in the source. Check a wide viewport afterward so a narrow-screen fix does not introduce a desktop regression.</p>
+<p>A screenshot can show that an error is present. It cannot, by itself, prove that the form preserved the email address or prevented an unintended navigation.</p>
+<p>The following Playwright example assumes an existing application route, configured baseURL, and accessible form labels. Adapt the endpoint, response schema, and selectors to your project.</p>
+<p>The example expects a native select for the role and a named form landmark. A custom role picker requires different interactions.</p>
+<p>The behavior assertions precede the visual comparison. The screenshot then helps reviewers spot overlap, clipping, or unintended spacing changes.</p>
+<p>Playwright’s visual comparison documentation explains baseline screenshots. Generate and compare them in a consistent environment; operating-system and font differences can affect rendering.</p>
+<p>Review the first baseline manually. A screenshot test can faithfully preserve a bug if the initial image is approved without inspection. Disabling animation for a snapshot also does not test the accessibility of motion itself.</p>
+<p>As a project grows, a component’s behavior should remain discoverable without a private walkthrough.</p>
+<p>Poland has also become a popular choice for companies looking to expand their development teams without limiting their search to local talent.</p>
+<p>The practical requirement for distributed contributors is a review process that carries its own context. Attach the exact fixture, preview location, reproduction command, and expected behavior to the issue or pull request.</p>
+<p>Keep the open decision separate from the implemented behavior. This prevents reviewers from assuming that a visual change has already resolved a product question.</p>
+<p>Name the person or team responsible for the component, and identify where design decisions are recorded. A stable fixture is useful only if someone maintains it as the component evolves.</p>
+<p>A form that no longer overlaps can still be difficult to use.</p>
+<p>Verify visible labels, keyboard navigation, focus visibility, and the relationship between errors and their fields. For field-level errors, consider aria-invalid and aria-describedby where appropriate.</p>
+<p>The alert in the test example assumes a newly displayed form-level error. Do not add several competing live regions or announce every keystroke. Check the resulting experience with assistive technology.</p>
+<p>SitePoint’s accessible form layout guide is relevant background for the relationship between structure and usability.</p>
+<p>A focused toolset can support the workflow:</p>
+<p>Use the smallest set that answers the current question. Adding another tool is useful when it closes a testing gap, not merely because it produces another report.</p>
+<p>A good handoff lets someone unfamiliar with the original conversation recreate the failure, understand the expected behavior, and verify the fix. When the fixture and regression check remain with the code, that work continues to help the next contributor.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/static-embeddings" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/7-checks-that-make-form-bugs-easier-to-reproduce-across-teams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
