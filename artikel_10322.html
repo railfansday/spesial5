@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Custom Kernels for All from Codex and Claude</title>
+    <title>PRX Part 3 — Training a Text-to-Image Model in 24h!</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10322.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,56 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Custom Kernels for All from Codex and Claude</h1>
+        <h1>PRX Part 3 — Training a Text-to-Image Model in 24h!</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/custom-cuda-kernels/meme.png" alt="Custom Kernels for All from Codex and Claude" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/custom-cuda-kernels/meme.png" alt="Custom Kernels for All from Codex and Claude" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>tl;dr: We built an agent skill that teaches coding agents how to write production CUDA kernels. Then we pointed Claude and Codex at two real targets: a diffusers pipeline and a transformers model. The agents produced working kernels for both, with correct PyTorch bindings and benchmarks, end to end.</p>
-<p>Writing CUDA kernels is hard. Writing CUDA kernels that correctly integrate with transformers and diffusers is harder. There are architecture-specific memory access patterns, vectorization strategies, warp shuffle reductions, and a dozen integration pitfalls that trip up even experienced developers. It is exactly the kind of specialized, high-stakes problem where agent skills shine.</p>
-<p>We gave coding agents the domain knowledge they need, like which GPU architecture to target, how to structure a kernel-builder project, when to use shared memory versus registers, and how to write PyTorch bindings. The agents did the rest. If you have used the LLM training skill or read We Got Claude to Teach Open Models, the pattern will feel familiar: package domain expertise into a skill, point the agent at a problem, and let it work.</p>
-<p>The Kernel Hub solved the distribution of custom hardware kernels. You can load pre-compiled kernels from the Hub with a single get_kernel call. No builds, no flags. However, someone still needs to write the kernels. That is the gap this skill fills.</p>
-<p>CUDA kernel development has a brutal surface area:</p>
-<p>This is domain knowledge that gets lost in documentation tabs and Stack Overflow answers. An agent skill packages it into context that loads on demand.</p>
-<p>First, let's show how to use the skill right away, then we'll dive into the details of how we benchmarked the kernels.</p>
-<p>The skill ships with the kernels library. Install it into your coding agent with a single command:</p>
-<p>This drops the skill into .claude/skills/cuda-kernels/ where Claude Code and Cursor pick it up automatically. For other agents:</p>
-<p>Or, you can go for something more open-ended:</p>
-<p>The agent can read the skill, select the right architecture parameters, generate the CUDA source, write the PyTorch bindings, set up build.toml, and create a benchmark script.</p>
-<p>If you're working on more complex kernels, or architecture-specific optimizations, that aren't covered in the skill, then the skill supplies the fundamental building blocks and patterns to get you started. We are also open to contributions on the skill itself.</p>
-<p>The skill is roughly 550 tokens of structured guidance plus reference scripts, GPU optimization guides, troubleshooting docs, and complete working examples. Agentic coding tools like Codex and Claude can read this and produce a working kernel project.</p>
-<p>When an agent loads this, it gets everything it needs to go from "write me an RMSNorm kernel" to a buildable, benchmarkable project. It will grep and glob the skill to find the relevant files and directories. So it's important to structure the skill in a way that is easy to find.</p>
-<p>The agent is instructed to generate kernels that conform to the templates in references/kernel-templates.md and produce a complete kernel project:</p>
-<p>The agent built RMSNorm, RoPE 3D, GEGLU, and AdaLN kernels for LTX-Video, a video generation pipeline from diffusers. The full example is at examples/ltx_video/. We optimized the RMSNorm kernel for H100. Both benchmarks were run on H100 80GB HBM3 at precision BFloat16.</p>
-<p>If you want to check out the generated kernel, got to this example</p>
-<p>First, we compare the isolated RMSNorm kernel performance against the PyTorch baseline. This is the main speedup in the optimized pipeline.</p>
-<p>Average speedup: 1.88x and a bandwidth efficiency: 34.7% of H100 theoretical (3,350 GB/s)</p>
-<p>Next, we compare the end-to-end video generation performance of the optimized kernels against the baseline (no compile) and the torch.compile baseline.</p>
-<p>RMSNorm accounts for ~5% of total compute in LTX-Video. The remaining time is spent in attention, linear projections, and VAE decode. The 6% end-to-end speedup from a single kernel type is consistent with that profile.</p>
-<p>The agent built an RMSNorm kernel for Qwen3-8B, a large language model from transformers with 65 RMSNorm modules across 32 layers. The full example is at examples/qwen3_8b/. We optimized the RMSNorm kernel for H100. Both benchmarks were run on H100 80GB HBM3 at precision BFloat16.</p>
-<p>If you want to explore the kernel, check it out here.</p>
-<p>Once again, we compare the isolated RMSNorm kernel performance against the PyTorch baseline.</p>
-<p>Average speedup: 1.94x and a bandwidth efficiency: 22.3% of H100 theoretical (3,350 GB/s)</p>
-<p>Speedup scales with sequence length: 1.58x at 128 tokens, 2.47x at 8192 tokens. For long-context inference, the custom kernel roughly halves RMSNorm latency.</p>
-<p>The agent gives you a working kernel. The Kernel Hub lets you share it so anyone can load it without compilation. Here is the full path from agent output to published kernel.</p>
-<p>The agent produces a project that already follows the kernel-builder layout:</p>
-<p>The build.toml tells kernel-builder what to build. The agent generates this for you, including the correct cuda-capabilities for your target GPU:</p>
-<p>Kernel Hub kernels must support all recent PyTorch and CUDA configurations. The kernel-builder Nix flake handles this automatically. Copy the example flake.nix into your project and run:</p>
-<p>This builds the kernel for every required PyTorch/CUDA variant and places the results in build/. For faster builds, enable the HuggingFace Nix cache:</p>
-<p>Create a model repo on the Hub and upload the built kernel:</p>
-<p>Once published, anyone can use your kernel with zero compilation:</p>
-<p>get_kernel detects the user's Python, PyTorch, and CUDA versions and downloads the matching pre-compiled binary. No builds, no flags, typically ready in seconds.</p>
-<p>The skill and the Hub are complementary. The skill handles development. The Hub handles distribution. Build a kernel with the skill, validate it with the benchmark scripts, publish it to the Hub, and it becomes a one-liner for everyone else.</p>
-<p>We built an agent skill that teaches coding agents how to write production CUDA kernels. Then we pointed Claude and Codex at two real targets: a diffusers pipeline and a transformers model. The agents produced working kernels for both, with correct PyTorch bindings and benchmarks, end to end. We benchmarked the kernels and found that the optimized kernels can provide a speedup in both isolated and end-to-end performance.</p>
-<p>Installation with pip install kernels works, but the command has no skills option:</p>
-<p>The kernels repo has kernels-builder and the kernels library.</p>
-<p>This is the reason why doing a pip install git+https://github.com/huggingface/kernels.git would not work.</p>
-<p>Question: Is the baseline in section Isolated RMSNorm benchmark (Pytorch baseline) using torch.compile() or not? Custom kernels should be ideally beating torch.compiled code.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/custom-cuda-kernels-agent-skills" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/Photoroom/prx-part3" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

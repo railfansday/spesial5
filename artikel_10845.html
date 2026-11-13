@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SmolVLM2: Bringing Video Understanding to Every Device</title>
+    <title>Deploying Speech-to-Speech on Hugging Face</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10845.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>SmolVLM2: Bringing Video Understanding to Every Device</h1>
+        <h1>Deploying Speech-to-Speech on Hugging Face</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/s2s_endpoint/thumbnail.png" alt="Deploying Speech-to-Speech on Hugging Face" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/s2s_endpoint/thumbnail.png" alt="Deploying Speech-to-Speech on Hugging Face" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Speech-to-Speech (S2S) is an exciting new project from Hugging Face that combines several advanced models to create a seamless, almost magical experience: you speak, and the system responds with a synthesized voice.</p>
+<p>The project implements a cascaded pipeline leveraging models available through the Transformers library on the Hugging Face hub. The pipeline consists of the following components:</p>
+<p>What's more, S2S has multi-language support! It currently supports English, French, Spanish, Chinese, Japanese, and Korean. You can run the pipeline in single-language mode or use the auto flag for automatic language detection. Check out the repo for more details here.</p>
+<p>Running Speech-to-Speech requires significant computational resources. Even on a high-end laptop you might encounter latency issues, particularly when using the most advanced models. While a powerful GPU can mitigate these problems, not everyone has the means (or desire!) to set up their own hardware.</p>
+<p>This is where Hugging Face's Inference Endpoints (IE) come into play. Inference Endpoints allow you to rent a virtual machine equipped with a GPU (or other hardware you might need) and pay only for the time your system is running, providing an ideal solution for deploying performance-heavy applications like Speech-to-Speech.</p>
+<p>In this blog post, we’ll guide you step by step to deploy Speech-to-Speech to a Hugging Face Inference Endpoint. This is what we'll cover:</p>
+<p>Inference Endpoints provide a scalable and efficient way to deploy machine learning models. These endpoints allow you to serve models with minimal setup, leveraging a variety of powerful hardware. Inference Endpoints are ideal for deploying applications that require high performance and reliability, without the need to manage underlying infrastructure.</p>
+<p>Here's a few key features, and be sure to check out the documentation for more:</p>
+<p>Inference Endpoints supports all of the Transformers and Sentence-Transformers tasks, but can also support custom tasks. These are the IE setup options:</p>
+<p>For simpler models, options 1 and 2 are ideal and make deploying with Inference Endpoints super straightforward. However, for a complex pipeline like S2S, you will need the flexibility of option 3: deploying our IE using a custom Docker image.</p>
+<p>This method not only provides more flexibility but also improved performance by optimizing the build process and gathering necessary data. If you’re dealing with complex model pipelines or want to optimize your application deployment, this guide will offer valuable insights.</p>
+<p>To begin creating a custom Docker image, we started by cloning Hugging Face’s default Docker image repository. This serves as a great starting point for deploying machine learning models in inference tasks.</p>
+<p>You can check out all of our changes here</p>
+<p>With the repository cloned, the next step was tailoring the image to support our Speech-to-Speech pipeline.</p>
+<p>To integrate the project smoothly, we added the speech-to-speech codebase and any required datasets as submodules. This approach offers better version control, ensuring the exact version of the code and data is always available when the Docker image is built.</p>
+<p>By including data directly within the Docker container, we avoid having to download it each time the endpoint is instantiated, which significantly reduces startup time and ensures the system is reproducible. The data is stored in a Hugging Face repository, which provides easy tracking and versioning.</p>
+<p>Next, we modified the Dockerfile to suit our needs:</p>
+<p>Once the modifications were in place, we built and pushed the custom image to Docker Hub:</p>
+<p>With the Docker image built and pushed, it’s ready to be used in the Hugging Face Inference Endpoint. By using this pre-built image, the endpoint can launch faster and run more efficiently, as all dependencies and data are pre-packaged within the image.</p>
+<p>Using a custom docker image just requires a slightly different configuration, feel free to check out the documentation. We will walk through the approach to do this in both the GUI and the API.</p>
+<p>The Model Repository doesn't actually matter since the models are specified and downloaded in the container creation, but Inference Endpoints requires a model, so feel free to pick a slim one of your choice.</p>
+<p>You need to specify HF_TOKEN because we need to download gated models in the container creation stage. This won't be necessary if you use models that aren't gated or private.</p>
+<p>The current huggingface-inference-toolkit entrypoint uses port 5000 as default, but the inference endpoint expects port 80. You should match this in the Container Port. We already set it in our dockerfile, but beware if making your own from scratch!</p>
+<p>Here we will walk through the steps for creating the endpoint with the API. Just use this code in your python environment of choice.</p>
+<p>Use a token that can write an endpoint (Write or Fine-Grained)</p>
+<p>To use the endpoint, we will need to build a small webservice. The code for it is done on s2s_handler.py in the speech_to_speech library which we use for the client and webservice_starlette.py in thespeech_to_speech_inference_toolkit which we used to build the docker image. Normally, you would only have a custom handler for an endpoint, but since we want to have a really low latency, we also built the webservice to support websocket connections instead of normal requests. This sounds intimidating at first, but the webservice is only 32 lines of code!</p>
+<p>This code will run prepare_handler on startup, which will initialize all the models and warm them up. Then, each message will be processed by inference_handler.process_streaming_data</p>
+<p>This method simply receives the audio data from the client, chunks it into small parts for the VAD, and submits it to a queue for processing. Then it checks the output processing queue (the spoken response from the model!) and returns it if there is something. All of the internal processing is handled by Hugging Face's speech_to_speech library.</p>
+<p>The webservice receives and returns audio. But there is still a big missing piece, how do we record and play back the audio? For that, we created a client that connects to the service. The easiest is to divide the analysis in the connection to the webservice and the recording/playing of audio.</p>
+<p>Initializing the webservice client requires setting a header for all messages with our Hugging Face Token. When initializing the client, we set what we want to do on common messages (open, close, error, message). This will determine what our client does when the server sends it messages.</p>
+<p>We can see that the reactions to the messages are straight forward, with the on_message being the only method with more complexity. This method understands when the server is done responding and starts 'listening' back to the user. Otherwise, it puts the data from the server in the playback queue.</p>
+<p>The audio is recorded on the audio_input_callback method, it simply submits all chunks to a queue. Then, it is sent to the server with the send_audio method. Here, if there is no audio to send, we still submit an empty array in order to receive a response from the server. The responses from the server are handled by the on_message method we saw earlier in the blog. Then, the playback of the audio responses are handled by the audio_output_callback method. Here we only need to ensure that the audio is in the range we expect (We don't want to destroy someone eardrum's because of a faulty package!) and ensure that the size of the output array is what the playback library expects.</p>
+<p>In this post, we walked through the steps of deploying the Speech-to-Speech (S2S) pipeline on Hugging Face Inference Endpoints using a custom Docker image. We built a custom container to handle the complexities of the S2S pipeline and demonstrated how to configure it for scalable, efficient deployment. Hugging Face Inference Endpoints make it easier to bring performance-heavy applications like Speech-to-Speech to life, without the hassle of managing hardware or infrastructure.</p>
+<p>If you're interested in trying it out or have any questions, feel free to explore the following resources:</p>
+<p>Have issues or questions? Open a discussion on the relevant GitHub repository, and we’ll be happy to help!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/smolvlm2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/s2s_endpoint" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

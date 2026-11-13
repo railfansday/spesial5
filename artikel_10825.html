@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Introducing Gradio&#x27;s new Dataframe!</title>
+    <title>From Files to Chunks: Improving HF Storage Efficiency</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10825.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Introducing Gradio&#x27;s new Dataframe!</h1>
+        <h1>From Files to Chunks: Improving HF Storage Efficiency</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/from-files-to-chunks/thumbnail.png" alt="From Files to Chunks: Improving HF Storage Efficiency" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/from-files-to-chunks/thumbnail.png" alt="From Files to Chunks: Improving HF Storage Efficiency" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Hugging Face stores over 30 PB of models, datasets, and spaces in Git LFS repositories. Because Git stores and versions at the file level, any change to a file requires re-uploading the full asset – expensive operations when average Parquet and CSV files on the Hub range between 200-300 MB, average Safetensor files around 1 GB, and GGUF files can exceed 8 GB. Imagine modifying just a single line of metadata in a GGUF file and waiting for the multi-gigabyte file to upload; in addition to user time and transfer costs, Git LFS also then needs to save full versions of both files, bloating storage costs.</p>
+<p>The plot below illustrates the growth of LFS storage in model, dataset, and space repositories on the Hub between March 2022 and September 2024:</p>
+<p>Hugging Face's Xet team is taking a different approach to storage by storing files as chunks. By only transferring modified chunks, we can dramatically improve both storage efficiency and iteration speed while ensuring reliable access to evolving datasets and models. Here’s how it works.</p>
+<p>The method that we use to chunk files is called content-defined chunking (CDC). Instead of treating a file as an indivisible unit, CDC breaks files down into variable-sized chunks, using the data to define boundaries. To compute the chunks, we apply a rolling hash algorithm that scans the file’s byte sequence.</p>
+<p>We’re using text for illustration, but this could be any sequence of bytes.</p>
+<p>A rolling hash algorithm computes a hash over a sliding window of data. In this case, with a window of length 4 the hash would be computed first over tran, then rans, then ansf and so on until the end of the file.</p>
+<p>Chunk boundaries are determined when a hash satisfies a predefined condition, such as:</p>
+<p>If the sequence mers produces a hash that meets this condition, the file will be split into three chunks:</p>
+<p>The content of these chunks is hashed to create mapping between chunk hash and bytes and will eventually be stored in a content-addressed store (CAS). Since all three chunks are identical, we only store one chunk in the CAS for built-in deduplication. 🪄</p>
+<p>When the contents of a file change, CDC allows for fine-grained updates that make it robust to handling insertions and deletions. Let’s modify the file by inserting super, making the new file contents:</p>
+<p>After applying the rolling hash again with the same boundary condition, the new chunks look like this:</p>
+<p>We do not need to save chunks we have seen before; they are already stored. However, supertransformers is a new chunk. Thus, the only cost of saving the updated version of this file is uploading and storing one new chunk.</p>
+<p>To validate this optimization in the real world, we benchmarked our previous implementation of CDC-backed storage at XetHub against Git LFS and found a consistent 50% improvement in storage and transfer performance across three iterative development use cases. One example was the CORD-19 dataset, a collection of COVID-19 research papers curated between 2020 and 2022 with 50 incremental updates. The comparison between Xet-backed and Git LFS-backed repositories is summarized below:</p>
+<p>By only transferring and saving modified chunks, the Xet-backed repository using CDC (alongside various techniques to improve compression and streamline network requests) showed significantly faster upload/download times and drastically cut the amount of storage required to capture all versions of the dataset. Curious to learn more? Read the full benchmark.</p>
+<p>How would CDC work on the types of files stored on Hugging Face Hub? We threw together a simple deduplication estimator to visualize the potential storage savings of applying CDC to a collection of files. Running this tool on two versions of the model.safetensors file in openai-community/gpt2 uploaded over the course of the repository's commit history returned the following result:</p>
+<p>The greenness reflects significant overlap between the two versions, and thus an opportunity to deduplicate both within each file and across the versions.</p>
+<p>In this case, using our Xet-based storage backend would save considerable upload/download time for the second version, as well as reduce the total storage footprint by 53%. With compression, we estimate an additional 10% of savings.</p>
+<p>Our initial research into repositories across the Hub shows positive results for some fine-tuned models and many model checkpoints. Fine-tuned models modify only a subset of parameters, so most of the model remains unchanged across versions, making them a great candidate for deduplication. Model checkpoints, which capture incremental training states, are also good targets as changes between checkpoints are often minimal. Both show deduplication ratios in the range of 30-85%. PyTorch model checkpoints make up around 200 TB of total storage on the Hub. At 50% deduplication, we would save up to 100 TB of storage immediately and roughly 7-8 TB monthly going forward.</p>
+<p>Beyond reducing storage costs, chunk-level deduplication also improves upload/download speeds, as only the modified chunks are transferred. This is a great benefit to teams working with multiple versions of models or datasets as it minimizes user and machine waiting time.</p>
+<p>If you want to see chunk-based dedupe in action, join the waitlist today https://huggingface.co/join/xet</p>
+<p>Is there a mechanism for handling Content-Defined Chunking Attacks? I checked restic and it has this mechanism. You can refer to the paper provided by restic: https://eprint.iacr.org/2025/532.pdf</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/gradio-dataframe-upgrade" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/from-files-to-chunks" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

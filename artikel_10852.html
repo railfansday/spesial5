@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub</title>
+    <title>Scaling AI-based Data Processing with Hugging Face + Dask</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10852.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub</h1>
+        <h1>Scaling AI-based Data Processing with Hugging Face + Dask</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/dask-scaling/thumbnail.png" alt="Scaling AI-based Data Processing with Hugging Face + Dask" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/dask-scaling/thumbnail.png" alt="Scaling AI-based Data Processing with Hugging Face + Dask" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>The Hugging Face platform has many datasets and pre-trained models that make using and training state-of-the-art machine learning models increasingly accessible. However, it can be hard to scale AI tasks because AI datasets are often large (100s GBs to TBs) and using Hugging Face transformers for model inference can sometimes be computationally expensive.</p>
+<p>Dask, a Python library for distributed computing, can handle out-of-core computing (processing data that doesn’t fit in memory) by breaking datasets into manageable chunks. This makes it easy to do things like:</p>
+<p>In this post we show an example of data processing from the FineWeb dataset, using the FineWeb-Edu classifier to identify web pages with high educational value. We’ll show:</p>
+<p>The FineWeb dataset consists of 15 trillion tokens of English web data from Common Crawl, a non-profit that hosts a public web crawl dataset updated monthly. This dataset is often used for a variety of tasks such as large language model training, classification, content filtering, and information retrieval across a variety of sectors.</p>
+<p>It can take > 1 minute to download and read in a single file with pandas on a laptop.</p>
+<p>Next, we’ll use the HF FineWeb-Edu classifier to judge the educational value of the web pages in our dataset. Web pages are ranked on a scale from 0 to 5, with 0 being not educational and 5 being highly educational. We can use pandas to do this on a smaller, 100-row subset of the data, which takes ~10 seconds on a M1 Mac with a GPU.</p>
+<p>Note that we also added a step to check the available hardware inside the compute_scores function, because it will be distributed when we scale with Dask in the next step. This makes it easy to go from testing locally on a single machine (either on a CPU or maybe you have a MacBook with an Apple silicon GPU) to distributing across multiple machines (like NVIDIA GPUs).</p>
+<p>The entire 2024 February/March crawl is 432 GB on disk, or ~715 GB in memory, split up across 250 Parquet files. Even on a machine with enough memory for the whole dataset, this would be prohibitively slow to do serially.</p>
+<p>To scale up, we can use Dask DataFrame, which helps you process large tabular data by parallelizing pandas. It closely resembles the pandas API, making it easy to go from testing on a single dataset to scaling out to the full dataset. Dask works well with Parquet, the default format on Hugging Face datasets, to enable rich data types, efficient columnar filtering, and compression.</p>
+<p>We’ll apply the compute_scores function for text classification in parallel on our Dask DataFrame using map_partitions, which applies our function in parallel on each pandas DataFrame in the larger Dask DataFrame. The meta argument is specific to Dask, and indicates the data structure (column names and data types) of the output.</p>
+<p>Note that we’ve picked a batch_size that works well for this example, but you’ll likely want to customize this depending on the hardware, data, and model you’re using in your own workflows (see the HF docs on pipeline batching).</p>
+<p>Now that we’ve identified the rows of the dataset we’re interested in, we can save the result for other downstream analyses. Dask DataFrame automatically supports distributed writing to Parquet. Hugging Face uses commits to track dataset changes and allows writing a Dask DataFrame in parallel.</p>
+<p>Since this creates one commit per file, it is recommended to squash the history after the upload:</p>
+<p>Alternatively you can use this custom function which uploads multiple files per commit.</p>
+<p>There are a number of ways to deploy Dask on a variety of hardware. Here, we’ll use Coiled to deploy Dask on the cloud so we can spin up VMs as needed, and then clean them up when we’re done.</p>
+<p>The workflow took ~5 hours to complete and we had good GPU hardware utilization.</p>
+<p>Putting it all together, here is the complete workflow:</p>
+<p>Hugging Face + Dask is a powerful combination. In this example, we scaled up our classification task from 100 rows to 211 million rows by using Dask + Coiled to run the workflow in parallel across multiple GPUs on the cloud.</p>
+<p>This same type of workflow can be used for other use cases like:</p>
+<p>Reliability is everything, especially when you spend real time and money on gaming. I’ve been impressed by how consistent this venue is: https://btvs1.com/ For anyone who wants a stable, well-organized gaming environment across the territory of India, it delivers exactly what most players expect and more, without unnecessary complications.</p>
+<p>Interesante explicación sobre cómo Dask permite escalar cargas de trabajo sin complicar demasiado la infraestructura. Para quienes también analizan datos en plataformas digitales, https://starzbetmex.com/ es un ejemplo de servicio cuya experiencia depende de sistemas rápidos y estables.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/from-chunks-to-blocks" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/dask-scaling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

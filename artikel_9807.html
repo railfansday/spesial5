@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together</title>
+    <title>Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9807.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,56 +15,255 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together</h1>
+        <h1>Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6ab2f79bd8000a811c648a32/xZT8tg4be3bgZIx2EQS_m.png" alt="Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/anydecisionmodel/banner.png" alt="Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6ab2f79bd8000a811c648a32/xZT8tg4be3bgZIx2EQS_m.png" alt="Your Experts Have Partners. There's HOPE for Keeping Them Together" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/anydecisionmodel/banner.png" alt="Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Mixture-of-Experts (MoE) models have enabled state-of-the-art LLMs to be scaled to hundreds of billions of parameters, but they come with a fundamental and costly caveat: every expert MLP must occupy memory at inference time, even though the vast majority are idle for any given token. For example, Qwen3.5-122B has 256 experts in each of its 48 MoE layers, and 95% of its ~250 GB parameter memory footprint is taken up entirely by these expert MLPs alone. However, for any given token, only 8 experts in each layer are actually used.</p>
-<p>Expert pruning is one of the most direct fixes to this memory bottleneck. That is, permanently delete the least useful experts. Pruning avoids the latency issues which make dynamic loading/off-loading of experts impractical; it does not require any training; and it composes with quantization. Given these attractive benefits and the simplicity of the idea, it's easy to see why expert pruning has become a go-to approach for shrinking MoEs. The difficulty lies in deciding which experts are safest to remove.</p>
-<p>Existing pruning methods score each expert independently, assigning every expert a scalar importance score (based on a calibration dataset), and cutting out the least important experts (in each layer independently). These are first-order methods, because they assume each expert's contribution is independent of all others. In reality, experts form cooperative groups. We observe consistent clusters of co-activated experts in our own experiments, and independent work has shown that expert cooperation is a stable property of MoEs and is important for model performance. Ignoring these interactions leads to suboptimal pruning, especially at aggressive rates.</p>
-<p>Our newest paper derives HOPE (Higher-Order Pruning of Experts), a second-order method that accounts for pairwise expert interactions. At 50% pruning, HOPE achieves the best average rank of any method, with gains of up to +6.1% on agentic coding tasks over the next-best pruning method.</p>
-<p>In this post, we explain how HOPE works, show where it outperforms existing methods, and walk through how to use it for your own models. For readers unfamiliar with MoE architectures, see Mixture of Experts (MoEs) in Transformers.</p>
-<p>In a standard MoE, each layer has EEE experts, and each input token xxx is routed independently to KKK such experts ( K=8 K = 8 K=8 is a typical choice). Routing is performed by a single layer which produces softmax-normalized gate weights gk(x)g_{k}(x)gk​(x) for each expert kkk, wherein the KKK experts with the highest gate weights are selected to form the active set of experts, T(x)⊂{1,..,E}T(x) \subset\{1,..,E\}T(x)⊂{1,..,E}. The output of the layer is then ∑k∈T(x)gk(x)fk(x)\sum\limits_{k\in T(x)}g_{k}(x)f_{k}(x)k∈T(x)∑​gk​(x)fk​(x), where fk(x)f_{k}(x)fk​(x) is the output of expert kkk for token xxx.</p>
-<p>Left: typical MoE layer, where each token is routed to the top-K experts. Right: first-order methods rank and delete experts based on a scalar importance score, but the best pruning decisions will also consider the strength of interactions between experts.</p>
-<p>Importantly, experts in the selected set T(x)T(x)T(x) are not independent. Experts form stable cooperative groups that get consistently co-activated together. This has been observed before in the literature, as well: expert co-selection patterns emerge early in training and stabilize throughout.</p>
-<p>This means that when we prune experts from an MoE layer, pruning decisions need to consider the higher-order effects between these experts. Removing expert A might seem fine on its own, but if expert B—which frequently cooperates with and relies on A—is highly important, then removing A would dismantle a cooperative group just through a single deletion. First-order methods miss this entirely, because they score A and B separately.</p>
-<p>This effect compounds at high pruning rates. When we remove up to 50% of experts, we risk breaking many cooperative links. This is where second-order pruning is most advantageous.</p>
-<p>(See Appendix A in our corresponding paper for the full derivation of the HOPE objective)</p>
-<p>When we delete a set of PPP experts from some MoE layer, the selected set of experts T(x)T(x)T(x) (for any token xxx) can change. The pruned experts that would have been selected are replaced by the experts with the next-highest gate weights. The resulting change in layer output is the pruning error. Our goal is to find the prune-set PPP (of some predefined pruning budget ∣P∣\vert P\vert∣P∣) that minimizes the resulting pruning error (over tokens xxx from our calibration set).</p>
-<p>Unfortunately, minimizing the pruning error over PPP directly is intractable. The pruning error depends on the identities of the replacement experts, which in turn depend on the prune-set PPP itself. HOPE sidesteps this by defining a tractable surrogate ZZZ, which strictly upper-bounds the dominant component of the pruning error:</p>
-<p>Z=[∑j∈P∩T(x)gj(x)∥fj(x)∥2]2≥true errorZ = \bigl[\sum\limits_{j \in P\cap T(x)} g_{j}(x)\Vert f_j(x)\Vert_{2}\bigr]^{2} \geq \text{true error}Z=[j∈P∩T(x)∑​gj​(x)∥fj​(x)∥2​]2≥true error</p>
-<p>Because ZZZ is a squared sum, expanding it naturally produces cross-terms gi(x)gj(x)∥fi(x)∥2∥fj(x)∥2g_{i}(x)g_{j}(x)\Vert f_{i}(x)\Vert_{2}\Vert f_{j}(x)\Vert_{2}gi​(x)gj​(x)∥fi​(x)∥2​∥fj​(x)∥2​ between pairs of experts. These are the interaction terms that first-order methods discard.</p>
-<p>To find the optimal prune-set, HOPE minimizes E[Z]\mathbb{E}[Z]E[Z] over the calibration set, which can be reformulated as the following quadratic program:</p>
-<p>P∗=arg min⁡p  p⊤Fps.t.p∈{0,1}E,∑k=1Epk=∣P∣P^{*} = \argmin_{p}\; p^{\top}Fp \quad \text{s.t.} \quad p \in \{0,1\}^{E}, \sum\limits_{k=1}^{E}p_{k} = \vert P\vertP∗=pargmin​p⊤Fps.t.p∈{0,1}E,k=1∑E​pk​=∣P∣</p>
-<p>where F∈RE×EF\in\mathbb{R}^{E\times E}F∈RE×E is defined as:</p>
-<p>Fi,j=1∣Xi,j∣∑x∈Xi,jgi(x)gj(x)∥fi(x)∥2∥fj(x)∥2whereXi,j={x:i,j∈T(x)}F_{i,j} = \frac{1}{\vert \mathcal{X}_{i,j}\vert} \sum\limits_{x\in\mathcal{X}_{i,j}} g_{i}(x)g_{j}(x)\Vert f_{i}(x)\Vert_{2}\Vert f_{j}(x)\Vert_{2}\quad\text{where}\quad \mathcal{X}_{i,j} = \{x: i,j \in T(x)\}Fi,j​=∣Xi,j​∣1​x∈Xi,j​∑​gi​(x)gj​(x)∥fi​(x)∥2​∥fj​(x)∥2​whereXi,j​={x:i,j∈T(x)}</p>
-<p>This F-matrix is collected on the calibration dataset, and the optimal prune-set is obtained by solving the resulting quadratic program (QP) with a continuous relaxation (then rounding to binary solutions). Each entry Fi,jF_{i,j}Fi,j​ captures the average gate-weighted output product of experts iii and jjj, across tokens where both are co-activated. Whereas the diagonal Fk,kF_{k,k}Fk,k​ measures individual expert importance, the off-diagonal entries ( Fi,jF_{i,j}Fi,j​ for i≠ji\neq ji=j) measure pairwise cooperative contribution.</p>
-<p>What does FFF look like in practice? It shows the structure of expert cooperation, which depends on layer:</p>
-<p>Visualization of the interaction matrix F for GLM-4.5-Air (128 experts per layer, 106B parameters total) at three representative layers (early, middle, late). Experts have been clustered to reveal block structure. Bright blocks along the diagonal indicate groups of experts with strong pairwise interaction scores.</p>
-<p>In terms of practical cost, HOPE requires the same calibration pass as any other expert-pruning method (one forward pass over calibration data). The only addition is solving the quadratic program, which is non-convex, but can be solved efficiently via a standard QP solver (1–2 seconds each layer). The total additional overhead is negligible compared to first-order methods, as the time for calibration dominates.</p>
-<p>Notably, HOPE has a strong connection to Router-weighted Expert Activation Pruning (REAP), a state-of-the-art first-order expert-pruning method. HOPE's F-matrix encodes individual expert importance scores on the diagonal, and this diagonal effectively recovers the scores used by REAP to independently rank experts for pruning (differing only by the variance of expert contributions). The diagonal of FFF recovers REAP's expert rankings almost perfectly (Spearman ρ=0.988\rho = 0.988ρ=0.988). Thus, any improvement HOPE achieves over REAP is attributable to the second-order interaction terms in the off-diagonal entries of the FFF-matrix.</p>
-<p>We evaluated HOPE as an expert pruning method using 3 models (Qwen3.5-122B, Qwen3.5-35B, and GLM-4.5-Air), with 2 calibration datasets (Evol-CodeAlpaca and SWE-Bench Verified trajectories). We used the Tulu3 suite and SWE-Bench Pro (agentic coding) to test the resulting pruned models, comparing HOPE to 4 first-order baselines (REAP, MAN, EAN, and Frequency) across pruning rates spanning from 10% to 50%.</p>
-<p>HOPE achieves the best overall rank across conditions and dominates at aggressive pruning rates. Left: average rank (lower = better) across all models, calibration sets, and benchmarks. Right: SWE-Bench Pro performance on Qwen3.5-35B.</p>
-<p>Across all conditions, HOPE achieved the best average rank (2.07 out of 5 methods), with the highest rate of top-1 finishes (39% of conditions) and top-2 finishes (67%). In a head-to-head comparison, HOPE beats every other baseline in the majority of conditions.</p>
-<p>As expected, HOPE's advantage grows at higher pruning rates. As more experts are removed, more cooperative links are broken, and the off-diagonal terms of FFF become more important. At 50% pruning, HOPE's average rank improves to 1.58 (vs. 2.42 for the next-best method, REAP). This is also the most deployment-relevant setting, where memory savings are large enough to accommodate longer contexts, deeper reasoning, and more tool calls.</p>
-<p>HOPE's advantage is most pronounced on SWE-Bench Pro, an agentic coding benchmark where models must solve real GitHub issues autonomously. These problems involve compositionally diverse tasks (e.g. coding, tool calls, reasoning, etc.) over many turns and likely exercise diverse expert combinations—exactly the regime where preserving cooperative structure matters most. On Qwen3.5-35B-A3B at 50% pruning, HOPE achieved 42.3 on SWE-Bench Pro, matching the unpruned model's 41.8 (while REAP dropped to 36.2, a 13% regression).</p>
-<p>Notably, pruned models can occasionally match or exceed the unpruned baseline, likely because the removal of low-relevance experts reduces noise on the target tasks. This effect is not unique to HOPE and has been observed across pruning methods. Furthermore, our experiments showed that code-focused calibration with any pruning method (including HOPE) did not severely degrade non-coding benchmarks, and HOPE performed well across the Tulu3 suite regardless of calibration set.</p>
-<p>Average strength of cooperation (measured by F-matrix value) with retained experts, split by experts on which HOPE and REAP disagree.</p>
-<p>HOPE's advantage stems from optimizing over the entire interaction matrix FFF. To understand how this affects pruning decisions in practice, we examine the experts where HOPE and REAP disagree. For each disputed expert, we compute its cooperative score (i.e. its average F-value with other retained experts). Experts retained only by HOPE consistently have higher cooperative scores than experts retained only by REAP. In other words, as part of the QP optimization, HOPE sacrifices some individually high-scoring experts in favor of preserving cooperative clusters. The gains in benchmark performance (shown above) validate that this trade-off is advantageous.</p>
-<p>We created a basic package to run HOPE. It has three steps: 1) calibrate; 2) solve; 3) prune. Our package has been tested on Qwen3, Qwen3-Next, Qwen3.5, and GLM-4.5.</p>
-<p>The calibration step runs a single forward pass over calibration data, whether it be agentic rollouts or single-turn traces. This uses HuggingFace transformers to hook into the forward pass of each individual MoE layer. For each token, this records which experts are selected, their gate weights, output norms, and pairwise co-activation statistics. The output of this step is the F-matrix, stored in an HDF5 file.</p>
-<p>This command materializes the F-matrix and solves the binary quadratic program via a continuous relaxation. This takes a few seconds per layer, and the output is a JSON file which contains the prune-set. This is technically the final output of the HOPE algorithm.</p>
-<p>To complete the pipeline, we run this command to actually create the smaller model checkpoint from the prune-set. The pruned model is a standard HuggingFace checkpoint which is smaller on disk and in memory (no changes to vLLM or SGLang model definitions needed).</p>
-<p>We also released a more compact Python API:</p>
-<p>HOPE's advantage is most pronounced at higher pruning rates (40–50%). At lower pruning rates (10–20%), first-order methods like REAP and MAN are sometimes competitive, and HOPE's advantage shrinks. Additionally, as with most expert-pruning algorithms, HOPE prunes each layer independently and does not account for cross-layer interactions. In our paper, we presented a theoretical framework for cross-layer HOPE, but the results remain preliminary. Finally, HOPE captures pairwise interactions, but even higher-order interactions (triplets and beyond) could provide additional signal, although they are combinatorially difficult to estimate.</p>
-<p>For more information, see our corresponding paper and codebase.</p>
-<p>To see how HOPE can be applied to next-generation hybrid architectures, see our corresponding repository.</p>
+                <p>Language models can do a lot.
+They write, summarize, translate, and call tools.
+But they're only a small part of what machine learning can do.</p>
+<p>Say a customer calls your support line.
+First, you want to know what they said (speech recognition).
+Then, you want to decide where to send them (decision).
+You could hand both to a language model,
+but there are models built for each that are
+better, faster, and less expensive.</p>
+<p>In our AnyLanguageModel 1.0 recap,
+we looked at a year of local and hosted models in Swift.
+With AnyLanguageModel and swift-huggingface now on their 1.x releases,
+we're extending the same approach to speech and decisions:
+familiar Swift APIs with a choice of model.</p>
+<p>Both packages can download open models from the Hugging Face Hub
+and run them on device.</p>
+<p>Computers have been transcribing speech for decades,
+and in the past few years, they've gotten very good at it.
+Apple platforms already have an API for it.
+macOS 26 and iOS 26 introduced SpeechAnalyzer,
+Apple's new speech-to-text API.
+You add modules such as SpeechTranscriber and SpeechDetector to an analyzer,
+give it a file or a stream of audio buffers,
+and read results from async sequences as they arrive.
+AssetInventory installs the models,
+so your app decides when downloads happen.</p>
+<p>It's a well-designed API,
+but the only engine behind it is Apple's.
+AnySpeechRecognizer keeps the API and lets you choose the engine:</p>
+<p>The package mirrors SpeechAnalyzer, SpeechTranscriber, DictationTranscriber,
+SpeechDetector, and AssetInventory,
+with Apple's Speech framework as the default engine.
+If your code uses that shared API, changing the import is enough.
+To use Parakeet instead,
+change only how you create the transcriber:</p>
+<p>The steps for installing assets, running the analyzer,
+and reading results stay the same.
+The README
+has a complete example
+and lists the differences
+from Apple's framework.</p>
+<p>Parakeet v3 is NVIDIA's Parakeet TDT 0.6B v3.
+It's a polyglot:
+it recognizes 25 European languages and works out which one it's hearing,
+so you don't pass a locale.</p>
+<p>Parakeet Ultra is Moondream's post-trained take on v3.
+It was more accurate in most of our measurements.</p>
+<p>Parakeet Unified is NVIDIA's
+English-only Parakeet.</p>
+<p>All three Parakeets run on the package's own Core ML runtime,
+which supports file and live input, volatile results, word timing,
+and word confidence.</p>
+<p>Qwen3-ASR is Alibaba's speech model,
+in 0.6B
+and 1.7B sizes.
+It recognizes 30 languages and 22 Chinese dialects,
+including Mandarin, Cantonese, Japanese, and Korean, which Parakeet doesn't cover.
+It detects the language automatically, or you can set one:</p>
+<p>Qwen3-ASR gives one final result for each segment of up to 40 seconds,
+without volatile results, word timing, or confidence.
+It runs on the GPU and is slower than Parakeet,
+so it's better suited to transcribing files than live input.</p>
+<p>To add another engine, implement SpeechRecognitionModel for its configuration
+and SpeechRecognitionExecutor for one module's session.
+The README includes a small provider
+that reports placeholder text to help you get started.</p>
+<p>To run these models in apps,
+we converted them to Core ML and published them on the Hub:</p>
+<p>Each repository records its source checkpoint
+and a checksum for every file,
+and the package pins it to a fixed revision.
+The Parakeet repositories add an 8-second encoder for live input,
+which cuts live analysis time by about a third
+at the cost of a somewhat higher word error rate.
+The repository also has the conversion workflows,
+most of which follow FluidInference's mobius scripts,
+and checks each conversion against the original model.</p>
+<p>Downloads happen only when your app asks for them:
+about 600 MB for each Parakeet, plus about 590 MB for the live encoder,
+0.9 to 2.4 GB for Qwen3-ASR, and about 250 MB for Sortformer.
+Files go in the standard Hugging Face cache,
+so a Mac app outside the sandbox shares them with Python and other Hugging Face tools.</p>
+<p>When you transcribe a conversation,
+you often want to know who said what.
+That's speaker diarization,
+and Apple's Speech framework doesn't have a module for it,
+so AnySpeechRecognizer adds one.
+SpeakerDiarizer runs NVIDIA's
+Streaming Sortformer
+on Core ML alongside an Apple or Parakeet transcriber,
+on the same timeline:</p>
+<p>The diarizer tracks up to four speakers,
+even when they talk over each other.
+A SpeakerTimeline collects its results
+and attributes each timed word to a speaker,
+so you can print a transcript by speaker turn.
+Like image support in AnyLanguageModel,
+this goes beyond what Apple's API offers today.</p>
+<p>The diarizer uses Sortformer v2 by default.
+You can also choose v2.1,
+which NVIDIA trained with more meeting data
+and which was more accurate on meetings in our measurements, too.</p>
+<p>We measured the package with its hear command-line tool
+on an M4 Max Mac Studio with macOS 27.0.1.
+Here are the word error rates on LibriSpeech files of 3 to 8 minutes:</p>
+<p>Parakeet transcribes an hour of audio
+in about 20 to 40 seconds from a file,
+or about 1.5 to 2.5 minutes live,
+with about 100 MB of memory once Core ML has compiled the model.
+Qwen3-ASR is much slower and needs a few gigabytes of memory.
+Meetings are hard for everyone:
+on AMI recordings, where people talk over each other,
+every engine we tested had a word error rate above 23%.</p>
+<p>These numbers come from one machine and a few datasets,
+so measure with your own hardware and audio.
+hear evaluate works on your own files,
+and the repository's natural-speech-eval.py tool
+reproduces these measurements.
+So far, we've tested only on macOS 27, not on an iPhone.</p>
+<p>Next, we'd like to add more engines, including Core AI on macOS 27 and iOS 27.</p>
+<p>AnyDecisionModel is a different story.
+There's no Apple framework to map onto,
+and decision models aren't new, exactly.</p>
+<p>It's only a decision model if it comes from the Décision region of France;
+otherwise, it's sparkling zero-shot classification.</p>
+<p>What's new is the name, a lot of hype,
+and a crop of models trained to make decisions.
+We think that's where things are going,
+so we wanted a Swift API that's ready for them.</p>
+<p>Apps often ask language models to make decisions.
+Is this message urgent?
+Which team should handle this ticket?
+How frustrated is this customer?
+The usual approach is to prompt a language model
+and parse the text that it generates.
+That gives you one answer,
+but doesn't show the probabilities it assigned to the alternatives.</p>
+<p>Here's what a decision looks like in Swift:</p>
+<p>urgent is a Double.
+team is a Choice<Department> containing the selected case,
+a probability for each option, and a confidence value.
+anger is a Score containing the expected level,
+a probability for each level, and a confidence value.
+Because Department conforms to Choosable,
+team.value is a Department that you can use in an exhaustive switch.</p>
+<p>If you've used Foundation Models or AnyLanguageModel,
+the model-and-session pattern will look familiar.
+A DecisionSession holds a single state, which can be text or JSON,
+and every question is about that state.
+Questions are independent:
+an answer never becomes input to a later question.
+To ask several questions at once,
+pass them to decide(_:) as a batch.</p>
+<p>For each question, the MLX backend builds a prompt
+with a one-token label for each allowed answer,
+then reads the probability of each label from one forward pass.</p>
+<p>Emoji Magnet is a macOS app with a text field above a pile of 343 emoji.
+Type a phrase, such as "things you wear",
+and the emoji that match rise out of the pile.
+Refine it to "things you wear in winter",
+and the emoji that no longer match fall back.</p>
+<p>The app has no built-in keyword rules;
+the model decides everything at inference time.
+When you pause typing, it asks the model one yes-or-no question for each emoji,
+for example:</p>
+<p>The session's state holds the phrase.
+The demo above uses the hosted Jev backend,
+which answers all 343 questions in one request,
+so the emoji settle in about half a second for each phrase.
+Without a TYPESAFE_AI_API_KEY, the app runs Qwen3 4B on your Mac with the MLX backend.
+That backend uses prefix caching to evaluate the state once,
+then answers 16 questions per forward pass.
+On an M4 Max, a group of 16 takes about 0.45 seconds after the model loads.
+A full pass over all 343 emoji takes about 10 seconds,
+and each group's results appear as soon as they arrive.</p>
+<p>Emoji Magnet is in the AnyDecisionModel-Examples repository.</p>
+<p>Reading next-token probabilities works with general-purpose language models,
+but those models weren't trained to make decisions.
+Cloudflare's Clef models
+are an example of a newer approach:
+a model with a trained decision head
+that turns a state and a schema of typed questions into decisions,
+returning probabilities for all allowed options across the questions
+in one forward pass.
+Clef-Flash is the 9B variant.</p>
+<p>AnyDecisionModel runs Clef-Flash on a Mac with MLX:</p>
+<p>You use the same sessions and questions,
+but MLXHeadDecisionModel reads each decision from Clef's trained decision head
+instead of from next-token probabilities.
+The 4-bit model is a 6.2 GB download,
+and its model card recommends a Mac with at least 16 GB of memory.
+Clef can read images and video,
+but this backend accepts only text and JSON states.</p>
+<p>Raw probabilities from language models are often overconfident.
+The local backends accept a Calibration,
+which applies a temperature to every answer and a bias to yes-or-no answers.
+Use separate datasets to fit the calibration and evaluate the results.</p>
+<p>Language models can also favor an option because of its position in a list.
+On the MLX, Core AI, and llama.cpp next-token backends,
+turn on rotationDebiasing to ask a choice question
+once for each rotation of the options and average the probabilities.
+That costs one prompt evaluation per rotation.</p>
+<p>Each local choice and score also includes a confidence value
+based on the entropy of its probabilities.
+It measures how concentrated the probabilities are,
+not whether the answer is right,
+so check the error rate on your own data before you pick a threshold.
+The next-token backends' diagnostics report how much probability
+the model assigned to the allowed answers.
+A low value means it assigned most of the probability elsewhere.</p>
+<p>The next-token backends label answers "yes" and "no", A to Z, or 0 to 9,
+so a choice can have at most 26 options, and a score at most 10 levels.
+Decision heads have no such limit.</p>
+<p>Like AnyLanguageModel, the package uses Swift package traits.
+Without traits, it has no third-party dependencies.
+You get the core types and the Jev and Ollama backends,
+which also build on Linux.
+Enable the MLX, CoreAI, or Llama trait for the local backends.</p>
+<p>Both packages require Swift 6.2 or later and macOS 26 or iOS 26 or later.
+The Parakeet and Sortformer runtimes and the MLX backend require Apple silicon.
+AnyDecisionModel's MLX build tasks use Xcode's Swift 6.4 or later
+and the Metal toolchain; Core AI requires Xcode 27 and an OS 27 runtime.</p>
+<p>For now, AnyDecisionModel's CoreAI trait can't be combined with AnySpeechRecognizer,
+because coreai-kit 0.7.3 requires swift-huggingface below 1.0
+and AnySpeechRecognizer requires 1.x.</p>
+<p>Each README has more examples and details about requirements and backends.
+AnySpeechRecognizer also includes a command-line tool, hear,
+that transcribes local files, labels their speakers, and evaluates the results.
+Every hear command requires --backend apple, --backend parakeet, or --backend qwen;
+run hear prepare with the same backend and model options before analysis
+to install the needed assets.</p>
+<p>Try them in your apps and tell us what works and what doesn't.
+Issues and pull requests are welcome on both repositories.</p>
+<p>Thanks to NVIDIA for Parakeet, Sortformer, and NeMo, to Moondream for Parakeet Ultra,
+to FluidInference, whose FluidAudio and mobius projects
+documented the conventions that the Parakeet runtime and the Core ML conversions follow,
+to Cloudflare for Clef,
+and to everyone who contributed to AnyLanguageModel,
+whose patterns both packages borrow.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/amazon/higher-order-pruning-experts" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/anydecisionmodel" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

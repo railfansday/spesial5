@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>🐯 Liger GRPO meets TRL</title>
+    <title>Mini-R1: Reproduce Deepseek R1 „aha moment“ a RL tutorial</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10778.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>🐯 Liger GRPO meets TRL</h1>
+        <h1>Mini-R1: Reproduce Deepseek R1 „aha moment“ a RL tutorial</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/mini-r1-contdown-game.png" alt="Mini-R1: Reproduce Deepseek R1 „aha moment“ a RL tutorial" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/mini-r1-contdown-game.png" alt="Mini-R1: Reproduce Deepseek R1 „aha moment“ a RL tutorial" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>This post was written by Philipp Schmid and orginially posted on philschmid.de code can found here.</p>
+<p>The release of Deepseek R1 shocked the industry. Why? Well, DeepSeek-R1 is an open model that rivals OpenAI's o1 in complex reasoning tasks, introduced using Group Relative Policy Optimization (GRPO) and RL-focused multi-stage training approach. They not only released the model, but also a research paper on how they did it.</p>
+<p>In the paper they described an "aha moment" when using pure RL to train the model. During this phase, DeepSeek-R1-Zero (the first test of DeepSeek-R1) learns to allocate more thinking time to a problem by reevaluating its initial approach without any human feedback or data describing how to do it.  They describe this as an "aha moment" as:</p>
+<p>This behavior is not only a testament to the model’s growing reasoning abilities but also a captivating example of how reinforcement learning can lead to unexpected and sophisticated outcomes.</p>
+<p>In this blog post we want to recreate the small "aha moment" of DeepSeek-R1 using Group Relative Policy Optimization (GRPO) and the Countdown Game. We will train an open model using reinforcement learning trying to teach it self-verification and search abilities all on its own to solve the Countdown Game. 
+The Countdown game is a numbers puzzle where players use a set of randomly drawn numbers and basic arithmetic operations (+, -, ×, ÷) to reach or get as close as possible to a target number.</p>
+<p>The blog post focuses on training distributed training using Deepspeed and vLLM. It was run on a 4x NVIDIA H100 GPUs.</p>
+<p>Note: This blog is inspired by Jiayi Pan who initially explored the idea and proofed it with a small model.</p>
+<p>But Before we start, let's take a look at the Group Relative Policy Optimization (GRPO) and understand how it works.</p>
+<p>Group Relative Policy Optimization (GRPO)</p>
+<p>Group Relative Policy Optimization (GRPO) is a reinforcement learning algorithm to improve the reasoning capabilities of LLMs. It was introduced in the DeepSeekMath paper in the context of mathematical reasoning. GRPO modifies the traditional Proximal Policy Optimization (PPO) by eliminating the need for a value function model. Instead, it estimates baselines from group scores, reducing memory usage and computational overhead. GRPO, now also used by the Qwen team, can be used with rule/binary-based Rewards as well as General Reward Models to improve models on helpfulness.</p>
+<p>Our first step is to install Hugging Face Libraries and Pytorch, vllm, and trl, transformers and datasets. If you haven't heard of trl yet, don't worry. It is a new library on top of transformers and datasets, which makes it easier to fine-tune, rlhf, align open LLMs.</p>
+<p>Note: you may need to restart the kernel to use updated packages.</p>
+<p>We will use the Hugging Face Hub as a remote model versioning service. This means we will automatically push our model, logs and information to the Hub during training. You must register on the Hugging Face for this. After you have an account, we will use the login util from the huggingface_hub package to log into our account and store our token (access key) on the disk.</p>
+<p>We are going to use the Jiayi-Pan/Countdown-Tasks-3to4 dataset, which contains samples with 3 to 4 numbers and solutions. As Model we are going to use Qwen/Qwen2.5-3B-Instruct which is a 3B parameter instruction tuned model. This makes it easier to showcase the "aha moment" as it already can follow instructions. Jiayi-Pan explored that the model needs to have a certain quality to be able to learn the reasoning process, starting with > 1.5B parameters.</p>
+<p>TRL supports Group Relative Policy Optimization (GRPO) through a dedicated GRPOTrainer for aligning LLMs from preference data, as described in DeepSeekMath: Pushing the Limits of Mathematical Reasoning in Open Language Models. The GRPOTrainer is a subclass of the Trainer from the transformers library and supports all the same features, including logging, checkpointing, distributed training, and parameter efficient fine-tuning (PEFT).</p>
+<p>The GRPOTrainer supports generic Outcome Reward Models (ORM) and custom reward functions, that can be used to implement Rule-Based Reward Models. In the Deepseek R1 paper they implemented Rule-Based Reward Models to verify the correctness of the generated solutions. In our exmaple we are going to do a similar approach, where we will create 2 reward functions that:</p>
+<p>Note: Correct <answer> in our example includes the equation, for example <answer> 55 + 36 - 7 - 19 </answer></p>
+<p>Hugging Face TRL added support for distributed training with Deepspeed and using vLLM for faster generation. I preprared a run_r1_grpo.py script and a receipes/grpo-qwen-2.5-3b-deepseek-r1-countdown.yaml config file to run the training.</p>
+<p>This configuration is tested and validated on a Node with 4x H100 80GBs, where a single step takes around 45-60s, as we can leverage vLLM for generation and DeepSpeed for distributed training. Therefore we need to make sure we correctly set the num_processes to the number of GPUs you have - 1 as the last one will be used with vLLM for Generation. If you are using more GPUS you need to change the vllm_device in the config file to last index GPU, e.g. if you have 8 GPUs you need to set vllm_device=7 and your num_processes to 7.</p>
+<p>With the optimized distributed training a single step with 8 generations per sample on 4x H100 80GBs takes around 45-60s. The full training for 450 steps takes around 6 hours.</p>
+<p>The script saves random completions to the completion_samples folder, which you can use to inspect the model's progress. It includes completion_samples.txt and success_completion_samples.txt. The completion_samples.txt includes all completions, while the success_completion_samples.txt which correctly solves the equation. Below you can find the interesating training obeserations on how the performance changes over time, as well as the Tensornoard logs and successfull reasoning samples.</p>
+<p>The model with checkpoints for every 25th step can be found at philschmid/qwen-2.5-3b-r1-countdown.</p>
+<p>I started the experiment using the hyperparameters from the DeepSeekMath paper with a learning rate of 1e-6 and a beta (KL coefficient) of 0.04, which led to unstable training runs after around 150 steps. I ran some small ablations and decreased both the learning rate to 5e-7 and the beta to 0.001, based on a test from OpenRLHF. I coulnd't test how increasing the num_generations from 8 to 64 would affect the training. 64 is the generation value, which was used in the DeepSeekMath paper. All other parameters can be found in the grpo-qwen-2.5-3b-deepseek-r1-countdown.yaml config file.</p>
+<p>I have 3 potential assumptions why the model shifts from "word reasoning" to "programmatic execution":</p>
+<p>The release of DeepSeek R1 and its research paper might be a breakpoint for open-science and open-source development. Just a week after the DeepSeek release, we've been able to reproduce a simple version of R1 learned "reasoning" using GRPO and the Countdown Game. While our implementation focuses on a specific task rather than general reasoning and convergence into a very specific "reasoning" format, it shows that the method is working.</p>
+<p>Looking in to 2025, it's clear that we are on the cusp of even more significant progress. RL will become more accessible and user-friendly, more researchers and developers will explore its potential, but also require amount of more compute as before and compared to supervised fine-tuning.</p>
+<p>I am excited for 2025. If you have any questions or ideas, feel free to reach out to me.</p>
+<p>If this sounds interesting, we’d love your help! Whether it’s contributing code, joining discussions on Hugging Face.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/liger-grpo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-r1/mini-r1-contdown-game" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

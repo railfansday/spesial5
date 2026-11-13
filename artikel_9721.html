@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Skysoon</title>
+    <title>Postgres not using your index? It&#x27;s counting pages, not rows</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9721.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,72 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Skysoon</h1>
+        <h1>Postgres not using your index? It&#x27;s counting pages, not rows</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/RxIFGDejXQUaj54NhArKLyi3a272-6976cadf.png" alt="Postgres not using your index? It&#x27;s counting pages, not rows" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/RxIFGDejXQUaj54NhArKLyi3a272-6976cadf.png" alt="Postgres not using your index? It's counting pages, not rows" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Beautiful weather timelines and countdowns to what's next.
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/skysoon?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1313327?app_id=339">Link</a>
-          </p></p>
+                <p>Full-stack Developer TypeScript, Golang, Rust | WEB3
+fomo.moe</p>
+<p>Full-stack Developer TypeScript, Golang, Rust | WEB3
+fomo.moe</p>
+<p>Full-stack Developer TypeScript, Golang, Rust | WEB3
+fomo.moe</p>
+<p>Slow Postgres, part 1 of 8. The SQL and raw numbers for every test are on GitHub.</p>
+<p>You add an index on status, run EXPLAIN, and Postgres reads the whole table anyway. ANALYZE doesn't change the plan. Someone suggests SET enable_seqscan = off, the plan finally shows your index, and the query gets slower.</p>
+<p>Usually the planner is right. It prices a plan by the 8 KB pages it has to read and by whether it reads them in order or jumps around between them, and once you count pages the same way, you can answer most "why is it ignoring my index" tickets yourself.</p>
+<p>This series started as my notes from an open lesson on slow Postgres queries by balun.courses. The tests and numbers are my own.</p>
+<p>One note before the numbers: the AlphaVPS link at the end is a referral link, so I may get a commission at no extra cost to you, and the netcup vouchers come from my own account.</p>
+<p>A regular B-tree index keeps only keys, the values it is sorted by, and next to each key a TID: the row's address in the heap, which is the table's main storage.</p>
+<p>A TID is a page number plus a slot on that page. You can see it as the hidden ctid column:</p>
+<p>Row 1000 is slot 48 on page 7. An index lookup for 'chargeback' returns a list of addresses like these, and Postgres then visits each of those heap pages to fetch the row and check that your transaction can see it.</p>
+<p>The second step is the one people forget. To fetch one row, Postgres has to read the whole 8 KB page it sits on.</p>
+<p>The lab runs on PostgreSQL 17.11 in Docker with default settings. My numbers come from a 4-vCPU, 8 GB cloud VM, but any small VPS or a laptop will do.</p>
+<p>136 rows fit on a page, so 30,000 rows take 221 pages. I picked 30,000 because ANALYZE samples 300 × default_statistics_target rows, which is 30,000 at the default. On this table it reads every row, so the statistics are exact and your plans should come out the same as mine.</p>
+<p>Ask for the most common value and the index goes unused:</p>
+<p>Cost has no unit you can convert to milliseconds. It only means something next to another plan's cost.</p>
+<p>The value you filter on appears nowhere in that formula. Ask for 'chargeback' with the index paths switched off and the Seq Scan still costs 596. Only the index path's price moves with the value, so the planner is choosing between a fixed price and a sliding one.</p>
+<p>For 'paid', every one of the 221 pages holds paid rows, so the index path would read the whole heap plus the index. Force it with enable_seqscan = off and you get a Bitmap Heap Scan at cost 872.</p>
+<p>Selectivity is the share of rows that pass the filter. The usual rule of thumb goes: one row, use the index; 1%, usually; 20%, it depends; 70%, Seq Scan. Here is the same table counted by pages as well as by rows:</p>
+<p>The rule of thumb says index failed, and Postgres agrees: Index Scan at cost 235 against 596. Run both with EXPLAIN (ANALYZE, BUFFERS), though, and the index path touches 209 buffers to the Seq Scan's 221, a saving of twelve page reads.</p>
+<p>It still finished faster, 0.19 ms versus 0.93, because checking 270 rows is less CPU work than filtering 30,000. For 'chargeback', 30 rows on 30 pages, the index path needs 32 buffers instead of 221.</p>
+<p>Two things decide how rows land on pages. Row width sets how many fit on one, and at 136 rows per page any value much more common than 1 in 136 ends up on nearly every page. Physical order is the other. I spread failed evenly on purpose. If your failed orders came from one bad deploy on one afternoon, they'd sit on a few neighbouring pages and the index would look great.</p>
+<p>On 221 pages everything finishes in a couple of milliseconds, so for timings I built a bigger table: 5 million rows, 326 MB, about 120 rows per page.</p>
+<p>A bucket column holds a random number from 0 to 999,999, so WHERE bucket < 10000 matches 1% of the rows. I loaded the same rows twice, once in random order and once sorted by bucket, and forced each plan with the enable_* settings at shares from 0.01% to 50%. shared_buffers was 2 GB, which kept the whole table in memory.</p>
+<p>For scattered rows Postgres picked a bitmap scan, which collects all the TIDs first and then reads each heap page once, in page order. Up to 10% of the rows it beat the Seq Scan, 98 ms to 124. At 25% it lost, 174 against 139, and the planner still chose it. A plain Index Scan, one heap visit per row, lost from 5% on.</p>
+<p>By 10% the scattered matches sit on every single page, and the bitmap scan still won. It reads all 41,667 pages but checks only the 499,000 rows the bitmap points to, while the Seq Scan checks all 5 million. With the table in RAM a page read costs next to nothing, and the time goes into checking rows.</p>
+<p>For clustered rows the index won at every share I tried, even 50%: 123 ms against 142.</p>
+<p>RAM is the friendly case. For the cold runs I restarted Postgres and dropped the OS page cache before every run, so every page came off the VM's disk.</p>
+<p>The Seq Scan got about twice as slow, 250 to 350 ms at every share. The clustered index won everywhere again, 23 ms versus 263 at 5%.</p>
+<p>The scattered bitmap scan took 748 ms at 0.5% of rows, to the Seq Scan's 349. At 1% it took 1.27 seconds against 255 ms, five times slower, and that's the plan Postgres picks.</p>
+<p>The bitmap scan at 2% read more heap pages than at 1%, 37,939 versus 29,143, and still finished more than six times faster, 190 ms against 1,275. From 2% to 10% it beat the Seq Scan again.</p>
+<p>The 2% run touched 91% of the pages, so it was close to one long sequential read. The 1% run touched 70%, with holes in between. My best guess is OS readahead, which prefetches reads that look sequential and gives up when they're full of gaps. I haven't confirmed it yet.</p>
+<p>The planner has no way to see that difference. All it has is random_page_cost = 4, a single guess at how much a jump costs next to a sequential read, and it used the same guess for both runs.</p>
+<p>A 200-row copy shows the other end of the scale, where the table is too small for any index to win.</p>
+<p>Only 2 of the 200 rows match, but reading two pages and checking 200 rows costs just 2 + 2 + 0.5 = 4.50. Turn off enable_seqscan and the cheapest index plan costs 6.19, because its one index page alone is priced as a random read at random_page_cost = 4. If you check plans on a 200-row test fixture, this is the arithmetic you're looking at, and it tells you nothing about the same query on 30 million rows in production.</p>
+<p>"We're on SSDs, set it to 1.1." Fair, and on this table that flips the plan to an Index Scan at cost 2.77. Both versions finish in 10 microseconds or less, so on a table this size it makes no difference.</p>
+<p>The one place for enable_seqscan = off is a scratch session, where it shows you what the other plan would cost. It applies to every query in the session, so in app code it also overrides the plans that were right, like 596 against 872 for 'paid'.</p>
+<p>If the queries you care about only ask for the rare values, say a failed-payments dashboard or a chargeback queue, index only those rows:</p>
+<p>It holds 3,000 entries instead of 30,000 and takes 5 pages, where the full index takes 28. Paid orders, 90% of the inserts here, never touch it.</p>
+<p>Postgres only uses it when it can prove your filter implies the index's WHERE, and a literal status = 'chargeback' does. With only the partial index in place, a prepared status = $1 under a generic plan falls back to a Seq Scan, because the planner can't prove anything about a value it hasn't seen. Generic plans get their own part later in the series.</p>
+<p>Before adding an index, look at the column in pg_stats:</p>
+<p>That's what the planner believes about status as of the last ANALYZE. If most of your queries filter on paid, at 0.9, they get a Seq Scan, and no extra index will change that.</p>
+<p>A negative n_distinct means a fraction of the row count. On tables bigger than the 30,000-row sample these numbers are estimates; you can raise the sample with ALTER TABLE ... ALTER COLUMN ... SET STATISTICS.</p>
+<p>The same view has a correlation column, the planner's idea of physical order. On my 5-million-row tables it was 0.01 for the scattered copy and 1 for the clustered one, and that difference in physical order is what separates the scattered and clustered lines in both charts.</p>
+<p>Before CREATE INDEX, run the pg_stats query, relpages and the rows-versus-pages count on your own table. If the value you care about sits on most of the pages and the table doesn't stay in memory, the index won't save you reads.</p>
+<p>All the numbers above come from one 4-vCPU AMD EPYC cloud VM with 8 GB of RAM, so yours will differ. The SQL, the scripts, the raw output and the chart code are on GitHub. Run them on your own server, and if you get a different picture or think I got something wrong, open an issue or a PR.</p>
+<p>My own projects run on netcup (VPS from €2.21 a month) and AlphaVPS (VPS from €2.54 a month). If you need a box for this, either works.</p>
+<p>For netcup I have a few €5 vouchers for new customers. Each one works once, so take one and leave the rest for the next person:</p>
+<p>Paste it into the "Redeem voucher" field at the bottom of the netcup cart. If they're all gone, message me on LinkedIn and I'll send you a new one.</p>
+<p>Good luck with your plans. Part 2 is next: how to read Postgres EXPLAIN ANALYZE.</p>
+<p>How to Build and Recover a 2-of-3 MPC Signing Cluster</p>
+<p>Full-stack Developer TypeScript, Golang, Rust | WEB3
+fomo.moe</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/skysoon" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/postgres-not-using-your-index-its-counting-pages-not-rows?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

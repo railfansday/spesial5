@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CodeAgents + Structure: A Better Way to Execute Actions</title>
+    <title>Open-R1: Update #1</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10777.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,58 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>CodeAgents + Structure: A Better Way to Execute Actions</h1>
+        <h1>Open-R1: Update #1</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/update-1.png" alt="Open-R1: Update #1" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-thumbnails.huggingface.co/social-thumbnails/blog/open-r1/update-1.png" alt="Open-R1: Update #1" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>It’s been two weeks since the release of DeepSeek R1 and just a week since we started the open-r1 project to replicate the missing pieces, namely the training pipeline and the synthetic data. This post summarizes:</p>
+<p>It should serve both as an update on the project and as a collection of interesting resources around DeepSeek-R1.</p>
+<p>Let’s start by looking at the progress we made on Open-R1. We started Open-R1 just one week ago and people across the teams as well as the community came together to work on it and we have some progress to report.</p>
+<p>The first step in reproduction is to verify that we can match the evaluation scores. We are able to reproduce Deepseek's reported results on the MATH-500 Benchmark:</p>
+<p>You can find the instructions to run these evaluations in the open-r1 repository.</p>
+<p>One observation we have made is the enormous size of the generations from the DeepSeek models, which makes even evaluating the model challenging. Here we show DeepSeek-R1 response lengths in the OpenThoughts dataset:</p>
+<p>Distribution of R1’s responses shows that they are on average very long with the average response being 6,000 tokens long and some responses containing more than 20,000 tokens. Worth noting that the average page contains ~500 words and one token is on average slightly less than a word, which means the many reponses are over 10 pages long. (src: https://x.com/gui_penedo/status/1884953463051649052)</p>
+<p>The length of responses will make GPRO training challenging, as we will have to generate long completions which will require a significant proportion of GPU memory to store the activations / gradients for the optimization step.</p>
+<p>In order to share our progress publicly, we have created an open-r1 evaluation leaderboard, so the community can follow our reproduction efforts (space is here):</p>
+<p>Following the release of Open R1, GRPO (Grouped Relative Policy Optimization) was integrated into the latest TRL release (version 0.14). This integration enables training any model with one or multiple reward functions or models. The GRPO implementation integrates with DeepSpeed ZeRO 1/2/3 for parallelized training that scales to many GPUs, and uses vLLM for fast generation, which is the primary bottleneck in online training methods.</p>
+<p>There are still some limitations relating to the use of high memory usage, and progress is being made to profile and reduce them.</p>
+<p>One of the most exciting findings of the R1 report was that the main model can be used to generate synthetic reasoning traces and smaller models fine-tuned on this dataset see similar performance gains as the main model. So naturally we want to re-create the synthetic reasoning dataset as well such that the community can fine-tune other models on it.</p>
+<p>With a model as big as R1 the main challenge is scaling up generation efficiently and fast. We spent a week tinkering with various setups and configurations.</p>
+<p>The model fits on two 8xH100 nodes so naturally we started experimenting with that setup and used vLLM as inference server. However, we quickly noticed that this configuration is not ideal: the throughput is sub-optimal and only allows for 8 parallel request, because the GPU KV cache fills up too quickly. What happens when the cache fills up ist that the requests which use a lot of cache are preempted and if the config uses PreemptionMode.RECOMPUTE the requests are scheduled again later when more VRAM is available.</p>
+<p>We then switched to a setup with 4x 8xH100 nodes, so 32 GPUs in total. This leaves enough spare VRAM for 32 requests running in parallel with barely any of them getting rescheduled due to 100% cache utilization.</p>
+<p>Originally we started querying the vLLM servers with batches of requests but noticed quickly, that straggles in the batches would cause the GPU utiliziation to vary since a new batch would only start processing once the last sample of the previous batch is done. Switching the batched inference to streaming helped stabilize the GPU utilization significantly:</p>
+<p>It only required changing the code sending requests to the vLLM servers. The code for batched inference:</p>
+<p>We are generating at a fairly constant rate but might still explore a bit further if for example switching to the CPU cache is a better strategy when long queries get preempted.</p>
+<p>The current inference code can be found here.</p>
+<p>There has been wide interest in open-r1, including from the media so various team members have been in the news in the past week:</p>
+<p>Other mentions: Washington Post, Financial Times, Financial Times, Fortune, Fortune, The Verge, Financial Review, Tech Crunch, Die Zeit, Financial Times, New York Times, The Wall Street Journal, EuroNews, Barrons, New York Times, Vox, Nature, SwissInfo, Handelsblatt, Business Insider, IEEE Spectrum, MIT Tech Review, LeMonde.</p>
+<p>While the community is still digesting DeepSeek-R1’s results and report, DeepSeek has captured broader public attention just two weeks after its release.</p>
+<p>After a relatively calm first week post-release, the second week saw significant market reactions, prompting responses from multiple AI research labs:</p>
+<p>In parallel, several companies worked on providing the DeepSeek models through various platforms (non-exhaustive list):</p>
+<p>There has been a lot of interest around the proclaimed cost of training V3/R1. While the exact number probably doesn’t matter so much, people worked on some back-of-the-envelope calculations to verify the order of magnitude here. TL;DR the numbers seem generally in the right order of magnitude, as seen in these discussions:</p>
+<p>As many groups are working on reproducing the training pipeline, we’ll get more evidence on the possible training efficiency for the model.</p>
+<p>Last week some speculations surfaced that DeepSeek might have been using OpenAI outputs to train its models. See for example the Financial Times. However, it is unclear at this point what the consequences of these allegations will be.</p>
+<p>The open source community has been extremely active around DeepSeek-R1 and many people started building interesting projects around the model.</p>
+<p>There have been a number of projects that try to reproduce the basic learning mechanics at smaller scale, so you can test the basic learning principles at home.</p>
+<p>The community has been busy on a number of dataset efforts related to R1, some highlights include:</p>
+<p>This list only covers a small number of reasoning and problem solving related datasets on the Hub. We’re excited to see what other datasets the community build in the coming weeks.</p>
+<p>We are just getting started and want to finish the training pipeline and try it on smaller models and use the scaled up inference pipeline to generate high quality datasets. If you want to contribute check out the open-r1 repository on GitHub or follow the Hugging Face open-r1 org.</p>
+<p>A leaderboard to rank large reasoning models</p>
+<p>thanks for the update. FYI many of the Datasets links look broken.</p>
+<p>Could you add the following models to your R1 distilled leaderboard please? :D Would be great to compare all of the distilled models in one place!https://huggingface.co/open-thoughts/OpenThinker-7Bhttps://huggingface.co/bespokelabs/Bespoke-Stratos-7Bhttps://huggingface.co/bespokelabs/Bespoke-Stratos-32B</p>
+<p>can we also work together in regards to human alignment?https://huggingface.co/blog/etemiz/aha-indicator</p>
+<p>This is an interesting post from HF - a blend of straight training goodness, some speculation, and some opinion.</p>
+<p>I don't know whether I love this, or hate it - good work, team!</p>
+<p>Looking forward to some good news from you guys 😍</p>
+<p>Any insight into the r1 5.5m training cost claim at this point?</p>
+<p>Thank you for sharing this. When are we thinking about doing safety testing on the model(s)?</p>
+<p>A leaderboard to rank large reasoning models</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/structured-codeagent" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-r1/update-1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

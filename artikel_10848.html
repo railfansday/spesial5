@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Introducing Three New Serverless Inference Providers: Hyperbolic, Nebius AI Studio, and Novita 🔥</title>
+    <title>Fixing Gradient Accumulation</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10848.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,31 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Introducing Three New Serverless Inference Providers: Hyperbolic, Nebius AI Studio, and Novita 🔥</h1>
+        <h1>Fixing Gradient Accumulation</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/gradient_accumulation/gradient_accumulation.png" alt="Fixing Gradient Accumulation" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradient_accumulation/gradient_accumulation.png" alt="Fixing Gradient Accumulation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Our friends at Unsloth shared an issue regarding gradient accumulation yesterday that is affecting the transformers Trainer. The initial report comes from @bnjmn_marie (kudos to him!).</p>
+<p>Gradient accumulation is supposed to be mathematically equivalent to full batch training; however, losses did not match between training runs where the setting was toggled on and off.</p>
+<p>Inside the modeling code of each model, transformers offers a "default" loss function that's the most typically used one for the model's task. It is determined by what the modeling class should be used for: question answering, token classification, causal LM, masked LM.</p>
+<p>This is the default loss function and it was not meant to be customizable: it is only computed when labels and input_ids are passed as inputs to the model, so the user doesn't have to compute the loss. The default loss is useful but is limited by design: for anything different being done, we expect the labels to not be passed directly, and for users to get the logits back from the model and use them to compute the loss outside of the model.</p>
+<p>However, the transformers Trainer, as well as many Trainers, heavily leverage these methods because of the simplicity it offers: it is a double-edged sword. Providing a simple API that becomes different as the use-case differs is not a well-thought out API, and we've been caught by surprise ourselves.</p>
+<p>To be precise, for gradient accumulation across token-level tasks like causal LM training, the correct loss should be computed by the total loss across all batches in a gradient accumulation step divided by the total number of all non padding tokens in those batches. This is not the same as the average of the per-batch loss values.
+The fix is quite simple, see the following:</p>
+<p>To address this issue, we’re changing the way our models and training work in two ways:</p>
+<p>All model that inherit from PreTrainedModel now have a loss_function property, which is determined by either:</p>
+<p>We are working to ship the first change for the most popular models in this PR: https://github.com/huggingface/transformers/pull/34191#pullrequestreview-2372725010. Following this, a call for contributions to help propagate this to the rest of the models will be done so that the majority of models is supported by next release.</p>
+<p>We are also actively working to ship the second change in this PR: https://github.com/huggingface/transformers/pull/34198, which will allow users to use their own loss function and make use of the number of samples seen per-batch to help with calculating their loss (and will perform the correct loss calculation during gradient accumulation as more models are supported from the prior change)</p>
+<p>By tomorrow, you should expect the Trainer to behave correctly with gradient accumulation. Please install from main in order to benefit from the fix then:</p>
+<p>In general, we are very responsive to bug reports submitted to our issue tracker: https://github.com/huggingface/transformers/issues</p>
+<p>This issue has been in Transformers for some time as it's mostly a default that should be updated by the end-user; however, when defaults become non-intuitive, they are bound to be changed. In this instance, we've updated the code and shipped a fix in less than 24 hours, which is what we aim for issues like this one in transformers. Please, come and submit your issues if you have some; this is the only way we can get transformers to improve and fit well within your different use-cases.</p>
+<p>The key takeaway is that gradient accumulation can make training with large effective batch sizes much more practical when GPU memory is limited. The numerical details around loss scaling are especially useful for avoiding subtle training bugs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/inference-providers-nebius-novita-hyperbolic" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/gradient_accumulation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

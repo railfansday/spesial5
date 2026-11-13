@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Much Memory Does Your Agent Actually Need?</title>
+    <title>e-means: 10x faster k-means at equal loss</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10007.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Much Memory Does Your Agent Actually Need?</h1>
+        <h1>e-means: 10x faster k-means at equal loss</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://e-means.github.io/assets/emeans_vs_lloyd_readme_v9.png" alt="e-means: 10x faster k-means at equal loss" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://e-means.github.io/assets/emeans_vs_lloyd_readme_v9.png" alt="e-means: 10x faster k-means at equal loss" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our previous post, we compared ALTK-Evolve with ACE and showed that how you deliver an agent's self-distilled guidelines — a few retrieved per task vs. the whole set injected — drives both accuracy and cost. This post steps back to the question that comes before it: how much should you give it?</p>
-<p>Equipping an agent with agentic memory sounds simple: distill lessons from its past work, put them back in context, and more experience should mean better performance. It doesn't always work that way. When we scaled the evaluation to eight models — from a 30B dense model to frontier proprietary systems — one finding stood out:</p>
-<p>Agentic memory is not a feature you switch on. It's a dose you calibrate to the model.</p>
-<p>ALTK-Evolve lets an agent learn from its own past trajectories: distilling reusable guidelines and injecting them back at inference time, with no weight updates and no human annotation.</p>
-<p>The right dose differs by model tier: strong models with headroom want the full guideline set, weaker models do best with a compact core plus per-task retrieval, and saturated models show no measurable gain.</p>
-<p>Curated retrieval can be both the most accurate and the cheapest option: gpt-oss-120b gained +16.1pp task completion at only +5% tokens — and prompt caching keeps even the full guideline set affordable in production.</p>
-<p>Not every model benefits from the same amount of memory. Across eight models spanning the capability spectrum, we saw three recurring patterns:</p>
-<p>Strong models with headroom want the full guideline set — every guideline, including rare edge-case lessons. They have the capacity to absorb and apply all of it. DeepSeek-V3.2 (671B MoE) climbed +9.5 percentage points in task completion when given its full self-mined guideline set.</p>
-<p>Smaller or weaker models get drowned by a large guideline set. For these, a tight, high-confidence core plus a handful of task-relevant guidelines retrieved per task works best. gpt-oss-120b (117B MoE) gained +16.1pp with this selective approach — while the full guideline set gained less and cost ~50% more tokens.</p>
-<p>Already-saturated models show no measurable gain. We call this the saturated pattern — the label describes what we observed, not a proven cause. The model may already have been near its ceiling on these tasks, the guidelines may not have addressed its remaining failures, or it may not have applied the guidance effectively. GLM-5 (745B MoE) sat here in our runs.</p>
-<p>What puts a model into one pattern rather than another isn't simply parameter count. Benchmark headroom, context-window size, architecture, guideline quality, and task distribution all appear to shape where a model lands, and separating those factors is ongoing work. The practical takeaway holds either way: the right dose of memory depends on the model, and we can calibrate it.</p>
-<p>"Memory" here doesn't mean replaying a past transcript. It means a guideline set — strategies that worked, mistakes to avoid, and edge cases — distilled from the agent's own prior trajectories. The loop is straightforward:</p>
-<p>The agent attempts tasks and produces trajectories.</p>
-<p>ALTK-Evolve extracts behavioral guidelines from both its successful and unsuccessful runs.</p>
-<p>It consolidates those guidelines into a reusable set.</p>
-<p>At inference time, the agent receives either the full guideline set or a task-relevant selection of it.</p>
-<p>No model weights are updated. The learning loop changes the guidance available to the agent, not the underlying model — which is exactly why it's cheap to adopt and portable across the eight models we tested.</p>
-<p>We evaluated on AppWorld — 585 multi-step tasks (168 test_normal + 417 test_challenge) across 9 simulated apps (calendars, messaging, payments, and so on). Tasks are scored two ways: whether the agent fully completes each task (TGC — Task Goal Completion) and whether every variant of a scenario passes (SGC — Scenario Goal Completion, a stricter, all-or-nothing bar). Full definitions are in the appendix.</p>
-<p>Because the confusing part of any memory study is what's actually in the context window, we define the configurations up front.</p>
-<p>Both memory configurations draw from the same guideline set, mined once (via the loop above) from AppWorld's training split only. What changes between them is only how that one set is delivered — the full guideline set injects all of it every step, while curated retrieval delivers a selected subset — never how the guidelines were produced, and no test-split data ever goes into building it.</p>
-<p>The number of guidelines a model mines depends on its own capability, so we report configurations by strategy — "full guideline set" vs. "curated retrieval" — rather than by raw counts, which aren't comparable across models.</p>
-<p>Representative models from the eight-model sweep, measured by task completion (TGC) on test_normal:</p>
-<p>Figure 1. Representative models in the three observed patterns. Bars show TGC on AppWorld test_normal for baseline vs. the best-memory configuration; the x-axis begins at 40% to make differences visible. TGC alone understates the larger SGC gains — see the SGC columns in the table below.</p>
-<p>The figure plots TGC to keep it readable; the table adds the stricter SGC metric, where the gains are often larger:</p>
-<p>Reading the SGC column, the stricter metric usually moves more than TGC — DeepSeek's SGC jumps +16.1pp against a +9.5pp TGC gain — because good guidelines especially help an agent clear every variant of a scenario, not just the average case. And the effect doesn't disappear at the top of the range: GPT-5.5 and Opus, both near the ceiling on TGC, still gain +7.2 and +7.1pp SGC respectively. Memory keeps paying off as long as a model has a remaining failure mode to target.</p>
-<p>A practical concern: injecting a full guideline set inflates every ReAct step's input, because the guidelines are re-sent each turn. Here's what we observed:</p>
-<p>Table 1. Average token use per task, accumulated across agent steps, measured against the no-memory baseline.</p>
-<p>Curated retrieval keeps cost near baseline. For weaker models, where selection wins on accuracy, it also wins on cost — the best of both worlds (+16.1pp TGC at only +5% tokens for gpt-oss-120b). Better performance here does not require more inference cost.</p>
-<p>Memory doesn't blow up the reasoning loop. DeepSeek runs about the same number of ReAct steps with memory as without (≈18–19 on average), so the added cost is input-token inflation, not longer trajectories.</p>
-<p>The real efficiency lever in production is prompt caching: the static portion of the guideline set is identical across steps and can be cached, cutting effective cost substantially. Cache-aware prompt design — keeping the shared guideline-set prefix stable so it stays cacheable — is worth engineering for. We also hypothesize that context-window size plays a role: models with larger windows may absorb the full guideline set more effectively, while smaller-context models benefit more from retrieval that keeps injected content compact. We have not yet run controlled experiments isolating this factor.</p>
-<p>The lesson isn't to give an agent everything it has learned. It's to give it the amount of experience it can actually use.</p>
-<p>For weak models, that means a compact core plus a few task-specific lessons — which, conveniently, is also the cheapest option.</p>
-<p>For strong models with headroom, it means preserving the full guideline set, kept affordable in production via prompt caching.</p>
-<p>For saturated models, it means spending no extra context until their remaining failure modes are better understood.</p>
-<p>The gains are real across the board — automatic, leakage-free, and requiring no human annotation — but only when the dose fits the model.</p>
-<p>This is a starting point, not the finish line:</p>
-<p>A learned selector. Our current retrieval ranks guidelines by cosine similarity, which we've shown doesn't perfectly predict which guidelines help a given task. A selector trained on outcome signal is the natural next step.</p>
-<p>Memory for very weak models. Below a minimum capability baseline, self-distillation lacks signal. Teacher-distilled memory for very weak models is a separate problem we're exploring.</p>
-<p>Beyond AppWorld. These results are validated on AppWorld — a rigorous multi-step benchmark, but a single one. Broader agent benchmarks and real-world deployments are in progress.</p>
-<p>Isolating context window. As above, we want controlled experiments that separate context-window size from raw capability.</p>
-<p>Try the ALTK-Evolve library — which includes the extraction, consolidation, and retrieval pipeline used here — or read the full technical report for the complete method and ablations.</p>
-<p>AppWorld tasks are graded by two metrics, both reported as percentages (higher is better):</p>
-<p>TGC — Task Goal Completion. The share of individual tasks the agent completes fully and correctly. This is the headline "did it get the job done" number.</p>
-<p>SGC — Scenario Goal Completion. A stricter, all-or-nothing metric. Each scenario bundles several variants of the same task (the same request with different data, phrasing, or edge conditions). SGC counts a scenario as passing only if the agent succeeds on every variant. It measures reliability — an agent that solves a task most of the time but fails on one variant scores on TGC but not on SGC.</p>
-<p>Really interesting take on agentic memory. The idea that memory needs to be calibrated to the model rather than simply accumulated is especially useful for production systems. Selective retrieval also seems like a practical way to improve reliability without unnecessarily increasing context and inference costs. It makes a strong case for thoughtful custom AI agent development and enterprise AI agent solutions, where memory, performance, and cost all need to be designed together. https://mobisoftinfotech.com/services/ai-agent-development-company</p>
+                <p>I’m excited to open-source e-means: a modern, robust k-means algorithm developed at Meta FAIR. A replacement of Lloyd's algorithm, e-means delivers a ~10× speedup in both epochs and wall-clock time while achieving lower loss.</p>
+<p>Pierre-Emmanuel Mazaré, Gergely Szilvasy, Hugo Touvron, David Picard, Matthijs Douze and Hervé Jégou</p>
+<p>100,000 datapoints in 200 clusters, two wide Gaussians and three small ones, cut off at a box, on a light uniform background. Lloyd has 1 update against 97 per epoch for e-means.</p>
+<p>Across a large range of scales and datasets, e-means reaches a test loss below Lloyd's at 25 epochs, in 1.2 to 3 epochs. Measured end to end, that is a 10–45× wall-clock reduction on GPU against the state-of-the-art Lloyd implementation (Flash-KMeans[2]), and 8–15× on CPU against Faiss[1]. Speed and quality usually trade against each other in k-means, while e-means achieves both better speed and loss.</p>
+<p>Given a fixed dataset of n points X = {x1, ..., xn} ⊂ Rd and an integer k, the k-means problem is to find k centroids C = (c1, ..., ck) minimizing the mean squared distance between each point and its nearest centroid:</p>
+<p>It's a static dataset, unlike codebook learning inside VQ-VAEs, where the distribution to cluster is constantly moving.</p>
+<p>The goal of e-means is to provide a modern optimization rule for the k-means problem. We started this project from the following observations:</p>
+<p>For e-means, we chose to do mini-batch updates with exponential moving averages[6], which we found to be most efficient for the k-means problem. Contrary to previous mini-batch approaches, e-means requires no hyperparameter tuning because it automatically sets the batch size and step size with scaling laws (see Automatic hyperparameter tuning with scaling laws). In addition, e-means improves the initialization and the dead-cluster revival strategy, adds a cosine-scheduled decay rate, and introduces a finalization stage that reduces the training loss for a negligible runtime penalty at the end of training. e-means is highly parallelizable, and comes with specialized kernels that translate its algorithmic advantage into wall-clock speedups.</p>
+<p>Each mini-batch updates every cluster's count and sum. The centroid is their ratio.</p>
+<p>Novel initialization and finalization methods. The run ends on each cluster's exact last-epoch mean.</p>
+<p>The step α anneals from α0 to 0.1α0, as a learning rate does.</p>
+<p>Clusters with size below a threshold are revived by splitting a large cluster.</p>
+<p>GPU kernels fuse the nearest-centroid assignment, turning the epoch savings above into matching wall-clock speedups.</p>
+<p>The centroid update rule is the central component of e-means. This section aims to provide an overview of update rules for k-means clustering. All methods maintain, for each cluster j, a sum Sj and a count Nj of the points assigned to it, and take the centroid as their ratio:</p>
+<p>They differ only in how Sj and Nj are updated. Below, sj and nj denote the sum and the count of the points in the current batch that are assigned to cluster j (both zero if none are).</p>
+<p>Lloyd’s algorithm[7] assigns every point to its nearest centroid and recomputes the statistics from scratch, using the full dataset as the batch:</p>
+<p>so cj is the exact mean of the points currently assigned to it. Each update costs one full pass over the data, and the procedure is repeated a fixed number of times (typically 20 to 50 iterations).</p>
+<p>MacQueen’s update[3] accumulates the statistics without ever discarding them:</p>
+<p>so cj is the uniform mean of every point assigned to cluster j since the start of training, including points assigned under earlier, possibly poor, centroid positions. This was later partially addressed by Staleness-Reduction Mini-Batch K-Means[8], a hybrid method between k-means and MacQueen. They obtained important speedups, but only on very low numbers of clusters.</p>
+<p>e-means works on mini-batches and replaces this sum with an exponential moving average:</p>
+<p>so older assignments are forgotten at rate α, and the centroid tracks recent assignments rather than the whole history. This update rule is typically used for moving distributions, hence their adoption for training VQ-VAEs[6]. What we found is that it’s also extremely efficient for static datasets if it’s combined with e-means’ other components, and hyperparameters are properly tuned.</p>
+<p>The e-means project started from previous work at Meta FAIR by Hugo Touvron and Hervé Jégou, who had found that mini-batch k-means by gradient descent could beat Lloyd’s algorithm. While I could reproduce these results, I found that the performance of gradient-descent based centroid updates is unstable at large learning rates, unlike exponential moving average updates. I suspect that is because EMA updates guarantee that the centroid is always in the convex hull of points assigned to it, while gradient descent updates may overshoot past that hull.</p>
+<p>In order to achieve the lowest loss at a fixed number of epochs, we chose exponential moving average updates, hence the name e-means for our method.</p>
+<p>If you set the batch to the full dataset, B = n, and α = 1, then Nj and Sj become exactly the count and sum of the whole cluster, so one e-means iteration becomes exactly one Lloyd iteration. Lloyd is an extreme case of e-means without cosine scheduling on the learning rate. However, our hyperparameter search found that this extreme setting is highly suboptimal, which explains why e-means largely outperforms Lloyd. Below, the loss is measured for every batch size B and step α: Lloyd lands in a corner, well outside the region where the loss is lowest.</p>
+<p>This hyperparameter study motivated us to derive scaling laws that automatically pick the optimal batch size B and step size α.</p>
+<p>To better understand why e-means reaches better losses than Lloyd at convergence, we plotted a few trainings on toy datasets to evaluate their ability to escape local minima. Repeating trainings over 200 seeds, we found that e-means is much less likely to fall in pathological configurations compared to Lloyd.</p>
+<p>Our explanation for that is that mini-batches provide more noisy updates that are more likely to explore the optimization landscape and escape local minima. Lloyd, with its always decreasing loss, is more likely to exploit found local minima and never escape them.</p>
+<p>An essential property of e-means is that practitioners don't need to set any additional hyperparameter compared to Lloyd's algorithm. We fitted two scaling laws to set the batch size B and step size α0 from any problem's characteristics (n, k, T), and found them to exhibit strong generalization on unseen datasets and problem scales.</p>
+<p>Regret = (MSE with the law − best MSE over the grid) / best MSE, median over configurations. Held-out datasets: SIFT, SPACEV, and the VIBE[9] datasets arXiv and AG-News. Held-out size: one value of n left out of the fit and predicted.</p>
+<p>We propose two equations to choose the batch, the default law and the quality law. The “quality law” trades off throughput for better clustering quality against the “default” law. Below we plot the training data for our scaling laws: validation MSE against step size α0 (left) and batch size B (right).</p>
+<p>Toy example showing the importance of dead-cluster revival.</p>
+<p>The main issue with mini-batch k-means is that it is prone to “dead” clusters, centroids that end up with zero assigned points during optimization. This reduces the effective size of the codebook, which is especially problematic for the large codebooks increasingly used today.</p>
+<p>A common mitigation is to reinitialize clusters that fall below a certain size threshold, as done in EnCodec[10], where dead centroids are simply replaced by random samples drawn from the incoming batch. While this helps, it does not fully resolve the issue. Instead of sampling arbitrary points from the batch, we revive dead clusters by splitting large, existing ones: we sample an active cluster with probability proportional to its size and split it into two. We found this approach, adapted from Faiss k-means, to be significantly more effective at eliminating dead clusters and preserving codebook capacity.</p>
+<p>1 million vectors, k = 16,384, 5 epochs, mean over 5 seeds; only the revival policy varies. A cluster counts as dead when fewer than ten vectors are assigned to it at the end, a thousandth of an average cluster. Imbalance: how uneven the cluster sizes are (1 = all equal). From the paper’s revival ablation table.</p>
+<p>We validated e-means on 24 different embedding and synthetic datasets and configurations (see paper). For the video we ran 234 configurations of e-means against k-means (16 datasets, 100k to 100M points): explore every curve in the results map.</p>
+<p>If you use e-means, please cite the paper (arXiv:2611.09501):</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-hmm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://e-means.github.io/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

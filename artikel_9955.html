@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Palantir&#x27;s NHS cancer app gets plenty of praise, precious few users</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9955.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,62 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
+        <h1>Palantir&#x27;s NHS cancer app gets plenty of praise, precious few users</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5252686.jpg?imageId=5252686&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="Palantir&#x27;s NHS cancer app gets plenty of praise, precious few users" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5252686.jpg?imageId=5252686&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="Palantir's NHS cancer app gets plenty of praise, precious few users" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>Official figures put uptake at just six trusts, while FoI responses raise questions about which are actually benefiting</p>
+<p>Only a handful of NHS trusts are using the cancer app on the controversial £330 million Federated Data Platform (FDP) run by Palantir, while newly released figures raise questions about which trusts are benefiting.</p>
+<p>Cancer 360 was designed to bring cancer patients' data from disparate spreadsheets and electronic health records into a central system, helping health professionals prioritize treatment.</p>
+<p>Pilots began four years ago, and trusts are not charged directly for the FDP. Yet official figures put Cancer 360's uptake at just five or six trusts. Freedom of Information responses gathered by grassroots campaign group No Palantir in the NHS also reveal discrepancies between reported benefits and recorded use.</p>
+<p>In June 2025, NHS England said that Cancer 360 "drastically cut down diagnosis times" and referred to a pilot at Chelsea and Westminster NHS Foundation Trust, which saw the proportion of patients diagnosed within 28 days climb from 72 percent to 85 percent.</p>
+<p>The trust began trials in 2022, while working with Palantir under a £23 million contract awarded without competition, before the US firm was awarded the FDP contract in late 2023. Critics argued the FDP procurement was flawed as Palantir had developed use cases under £60 million in non-competitive contracts which were then carried over to the FDP.</p>
+<p>Last year, NHS England said Cancer 360 served 46 registered teams and 239 active users, and processed 52,000 patients.</p>
+<p>In June 2026, NHS England said there were five trusts using Cancer 360 as of March 2026. Of those, only two were listed as benefiting. In July, health minister Preet Kaur Gill repeated the five-trust usage figure in a Parliamentary answer.</p>
+<p>Official data released in October said that as of June, six trusts were using Cancer 360 and five were benefiting, but did not identify the trusts or explain the increase. The stats have since been removed from the NHS England website but are archived here.</p>
+<p>In June, NHS England responded to a Freedom of Information request. It said six trusts reported unique users logging into the Cancer 360 app over the last 12 months.</p>
+<p>However, two trusts cited as having run successful pilots – Chelsea and Westminster Hospital and Royal United Hospitals Bath – were listed as having zero unique users logging into the system during that period, according to NHS England's reply.</p>
+<p>Both trusts were said to have received benefits from the system, according to a FoI response sent to campaign group Foxglove in June this year.</p>
+<p>The Register asked both trusts and NHS England to explain the discrepancy.</p>
+<p>One of the six trusts said to be logging into the cancer app, East Lancashire Hospitals, reported just one unique user. It later confirmed in an FoI response in August that it was not live with the FDP. It had planned to adopt the platform, leading with Cancer 360, but did not have a date for going live with the app.</p>
+<p>No Palantir in the NHS also identified trusts that considered Cancer 360 but decided against adopting it.</p>
+<p>East Kent Hospitals University NHS Foundation Trust considered using the app but rejected it because there was "no immediate requirement for it," according to its FoI response.</p>
+<p>In its FoI response, Bedfordshire Hospitals NHS Foundation Trust said it did not adopt the app because of issues around the metadata requirements.</p>
+<p>Meanwhile, official figures on cancer diagnosis waiting times show wider improvements across England. Given Cancer 360's limited uptake, those national gains cannot simply be credited to the app.</p>
+<p>In July this year, the UK's statistical regulator told NHS England to ensure ministers are briefed accurately following a row over data used to promote the purported benefits of the Palantir-run FDP.</p>
+<p>Campaign group Foxglove had found that nearly a third of NHS trusts using Palantir's health data platform were performing fewer patient procedures than before it went live and that Chelsea and Westminster Hospital accounted for 84 percent of the reported fall in outpatient waiting lists, while only 16 trusts were using the FDP tool. The Office for Statistics Regulation began assessing NHS England's claims about the FDP's performance and the quango included more caveats on its website.</p>
+<p>Scrutiny of the FDP's reported benefits comes as the government decides whether to continue the Palantir-led contract beyond February 2027. The initial contract was provided for a term of up to seven years, with a maximum value of £330 million.</p>
+<p>Reports this week suggest the government is set to renew the contract, but run a parallel procurement to find an alternative to Palantir as pressure mounts to reduce lock-in to a single vendor and boost sovereign technology.</p>
+<p>Palantir was founded with startup money from a CIA-linked VC firm and has relied on close ties with the US intelligence, military, and immigration services since its inception, although its recent growth in the wider business market is notable. ®</p>
+<p>Admins with archives of ancient files brace for the wave of tickets from confused users</p>
+<p>Germany's Bundeswehr lifted precautionary grounding after malicious update reportedly reached military servers</p>
+<p>PARTNER CONTENT: Real-time endpoint data keeps AI-driven IT operations accurate, fast and under control</p>
+<p>The Boss mentions 'AI security,' triggering an entirely proportionate incident response</p>
+<p>Altman, Torvalds, Yen. One has got his head screwed on. The others could do with some grounding</p>
+<p>Watchdog wants assurances from 200 execs that employees aren't poking around patient files they have no business viewing</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>The competition is circling like vultures</p>
+<p>Chips boast up to 256 cores, clocks up to 5.3 GHz, and IPC gains of 20 to 31 percent, just not all on the same SKU</p>
+<p>Cores, clocks, memory, and interconnects all perfectly balanced for a singular mission: keeping instinct fed.</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>OpenVDDK is reportedly already being used in production, at scale</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/public-sector/2026/11/13/palantirs-nhs-cancer-app-gets-plenty-of-praise-precious-few-users/5309316" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

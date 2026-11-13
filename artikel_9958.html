@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Agent Aced the Task. Will It Do It Again?</title>
+    <title>Give Your Coding Agents a Memory You Own</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9958.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,126 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Your Agent Aced the Task. Will It Do It Again?</h1>
+        <h1>Give Your Coding Agents a Memory You Own</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/funes/thumbnail.jpg" alt="Give Your Coding Agents a Memory You Own" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/funes/thumbnail.jpg" alt="Give Your Coding Agents a Memory You Own" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Your agent works in rehearsal, but during the live demo, it takes a different path and fails the same task.</p>
-<p>That is embarrassing onstage. In production, it is a reliability problem: a workflow that succeeded once may fail the next time a user makes the same request. For mission-critical work, such as reconciling a financial transaction or checking a contract for an obligation, that can be a showstopper.</p>
-<p>Most benchmarks hide this variability behind an average. On AppWorld, a ReAct agent using GPT-4.1 succeeded on 77.4% of runs across five repetitions. But it succeeded in all five runs for only 53.0% of tasks — a 24.4-point consistency gap.</p>
-<p>Most benchmarks report the first number. We built a way to measure the second — and improve it.</p>
-<p>In an earlier post, we introduced ALTK-Evolve — a system that turns an agent's own past trajectories into reusable guidelines, distilled automatically and injected back at inference time. It measurably improves task success, but those results only asked the average-case question too.  This post introduces consistency guidelines, a new guideline type in altk-evolve built on top of a diagnostic tool we call the Consistency Analyzer, that targets this gap directly.</p>
-<p>Standard agent evaluation reports Mean@k: run a benchmark k times, average the pass rate. Often k=3, sometimes just 1. It's the number on every leaderboard, and it's what "77% accurate" means in practice.</p>
-<p>Mean@k answers "how good is this agent, on average?" It does not answer the question a real user cares about: will it still be good if I ask this exact question again? For that you need Pass^k: the fraction of tasks where the agent succeeds on all k runs.</p>
-<p>⚠️ Pass^k is not Pass@k. The familiar Pass@k is optimistic — it asks whether at least one of k attempts succeeded, the right question when you can verify and retry. Pass^k is its pessimistic mirror image: every attempt must succeed. Same letters, opposite question. Pass^k ≤ Mean@k ≤ Pass@k, always.</p>
-<p>A ReAct agent backed by GPT-4.1 posts a Mean@5 of 77.4% — genuinely strong. But Pass^5 is only 53.0%. Nearly a quarter of the benchmark consists of tasks the agent can sometimes solve and sometimes can't, with nothing about the task changing between runs. We call this gap — Mean@k minus Pass^k — the consistency gap.</p>
-<p>This isn't a capability problem you fix with a bigger model. It's an orthogonal axis: an agent can be capable and inconsistent at the same time.</p>
-<p>Every time an LLM agent decides something — which API to call, what argument to pass, whether to retry — that decision comes out of a probability distribution over next tokens. What matters is the shape of that distribution. A sharp one puts most of its mass on a single token: the runners-up are far behind, and the same choice comes out run after run. A flat one spreads comparable mass across several near-tied tokens, and which one wins is close to a coin flip.</p>
-<p>The shape decides how much noise it takes to change the outcome. Sharp distributions are resilient — GPU floating-point non-associativity, request batching, and other platform-side effects nudge the numbers slightly, but nowhere near enough to reorder a clear winner. Flat distributions are vulnerable to exactly that nudge: near-ties may reorder under small perturbations. And because a trajectory chains dozens of decisions, a small per-step chance of flipping compounds into a large chance that some run goes differently. That's where a 24-point gap comes from.</p>
-<p>This is also why the problem survives your decoding settings. Greedy decoding and a fixed seed both govern how a distribution gets turned into a token — they say nothing about the distribution itself. On a hosted endpoint the probabilities shift slightly from run to run, so the same prompt to the same model at temperature zero can still resolve a near-tie one way today and the other way tomorrow.</p>
-<p>Our setup: the ReAct agent runs at temperature 0.0, so none of the variance above is ordinary sampling.</p>
-<p>Which turns the problem into a search: which steps in a given trajectory were the flat ones — and what do you do about them once you know?</p>
-<p>Consistency guidelines come out of a two-stage pipeline that plugs into ALTK-Evolve's existing machinery — with a new source signal driving what gets written.</p>
-<p>1. Detect — the Consistency Analyzer. 
-Given one recorded trajectory, the analyzer replays each decision step through controlled resampling, measuring how much the model's output actually varies at that point. Concretely, that's one additional model call per decision step, done once offline — issued with the sampling parameter set to draw k completions at once (k=5 by default) — replayed against the already-recorded context, not new tool calls, not new environment interactions, and not a second end-to-end rollout of the task. This yields a consistency score per decision step that is written into a scorecard to pinpoint exactly which decisions are at risk of flipping on the next run. Detection is fully black-box — no logits, no model internals, no instrumentation beyond the trace you already have.</p>
-<p>2. Generate — targeted guidelines.  Every flagged step becomes a candidate consistency guideline in the standard ALTK-Evolve format, so it slots into the existing storage and retrieval pipeline. Here's a real example, generated by GPT-4.1 from a trajectory of the AppWorld task "How many activities are done in my bucket list as per my SimpleNote note?":</p>
-<p>[Guideline 1] When counting checkbox-style markers in note content, use a line-anchored regex match rather than a plain substring count — note titles often repeat the marker symbol in a legend line.</p>
-<p>[Guideline 2] Always verify search results for note queries by checking for multiple matches and confirming the correct note before proceeding.</p>
-<p>Nothing here is task-specific trivia. String-counting bugs and unverified search results are decision points that show up with high uncertainty across many AppWorld tasks. That's the point: the analyzer targets instability, not failure — so it catches steps the agent happened to get right this time but could easily get wrong next time.</p>
-<p>Watch the 2-minute demo — five parallel runs of the agent split 3-2 on this task because of agent uncertainty about the counting strategy, then run again after these guidelines in context: all five agree.</p>
-<p>We evaluated on AppWorld test_normal (168 tasks) with a ReAct agent on GPT-4.1, generating consistency guidelines from a single baseline trajectory per task and testing them on 5 fresh runs.</p>
-<p>Mean@5 (%), aggregate — same scale as Pass^5 above.</p>
-<p>The consistency gap is cut roughly in half. Aggregate Pass^5 rises 53.0% → 69.0% while Mean@5 rises 77.4% → 81.0%, narrowing the gap between "looks capable" and "can be counted on" from 24.4pp to 12.0pp. Nearly a third of previously-inconsistent tasks become tasks the agent passes on every single run.</p>
-<p>The middle and hard tiers gain most. Medium +22.9pp (+44% relative), Hard +14.3pp (+45% relative) — effectively tied in relative terms, with Medium ahead absolutely. Easy gains +12.2pp, having had the least room. This is consistency guidelines doing what they're designed to do: finding and stabilizing the specific decision points where an agent's own uncertainty was leaking into the outcome.</p>
-<p>Mean@5 never drops. Preserving average accuracy was a hard requirement, not a nice-to-have: a system that boosts Pass^5 by trading away Mean@5 would just be shifting unreliability around, not fixing it. Mean accuracy holds or improves at every difficulty level.</p>
-<p>Applied to a different but related task in the same AppWorld scenario — another variant of the scenario the guidelines were mined from — consistency guidelines still lift Pass^5 by +13.0pp, only 3 points below the same-task number. A guideline derived from one run isn't just patching that run; it's capturing something that transfers.</p>
-<p>The sharper evidence comes from a weaker model, gpt-oss-120b. Same-task Pass^5 rose +6.0pp from a much lower baseline (10.1% → 16.1%) — and, interestingly, the similar-task generalization number (+8.7 pp) actually exceeded the same-task gain, suggesting the guidelines were capturing genuinely reusable failure patterns rather than memorizing one trajectory's specifics.</p>
-<p>Try the ALTK-Evolve — the open-source repo now includes the Consistency Analyzer and consistency-guideline generation used in these experiments — or read the technical report on arXiv for the complete methodology.</p>
-<p>If accuracy numbers you can't reproduce on your own tasks sound familiar, we'd like to hear about it — concrete examples of flip-prone behavior in your own agents are exactly the kind of feedback that shapes what we build next. Open an issue or a discussion.</p>
-<p>Great perspective on agent reliability. Measuring consistency alongside accuracy seems especially important as AI agents move into workflows where reproducibility matters. The Consistency Analyzer approach is a fascinating way to identify unstable decisions without requiring full task replays.</p>
-<p>The useful split is the one most dashboards still refuse to print: Mean@k answers “how good is this agent on average?” Pass^k answers “will the same request still succeed if I ask again?”</p>
-<p>Once you’ve watched a trajectory chain dozens of near-tied tool choices, a strong average with a wide consistency gap is exactly the demo that fails live. Capability and consistency are orthogonal — buying a bigger model can lift Mean without closing the gap.</p>
-<p>What I want teams to take from the Consistency Analyzer framing is operational, not the guideline machinery itself: treat flip-prone decision steps as first-class eval targets. One offline resample pass over a recorded trace is a cheaper reliability signal than another end-to-end leaderboard screenshot.</p>
-<p>Practical ask for anyone shipping agents from this: do you report Pass^k (even k=3) next to Mean@k in the release gate, and do you refuse the “stable” label when the consistency gap is still large on your hard tier?</p>
-<p>Reproducible reliability will not remove disagreement about which guidelines to inject. It will make the disagreement about the right metric.</p>
-<p>Thanks, and you've landed on exactly the operational takeaway we hoped for: flip-prone decision steps should be eval targets in their own right. Beyond that, knowing where they are also turns the eval into a diagnostic: a consistency gap tells you that an agent is unreliable, while the flip-prone steps tell you where and why.</p>
-<p>On your release-gate question: we'd strongly encourage it, and k=3 is a sensible default. A few things we'd suggest to anyone adopting Pass^k as a gate:</p>
-<p>I'd like to understand your closing point better. In our experiments, we didn't choose among individual guidelines: for each new task, we injected the guidelines derived from the most similar task. I'm curious where you see the disagreement about which guidelines to inject arising.</p>
-<p>https://huggingface.co/spaces/observantdistressed/minimax-h3</p>
-<p>Loved your space, any plan to set it up again in near future?</p>
+                <p>I work across several machines, and I switch coding agents depending on the task.
+Every one of them meets my projects as a stranger. The reasoning from “last Tuesday”
+disappears when the session ends. Each new agent, on each new host, starts from zero.</p>
+<p>Earlier this year, Software Forgets: Agent Traces Are the
+Memory made the case
+that coding agents already produce the record we keep losing. As they search a
+codebase, try approaches, hit errors, read documentation, and change direction, they
+leave behind a dense account of not just what changed, but why.</p>
+<p>While the diagnosis is correct, traces are only potential memory. The session logs of
+an agent are still just an archive. You cannot grep your way to “why did we move
+off the streaming parser?” across ten thousand turns. For an agent to use those traces
+while it works, they need indexing, retrieval, ranking, and exact provenance.</p>
+<p>That is what funes provides. It is a durable
+memory layer for your agents (Claude Code, Codex, pi, and Hermes). It is built from the
+sessions already on your machine. It works locally and becomes part of your agent's
+normal workflow with one command. When you want it to, it can also travel to a Hugging
+Face dataset you own, private by default.</p>
+<p>funes is a single binary. Its default inference backend has no ML runtime dependency,
+and embedding and reranking happen on your machine. Install it:</p>
+<p>That one add command builds the first index, gives the agent recall and get
+tools, and installs the automation that indexes each completed turn. Indexing is
+incremental, with new runs adding new turns rather than embedding the whole history
+ again. The older and deeper content can backfill in bounded steps.</p>
+<p>From there, you just work. When a task touches a past decision, rationale, or finding,
+the agent can reach for recall itself. You do not need to remember the old session or
+paste its context into the new one.</p>
+<p>With funes added, recall happens inside the conversation. The agent reaches for its
+memory on its own and names the session behind its answer.</p>
+<p>recall returns the original text, not a summary, and shows exactly where it came from
+(the agent, timestamp, session, and turn). Each result includes a get command that
+opens the full turn and its surrounding context.</p>
+<p>Underneath, one deterministic pipeline parses every supported trace into the same
+turn-and-block shape, chunks it, embeds it with a pinned local model, and writes it to
+a local Lance dataset. A query combines vector and BM25 search, fuses their
+rankings, reranks the candidates with a cross-encoder, reweights them by recency, and
+attaches neighboring chunks.</p>
+<p>That design gives funes three important properties:</p>
+<p>The agent as a stranger problem is already solved on one machine. But memory gets
+more useful when the next agent is running somewhere else.</p>
+<p>To make a memory follow your work, bind one when you add funes to an agent:</p>
+<p>The bind publishes your current memory there. funes then keeps it current, indexing
+each turn locally and publishing at session boundaries. The agent recalls from it
+throughout. Run the same command on another machine and the memory follows you there.</p>
+<p>Underneath, the local memory is a Lance dataset, and the shared memory is a Hugging
+Face dataset (private by default) you own.</p>
+<p>Before anything reaches the Hub, credentials have already been redacted during
+indexing. Publishing then scans every chunk again and withholds anything that still
+looks like a secret. The scanner behind this is documented in
+SECURITY.md, including
+what it does and doesn't cover.</p>
+<p>When an agent reads a remote memory, funes caches the dataset files locally, so warm
+queries return to local speed. The Hub supplies the ownership, access control,
+versioning, and distribution it already supplies for other datasets. Your memory does
+not become an account in a separate memory service, and you do not rent it back
+through an API.</p>
+<p>recall is shaped for agents. When you want to put a question to a memory yourself,
+use ask. It reads your local memory by default:</p>
+<p>Or point it at a shared memory. We published a
+memory of funes development,
+so you can ask why funes works the way it does without creating a memory of your own:</p>
+<p>funes ask is the read-only, one-question sibling of funes add. It recalls the
+passages, hands them to a coding agent, and returns a grounded answer that names its
+sources. It does not install an integration or change the agent's persistent setup.</p>
+<p>A retrieval miss is not papered over. If the passages do not support an answer, the
+agent says so. You can rephrase the question or add funes to the agent so it can search
+the memory iteratively during normal work.</p>
+<p>A shared memory is not tied to the agent or model that created it. Start a task in
+Claude Code, continue it in Codex next week, and the second agent can recall the first
+agent's reasoning. Use pi with a local model or one served through the Hugging Face
+router, then return to Claude.</p>
+<p>Claude makes a decision; a hook indexes it; Codex recalls it in another session. The
+older hits in the demo are earlier recordings of the same experiment: an append-only
+memory remembered the rehearsals too.</p>
+<p>Published memories carry a dataset card and the funes tag, making them recognizable
+and discoverable on the Hub. The Hub
+already hosts open weights and datasets. funes adds open working memory. It holds
+the decisions, failed approaches, and rationale behind a project, queryable by another
+agent and traceable to the sessions that produced them.</p>
+<p>A long investigation bloats a session until each turn costs more to carry the context
+than to do the work. The usual answers are to let the agent compact and carry on, or to
+write a handoff and start fresh. Recall is a third, so we measured them against each
+other on the handoff-vs-recall
+benchmark:
+two tasks whose answer cannot be reconstructed without the session prior knowledge.</p>
+<p>Compaction is what most agents do by default, and it was the only one of the three whose
+result divided: it arrived on one task and never arrived on the other. Where it failed,
+its summary had flattened the findings that mattered. Recall returns the passages
+themselves, so a finding does not have to survive summarization.</p>
+<p>Recall was the cheapest of the three on both tasks, 8x cheaper than a written handoff on
+one and 4x on the other.</p>
+<p>The lighter segment of each bar is the one-time charge for preparing the channel, the
+handoff or the compaction, paid before the first question is asked and counted once. A
+cross marks a channel that never arrives, and so has no cost per success.</p>
+<p>“To think is to forget differences, generalize, make abstractions.”
+— Jorge Luis Borges, Funes the Memorious</p>
+<p>Your agents already wrote the record. funes lives at
+github.com/huggingface/funes, one command away
+from turning that record into a memory the next agent can read, on whichever machine you
+happen to be on.</p>
+<p>funes invents little of this. It leans on open-source embedding models good enough to
+run locally, on Lance's append-only datasets with
+cheap incremental writes, and on the Hub's caching and content-dedup for datasets. The
+work is in fitting them into a memory an agent can actually use.</p>
+<p>funes is open source too. Open an issue
+for anything from an install snag to a recall that missed, or an agent you'd like
+supported.</p>
+<p>Ran funes 1.3.0 on a machine with 19,195 coding-agent sessions already on disk (LongMemEval laid down in the real ~/.claude and ~/.codex layouts), 100 questions whose answer sits in exactly one session, scored by whether that session comes back. Disclosure: I maintain deja-vu, one of the tools in the same table.</p>
+<p>Full index: 2h03m on an M4 pro laptop (308k chunks), 6.3s per query. With defaults: hit@1 9/100, hit@5 39, found@50 71. With --half-life 0: 19/46/71 — the 30-day recency half-life halves rank-1 on history older than a month, which is most of what's on a real disk; worth a mention in the docs. Once recency is off, the vector+rerank stack is clearly the best ranker in the table at rank five. The documented one-minute first pass leaves 218 of the 19k sessions indexed (0/100 answered), so the "about a minute" framing is really "about a minute until the embedding job starts".</p>
+<p>For comparison on the same corpus, deja-vu (plain BM25 over 24 agents' files) indexes in 29s and answers in 24ms at hit@1 18/100, hit@5 35. Corpus, drivers and every row: vshulcz.github.io/deja-vu/guide/day-zero.html - happy to be corrected if a setting I missed changes the numbers.</p>
+<p>longmemeval does not really need semantic search: BM25 already gives the same ratio you mentioned IIRC, so for this use case this is pretty much expected that it is not worth paying the cost of evaluating the embeddings (this extra cost you see at indexing and recall time). funes shines when the information is actually difficult to find.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/funes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
