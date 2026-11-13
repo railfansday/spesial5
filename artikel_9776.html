@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>I Mutation-Tested 50 Python Libraries. Tests in the Young Ones Missed 41% of Planted Faults.</title>
+    <title>React to Licensing in Real Time: Outbound Event Webhooks from Keyright</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9776.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>I Mutation-Tested 50 Python Libraries. Tests in the Young Ones Missed 41% of Planted Faults.</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
+        <h1>React to Licensing in Real Time: Outbound Event Webhooks from Keyright</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F3wyqexzf97is3xpvo82c.png" alt="React to Licensing in Real Time: Outbound Event Webhooks from Keyright" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F3wyqexzf97is3xpvo82c.png" alt="React to Licensing in Real Time: Outbound Event Webhooks from Keyright" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>Across 2,312 planted faults the study also surfaced four real library problems, from a Windows data-loss bug to README examples that do not work as written.</p>
-<p>The post <a href="https://towardsdatascience.com/i-mutation-tested-50-python-libraries-tests-in-the-young-ones-missed-41-of-planted-faults/">I Mutation-Tested 50 Python Libraries. Tests in the Young Ones Missed 41% of Planted Faults.</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>Posted on Nov 13
+•
+Originally published at delta1labs.com</p>
+<p>Most teams learn what their licensing system did by asking it. A nightly job pulls the list of active licenses, diffs it against yesterday's, and fires the emails and CRM updates that should have gone out hours ago. It works until it matters: a customer refunds at 9am, your "active customers" dashboard still counts them at 5pm, and a renewal reminder lands in the inbox of someone who churned last week. Polling is always stale by design, and the finer you slice the interval the more you hammer an API to mostly learn that nothing changed.</p>
+<p>The fix is to invert the flow. Instead of your systems asking the issuing service what changed, the issuing service tells you the moment it changes. That is what Keyright's outbound event webhooks do: a signed HTTP POST to an endpoint you own, every time a license crosses a lifecycle boundary. This post is about consuming them correctly — the signature, the delivery guarantees, and the replay window — because a webhook endpoint is a public door into your back office, and the three details that make it safe are easy to get wrong.</p>
+<p>Each event is a small JSON document with a stable envelope. The type tells you what happened; the data carries the license it happened to. The envelope fields — id, type, created — are the same across every event, so a single handler can route on type and trust the rest of the shape.</p>
+<p>The lifecycle events you will actually wire up are a short list:</p>
+<p>Issuing service
+
+  Delivery worker
+
+  Your endpoint
+
+
+
+
+
+  commit + enqueue event
+
+
+  POST + X-Keyright-Signature
+
+
+  timeout / 5xx
+
+
+  retry (backoff) — same event id
+
+
+  200 OK
+  delivery acknowledged — stop retrying</p>
+<p>This is at-least-once delivery, and it is the correct guarantee: the alternative — at-most-once — would silently drop events whenever your endpoint hiccupped, which is worse than seeing one twice. Your job on the receiving side is to make a duplicate harmless.</p>
+<p>Your webhook URL is reachable by anyone who learns it. If your handler acts on whatever it receives, someone can POST a license.renewed for an account that never paid. The defense is an HMAC the issuing service computes over the payload with a secret only the two of you hold, sent in X-Keyright-Signature alongside an X-Keyright-Timestamp. The signed string is the timestamp and the raw body joined by a dot — binding the signature to a moment in time as well as to the bytes.</p>
+<p>The trap that burns everyone: verify over the exact raw bytes you received, before you deserialize anything. Model binding re-serializes JSON with different whitespace and key order, and the recomputed HMAC will never match. Read the body as a string once, verify, then parse.</p>
+<p>The verifier recomputes the HMAC and compares in constant time — a plain == on the hex strings leaks, through timing, how many leading bytes matched, which is enough to forge a signature byte by byte. CryptographicOperations.FixedTimeEquals closes that door.</p>
+<p>Because delivery is at-least-once, your handler must produce the same result whether it sees an event one time or five. Key your processing on the envelope's id, which is stable across retries of the same event, and record it the first time you act. A second arrival finds the record and returns early.</p>
+<p>Note the last comment. Return 2xx for events you do not care about. A 4xx tells the issuing service delivery failed, so it will keep retrying an event you were never going to use, and your retry queue backs up behind it.</p>
+<p>The delivery worker has a timeout. If your handler does real work — sending email, calling a CRM — inside the request, a slow dependency turns into a webhook timeout and an unnecessary retry. For anything beyond a quick write, claim the event id, enqueue the work to your own background processor, and return 200 immediately. You have acknowledged receipt; the processing is now your problem, not the issuing service's.</p>
+<p>Subscriptions are managed through the Keyright CLI against your self-hosted instance. Create one with the destination URL and the event types you want; the command returns the signing secret once, which you store wherever your app reads its secrets.</p>
+<p>One boundary is worth stating plainly, because conflating it causes real outages. Webhooks are for your back-office systems — CRM, email, dashboards, provisioning. They are not how the licensed application decides whether to run. That decision stays inside the app, which initializes the Keyright SDK with its product and public key and calls Validate against the signed license it holds, gating features fail-closed.</p>
+<p>Keep the two concerns separate and both get simpler. A webhook that is delayed by a retry storm still cannot let an unlicensed app run, because the app never trusted the webhook in the first place. And a license check that fails offline still works, because it does not depend on your CRM having heard the news. The webhook is how your business learns about a license change in real time; the signed license and the SDK gate are how your software enforces it.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/i-mutation-tested-50-python-libraries-tests-in-the-young-ones-missed-41-of-planted-faults/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/zero_heartbeat_06a3625d7a/react-to-licensing-in-real-time-outbound-event-webhooks-from-keyright-5bjp" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

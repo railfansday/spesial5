@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fine-tune Llama 2 with DPO</title>
+    <title>AI Watermarking 101: Tools and Techniques</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11061.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,36 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fine-tune Llama 2 with DPO</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
+        <h1>AI Watermarking 101: Tools and Techniques</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/157_dpo_trl/dpo_thumbnail.png" alt="Fine-tune Llama 2 with DPO" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/157_dpo_trl/dpo_thumbnail.png" alt="Fine-tune Llama 2 with DPO" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Reinforcement Learning from Human Feedback (RLHF) has become the de facto last training step of LLMs such as GPT-4 or Claude to ensure that the language model's outputs are aligned with human expectations such as chattiness or safety features. However, it brings some of the complexity of RL into NLP: we need to build a good reward function, train the model to estimate the value of a state, and at the same time be careful not to strive too far from the original model and produce gibberish instead of sensible text. Such a process is quite involved requiring a number of complex moving parts where it is not always easy to get things right.</p>
-<p>The recent paper Direct Preference Optimization by Rafailov, Sharma, Mitchell et al. proposes to cast the RL-based objective used by existing methods to an objective which can be directly optimized via a simple binary cross-entropy loss which simplifies this process of refining LLMs greatly.</p>
-<p>This blog-post introduces the Direct Preference Optimization (DPO) method which is now available in the TRL library and shows how one can fine tune the recent Llama v2 7B-parameter model on the stack-exchange preference dataset which contains ranked answers to questions on the various stack-exchange portals.</p>
-<p>In the traditional model of optimising human derived preferences via RL, the goto method has been to use an auxiliary reward model and fine-tune the model of interest so that it maximizes this given reward via the machinery of RL. Intuitively we use the reward model to provide feedback to the model we are optimising so that it generates high-reward samples more often and low-reward samples less often. At the same time we use a frozen reference model to make sure that whatever is generated does not deviate too much and continues to maintain generation diversity. This is typically done by adding a KL penalty to the full reward maximisation objective via a reference model, which serves to prevent the model from learning to cheat or exploit the reward model.</p>
-<p>The DPO formulation bypasses the reward modeling step and directly optimises the language model on preference data via a key insight: namely an analytical mapping from the reward function to the optimal RL policy that enables the authors to transform the RL loss over the reward and reference models to a loss over the reference model directly! This mapping intuitively measures how well a given reward function aligns with the given preference data. DPO thus starts with the optimal solution to the RLHF loss and via a change of variables derives a loss over only the reference model!</p>
-<p>Thus this direct likelihood objective can be optimized without the need for a reward model or the need to perform the potentially fiddly RL based optimisation.</p>
-<p>As mentioned, typically the RLHF pipeline consists of these distinct parts:</p>
-<p>The TRL library comes with helpers for all these parts, however the DPO training does away with the task of reward modeling and RL (steps 3 and 4) and directly optimizes the DPO object on preference annotated data.</p>
-<p>In this respect we would still need to do the step 1, but instead of steps 3 and 4 we need to provide the DPOTrainer in TRL with preference data from step 2 which has a very specific format, namely a dictionary with the following three keys:</p>
-<p>As an example, for the stack-exchange preference pairs dataset, we can map the dataset entries to return the desired dictionary via the following helper and drop all the original columns:</p>
-<p>Once we have the dataset sorted the DPO loss is essentially a supervised loss which obtains an implicit reward via a reference model and thus at a high-level the DPOTrainer requires the base model we wish to optimize as well as a reference model:</p>
-<p>where the beta hyper-parameter is the temperature parameter for the DPO loss, typically in the range 0.1 to 0.5.  This controls how much we pay attention to the reference model in the sense that as beta gets smaller the more we ignore the reference model. Once we have our trainer initialised we can then train it on the dataset with the given training_args by simply calling:</p>
-<p>The benefit of implementing the DPO trainer in TRL is that one can take advantage of all the extra bells and whistles of training large LLMs which come with TRL and its dependent libraries like Peft and Accelerate. With these libraries we are even able to train a Llama v2 model using the QLoRA technique provided by the bitsandbytes library.</p>
-<p>The process as introduced above involves the supervised fine-tuning step using QLoRA on the 7B Llama v2 model on the SFT split of the data via TRL’s SFTTrainer:</p>
-<p>Once the SFT has finished, we can save the resulting model and move onto the DPO training. As is typically done we will utilize the saved model from the previous SFT step for both the base model as well as reference model of DPO. Then we can use these to train the model with the DPO objective on the stack-exchange preference data shown above. Since the models were trained via LoRa adapters, we load the models via Peft’s AutoPeftModelForCausalLM helpers:</p>
-<p>So as can be seen we load the model in the 4-bit configuration and then train it via the QLora method via the peft_config arguments. The trainer will also evaluate the progress during training with respect to the evaluation dataset and report back a number of key metrics like the implicit reward which can be recorded and displayed via WandB for example. We can then push the final trained model to the HuggingFace Hub.</p>
-<p>The full source code of the training scripts for the SFT and DPO are available in the following examples/stack_llama_2 directory and the trained model with the merged adapters can be found on the HF Hub here.</p>
-<p>The WandB logs for the DPO training run can be found here where during training and evaluation the DPOTrainer records the following reward metrics:</p>
-<p>Intuitively, during training we want the margins to increase and the accuracies to go to 1.0, or in other words the chosen reward to be higher than the rejected reward (or the margin bigger than zero). These metrics can then be calculated over some evaluation dataset.</p>
-<p>We hope with the code release it lowers the barrier to entry for you the readers to try out this method of aligning large language models on your own datasets and we cannot wait to see what you build! And if you want to try out the model yourself you can do so here: trl-lib/stack-llama.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/dpo-trl" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/watermarking" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Adapting CPython for yk</title>
+    <title>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,649 +15,93 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Adapting CPython for yk</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
+        <h1>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Earlier this year I wrote a post on
-yk,
-which can automatically add JIT compilers to C interpreters. Since then weâve
-applied yk to more interpreters, fixed various bugs, and improved
-performance notably. Towards the end of October I showed some data where on our
-benchmark suite1 yklua is 2Ã faster than the PUC Lua interpreter it takes as a
-base.</p>
-<p>I was quite pleased with myself until someone brought me down to earth by
-asking âhow do you know if this works for large interpreters?â Itâs a fair
-question: PUC Lua is at least an order of magnitude smaller2 than CPython or CRuby and whoâs
-to say if it would work with much bigger interpreters? We had looked at CPython a year or so ago, but
-at that point yk was missing several obvious things that CPython would need, so
-we quickly moved on. A lot has changed since then, and a quick LLM experiment
-got far enough to suggest it would be worth looking again.</p>
-<p>Happily, having taken a deeper look, CPython not only works when adapted for yk
-as ykcpython3, but there are
-meaningful performance gains to be had â not only relative to normal CPython,
-but also relative to Pythonâs experimental JIT4. Roughly speaking,
-this is the result of 3-4 daysâ work on ykcpython directly; there was a separate
-week and a half of generic yk bug fixing necessary to get to the point that I
-could look at ykcpython itself.</p>
-<p>Here are the âfinalâ numbers from my brief odyssey on ykcpython and the AWFY
-benchmark suite:</p>
-<p>In this table cpython is ânormalâ CPython 3.15.1; cpython_jit is CPython
-3.15.1 with the experimental JIT turned on; and ykcpython is commit
-31b4d387.
-Times are in seconds (lower is better) with means and 99% confidence intervals bootstrapped from 30 process
-executions, running on a 64 core AMD EPYC 7773X Debian machine in performance
-mode (download the repeatable experiment and the raw
-data).
-On each row the fastest entry(s) are shown in bold.</p>
-<p>A simple summary of the table is: ykcpython is faster than cpython on every
-benchmark except DeltaBlue (where itâs about 2.5% slower); and faster than
-cpython_jit on 8 out of 13 benchmarks.</p>
-<p>The point of this post is not to pretend that ykcpython is in any way ready for
-people to use â it definitely is not! Nor is it to pretend that one can
-expect performance on a wider set of programs to be as good as the numbers
-above â it definitely wonât! My view is that benchmark suite performance
-is a hoop to jump through rather than an end in itself: a system which
-benchmarks well might perform poorly in the real world; but a system which
-benchmarks poorly nearly always performs poorly in the real world.</p>
-<p>Rather, I wanted to use this post as a way of showing what itâs like to adapt
-an interpreter for yk5: the stages I went through; and to give a sense
-of how the just under 450LoC I added were enough to achieve a meaningful
-effect. Luckily I had a sense that this might be a useful journey, so I was
-able to write enough stuff down to be able to flesh out this full post.</p>
-<p>If you havenât read the earlier yk
-post,
-hereâs a very brief refresher. Given a lightly modified C interpreter6
-as input, yk produces a VM with a meta-tracing JIT compiler as output7.
-yk doesnât aim to produce the fastest possible JIT compiling language
-implementation: rather, it aims to make the language implementation you know and love
-somewhat faster while retaining 100% compatibility. Put another way a âykifiedâ
-interpreter is a fork of the existing C version of the interpreter, with
-(hopefully!) a handful of adjustments.</p>
-<p>As with any meta-tracing JIT compiler, yk identifies hot loops in the guest
-language (e.g. Lua or Python), and traces the interpreter (i.e. records what
-the C code is executing while it is interpreting the guest language). It then
-optimises those traces and converts them to machine code.</p>
-<p>yk requires interpreters to tell it where potential loops in the guest language are via
-the YkLocation struct. Optionally â though if you want to get good
-performance, definitely necessary! â interpreter authors can add optimisation hints that
-embed knowledge about the language or its common idioms of use such as âat
-this point this seemingly dynamic value almost never changesâ. In general,
-working out where to put YkLocations is relatively easy, but working out where to
-put hints requires a much greater understanding of the interpreter, and careful
-measurement to understand which do and donât help.</p>
-<p>The challenge I face when adapting an interpreter for yk is that I rarely know
-the interpreter well, if at all. Rather than trying to do everything at once, I
-have learnt to start off as simple as possible: I try and do the minimum
-changes that lead to some traces being recorded and compiled to machine code.
-This can be trickier than it seems: Iâve got to understand the build system8, and work out where to put some semi-sensible YkLocations.
-Iâve also learnt to make sure that the languageâs test suite works from this very
-first step: keeping it working thereafter is not only much easier, but it
-lessens the number of times one attempts optimisations that are unsound.</p>
-<p>For a simple interpreter, you might get a basic JIT compiler from an
-interpreter with fewer than 10LoC (Lines-of-Code) changed. For somewhat bigger
-interpreters, a few more changes tend to be necessary. For example, yk doesnât
-like âthreadedâ interpreters that use goto between opcodes, because it
-doesnât give it enough opportunities to intercede and see whatâs going on.
-Fortunately, such changes are not generally too big.</p>
-<p>Since it had been a long time since I looked at CPythonâs internals9,
-I started with the part I was vaguely familiar with. As I later discovered, this is now called the âtier 1â interpreter.
-Quickly hacking in support for yk highlighted several missing things in yk
-(from basic atomic loads to
-not-implemented-bit-widths in sub,
-minor incompatibilities (e.g. reading an environment variable after a CPython
-test had wiped it), and flat out bugs
-(from stackmap fixes to
-not doing silly things after fork).
-Fixing all those took me around a week and a half; Iâm not going to talk about
-them in detail in this post, because theyâre generic fixes that arenât
-ykcpython specific.</p>
-<p>My adaption of the tier 1
-interpreter is deliberately
-minimalistic. Most of the changes in the 200LoC diff are small one-offs that
-arenât hugely interesting: we need CPython to use its (builtin but non-default)
-switch-based interpreter; and yk uses a shadow stack, so CPythonâs C stack
-resizing needs to take that into account too. The most interesting thing I did
-was to add YkLocations at backwards jump opcodes,
-which I expected to be enough for some half-sensible traces to be created.</p>
-<p>I wasnât expecting this first version of ykcpython to be faster
-than CPython â if nothing else, it contained almost no optimisation hints â but it was
-much slower than I expected. It was definitely creating traces, and they were
-executing correctly â the test suite passed, albeit taking more memory
-than Iâd like10 â but something clearly wasnât right.</p>
-<p>Fortunately, it didnât take very long to work out what. 4 years ago, CPython
-added support for quickening under the
-heading of âspecialisationâ. Quickening is a simple, clever technique for
-improving interpreter
-performance
-that rewrites âgenericâ opcodes (e.g. âadd objectsâ) to âspecialisedâ, faster,
-opcodes (e.g. âadd two intsâ) when possible, deoptimising back to the generic
-opcodes if necessary. I tend to think of quickening as giving a decent portion
-of the benefit of a JIT compiler without all the bother of generating machine
-code11. The problem for yk is that sometimes a programâs opcodes
-can transition between specialised and unspecialised opcodes a large number of times,
-and the simple way Iâd added yk support meant that each transition implicitly
-threw away the associated trace and created a new one. In most cases, traces werenât
-used long enough to overcome the cost of creating them.</p>
-<p>There are techniques which can overcome this problem, and I did briefly
-experiment with them, but I then recalled a conversation I had with some
-CPython developers last year. A quick look inside CPython confirmed my
-recollection: CPython contains a âtier 2â interpreter as well. This isnât a
-completely new interpreter; rather it is an alternative implementation of core
-parts of the main interpreter loop, mostly intended for CPythonâs experimental
-JIT compiler.</p>
-<p>A very quick experiment later suggested that the tier 2 interpreter was â at
-least at a basic level â a better fit for yk12. I thus ripped out
-the tier 1 support and added support for yk in the tier 2
-interpreter. Happily, tier 2
-support is even easier than tier 1 support, consisting of a mere 80
-LoC.
-To give you a quick idea of what yk support looks like, hereâs the part that
-attaches YkLocations13 to the (start of) loops:</p>
-<p>For the rest of this post, Iâm going to be using yk and the tier 2 interpreter as the
-starting point for ykcpython.</p>
-<p>When optimising any language implementation, itâs important to know where its
-performance sits in the wider performance landscape. To understand how
-ykcpython was doing, I used two other baselines: âstockâ CPython; and CPython
-with the experimental JIT. I configured cpython as follows:</p>
-<p>Note that Iâm deliberately using the same version of LLVM for both cpython
-and cpython_jit because the latter requires LLVM-21. ykllvm â the fork of
-LLVM used in yk â is based off a version of LLVM about 6 months
-later than LLVM-21. That might
-slightly distort comparisons, but itâs a small enough difference that the
-effects hopefully are fairly minor. Bearing that in mind, ykcpython is
-configured as follows:</p>
-<p>I used our fork14 of the AWFY benchmark
-suite, simply because I know how to run it without thinking.</p>
-<p>The next challenge is to define a metric, or metrics, to report performance.
-Every metric has the potential to mislead and
-many are difficult to understand. In my opinion, the least worst single metric
-is wall-clock time: how long does my program take to run from start to
-finish? This doesnât capture everything we want to know, but it captures a lot,
-and itâs easy to understand.</p>
-<p>Most importantly this metric implicitly includes start-up and warm-up
-time.
-In other words Iâm deliberately choosing a timing metric which tends to favour
-normal interpreters and âpenaliseâ JIT compilers. To somewhat offset that, we
-run each AWFY benchmark for 10 in-process iterations (i.e. run the whole
-benchmark in a for 0..10 loop) so that we also get some sense of how
-optimisation benefits longer-running programs.</p>
-<p>The big performance table at the start of this post uses a custom benchmark
-runner on an idle machine. All the timings from now on in the post are from me
-running time once as a normal user without being too careful if the machine
-is completely idle or not: when starting to optimise an interpreter, itâs not
-practical to wait an hour to benchmark every change on many benchmarks, when
-the effects are generally quite large15.</p>
-<p>There are various ways one can go about optimising an interpreter for
-meta-tracing, all of which have pros and cons: the sequence of optimisations
-Iâm showing here is just one way of going about things16.</p>
-<p>Letâs start with the mandelbrot
-benchmark
-on cpython:</p>
-<p>In other words, I ran the benchmark with 10 in-process iterations and a
-parameter of 500. The AWFY harness prints out how long each iteration took. As
-is common â but definitely not universal! â for an interpreter, cpython
-had fairly consistent times from one iteration to the next.</p>
-<p>For this benchmark, cpython_jit takes 6.746s (0.58Ã CPython) and ykcpython
-takes a whopping 13.70s (1.17Ã CPython)17:</p>
-<p>There are a couple of useful things to notice here. First, we can see warm-up
-occurring: ykcpythonâs first iteration is slower than subsequent iterations.
-Thatâs OK in my book: yk isnât really intended for programs running in a
-fraction of a second. Second, the 102% cpu and user time
-that is higher than wall-clock time are due to yk running trace compilation in threads.
-That allows the interpreter to continue executing, reducing perceived pauses.</p>
-<p>The first thing I do in this situation is look at the âhigh-level IRâ (HIR) of
-the traces that yk has produced to see if things look sensible:</p>
-<p>The logfile contains 11 traces, of which 1 is a âloopâ trace. In general,
-loop traces are where yk is most effective, and the non-loop traces are
-the price we have to pay to get the promised land of loop traces. In this
-case, a simple profile showed that most execution time is spent in the
-solitary loop trace, which is a promising start for yk.</p>
-<p>At this point, doing much more with the HIR than this high-level analysis is
-difficult, because the output is 20,772 lines of this sort of thing:</p>
-<p>Even if youâre used to this syntax and way of thinking, it can be incredibly
-hard to see the forest for the trees: thereâs just too much stuff. And that
-isnât just a problem for humans (or AIs) reading this: more HIR means more
-machine code which implies slower execution.</p>
-<p>My first port of call when optimising an interpreter is to tackle interpreter
-dispatch. When an interpreter is executing a program, it continually asks âwhat
-is the opcode of the current instruction? Is it an add or a sub or â¦?â
-and then it dispatches to the code that performs the appropriate action. Itâs
-probable that a large chunk of that 20KLoC of HIR is the interpreter loading an
-opcode from memory and checking what kind it is. ykâs trace optimiser has
-various classic compiler tricks up its sleeve, but in this case they donât
-really help, because in most cases between the same instruction being loaded
-twice from memory, some other code will be called that yk has to assume might
-have mutated that memory. This isnât unnecessary conservatism: Python programs
-really can mutate their functionâs instructions!</p>
-<p>I was particularly lucky because the tier2 interpreter uses âexecutorsâ which
-are traces of (optimised) instructions. Those instructions are immutable in the
-context of a given executor: should a Python functionâs instructions change,
-any associated executors will be invalidated. That means that we can attach a
-simple monotonically increasing integer code ID to a _PyExecutorObject and
-know that for a given code ID, an opcode at index I will always be the same.</p>
-<p>This allows us to use the single most effective optimisation hint in yk:
-idempotent functions. In essence, an idempotent function says âfor the same
-inputs this function will always produce the same outputâ18.
-âAlwaysâ here really means âalwaysâ! Idempotent is a very strong guarantee
-that yk cannot help you uphold: if you fail to do so, your system will go wrong
-in weird ways.</p>
-<p>Although yk provides a helper yk_idempotent_load function, we need something
-more specialised. Fortunately itâs not hard to write what we need:</p>
-<p>Unsurprisingly, the yk_idempotent attribute tells yk that
-idempotent_load_opcode is an idempotent function. That means that if, in a
-particular trace, the function is called with parameters that are constant
-values then yk can remove the idempotent function call and replace it with its
-output. The __asm__ line is there to encourage LLVM not to inline the
-function19 (if the function is inlined, yk no longer knows there is
-anything idempotent there).</p>
-<p>Using this requires changing just a few lines in the core
-interpreter loop. The most important
-lines are simply this:</p>
-<p>Promotion (e.g. yk_promote)20 says âthis variable is expected to be
-semi-constant: record its concrete value and specialise the trace to it, but
-insert a guard in case that value later changesâ. Imagine I have
-yk_promote(x) and when a trace is later recorded, x happens to be 3. The trace
-will record guard true (x == 3): if on later runs x is not 3, the guard
-will fail and the trace will deoptimise; if the guard succeeds we know henceforth
-that x is definitely 3.</p>
-<p>In other words, in the context of the traces weâre recording, yk will see calls
-to idempotent_load_opcode with constant arguments, allowing it to replace the
-function call with a constant result. The point of this isnât just to remove
-the cost of a load: rather, exposing constant data to ykâs trace optimiser allows it to
-do a much better job of optimising traces. The effect in this case is quite
-something:</p>
-<p>In other words, that simple change has not only made ykcpython 2.7Ã faster,
-but it is now 0.43Ã cpython and 0.74Ã cpython_jit! In other words, a simple
-PR that changes 30LoC has made this benchmark over twice as fast as CPython and
-25% faster than CPythonâs JIT. Another way of judging the effectiveness of this
-optimisation is that it has reduced the 20,772 lines of HIR output to 7,648
-lines21.</p>
-<p>However, before we get carried away, this isnât enough to make all benchmarks
-magically quicker. I have learnt from experience to rotate between benchmarks
-to avoid over-training22. In this case I decided to look at the
-deltablue benchmark, which I know from yklua can be a tough target.
-The situation in ykcpython turned out to be worse than I expected: cpython takes 7.67s,
-cpython_jit takes 6.20s, and ykcpython (with our idempotent change) takes
-37.51s. Ouch!</p>
-<p>My next port of call is to run YKD_LOG=2 which prints warnings if a trace
-canât be compiled. Sure enough:</p>
-<p>For now Iâm going to skip âtrace too longâ. In essence yk has a fixed limit for
-âthis trace looks to be so long that itâs probably not usefulâ. The limit was
-too low, so I increased it unilaterally
-before doing the work for this post. Exactly what the right value is I donât
-know. Indeed, I think that this crude heuristic probably needs replacing with
-something more sophisticated: doing that is a problem for another day.</p>
-<p>Letâs move onto the âunimplementedâ warning: I havenât got around to
-implementing complex atomic instructions yet, so as soon as one of those is
-encountered, yk has no choice but to give up on that trace entirely. If it
-happens to be a hot part of a benchmark, that can absolutely kill performance.
-In this case, happily, the atomicrmw warnings just so happened to come from
-functions which we really donât want to inline into the trace anyway.</p>
-<p>One of tracingâs virtues is that it aggressively
-inlines functions, but that can inline checks which fail too often on
-subsequent executions. For example, one function we inline by default is
-_PyObject_GC_Link which checks to see if enough objects have been allocated
-for garbage collection to be worth scheduling. If weâre unlucky, we may trace
-an iteration of a loop which happens to schedule garbage collection: in nearly
-every subsequent execution, the resulting guard will fail, and weâll take a
-somewhat slower path. The solution here is to mark such functions as
-yk_outline:</p>
-<p>Functions marked yk_outline become calls in a trace. There are probably a
-number of functions which should be marked as yk_outline, but I
-marked the two that happened to
-cause the aborted warnings and that also obviously we donât want to include
-in a trace anyway. Doing so improved execution time to 36.63s (about 2.5%
-faster), so theyâre clearly not the major cause of the slowdown in this case.</p>
-<p>Just when I was starting to fret, profiling execution showed that, to my
-surprise, deltablue was only spending about half its running time in
-JIT-compiled code, where one would expect it to be spending 90%+. It turns out
-that the main reason for this is that not all executors have a _JUMP_TO_TOP
-opcode and werenât being traced.</p>
-<p>My quick fix was to add a YkLocation at the first opcode in an executor. The
-one line fix does just that: it
-means that yk starts tracing as soon as it enters an executor. Doing so
-improves deltablueâs execution time to 8.64s (4.23Ã faster than before). Thatâs
-still 1.13Ã CPython, but itâs a lot better than before!</p>
-<p>At the time I made this change I didnât fully think about how adding a
-YkLocation at the start of an executor might interact with the YkLocation
-already added to _JUMP_TO_TOP. As luck would have it, I accidentally stumbled
-on a reasonable combination: _JUMP_TO_TOP tends to jump to the instruction at
-index 1. Still, I suspect that there might be a better way to add YkLocations
-to executors, but one canât solve every problem all at once: itâs time to move
-onto the next thing!</p>
-<p>Our earlier use of idempotent loads made such a huge impact on interpreter
-dispatch that itâs easy to overlook that it was a simple, shallow, change: it
-only optimised loading an instructionâs opcode kind. Instructions contain a
-number of other fields that are equally amenable to idempotent loading.</p>
-<p>There are various ways one can go about optimising these additional fields. I
-could, for example, have replaced the definitions of some static functions in
-header files. To keep things simple, I defined a macro which can generate the
-two-parameter functions we need, and then nobbled some other macros to call it
-at appropriate points. With the resulting change deltablueâs performance
-improves to 8.09s â weâre now within 10% of cpythonâs performance.</p>
-<p>As we saw earlier, not all functions are good candidates for inlining into a
-trace. yk has a very simple heuristic â stolen shamelessly from RPython/PyPy
-â which is to mark functions containing loops as âoutlinedâ. In other words,
-if C calls a function f() and f contains for (...) { ... } then yk
-will not inline calls to f.</p>
-<p>The fundamental reason not to inline functions-with-loops is that tracing
-unrolls loops, and that tends not to be a good idea. First, some loops execute
-vast numbers of iterations, which would cause counter-productively-long traces.
-Second, loopsâ iterations are often controlled by dynamic, ever-changing
-values: unrolling would specialise the trace to just one of those values, giving
-suboptimal performance on every other value.</p>
-<p>There are however a small number of functions in an interpreter which we
-actively want to unroll. Typically those functionsâ loops satisfy two
-properties: they only run a small number of iterations; and the number of
-iterations depends on an aspect of the userâs program that changes rarely. For
-example, a function called unpack_args(int num_args) which contains for (int i=0; i<num_args; i++) would be an excellent candidate, since it probably
-unpacks the same number of parameters every time it is called at the same place
-in a trace.</p>
-<p>yk thus provides a yk_unroll attribute, which informs yk that a function that
-might otherwise be outlined should in fact be inlined and its loops unrolled.
-Rather than slog through every function in CPython looking for candidates, I
-did a simple grep/sort in hir to see which (implicitly non-inlined) C functions
-appear most often in traces23:</p>
-<p>bcmp is the standard libc function: all of the other functions are in CPython itself.
-Not all of those functions will have loops in them, but the chances are that
-most do. What I do in such a situation is go down (or, depending how you look at it,
-up) the list and look at the code in each function. I did that for a couple of
-benchmarks to ensure I got some coverage of common functions.</p>
-<p>The two most commonly called CPython functions immediately looked like good candidates.
-_PyFrame_Initialize is the most obvious of the two, containing almost exactly
-the pattern I most like to match on:</p>
-<p>_PyFrame_ClearLocals is slightly trickier: it contains a while loop involving pointer
-arithmetic, but it didnât take me long to convince myself that it was a good
-candidate.</p>
-<p>Earlier we made _PyObject_GC_Link not inlineable, so we donât want to reverse
-that! Similarly, do_lookup looks values up in a dictionary, so we want to
-keep that outlined: it depends on an often-changing dynamic value.</p>
-<p>PyLong_FromSsize_t and PyLong_FromLong were harder to judge. These
-functionsâ inner loops depend on dynamic values, but my best guess is that they
-tend to be fairly stable in practice. I will be keeping an eye on these
-functions in the future, because I only have medium confidence that I made the
-right initial call.</p>
-<p>As these examples suggest, I am generally fairly cautious about adding
-yk_unroll: inappropriate placings can easily help one benchmark and make many
-others worse. I thus tend to only mark one or two functions as yk_unroll,
-benchmark, and then move on. In this case, I did 5 small PRs, with the end
-effect that json went from 11.52s to 10.85s.</p>
-<p>In general most function calls in C are direct: f() calls a function called
-f. However a minority of functions are indirect: f is a generic pointer
-whose value can be any compatible function. This is commonly used in
-interpreters to allow run-time dispatch to type specific code.</p>
-<p>By default, yk cannot inline through indirect function calls, because without
-knowing exactly what pointer is being called, it canât reliably reconstruct
-the path that execution took24. Fortunately, we already have
-the tool we need to solve this problem: yk_promote! If yk sees an indirect
-function call with a constant pointer it knows exactly what function is being
-called and can inline as normal. The common pattern I use is:</p>
-<p>yk_is_interpreting() is true during ânormalâ interpretation; false during
-tracing; and (because itâs a constant false) removed during tracing. In other
-words, yk_promote is only called during the tracing phase.
-yk_is_interpreting() is fairly fast (much faster than yk_promote()) so this
-idiom is a small but useful performance win.</p>
-<p>However, there is often a second problem. yk only puts the tracing machinery
-into a function if it can statically prove that it is reachable from a
-traceable path. Commonly, functions called from indirect calls cannot be
-statically proven to be traceable and thus they still leave an outlined call in
-the trace. We can solve that with the yk_indirect_inline function which tells
-yk âthis function can be reached from an indirect call and should be considered
-for tracingâ25.</p>
-<p>Profiling a couple of benchmarks quickly showed several potential candidates26. My
-experience is that not all indirect call sites are good targets for promotion:
-for example, of the interpreters Iâve looked at so far, inlining malloc and
-free indirect calls has rarely been profitable. However, I quickly alighted
-upon a couple of promising candidates.</p>
-<p>Letâs start with the less promising, but easier to explain, one: benchmarks
-like deltablue and json call len on lists and strings. Simplifying slightly,
-sq_length is a pointer to a function inside a CPython type, so this becomes
-an indirect call in traces. In the case of len([...]) the function thatâs
-ultimately called is list_length:</p>
-<p>where PyList_GET_SIZE boils down (slightly elided) to a simple load
-a->ob_size. Thatâs the sort of code that yk loves to see inlined in a trace!</p>
-<p>The resulting PR has to do a
-slightly annoying dance to make yk accept the yk_promote call. In essence, if
-yk_promote were to be statically inlined into a function which ykllvm
-determines doesnât need to be traced, odd things happen, and so ykllvm throws a
-static error. In this case, the function that âshouldâ contain the yk_promote
-can get inlined in multiple paths, one of which falls foul of this check. A
-hacky fix is to pull the promote out into a function which isnât statically
-inlined27. I then did a second PR to
-inline range construction and iteration.</p>
-<p>You may notice that in both of these PRs I have marked a much larger number of
-functions yk_indirect_inline than I have benchmark evidence for. The reason
-for this is a variant of something I mentioned above: my experience of indirect
-call sites is that either nearly all targets benefit from indirect inlining or
-none do. This clearly isnât an iron law of the universe, but what it means is
-that I tend to look at all the possible targets, and mark them as
-yk_indirect_inline if they look sensible. So far, I have rarely regretted
-doing so.</p>
-<p>Collectively these two PRs drive jsonâs performance down to 10.41s, though the
-effect on deltablue was too small to say anything either way. As I get further
-into optimising an interpreter for yk this is common: not all benchmarks
-benefit from all optimisations.</p>
-<p>At this point, youâve probably got a good sense of how I approach ykifying an
-interpreter. I raised a few more PRs before realising that I wasnât going to add
-much useful conceptually to this post: it was time to finish this stage of work
-off and write it up.</p>
-<p>Before I started this little journey, I wasnât entirely sure if yk would work
-at all â let alone âwellâ! â on an interpreter the size and complexity of
-CPython. The early stages didnât entirely dispel my worries: there were lots of
-missing pieces, and quite a few bugs, that needed fixing in yk for ykcpython to
-work at all. The fact that ykcpython does work, and works fairly well, is proof
-that at least one big, complex, interpreter can be ykified with relative ease
-â and that it can be surprisingly competitive on performance.</p>
-<p>Of course, I am lucky in many ways. yk already had decent foundations, thanks
-to several peopleâs hard work. The tier 2 interpreter in CPython made my life a
-lot easier than it might otherwise have been. Small benchmarks, like the ones
-Iâve used in this post, tend to flatter (meta-)tracing as a JIT compiling
-technique. And when it comes to ykifying interpreters, well, Iâve been round
-the block a few times.</p>
-<p>But I donât want to completely underplay things. 3-4 days isnât that long to
-spend on an interpreter like CPython. It will take a lot longer than that â
-even with the wonder of LLMs to speed up the journey â to do a thorough job
-and squeeze all the juice that ykcpython can expose to yk. Similarly, I have
-only looked at a handful of benchmarks: itâs unlikely that ykcpython will magically
-speed up a wide range of programs yet, as there will be many other parts
-of CPython that need to be considered for optimisation. A lot of this will
-not be rocket science, but it is work, and not all of it can yet be automated.</p>
-<p>I also havenât made any performance optimisations (yet!) to yk for ykcpython
-specifically (though I have fixed a couple of bottlenecks that I had previously
-been able to ignore). In particular, one thing I am entirely confident in is
-that ykcpython will generate HIR patterns that yk doesnât yet optimise
-effectively: fixing those will improve ykcpythonâs performance for free,
-possibly quite a bit. Even without that, ykcpython has highlighted additional
-bottlenecks in yk that had never previously been an issue: each time one of
-those is fixed, ykcpython will magically get faster.</p>
-<p>In a sense, this is one of the nice things that yk offers: improvements to yk
-nearly always benefit every ykified interpreter. Itâs why I could bring
-ykcpython up to speed in a short period of time: I wasnât writing a JIT
-compiler from scratch, I was reusing a generic toolkit. For example, the
-various missing pieces and bugs that ykcpython highlighted in yk will almost
-certainly make ykifying the next interpreter that bit easier â and hopefully
-future improvements to yk will benefit ykcpython even further!</p>
-<p>Acknowledgments: Edd Barrett and Lukas
-Diekmann did much of the original work on yk. Shopify
-and the Royal Academy of Engineering generously funded the underlying research.
-Chris Seaton was the person who made the work on yk possible.</p>
-<p>A combination of the AWFY and CBLG suites along with
-a few other âreal worldâ benchmarks we distilled down from other sources.</p>
-<p>A combination of the AWFY and CBLG suites along with
-a few other âreal worldâ benchmarks we distilled down from other sources.</p>
-<p>PUC Lua is written in a style unlike anything else Iâve seen. At first,
-I found myself overwhelmed by the deeply nested use of macros and
-widespread implicit conventions. As Iâve spent more time with it, Iâve come
-to deeply appreciate the beauty in the way its code is structured: not just
-the literal aesthetics of the code, but also how much thought has gone into
-making the code run fast.</p>
-<p>PUC Lua is written in a style unlike anything else Iâve seen. At first,
-I found myself overwhelmed by the deeply nested use of macros and
-widespread implicit conventions. As Iâve spent more time with it, Iâve come
-to deeply appreciate the beauty in the way its code is structured: not just
-the literal aesthetics of the code, but also how much thought has gone into
-making the code run fast.</p>
-<p>The experimental JIT might possibly be
-removed although the exact status of
-that is unclear to me.</p>
-<p>The experimental JIT might possibly be
-removed although the exact status of
-that is unclear to me.</p>
-<p>Also I hope this post might help agents do a better job in the
-future of ykifying interpreters. As things stand, they do spot some really
-clever opportunities, but they miss an awful lot of obvious ones, and they
-tend to overcomplicate the opportunities they do spot.</p>
-<p>Also I hope this post might help agents do a better job in the
-future of ykifying interpreters. As things stand, they do spot some really
-clever opportunities, but they miss an awful lot of obvious ones, and they
-tend to overcomplicate the opportunities they do spot.</p>
-<p>Technically any interpreter with LLVM IR. We have now tested that
-at least some C++ interpreters work, but whether (say) Rust interpreters work is
-a worry for the future.</p>
-<p>Technically any interpreter with LLVM IR. We have now tested that
-at least some C++ interpreters work, but whether (say) Rust interpreters work is
-a worry for the future.</p>
-<p>Another way of thinking of yk is that it is RPython (i.e. âPyPyâ) for
-LLVM IR. As that suggests, yk owes a deep debt to RPython, which is its
-major inspiration.</p>
-<p>Another way of thinking of yk is that it is RPython (i.e. âPyPyâ) for
-LLVM IR. As that suggests, yk owes a deep debt to RPython, which is its
-major inspiration.</p>
-<p>No-one enjoys looking at someone elseâs build system.</p>
-<p>No-one enjoys looking at someone elseâs build system.</p>
-<p>CPython and I go back quite some way. I think that I contributed
-some RISC OS patches to CPython, possibly via someone else, in 1997 or
-1998. The first commit I can definitely say I had something to do with was
-in 1999.
-CPython has changed an awful lot since then!</p>
-<p>CPython and I go back quite some way. I think that I contributed
-some RISC OS patches to CPython, possibly via someone else, in 1997 or
-1998. The first commit I can definitely say I had something to do with was
-in 1999.
-CPython has changed an awful lot since then!</p>
-<p>At the time of writing, yk never frees memory associated with
-traces. I have implemented most of the bits necessary to fix this, and just
-have to finish off the last part.</p>
-<p>At the time of writing, yk never frees memory associated with
-traces. I have implemented most of the bits necessary to fix this, and just
-have to finish off the last part.</p>
-<p>I had entirely forgotten about the existence of this in
-CPython, which is embarrassing, becuase Iâve advocated for its inclusion in
-various interpreters in the past. Not, I admit, with great success.</p>
-<p>I had entirely forgotten about the existence of this in
-CPython, which is embarrassing, becuase Iâve advocated for its inclusion in
-various interpreters in the past. Not, I admit, with great success.</p>
-<p>Though it threw up a few more missing parts and bugs in yk that I
-had to fix before I could be sure.</p>
-<p>Though it threw up a few more missing parts and bugs in yk that I
-had to fix before I could be sure.</p>
-<p>In case youâre wondering, this is very fast: a YkLocation is a
-word sized value with no other associated memory unless that location
-becomes hot. The idea here is to make sure that the common case of cold
-code has a very low cost.</p>
-<p>In case youâre wondering, this is very fast: a YkLocation is a
-word sized value with no other associated memory unless that location
-becomes hot. The idea here is to make sure that the common case of cold
-code has a very low cost.</p>
-<p>Technically a subset, because Havlak doesnât work out of the box
-with stock CPython.</p>
-<p>Technically a subset, because Havlak doesnât work out of the box
-with stock CPython.</p>
-<p>As the interpreter becomes more mature, and the effects of any
-optimisation become smaller, one does have to be more careful. ykcpython is
-not there yet!</p>
-<p>As the interpreter becomes more mature, and the effects of any
-optimisation become smaller, one does have to be more careful. ykcpython is
-not there yet!</p>
-<p>ykcpython imposes a constraint that most of us havenât experienced
-since ye olde days: it takes several minutes to link on my box. For those
-of us used to lightning-fast compilation, this can come as a bit of a shock
-to the system. Fortunately, as weâll see, a small number of small changes
-had big effects, so it wasnât quite as annoying as I first expected.</p>
-<p>I have a local patch which improves linking speed by over 2Ã, but
-Iâm not yet convinced itâs correct. I havenât used it for anything
-described in this post.</p>
-<p>ykcpython imposes a constraint that most of us havenât experienced
-since ye olde days: it takes several minutes to link on my box. For those
-of us used to lightning-fast compilation, this can come as a bit of a shock
-to the system. Fortunately, as weâll see, a small number of small changes
-had big effects, so it wasnât quite as annoying as I first expected.</p>
-<p>I have a local patch which improves linking speed by over 2Ã, but
-Iâm not yet convinced itâs correct. I havenât used it for anything
-described in this post.</p>
-<p>Weâve put a lot of work into making warmup costs in yk as low as
-possible, but theyâll never go to zero: the first iteration is 10% slower
-than the subsequent iterations because itâs doing work tracing and so on.</p>
-<p>Weâve put a lot of work into making warmup costs in yk as low as
-possible, but theyâll never go to zero: the first iteration is 10% slower
-than the subsequent iterations because itâs doing work tracing and so on.</p>
-<p>Itâs fine if the function mutates state inside it,
-provided (1) it always guarantees to produce the same outputs for the same
-inputs and (2) removing the call, and its mutations, doesnât affect overall
-correctness.</p>
-<p>Itâs fine if the function mutates state inside it,
-provided (1) it always guarantees to produce the same outputs for the same
-inputs and (2) removing the call, and its mutations, doesnât affect overall
-correctness.</p>
-<p>yk_idempotent implies noinline, but LLVM has a habit of
-ignoring such requests for no obvious reason. The __asm__ trick makes
-LLVM less likely (note my careful choice of words!) to ignore noinline.</p>
-<p>yk_idempotent implies noinline, but LLVM has a habit of
-ignoring such requests for no obvious reason. The __asm__ trick makes
-LLVM less likely (note my careful choice of words!) to ignore noinline.</p>
-<p>Oddly, this applies to a variable, not (just) its result. Itâs a
-long story.</p>
-<p>Oddly, this applies to a variable, not (just) its result. Itâs a
-long story.</p>
-<p>Itâs a coincidence that the HIR has also reduced by almost
-exactly the same factor. HIR instructions do not all have the same cost,
-and there are some forms of duplication in there that muddy the waters
-further (guard bodies, in case youâre really interested).</p>
-<p>Itâs a coincidence that the HIR has also reduced by almost
-exactly the same factor. HIR instructions do not all have the same cost,
-and there are some forms of duplication in there that muddy the waters
-further (guard bodies, in case youâre really interested).</p>
-<p>Put another way: to avoid falling foul of Goodhartâs
-Law.</p>
-<p>Put another way: to avoid falling foul of Goodhartâs
-Law.</p>
-<p>This isnât quite the same thing as saying they are the most
-frequently called, but itâs not a terrible proxy for that.</p>
-<p>This isnât quite the same thing as saying they are the most
-frequently called, but itâs not a terrible proxy for that.</p>
-<p>Imagine we call an unknown pointer P and we subsequently see
-that block B in function F has been traced: we canât tell if P==F, or
-whether P referenced an untraceable function G that then called F.</p>
-<p>Imagine we call an unknown pointer P and we subsequently see
-that block B in function F has been traced: we canât tell if P==F, or
-whether P referenced an untraceable function G that then called F.</p>
-<p>Note that yk_indirect_inline still respects
-the âdonât consider a function as traceable if it contains loopsâ
-heuristic, so one sometimes wants to use both yk_indirect_inline and
-yk_unroll together.</p>
-<p>Note that yk_indirect_inline still respects
-the âdonât consider a function as traceable if it contains loopsâ
-heuristic, so one sometimes wants to use both yk_indirect_inline and
-yk_unroll together.</p>
-<p>Working out what functions are âindirectly directlyâ called from a
-trace used to be a pain, but an LLM will now happily go away and return an
-accurate answer in a few minutes.</p>
-<p>Working out what functions are âindirectly directlyâ called from a
-trace used to be a pain, but an LLM will now happily go away and return an
-accurate answer in a few minutes.</p>
-<p>I havenât seen this problem before: it seems probable that
-ykllvm could be extended to avoid this hacky fix, but thatâs a problem for
-another day.</p>
-<p>I havenât seen this problem before: it seems probable that
-ykllvm could be extended to avoid this hacky fix, but thatâs a problem for
-another day.</p>
+                <p>Muse Spark Open is an open-weight model from Meta. The mixture of experts model brings text, images, audio, and video into a model with approximately 816 billion parameters, around 42 billion active per token, and a context window of up to one million tokens. It generates text, giving developers a common interface for asking questions about different kinds of input.</p>
+<p>Following Muse Glimmer, Muse Spark Open introduces a mixture-of-experts architecture at a much larger scale, and the most capable US open-weights model to date.</p>
+<p>Meta trained Muse Spark Open for agentic coding: reading a codebase, writing and debugging code, and calling tools. It also takes images, audio, and video as input, so the same model can read a screenshot, listen to a voice note, or watch a screen recording while it works on your code. This post shows you how to run it, how to fine-tune it, and what we built with it. Find all the models here.</p>
+<p>Meta describes Muse Spark Open as a coding-optimized model trained on real developer workflows such as multi-file refactors and long debugging sessions. Muse Spark Open is an agentic focused model that plans, acts, observes, and self-corrects over long tasks, including browsing the web with images.</p>
+<p>The checkpoint repositories are Muse-Spark-Open-816B-A42B and Muse-Spark-Open-816B-A42B-NVFP4.</p>
+<p>Muse Spark Open is the full-size model of the Muse series of models. Muse Glimmer, which Meta released in August, is a small dense model from the same series, ideal for running locally. Both models use the same tokenizer and vocabulary. The chat template follows the Muse Glimmer template, with additions for the new modalities. In Muse Spark Open the input embedding and the output layer are separate matrices of about 1.66B parameters each.</p>
+<p>The language model has 62 layers and a hidden dimension of 8192. Each layer has 128 query heads and 16 key-value heads (grouped-query attention). Each head has 64 dimensions. The attention block has an output gate and an output normalization layer. The model also applies normalization to the queries and the keys (QK-norm). Each block combines its input and its output through a learned residual gate, not through a plain sum.</p>
+<p>Muse Glimmer uses one dense feed-forward network in each layer. Muse Spark Open replaces this dense network with a Mixture-of-Experts (MoE) block. Each MoE block has 256 experts, and a router selects 8 experts for each token. Each expert is a feed-forward network that projects from 8192 to 4096 dimensions and back to 8192, then applies its own normalization to its output. The experts hold ~97% of the total model parameters.</p>
+<p>Only 8 experts run per token, so the model computes each token with about 42B parameters. All 256 experts stay in memory, so deployment needs the memory of an 816B-parameter model, but runs at the much faster speed of a 42B model. The BF16 checkpoint is about 1.5 TB in safetensors format. The NVFP4 checkpoint stores the parameters in 4-bit precision with negligible loss in accuracy, specifically for NVIDIA Blackwell GPUs. In transformers, the BF16 checkpoint runs across 4 nodes of 8 H200 GPUs with tensor parallelism (TP=32) and the NVFP4 runs on a single B200 node. If you want to deploy Muse Spark Open, check out the llama.cpp, vLLM, and SGLang recipes below.</p>
+<p>A perception encoder converts images and video frames into tokens for the language model, just like Muse Glimmer. The encoder has 1.8B parameters, 50 layers, a hidden dimension of 1536, and 16 attention heads. It splits each image into 14×14 patches and produces features with 4096 dimensions. Position information comes from learned absolute embeddings and 2D RoPE. The feed-forward network in each layer uses LayerNorm and GELU. Every fourth layer and the last layer use full attention, and the other layers use sparse attention.</p>
+<p>Muse Glimmer 30B uses an encoder with the same architecture. The design follows the  Perception Encoder work from Meta. Video input goes through the same encoder as images.</p>
+<p>Muse Spark Open accepts audio as input through its audio encoder. An audio tokenizer converts the audio into tokens, and the chat template marks the audio position with <|audio|> tokens. The encoder emits one audio token every 80 ms, which yields 12.5 tokens per second. So let’s say, you have an audio of 10 seconds, the number of input audio tokens would be 125.
+The encoder itself is a convolutional pyramid where each stage consists of a patch embedder of different patch sizes and 2 convolutional blocks of 1d kernels of size 7 with stride of 1. These stages are repeated for patch sizes of [16, 6, 5, 4]. At the end of the final stage, the temporal frames are fed to a final block of RMSNorm → linear projection → RMSNorm.</p>
+<p>The context window is 1M tokens at inference. The configuration sets max_position_embeddings to 1,048,576. This includes image, video, and audio tokens in the same window as text.</p>
+<p>Grouped-query attention keeps the KV cache small for a model of this size. Each token adds 2 × 16 heads × 64 dimensions × 62 layers = 126,976 values to the cache. In BF16, this is about 250 KB per token and about 266 GB for a full 1M-token context.</p>
+<p>The Muse Spark Open implementation provides MuseSparkForConditionalGeneration for text generation from multimodal inputs and MuseSparkProcessor for preparing conversations. The processor combines the tokenizer, image and video processors, audio feature extractor, and chat template.</p>
+<p>Use a DistributedConfig to configure the parallelism settings. tp_size is the number of devices across which the dense layers are sharded, and ep_size is the number of devices across which the experts are distributed.</p>
+<p>You can initialize the model and processor as follows.</p>
+<p>Prepare the conversation, then pass the messages to processor.apply_chat_template, enabling add_generation_prompt=True, tokenize=True, return_dict=True, and return_tensors="pt". Pass the processor output to model.generate and decode the newly generated tokens, excluding the input prefix. The processor has a lever for the reasoning effort, mapping symbolic levels (low/medium/high/xhigh) to the integers the model itself accepts (16, 64, 256, 512). Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task. You can also set a numeric effort by including a line like Reasoning strength: 1 in the system prompt.</p>
+<p>The Muse Spark Open processor expands each image marker into the number of patch tokens required by the processed image, surrounded by image boundary tokens. This expansion keeps the text positions aligned with the visual features passed to the model. The processor also handles multiple images within a single prompt.</p>
+<p>Video prompts include frame timing as well as visual content. The processor handles videos with audios in them (which is an upgrade from Muse Glimmer thanks to the audio encoder). The processor downsamples video frames and audio to align frames together. By default, videos are sampled to 2 FPS, capped at 96 frames. You can modify this by setting the fps of the video processor:</p>
+<p>As a general rule of thumb, videos are frames in temporal sequence, and the more you downsample, the more you will lose frames in between specific events, so you need to keep fps high if you want more accurate generations. However, there’s a trade-off because you will require more memory and increase latency for prefill. The frames are interleaved with text input that states timestamps (e.g. “Time: 3.5s”). To enable passing in videos with audio, pass load_audio_from_video=True to apply_chat_template.</p>
+<p>Preserve the video's metadata when preparing inputs with return_metadata=True so the processor can assign the correct framerate.</p>
+<p>The Muse Spark Open audio tower consumes a raw waveform. The processor expects mono audio at 24 kHz and pads the waveform to a multiple of 1,920 samples, corresponding to one audio embedding per 80 milliseconds. Audio supplied directly to the processor at another sample rate must first be resampled. You can do this by using the load_audio util of transformers. load_audio uses torchcodec, librosa or torchaudio backends, so make sure to have one of these installed locally before running inference.</p>
+<p>If you want to simply use apply_chat_template with messages though, this is all handled for you under the hood:</p>
+<p>The processor inserts the matching number of audio tokens between audio boundary markers. It also returns a mask identifying real samples, allowing the model to exclude padded audio embeddings.</p>
+<p>Muse Spark Open can do text-only and multimodal tool calling. You can make the model call tools as follows.</p>
+<p>Muse Spark Open uses a channel-based chat template (Harmony, first introduced by gpt-oss). Note that you don’t have to know about the internals, but it’s useful to check the channels the model routes to, in case you get low quality outputs. In the input message below:</p>
+<p><|start|>assistant is intentionally left open, it’s the model that chooses recipient with to= . The model has different recipients, e.g. self asks the model to reason,</p>
+<p>self is for reasoning, commentary are comments before and between tool calls visible to the end user, user is the final response.Tool-call routing is parsed as follows (assuming you have passed tools to apply_chat_template:</p>
+<p>Muse Spark Open is integrated in llama.cpp and comes in the prebuilt binaries. You can install this with following command:</p>
+<p>You can start the server as follows with quant suffix attached to model ID:</p>
+<p>The repository containing quants is here. Once the server has started, you can head to localhost:9931 to chat with the built-in WebUI. From the web UI you can add audio and images for inference and adjust the reasoning lever.Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task.We tested quants on Mac M3 Ultra (512GB). An imatrix-calibrated 2-bit quant runs at 18 tokens/s, with plenty of room free for the KV cache (304 GB used by the model).</p>
+<p>You can also query the server as follows. Feel free to check out the API reference for multimodality, tool calls and more.</p>
+<p>llama.cpp team ships different quantized versions. We have tested Q2_K, Q4_K_S and Q_8 on Apple Silicon chips. You can run each quant by adding the quant id as suffix, llama serve -hf ggml-org/Muse-Spark-Open-816B-A42B:Q2_K.</p>
+<p>The Muse Spark Open integration for SGLang supports text, image, audio, and video inputs. The NVFP4 reference configuration runs across four GB300 GPUs.</p>
+<p>From the SGLang integration environment, download the checkpoint from the Hugging Face Hub and start the server:</p>
+<p>The checkpoint includes the chat template, which we pass explicitly. The launcher configures the Muse reasoning and tool-call parsers.</p>
+<p>Send a request through the OpenAI-compatible API:</p>
+<p>The response separates the reasoning trace in reasoning_content from the final answer in content.</p>
+<p>The Muse Spark Open reference integration for vLLM supports text and image inputs with the NVFP4 checkpoint that require blackwell series GPUs.</p>
+<p>After installing the reference plugin and its dependencies, download the checkpoint from the Hugging Face Hub and launch the server:</p>
+<p>This configuration sets a 128K-token serving context. The plugin supplies the model implementation, checkpoint loader, and reasoning and tool-call parsers.</p>
+<p>Send a request using the same Hub model ID:</p>
+<p>Muse Spark Open is available in oMLX and mlx-lm today. oQ quants optimized for oMLX are available in 3-bit and 4-bit, ready to use right away.</p>
+<p>We tested the oQ3e quant on an M3 Ultra (512 GB). The model takes about 344 GB, leaving room for the KV cache, and runs at about 225 tok/s prefill and 21 tok/s generation with a 1024-token prompt and 128 generated tokens.</p>
+<p>Once you download the model through the oMLX interface, you can chat with it in the built-in chat UI. From the chat UI you can add images and adjust the reasoning effort on the fly, from low to xhigh. The model’s reasoning shows up as a collapsible thinking block, separate from the final answer.</p>
+<p>Note that it's not possible to turn reasoning off, and the default (Auto) uses xhigh. Set it to “low” if you want to use fewer tokens on easier tasks.</p>
+<p>The language model is also available in this PR of the official mlx-lm repository. You can run it on the same high-quality oQ3e quant like this:</p>
+<p>This is a big model, even the 3-bit quantization requires more than 256 GB of RAM, as explained above. You can also run distributed inference across multiple computers, please refer to the documentation for details.</p>
+<p>You can deploy Muse Spark Open on Inference Endpoints with a pre-validated SGLang recipe for the NVFP4 variant which runs on either 8 × NVIDIA RTX Pro 6000 98 GB with 131072 context length, or with 8 x NVIDIA H200 141GB if you want 1048576 context length instead.</p>
+<p>To deploy, run one command with the Hugging Face CLI:</p>
+<p>Or open endpoints.huggingface.co/new/meta-models/Muse-Spark-Open-816B-A42B-NVFP4 and select Create Endpoint.</p>
+<p>The endpoint exposes an OpenAI-compatible API with both Chat Completions API at /v1/chat/completions and Responses API at /v1/responses.</p>
+<p>Any OpenAI-compatible client works with the same URL and your Hugging Face token as the API key.</p>
+<p>You can fine-tune the 816B checkpoint with the TRL SFTTrainer. This section shows how we fine-tuned it with TRL on 8 nodes of 8 H100 GPUs. The recipe trains LoRA adapters on the attention layers. The experts stay frozen. The full script is in the TRL examples.</p>
+<p>First, we need to split the model across 64 GPU devices. Given the large size of the model, we need to parallelize it across multiple axes. We shard the model with FSDP and split the experts across GPUs, using DistributedConfig, which tells transformers how to split the model when it loads:</p>
+<p>In the snippet above, fsdp_size=64 shards the model across all 64 GPUs with FSDP2, and ep_size=8 splits the 256 experts of each layer into 8 groups. Transformers sends each token to the GPU that holds its expert, so each GPU trains on its own slice of the batch.</p>
+<p>Now, we can configure the SFTConfig for our training run. We’ve performed a simple task here to adapt the model’s chat template on an open source dataset, but you could apply it to your own use case.</p>
+<p>The core parts here are packing=True which joins examples into 2048-token sequences without padding. A block-diagonal mask keeps the examples separate. save_only_model=True saves the adapter and no optimizer state, because the trainer cannot resume a model that was sharded at load time. LoraConfig targets the four attention projections and the 256 experts of each layer stay frozen.</p>
+<p>Then we can run this command across each node:</p>
+<p>We trained for 500 steps, which took about 2 hours on 64 H100s, at about 8,000 tokens per second. Mean token accuracy rose from 72% to 84% and the loss fell from 1.26 to 0.57, which signals a good fine-tuning run.</p>
+<p>Muse Spark Open is a coding and agentic model. We wanted to see that for ourselves, so we tried a mixture of multi-modal and agentic tasks that use the model's image and audio inputs. Everything below is something you can run or fork.</p>
+<p>We combined 2-bit quantized Muse Spark open (served on llama.cpp) with the Pi coding agent to generate and iteratively improve 3D assets in Three.js. You can find the prompt here, as the model is quantized it requires a bit more steering. We get 18 TPS on llama.cpp on Mac Ultra.</p>
+<p>We initially describe the asset, and Pi uses the model to generate Three.js code for the asset, renders the result in a browser, and captures screenshots from multiple angles. It then sends those images back to the same model on llama server for visual feedback. Pi uses that feedback to edit the code and repeats the process.</p>
+<p>We tested Spark on computer use tasks and were amazed by the performance, so we have built a lean demo that also serves to teach you how a computer use agent works. You can also further customize this for your needs. This is both an educational example and something you can run in a few lines. You can find it here.</p>
+<p>Muse Spark NVFP4 Browser Agent with OpenEnv and HF Sandboxes</p>
+<p>Hugging Face Sandboxes are sandboxes built on Hugging Face Jobs for easy code execution. The demo consists of three components:</p>
+<p>where the remote sandbox contains the environment and the browser as illustrated below.</p>
+<p>You can easily try this with a few steps, described in the example. Start Inference Endpoint with Muse Spark Open (NVFP4 works well too!), add your endpoint URL as environmental variable, publish your OpenEnv server in Spaces and also provide that, then you can run the agent loop.
+Muse Spark Open sees the previous actions, system prompt, url and the screenshot of the browser to take an action, and nothing else (no DOM, no HTML code, nothing) so it’s a truly multimodal browser demo.</p>
+<p>Finally, we wanted to push Spark’s agentic multimodality to the limits, so we set up this space that combines the model’s audio, image, and agentic properties into a browser agent. We give the model a general description of a thing we need and it interacts with the integrated browser to find options on Amazon.</p>
+<p>Muse Spark Open takes the voice input and reasons over the type of product that meets the descriptions, searches for it on Amazon, and selects the most appropriate based on criteria.</p>
+<p>Muse Spark Open is a full-size open-weight model from the Muse series. Start with the BF16 or NVFP4 checkpoint, or try one of the great llama.cpp quants. If you build something with Muse Spark Open, share it, and tell us in the repository’s discussions.</p>
+<p>Talk to Muse Spark and watch a browser work</p>
+<p>i wish if i can run huge models like this on a phone or 4vram</p>
+<p>Talk to Muse Spark and watch a browser work</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://tratt.net/laurie/blog/2026/adapting_cpython_for_yk.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/meta-muse-spark-open" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

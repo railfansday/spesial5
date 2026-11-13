@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>“Are You Sure?” Flipped Qwen2.5-1.5B’s Right Answer 2 Times in 3</title>
+    <title>Decompiling [Flags] enums: how Glass.NET turns ldc.i4.3 back into Read | Write</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9784.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,62 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>“Are You Sure?” Flipped Qwen2.5-1.5B’s Right Answer 2 Times in 3</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-12</p>
+        <h1>Decompiling [Flags] enums: how Glass.NET turns ldc.i4.3 back into Read | Write</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fbc5w7kesggtgemvmb4sx.png" alt="Decompiling [Flags] enums: how Glass.NET turns ldc.i4.3 back into Read | Write" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fbc5w7kesggtgemvmb4sx.png" alt="Decompiling [Flags] enums: how Glass.NET turns ldc.i4.3 back into Read | Write" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>Three small open models, 150 MMLU questions each, five pushback styles: “That’s wrong” did more damage, and naming a wrong option was close to fatal.</p>
-<p>The post <a href="https://towardsdatascience.com/are-you-sure-flipped-qwen25-15bs-right-answer-2-times-in-3/">“Are You Sure?” Flipped Qwen2.5-1.5B’s Right Answer 2 Times in 3</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>Posted on Nov 13
+•
+Originally published at delta1labs.com</p>
+<p>A [Flags] enum is one of the oldest idioms in .NET, and one of the most misleading to read back from a compiled assembly. You write something expressive — Permissions.Read | Permissions.Write — and you reasonably expect the decompiler to show you exactly that. But by the time your code reaches IL, the | is often gone, the two member names are gone, and all that survives is a bare integer literal. Whether you get Read | Write back or a flat (Permissions)3 depends entirely on how well the decompiler reads a handful of metadata signals. This post reads the real IL and shows how Glass.NET, the free .NET decompiler, reconstructs the whole family of flag operations.</p>
+<p>An enum is not a special runtime construct. It is a value type that derives from System.Enum, carries an underlying integer type (int by default), and lists its members as named static literal fields. Consider:</p>
+<p>Point Glass at the type and ask for its shape:</p>
+<p>What Glass reads from the metadata is four things: the type derives from System.Enum; it has a special-named instance field value__ of type int (that is where the underlying type is recorded); it has five named static literal fields each with a constant value in the #Blob heap; and it carries a System.FlagsAttribute custom attribute. Those are the only inputs. There is no stored "this is Read-or-Write" anywhere — the combination All = 7 is just another constant field. Everything else is reconstruction.</p>
+<p>Now the part that trips up naive tooling. Here is a method that opens a file with two flags:</p>
+<p>There is no or instruction. Permissions.Read and Permissions.Write are both compile-time constants (1 and 2), so the C# compiler evaluated 1 | 2 during compilation and emitted a single ldc.i4.3. The bitwise OR you wrote was executed by the compiler, not by the program. This is the central problem: the source operator and the member names are not in the IL at all. The only clue that 3 is anything other than a plain integer is the signature of Open, whose last parameter is typed valuetype Permissions.</p>
+<p>That type context is the hook. Glass sees a constant integer flowing into a parameter (or local, or field) of enum type, and switches from "print the number" to "decompose the number against this enum's members."</p>
+<p>ldc.i4.3
+a bare integer
+on the stack
+
+enum Permissions metadata
+[Flags]  underlying = int
+None    = 0
+Read    = 1   (bit 0)
+Write   = 2   (bit 1)
+Execute = 4   (bit 2)
+
+Read | Write
+3 = 0b011
+bits 0 and 1 set
+
+
+Decomposition: 3 → set bits {0,1} → {Read, Write} → residual 0
+FlagsAttribute is the permission to do this; the parameter type says the 3 is a Permissions
+no residual bits remain, so no trailing | (Permissions)x cast is emitted</p>
+<p>Glass decomposes a constant value by walking the enum's defined members and matching bits. The rule has to handle three cases that a one-line "OR the members together" approach gets wrong.</p>
+<p>Zero. The value 0 reconstructs to None if a member with value 0 exists, otherwise to (Permissions)0. It never reconstructs to an empty OR.</p>
+<p>Combined members. The value 7 could be shown as Read | Write | Execute, but the enum also defines All = 7. A good decompiler prefers the single exact-match member: Glass emits Permissions.All, because that is almost certainly what the author referenced, and it is a legal, more readable spelling of the same value. The decomposition only falls back to OR-ing individual bits when no single named member matches the whole value.</p>
+<p>Residual bits. The value 9 sets bit 0 (Read) and bit 3, which no member defines. Glass emits Permissions.Read | (Permissions)8 — it names every bit it can and casts the leftover, so the reconstruction still round-trips to exactly 9. It never silently drops the 8 and it never invents a member for it.</p>
+<p>This is why [Flags] matters so much to the output. Without the attribute, Glass will not decompose at all — it treats the enum as a plain set of discrete values and prints (Permissions)3, because a non-flags enum offers no promise that 3 is a meaningful combination rather than an undefined value. The attribute is the single bit of metadata that turns a flat cast into readable flag source.</p>
+<p>When the operands are not both constants, the operators survive into IL and Glass reads them straight back.</p>
+<p>A runtime OR — current | extra where both are locals — compiles to an actual or instruction, and Glass reconstructs current | extra.</p>
+<p>compiles to ldarg, ldc.i4.2, and, then a branch on the result. Glass sees the and against a single-member constant followed by a non-zero compare and reconstructs the exact bitwise test — it does not rewrite it as HasFlag.</p>
+<p>compiles to a box Permissions of the argument and a callvirt to System.Enum::HasFlag. That call site is unmistakable, so Glass reproduces perm.HasFlag(Permissions.Write) verbatim. Keeping the two forms distinct matters: they behave identically for a single flag but differ for combined-flag arguments, and when you are auditing unfamiliar code you want to read what the author actually wrote, not a normalised rewrite.</p>
+<p>Clearing a flag — perm & ~Permissions.Write — compiles the constant ~2 to 0xFFFFFFFD folded at compile time, then an and. Here Glass recognises the all-but-one-bit mask against the enum width and reconstructs perm & ~Permissions.Write rather than perm & (Permissions)4294967293, which is correct but unreadable.</p>
+<p>Decompile the whole method and you get the readable form back:</p>
+<p>Every operator here was recovered from a different IL signal: the or from an actual or opcode, the HasFlag from the boxed virtual call, the clear from an and against a folded complement. None of it was stored as source. That is the whole job of a decompiler — to read the signals the compiler left behind and rebuild the intent on top of them.</p>
+<p>Flag enums show up everywhere in real assemblies: file access modes, binding flags, regex options, serialization settings, your own feature toggles. When you are doing legitimate work — debugging a library whose source you do not have, auditing a NuGet package before you trust it, learning how a framework wires its options together, or checking interop boundaries — a decompiler that silently flattens Read | Write into 3 costs you the one thing you came for: the author's intent. Glass.NET is free, so you can read any flag-heavy assembly this way without a license gate, and because the reconstruction is grounded in the actual metadata and IL, you can trust that Read | Write really is 3 and that a trailing | (Permissions)8 means there genuinely was a bit nobody named.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/are-you-sure-flipped-qwen25-15bs-right-answer-2-times-in-3/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/zero_heartbeat_06a3625d7a/decompiling-flags-enums-how-glassnet-turns-ldci43-back-into-read-write-1d74" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
