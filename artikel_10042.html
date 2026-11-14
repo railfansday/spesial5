@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pointer Provenance in Rust vs C++</title>
+    <title>The Design Workflow Is Broken. Here Is How Vitalii Khomenko Thinks It Should Be Fixed</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10042.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,131 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Pointer Provenance in Rust vs C++</h1>
+        <h1>The Design Workflow Is Broken. Here Is How Vitalii Khomenko Thinks It Should Be Fixed</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/yves-alarie-MmZet_7mzMY-unsplash.jpg" alt="Pointer Provenance in Rust vs C++" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_vitalii_khomenko_design_workflow_ai_era_7e00cae9ee.webp" alt="The Design Workflow Is Broken. Here Is How Vitalii Khomenko Thinks It Should Be Fixed" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/yves-alarie-MmZet_7mzMY-unsplash.jpg" alt="Pointer Provenance in Rust vs C++" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_vitalii_khomenko_design_workflow_ai_era_7e00cae9ee.webp" alt="The Design Workflow Is Broken. Here Is How Vitalii Khomenko Thinks It Should Be Fixed" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I’ve been exploring Rust, and one topic that got me intrigued is pointer
-provenance, particularly because it’s not easy to visualize.</p>
-<p>To get a feel for
-vtables,
-what I wanted was to look at the actual memory, to see what it really looked
-like and prove that I could in fact call these functions through their
-respective function pointers. With provenance, I wanted to take it apart the
-same way, but it turns out it’s not so straightforward. This only got me more
-intrigued, so let’s see what we can find!</p>
-<p>My first time hearing about provenance, I wondered, why hadn’t I heard about it
-before? It seems so crucial, yet a bit of an obscure concept.</p>
-<p>Let’s start by taking a good look at this snippet. It’s short, but our intuition
-can trick us if it’s our first time coming across this concept. void opaque(int*) is forward declared here, so for us it’s a black box. Neither we
-nor the compiler can rule out that this function dereferences p and writes to
-memory.</p>
-<p>If we compile this with -O2, Clang optimizes this to return 1. Let’s try this
-on Godbolt:</p>
-<p>The question is, how does it know that int* p doesn’t point to the same memory
-address where x lives (meaning that opaque(p) could end up modifying x)?</p>
-<p>The compiler assumes p can’t equal &x because p wasn’t derived from x.</p>
-<p>When I first heard about this, I thought it was a bit of a strange concept. What
-does it mean that something is derived from something?</p>
-<p>I mean, if pointers were just numbers (memory addresses), p could
-theoretically happen to hold the same memory address as x’s allocation on the
-stack. Good thing they’re not just numbers!</p>
-<p>This brings us to the core of provenance. That “derived from” relation
-is provenance: for every pointer, the compiler keeps track of which
-allocation it belongs to and may, therefore, touch.</p>
-<p>I tried to find a way to print this mysterious provenance, but it turns out that
-it’s purely a compiler abstraction. It does not exist as an actual data field
-stored alongside the memory address. (There are exceptions though: feel free to
-look up the CHERI architecture to go down another rabbit hole).</p>
-<p>So what can we do to inspect it? If the compiler knows about it then it must
-exist somewhere. If so, there must be a way to see it.</p>
-<p>This is how I learned about LLVM IR (intermediate representation), which is
-essentially a low-level programming language that acts as a bridge between
-high-level languages (like Rust, C++, etc) and machine code.</p>
-<p>Let’s try it for this code instead, where we also pass &x to opaque to see
-what happens when the compiler doesn’t optimize that part away:</p>
-<p>We can use the -emit-llvm flag on Godbolt to see the LLVM
-IR:</p>
-<p>What the compiler does is to conceptually construct a DAG (directed acyclic
-graph), to answer the question of where a pointer comes from and whether two
-pointers can touch the same memory.</p>
-<p>If the root origins don’t match, LLVM can guarantee that writing through %0
-will never alter the value stored at %2.</p>
-<p>There is so much more to explore here that it’s hard not to get carried away
-because it’s truly fascinating. However, my original goal was to compare how C++
-and Rust handle this, so let’s continue.</p>
-<p>If we were to cast &x to an integer, then LLVM must assume that anyone could
-rebuild a pointer to x from that integer.</p>
-<p>The result is that the compiler gives up the optimization:</p>
-<p>That’s a pity if we only wanted to read the address and never intended to cast
-it back to a pointer. Wouldn’t it be nice if we could communicate this intent to
-the compiler?</p>
-<p>This is exactly what Rust provides with its powerful provenance APIs.</p>
-<p>p.addr() extracts the raw memory address integer while telling Rust’s abstract
-machine:</p>
-<p>I am reading this numeric address for inspection, but I guarantee I WILL NOT
-cast it back to a valid pointer.</p>
-<p>To mirror our previous experiments, we can try to see if the optimization was
-avoided or not:</p>
-<p>What we see is that mov eax, dword ptr [rsp + 12] reloads x after
-opaque(p), meaning that, at least for now, the optimization is given up. Same
-as in the C++ case.</p>
-<p>Still, we can benefit from using the more expressive API, and not relying on
-exposure semantics. It gives the compiler room to optimize in the future, and,
-by telling Miri explicitly what we mean, it can better help us catch bugs.</p>
-<p>In lock-free data structures, we sometimes need to store status flags in the
-lower unused bits of a pointer. It’s a very cool trick, which left me with my
-eyes wide open for a minute when I first read about it. I talk more about it in
-this
-post.
-Essentially, due to alignment, the lower bits of pointers are “wasted” (always
-0), so we can use them to store flags.</p>
-<p>What we can do is work with an intermediate pointer value, which will have the
-flag bit set BUT that also inherits provenance from the original pointer. This
-is exactly the functionality that with_addr provides us. After we’re done, we
-can recreate our valid initial pointer.</p>
-<p>The tagged value is stays a pointer rather than ‘usize’ because an integer is
-just a number and can’t carry provenance.</p>
-<p>Keep in mind that tagged isn’t dereferenceable, given that p.addr() | 1 is
-misaligned for u32. Dereferencing it would be UB.</p>
-<p>addr() reads the address without exposing provenance.</p>
-<p>with_addr() builds a new pointer with a new address but the same
-provenance as the original.</p>
-<p>In legacy code, we’d have to do something like this:</p>
-<p>This code will run, but if we run it with Miri, it emits a warning:</p>
-<p>Actually, the reason that it runs is also interesting. What happens is similar
-to the C++ example. p as usize exposes the provenance of p, and since the
-reconstructed pointer points to the same allocation, provenance is recovered.</p>
-<p>Provenance would be lost if we did some pointer arithmetic and landed in a
-different allocation.</p>
-<p>To see what happens when provenance is not exposed, we can use
-ptr::without_provenance, which creates a bare address with no allocation
-behind it. (It’s useful for dangling or sentinel pointers, but it can’t be
-dereferenced).</p>
-<p>As expected, Miri complains about a dangling pointer and tells us explicitly that it has no provenance.</p>
-<p>Provenance, in short, is a hidden piece of information tracking “which
-allocation” a pointer originates from, which LLVM uses for optimizations.</p>
-<p>In C++, uintptr_t casts force the optimizer to prepare for the worst case by
-disabling some optimizations.</p>
-<p>In Rust, addr(), with_addr() and without_provenance() let you state your
-intent explicitly: you only want the number, or you are deriving a new pointer
-from an existing one. In principle, that gives the compiler room to optimize
-more aggressively. In our experiment, however, the Rust version is unoptimized
-too: x was still reloaded from the stack. Using more expressive
-APIs is still valuable though, as Miri can enforce the rules and catch bugs that
-stem from unintended usage.</p>
-<p>I had planned to compare what Miri and ASan can catch, but I’ll save that for
-another post. It was enough new info as it is and it takes some time to fully
-wrap my head around it.</p>
-<p>I’m currently between jobs and looking for a Rust role, so writing these posts
-keeps me motivated and has helped me find a sense of community. Thank you for
-reading, and I hope you enjoyed it!</p>
+                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
+<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>With 250+ client engagements across both agency and embedded in-house roles, Vitalii Khomenko has seen product teams from the inside in a way few designers have. Here he makes the case for a new kind of design workflow built for the AI era, and explains why the window to adapt is narrower than most founders think.</p>
+<p>For the last decade, every startup conversation about speed eventually became a conversation about engineering. Hiring more developers, cutting scope, choosing a simpler stack, it was almost always a dev-side problem. Vitalii Khomenko, Principal Designer at Orizon Design and founder of Fluente LLC, argues that's no longer true. And he has a specific view on what teams should do instead.</p>
+<p>What makes Khomenko's perspective worth taking seriously isn't just seniority. It's the specific shape of his experience. Over a career spanning 250+ client engagements, he has worked both as an external specialist brought in to deliver and as an embedded designer who became the single connective thread between product, brand, and execution. That dual vantage point is rare. Most designers live on one side of that line. Khomenko has operated extensively on both, which gives him an unusually clear read on where friction actually originates inside product teams, and where it doesn't.</p>
+<p>His work spans early-stage startups finding their first visual language and established brands managing complex, multi-disciplinary design systems. Across that range, certain patterns repeat. And the pattern that started becoming impossible to ignore this year pointed him toward a conclusion that is reshaping how he thinks a modern design workflow should actually be structured.</p>
+<p>The bottleneck didn't disappear. It moved. And the workflow needs to move with it.</p>
+<p>When shipping code was slow, the existing design workflow made sense. Multiple rounds of revision, user testing, iteration, all of that fit naturally into the window while engineering caught up. That window is now gone, and most design workflows were never updated to reflect it.</p>
+<p>"Founders are asking design teams to move at the same speed as an AI-assisted dev pipeline, and design doesn't compress the same way code does," Khomenko says. The result is a workflow that was built around a constraint that no longer exists, applied to a pipeline that has fundamentally changed around it.</p>
+<p>The forced choice between polish and speed that product teams are now navigating isn't new as a concept. What's new is how stark it has become, and how directly it traces back to a workflow problem rather than a people problem. "Because development is cheap and fast now, there's constant pressure to ship the next thing immediately," he explains. "But the products that actually retain users are still the ones where the details were considered carefully. Fewer revision rounds isn't a process improvement if it means shipping avoidable friction."</p>
+<p>Khomenko has watched this play out across enough teams, at enough stages, to be specific about where the existing workflow breaks down. The issue isn't design judgment. It's where that judgment sits in the process, and what format it's expected to produce at the end.</p>
+<p>To understand Khomenko's proposed fix, it helps to understand exactly where the current workflow stalls. For most product teams, the end of the design process looks like this: a designer produces polished, dev-ready screens inside Figma, and hands that file to engineering. Engineering then interprets those screens, translates the visual decisions into code, and builds from there.</p>
+<p>That translation step, Figma file to working code, is where the pipeline now breaks down. AI-assisted engineering has made the building part dramatically faster. But the translation step hasn't changed. An engineer still has to read a Figma file, interpret spacing, extract assets, make judgment calls about component structure, and write the implementation from scratch. That process takes the same amount of time it always did.</p>
+<p>"The manual workflow inside Figma simply isn't keeping up with AI-boosted engineering," Khomenko says. "The design handoff is quietly becoming the thing everyone is waiting on."</p>
+<p>The result is a pipeline where everything around the handoff has accelerated, and the handoff itself has become the single point of drag. Figma, in other words, was built for a world where engineering was the slow part. It wasn't designed to feed a pipeline where engineering moves at AI speed.</p>
+<p>This is the core of what Khomenko is proposing, and it's a more significant structural shift than it might first appear.</p>
+<p>In his workflow, Figma doesn't disappear. It moves. Rather than serving as both the exploration environment and the final delivery artifact, Figma becomes the visual exploration layer exclusively: the place where brand identity is established, layout logic is worked through, and design direction is validated. It remains the right tool for figuring out what something should look and feel like.</p>
+<p>But the final delivery, the artifact that actually goes to engineering, is code. Specifically, components built into prepared libraries that engineering can work from and scale directly, without any translation step in between.</p>
+<p>The difference in implementation speed is the point. When a designer delivers a coded component library rather than a Figma file, engineering doesn't need to interpret anything. The decisions are already expressed in the language they're building in. What previously required an engineer to read, interpret, and re-create from a visual reference now arrives ready to use. In a pipeline running on AI-assisted development, that difference compounds fast.</p>
+<p>"Figma is still the right place to explore what something should look and feel like," Khomenko says. "But handing over a Figma file and asking engineering to implement it is now the slow path. Delivering in code is the fast path. That's the shift."</p>
+<p>Executing this workflow requires a different kind of designer, and Khomenko is direct about that. The UI/UX designer becoming a Design Engineer is, in his assessment, not a distant possibility. It is a matter of time, and the teams treating it as a future consideration rather than a present reality are the ones most likely to find themselves stuck at the handoff.</p>
+<p>But Khomenko is equally clear about what this shift doesn't mean. Delivering in code is one part of the role, not the whole of it. The full design cycle isn't going anywhere. Applying branding to imagery, producing animations, building marketing materials, these remain essential creative tasks that require a broad and varied toolkit well beyond code. "The designer of the near future isn't just generating code," he says. "They're moving across the full cycle, brand, motion, marketing, product, with design engineering as an important and growing part of that stack, not a replacement for it."</p>
+<p>What changes is that code-ready delivery becomes a core expectation within that stack. The designer who can move fluidly from visual exploration in Figma to component delivery in code, while also carrying the brand thinking, motion, and marketing creativity that differentiates products at the surface level users actually experience, is the profile that the new workflow demands.</p>
+<p>Khomenko is candid that no single version of this workflow has fully standardized yet. Every team is figuring it out differently. The tools are evolving, the handoff expectations are shifting, and the processes teams are building around all of it vary considerably. There is no off-the-shelf playbook.</p>
+<p>But this is precisely where his 250+ engagements become more than a credential. They're a dataset. Having watched enough teams, at enough stages, through enough cycles of tooling change, Khomenko can see through the noise of individual variation and identify what's directionally true even when the specifics are still in flux. "Each team's workflow is really custom at this stage," he says. "But some general patterns of how this is going to look in the near future are already visible."</p>
+<p>Those patterns consistently point in the same direction: design judgment moving earlier, final delivery moving into code, and the designer's role expanding in technical range while staying broad in creative scope. The exact tools and sequences will keep shifting. The underlying logic of the workflow Khomenko is describing is already taking shape in the teams paying closest attention.</p>
+<p>For founders and product leads, the workflow Khomenko is describing has direct implications for how teams are staffed, budgeted, and structured.</p>
+<p>Front-load design judgment. The biggest leverage in the new workflow isn't faster execution, it's better problem definition before generation starts. Bring senior design thinking in earlier, when it can shape what gets built rather than polish what's already done.</p>
+<p>Separate exploration from delivery. Figma and the visual exploration phase serve a distinct purpose from the final delivery layer. Treat them as separate stages with separate expectations, rather than collapsing them into a single step expected to produce everything.</p>
+<p>Shift the delivery expectation to code. Whether that means hiring for Design Engineer range, developing it internally, or restructuring handoffs, the end of the design pipeline needs to arrive in a form engineering can work from directly. The translation step is where time goes to die, and it's now the most avoidable part of the process.</p>
+<p>Protect the full creative stack. Design engineering matters more than it ever has. It is not, however, the whole job. Teams that reduce design to code generation will lose the brand thinking, motion, and marketing creativity that differentiates products at the surface level users actually experience.</p>
+<p>Stay flexible. The workflow is still forming. Teams that build rigidity into their process now will find themselves redoing that work within a year. The teams getting this right are the ones building enough adaptability into their structures to absorb what's still coming.</p>
+<p>"The Figma handoff made sense when engineering was the slow part," Khomenko says. "Engineering isn't the slow part anymore. Delivering in code isn't the future of design workflow. For the teams paying attention, it's already the present."</p>
+<p>I write about AI and software development from the angle that usually gets skipped: what a spec sheet or benchmark actually implies once you try to build with it. Find me on LinkedIn.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/design-workflow-ai-era-vitalii-khomenko/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
