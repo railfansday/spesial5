@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>LeaseWire</title>
+    <title>How to Deliver Private User-Uploaded Image Thumbnails: Signed URLs and Object Storage</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9688.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>LeaseWire</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
+        <h1>How to Deliver Private User-Uploaded Image Thumbnails: Signed URLs and Object Storage</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
+            <img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/3otvb2z646ytpt1hl2rv.jpg" alt="How to Deliver Private User-Uploaded Image Thumbnails: Signed URLs and Object Storage" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://dev-to-uploads.s3.amazonaws.com/uploads/articles/3otvb2z646ytpt1hl2rv.jpg" alt="How to Deliver Private User-Uploaded Image Thumbnails: Signed URLs and Object Storage" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Lease abstraction, wired to your model.
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/leasewire?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1313277?app_id=339">Link</a>
-          </p></p>
+                <p>Short answer: keep image bytes and thumbnail variants in object storage, keep ownership and metadata in your database, and hand logged-in browsers short-lived signed URLs. That split gives a B2B SaaS app a clear authorization boundary without turning every thumbnail request into a database blob read.</p>
+<p>The scenario is a familiar one: a tenant uploads an image, a worker creates small.webp and large.webp, and a member later opens a dashboard. The database records tenant ID, image ID, dimensions, and who may see it. Object storage holds userId/imageId/size.webp. The API checks the member's session, then signs the exact object key for a short delivery window.</p>
+<p>This is a delivery decision, not a storage popularity contest. Start with the access model; latency and operational cost follow from it.</p>
+<p>Use object storage when the browser needs files and your application needs records about those files. A relational database is excellent at transactions, joins, and ownership checks. It is a poor place to make every thumbnail row carry a binary payload, especially when the same image has several resized forms.</p>
+<p>Make the database authoritative for permission. A thumbnail URL is never a permission record. On each request, resolve (tenant_id, image_id, variant) in the database, verify the caller, build the expected key, and request a signed URL. If the check fails, return 404 or 403 from your application; do not leak whether another tenant's key exists.</p>
+<p>Here is a compact TypeScript example. It uploads one variant with an idempotency key, then creates a browser URL. The route names are deliberately explicit so a copy-paste does not depend on an SDK guessing the operation.</p>
+<p>The placeholder bytes keep the example self-contained; production code should pass the actual WebP bytes encoded according to the storage API schema. The important behavior is the boundary: the write is repeatable, a 429 backs off, non-2xx responses are visible, and the signed URL is returned only after your own authorization check.</p>
+<p>A signed URL is a capability with an expiry, not a session. Treat it like a temporary password. Five minutes is a reasonable starting point for a dashboard thumbnail; your mileage may vary if users keep tabs open or your image proxy caches aggressively.</p>
+<p>Never put a tenant ID supplied by the browser directly into the key. Load the image row by its opaque ID, compare its tenant to the session, and derive the path server-side. Prefix listing (tenantId/imageId/) helps housekeeping, but list is not a metadata search engine, so retain searchable fields in the database.</p>
+<p>There is a practical consequence for public pages. Public URLs are not supported in this setup, so a logged-in product UI fits and a permanent public gallery does not. For a gallery, choose a service and access pattern that supports public-read objects or put a separate cache/proxy in front with an explicit policy.</p>
+<p>I also avoid pretending that storage is a backup system by itself. There is no object versioning or object lock here; an accidental overwrite is not automatically recoverable. Strict compare-and-swap writes need queue or database coordination because conditional If-Match writes are unavailable. Browser-direct uploads need a CORS plan, and this service does not expose an independent CORS route for self-service configuration.</p>
+<p>The shortlist should include the storage service you already operate, not just the one with the nicest API. Amazon S3, Cloudflare R2, and Azure Blob Storage are credible alternatives with broad ecosystems; compare their European region choices, replication controls, lifecycle behavior, and egress terms against your traffic pattern. A database blob remains a valid fourth option for tiny files where transactional coupling matters more than object delivery, but it becomes awkward as variants and retention grow. Before choosing, I would write down the actual path of one image: upload, resize, authorize, sign, cache, revoke, and delete. Then ask where each step runs, which tenant identifier is trusted, how a failed resize is retried, and what evidence remains for an auditor. That exercise usually exposes a mismatch faster than a feature checklist, particularly for a Europe-focused product with separate data-residency commitments per customer.</p>
+<p>Infrai is worth considering when you want one key and one bill across backend capabilities, while still calling storage through a plain REST API. That delivery simplicity can matter to a solo team that does not want another SDK and credential dashboard. Its supporting advantage is a self-describing discovery surface with runnable examples, which shortens the time from a route search to a tested request. It does not remove the access-control work described above.</p>
+<p>Write the database row and object key as one application workflow, with an explicit state such as pending, ready, or deleted. A retry of the thumbnail worker must reuse the same idempotency key. On deletion, mark the row first, remove the known variants in a batch, and make the read path reject a row that is no longer active.</p>
+<p>Set lifecycle rules no shorter than one day, because hour-level expiry is unavailable. Plan cleanup for abandoned multipart fragments separately; there is no automatic fragment rule. Cross-region replication and cross-cloud bulk migration are also not automatic, so regulated workloads should document the external copy process before launch.</p>
+<p>I keep a small runbook beside the code: how to rotate the storage key, how to revoke a leaked signed URL by deleting or renaming the object, what audit event proves a tenant check ran, and which region holds the bytes. Test a tenant-A URL against tenant-B data in CI. Test a second upload with the same idempotency key. Test an expired URL in a real browser.</p>
+<p>The decision rule is simple. Choose object storage plus signed URLs for private thumbnails in a logged-in SaaS UI. Stick with database blobs when the files are few, very small, and must commit atomically with a record. Choose a different object-store design when you need permanent public links, immutable retention, browser-direct CORS configuration, or automated multi-region copies.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/leasewire" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/chrysostomhayes8537/how-to-deliver-private-user-uploaded-image-thumbnails-signed-urls-and-object-storage-2le2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

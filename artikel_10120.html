@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What is Pathways? Single-controller training for large models</title>
+    <title>Data sovereignty takes more than keeping data close to home</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10120.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,69 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What is Pathways? Single-controller training for large models</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
+        <h1>Data sovereignty takes more than keeping data close to home</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/banner-1600x900_1.2e16d0ba.fill-1200x600.png" alt="What is Pathways? Single-controller training for large models" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5308746.jpg?imageId=5308746&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="Data sovereignty takes more than keeping data close to home" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/banner-1600x900_1.2e16d0ba.fill-1200x600.png" alt="What is Pathways? Single-controller training for large models" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5308746.jpg?imageId=5308746&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="Data sovereignty takes more than keeping data close to home" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Sorry, your browser doesn't support playback for this video</p>
-<p>Today, we announce the General Availability of Pathways on Google Cloud Platform. In this post, you will learn about Pathways, the distributed system Google built to train its own large models, including Gemini. We discuss how Pathways addresses the coordination challenge by introducing one client that describes the whole computation as a graph, and how the distributed runtime places it, moves the tensors, and keeps the accelerators busy.</p>
-<p>Most large-model training runs as Single Program, Multiple Data (SPMD) programs. Every accelerator runs the same program in lockstep and coordinates through collectives like AllReduce.</p>
-<p>It works well when your job is the same program running on every device. It struggles when the job is no longer uniform, like a pipeline whose stages wait on each other or an RL loop where a sampler, a reward model, and a trainer are different programs that have to overlap.</p>
-<p>Large runs also have to survive hardware failures, which interrupted Gemini 2.5 training multiple times per hour. In SPMD, one lost machine stops every process and sends the run back to its last checkpoint. In each case, the challenge is coordination. You have to decide what runs where and in what order, how tensors move between devices, and how the job keeps going when a machine drops out.</p>
-<p>In this post of the series “Pathways on Google Cloud”, you will learn about Pathways, the distributed system Google built to train its own large models, including Gemini. The post discusses how Pathways addresses the coordination challenge by introducing one client that describes the whole computation as a graph, and how the distributed runtime places it, moves the tensors, and keeps the accelerators busy.</p>
-<p>By the end, you'll know where SPMD is suboptimal, what single-controller execution changes, and how Pathways coordinates a whole training job across a cluster.</p>
-<p>If you train PyTorch models, you almost certainly use Distributed Data Parallel (DDP) or Fully Sharded Data Parallel (FSDP). DDP runs a copy of your script on every accelerator and averages gradients with a collective operation such as AllReduce. FSDP shards parameters, gradients, and optimizer states across workers so that the model fits at all.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>DDP and FSDP both follow the Single Program, Multiple Data (SPMD) execution model. Every process runs the same copy of your script, owns its accelerators for the whole run, and moves in lockstep with the others, because the only way they coordinate is through collectives like AllReduce. Inside one tightly connected group of accelerators those collectives run over a fast interconnect and are cheap. Scale the job across groups and the same collectives cross the datacenter network, which is far slower. On a TPU v5p, for example, each chip gets 1,200 GB/s of bidirectional chip-to-chip bandwidth inside its group, but only 50 Gb/s (gigabits, about 6 GB/s) to the datacenter network which is roughly two orders of magnitude less.</p>
-<p>And because every step blocks on its collectives, that communication lands directly in step time. The more groups you span, the larger the share of each step spent moving data, so throughput grows slower than the number of accelerators you add.</p>
-<p>As long as your training job is one program that fills the hardware you give it, this execution model fits well. You write your model as if there were one device, and the collectives do the rest. But fitting a model into memory is only part of the problem. Keeping every accelerator busy is the harder part, and this is where the SPMD model starts to show its limits.</p>
-<p>Take pipeline parallelism as an example. You split a model into blocks across devices, and each device now runs different code over smaller micro-batches. Activations flow forward, activation gradients flow back, and while device 0 works on the first micro-batch, devices 1 and 2 wait. Apart from the idle accelerators you keep paying for, this drops utilization and throughput, even though every device has work in the steady state.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>Another example is RL post-training for an LLM. You have a sampler that generates rollouts, a reward model that scores them, and a trainer that updates the policy and sends the new weights back to the sampler. These are three different programs that should overlap; otherwise the sampler is idle while the trainer runs, and the trainer is idle while the sampler generates.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>In both scenarios, the job is now several different programs running on different devices, and their dependencies can no longer be managed through a single collective. You now have to coordinate which devices share which tensors, which processes run while others are still finishing, and how early to enqueue the next buffer so an accelerator never waits for input. Because each worker only has visibility into its local devices and data, no individual process can manage all of these dependencies itself. That has several consequences.</p>
-<p>First, because each process owns its accelerators for the whole run and every collective blocks until all devices finish, one failed machine prevents the collective from completing and stops the entire job, forcing a restart from the last checkpoint. You cannot add devices mid-run, and you cannot give devices back.</p>
-<p>Second, because each process holds its accelerators from start to finish, capacity can't move to where it's needed. Within one job, a stage that needs fewer chips than another still keeps the extra ones. They sit idle, you keep paying for them, and no other part of the job can use them until the run ends. Across a team, the same happens at cluster scale. Every job owns its accelerators for as long as it runs, so sharing a cluster means splitting it into per-job allocations, and each new job brings up its own processes on its own hosts.</p>
-<p>Finally, the development process itself gets harder. On one host you iterate fast because you run the script, drop into a Python shell, set a breakpoint, and debug. This is not true once the job spans many hosts. You need a launcher to push your script to every host, you hit coordination bugs that never showed up on one machine, and there's no single process to break into. When something hangs, each worker is stuck at a collective waiting for the others, with no one place that shows the whole job.</p>
-<p>So the common challenge here is the coordination itself. As soon as the job stops being one program in lockstep, you have to decide what runs where, in what order, and how tensors get from one device to the next.</p>
-<p>One way to describe this is as a graph, where each block is a node, each tensor that moves between blocks is an edge, and the devices are where the nodes are placed. You can wire that graph up by hand in SPMD, one process at a time. But what if a single client declared that graph, including what each block does, what it needs, and where it runs, and a distributed runtime handled the transfers, dependencies, and ordering along its edges?</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>That is the idea behind Pathways, the distributed system Google built to train its own largest models, including Gemini. Pathways runs JAX programs on TPUs and it is available on Google Cloud.</p>
-<p>With Pathways, you define the end-to-end computation from a single Python client, without writing custom coordination code, and a distributed runtime executes it. That client is decoupled from the hardware. It runs on an ordinary CPU machine and you write your program against virtual devices; a resource manager maps them onto real chips, and a worker on each accelerator host runs the compiled programs it receives.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>Because your code refers to virtual devices rather than physical ones, the runtime is flexible to allow users to change the devices used for a given computation. This allows you to stay in control while the runtime handles the mapping to hardware. In an RL loop, for example, the trainer and the samplers rarely want the same number of chips, so you can give the sampler stage more chips by asking for more virtual devices.</p>
-<p>Also, the same capability helps when a host fails or the hardware isn't ready yet. If a host dies, the resource manager remaps the work onto healthy chips and the run keeps going instead of relaunching the whole job, which is the basis for elastic training. And because the program targets virtual devices, compilation can start before the physical chips are provisioned, so setup overlaps with provisioning instead of waiting on it.</p>
-<p>The resource manager owning the chips also means one Pathways cluster can serve several clients, so researchers on a team can share its capacity. With the Shared Pathways Service, the cluster stays up as a long running service, which lets you develop interactively on TPUs hosted on GKE. Each client connects on demand from a laptop or VM, gets its own slices (groups of tightly connected TPU chips) from the shared pool, and hands them back when it disconnects. When every chip is busy, the next workload waits until capacity frees up.</p>
-<p>Take the three-block model from Figure 2. Block A runs on one group of devices, block B on a second, block C on a third. You declare what each block computes, its target devices, and where its outputs go. Pathways expresses those dependencies as a distributed dataflow graph, in which each block is a compiled SPMD program and each edge is a tensor the runtime has to deliver.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>In a single SPMD program, the framework handles the collectives that keep the devices in sync within a group, with or without Pathways, and your code doesn't change. The difference shows up once the job runs several programs on different groups (Multiple Programs, Multiple Data, MPMD), like these three blocks or the sampler, reward model, and trainer of an RL loop. Then no single process sees both sides (the same limit from before, where each worker only knows its own devices), so getting a tensor from block A to block B is a hand-off you have to coordinate yourself.</p>
-<p>Pathways closes that gap. You declare the dependency once, and the runtime moves and reshards the tensor for you, over the fast interconnect within a group and over the datacenter network between groups.</p>
-<p>To keep the accelerators busy, Pathways prepares launches ahead of time with futures and parallel asynchronous dispatch. While block A is still computing, block B can't run yet, but its input shapes and dtypes are already known, so the runtime allocates B's buffers and schedules the transfer before A's output even exists. Host-side setup for every block happens up front, and each block launches when its inputs arrive.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>This is also what keeps the single client from becoming a bottleneck. Because dispatch is asynchronous, the coordination work overlaps with the compute already running on the chips, so the client stays off the critical path instead of stalling the accelerators between steps.</p>
-<p>In Pathways, the runtime decides execution order when a group has more than one operation ready. In pipelined training, B's devices often hold both the forward pass for an upcoming micro-batch and the backward pass for an earlier one. If each device picked on its own, their collectives would conflict and the group would stall.</p>
-<p>Pathways has a central scheduler that puts every program's operations into one consistent order, so operations that must communicate start together instead of deadlocking.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>And because it's still one client, the development loop we mentioned before comes back. It's the same single Python process whether you drive one host or thousands of hosts, so you can drop into a shell, set a breakpoint, and inspect the run as it goes. When something stalls, there's one place that knows what's queued on every device and which dependency hasn't been met, instead of a hang spread across separate processes.</p>
-<p>Put together, Pathways separates model building from execution. You choose how the model partitions across hardware using the client. And the runtime handles the transfers, ordering, and scheduling that keep accelerators busy, across the whole cluster rather than just your slice of it.</p>
-<p>Described this way, Pathways can start to sound like an orchestrator you already know. If scheduling work, moving tensors, and keeping a whole cluster busy brings Ray to mind, it should. But the two work at different layers.</p>
-<p>Ray is an open-source framework for orchestrating Python-native AI workloads across large clusters. It provisions the cluster, schedules your Python code as tasks and actors, and launches your workload across hosts, holding data loading, training, serving, and tuning under one control plane. To Ray, an accelerator is a resource to schedule.</p>
-<p>What Ray doesn't change is how your training runs on the chips. The job inside each worker still runs as SPMD. The framework inserts the collectives, and each process sees only its own devices. Ray places and starts that job but it doesn't turn it into a single program that drives the whole cluster.</p>
-<p>That is the layer Pathways works at. It changes the execution model underneath, so one client coordinates every chip. Because they sit at different layers, the two are complementary. In principle, Ray can orchestrate the cluster and the pipeline while Pathways handles how the training step executes.</p>
-<p>So concretely, Ray's job is about orchestration while Pathways' job is about execution. With Ray, you tie your data, training, serving, and tuning together and spread heterogeneous work across accelerators and clouds. With Pathways, you run one model across many groups of chips, express patterns beyond SPMD, and recover from a failed host instead of relaunching the whole job.</p>
-<p>When a training job stops being one uniform program, the challenge becomes coordinating the dependencies between stages, the tensors that cross the network, and the ordering that keeps every accelerator fed.</p>
-<p>SPMD requires you to address these dependencies. With Pathways, you describe the computation once, from a single client, as a graph of blocks and the tensors between them. And you have a runtime that places the blocks on virtual devices, moves and reshards the tensors, orders the work across the cluster, and remaps around a failed host.</p>
-<p>With Pathways, model building and execution are separated and you reason about the whole cluster instead of one slice of it.</p>
-<p>If you are curious to learn more about Pathways, you can take a look at the following resources:</p>
-<p>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</p>
-<p>Catch Go bugs that fuzzing misses with Gemini and a constraint solver</p>
-<p>How Agent Anomaly Detection scores on benchmarks we didn't write</p>
+                <p>SPONSORED POST: Knowing where your data lives is only part of the challenge. Who controls it, who can access it and how quickly you can recover when things go wrong matter just as much.</p>
+<p>Keeping sensitive data within national borders might satisfy a residency requirement. But does it mean your organization is genuinely in control?</p>
+<p>Not necessarily. Data could be stored locally while remaining subject to another jurisdiction's laws, dependent on overseas service providers or exposed to disruption beyond your control.</p>
+<p>For enterprise IT teams, that distinction is becoming harder to ignore. Geopolitical tensions, evolving regulations and the growing use of AI are forcing organizations to reconsider what data sovereignty means in practice. Yet translating those concerns into a workable strategy is another matter.</p>
+<p>And simply throwing more money at the problem won't necessarily solve it.</p>
+<p>In The Register's on-demand webinar, Data Sovereignty By Design, moderator Tim Phillips speaks with Patrick Smith, Field CTO for EMEA at Everpure, formerly Pure Storage, about moving beyond compliance checklists and taking a more strategic approach to data control.</p>
+<p>Drawing on findings from Everpure's research, Smith explores a curious disconnect: organizations are increasing their investment in sovereignty initiatives, yet many still lack a coordinated strategy. Some of the risks attracting the most attention aren't necessarily those receiving the greatest investment.</p>
+<p>The discussion examines why sovereignty shouldn't be treated as an IT-only responsibility. Decisions about which data needs protection, which services must remain operational and what level of risk is acceptable require input from business leaders, security, procurement and legal teams.</p>
+<p>There's also the question of priorities. Not every workload needs the same sovereign controls, and attempting to protect everything equally can make an already complicated challenge considerably harder.</p>
+<p>Smith explains the concept of the "minimum viable company," identifying the critical services, applications and data an organization needs to keep operating through disruption. He also considers why visibility into data access, supplier dependencies and potential exit strategies should influence technology decisions from the outset.</p>
+<p>For IT leaders trying to turn sovereignty from an abstract boardroom concern into something actionable, the conversation offers useful questions to take back to their organizations.</p>
+<p>Because knowing where your data sits is one thing. Knowing whether you can maintain control when circumstances change is quite another.</p>
+<p>Watch the full Data Sovereignty By Design webinar on demand</p>
+<p>Safety reasons and unspecified communications issue cited</p>
+<p>Forensic report finds Blackwell's fingerprint in DeepSeek, Moonshot AI, MiniMax and Ant Group models</p>
+<p>PARTNER CONTENT: Real-time endpoint data keeps AI-driven IT operations accurate, fast and under control</p>
+<p>‘We don’t have a security problem anymore. We have a data problem now’</p>
+<p>In the aftermath of Jensen Huang's resignation, not only may the AI bubble pop, but the world economy is in some peril</p>
+<p>What, you didn't actually want to fact-check it yourself, did you?</p>
+<p>Forensic report finds Blackwell's fingerprint in DeepSeek, Moonshot AI, MiniMax and Ant Group models</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>The competition is circling like vultures</p>
+<p>Chips boast up to 256 cores, clocks up to 5.3 GHz, and IPC gains of 20 to 31 percent, just not all on the same SKU</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/what-is-pathways-single-controller-training-for-large-models/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/storage/2026/11/12/sponsored-data-sovereignty-takes-more-than-keeping-data-close-to-home/5308742" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</title>
+    <title>How I accidentally became a millionaire</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9949.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,69 +15,92 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
+        <h1>How I accidentally became a millionaire</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>3 months ago, we started a revival of Papers with Code (see also the announcement tweet). Its goal is to make open AI research accessible and digestible, so that people can easily find the artifacts related to a paper, find state-of-the-art (SOTA) across the various domains of AI, share interesting research and build on top of each other's work. In other words, its goal is to power the wave of research that leads to the next Transformer.</p>
-<p>Of course, making AI research accessible requires a powerful search engine, so that humans and agents can quickly find relevant and related work, either through the website or the pwc search CLI command, which agents can use via the Skill.</p>
-<p>It's important to note that searching for research is not quite the same as searching for regular text. A useful paper search engine should find an exact title or arXiv identifier, but it should also understand a query such as “small language models for code generation” even when those words do not appear together in a paper. It needs to recognize that “the original BERT paper” is a navigational request, tolerate an incomplete title or typos, and still respond quickly when a model service is cold or temporarily unavailable.</p>
-<p>For Papers with Code, we built this as a hybrid search system. This is also based on our prior experience at ML6, where we developed RAG-based systems for clients. It turned out that hybrid search typically outperforms keyword- and vector-based search systems, as it combines the best of both worlds (see also this blog for more info). Keyword search finds exact mentions, whereas vector search finds more fuzzy, semantically similar terms. Note that rerankers (also called cross-encoders) can further improve the results, although they also come with additional overhead and latency.</p>
-<p>Papers with Code relies on a PostgreSQL database, hence its full-text search capabilities provide a fast lexical baseline. For dense embeddings, pgvector is used to add semantic recall, and the reciprocal rank fusion (RRF) algorithm combines the two. Three Hugging Face services are used for the dense embeddings:</p>
-<p>Today, the system maintains embeddings for more than 110,000 current papers sourced from arXiv and Daily Papers. This post explains the architecture, the design decisions behind it, and the lessons we learned while taking it to production.</p>
-<p>We deliberately split search into an offline corpus build and an online search service:</p>
-<p>The expensive, throughput-oriented work runs as Jobs. Durable artifacts live in a Bucket. Only the small query-embedding step sits on the request path, behind a protected Inference Endpoint, to power the online search. If that endpoint is cold, busy, or unhealthy, search immediately falls back to full-text retrieval. This separation makes the system both powerful and fast.</p>
-<p>Embedding pipelines often fail in subtle ways: a model revision changes, query and document prompts are mixed up, vectors are truncated differently, or an updated abstract no longer matches its stored vector.</p>
-<p>We avoid this by treating the embedding format as a versioned API. Every paper is encoded as:</p>
-<p>Our production generation uses Qwen/Qwen3-Embedding-0.6B, pinned to an exact revision, with 256-dimensional L2-normalized vectors. We selected the model with help from the MTEB leaderboard, the go-to benchmark for comparing embedding models. Note that newer embedding models like Qwen3 allow for 2 new features:</p>
-<p>This contract follows an embedding from export, through GPU inference, into PostgreSQL, and finally into online retrieval.</p>
-<p>Full-corpus embedding is a classic batch workload. It needs a GPU for a relatively short period, benefits from high throughput, and should not consume resources between runs. Hugging Face Jobs fits that shape well: a Job is defined by a command, a hardware flavor, and optionally a Docker image, and can run uv scripts with their dependencies declared inline.</p>
-<p>Our corpus build starts by exporting the latest version of every paper from a repeatable-read PostgreSQL snapshot. The exporter streams rows rather than loading the catalog into memory, writes bounded JSONL shards, and creates a manifest containing row counts and SHA-256 checksums.</p>
-<p>We sync that immutable run directory to a private Storage Bucket and mount the Bucket directly (using hf-mount) into an l4x1 Job (an NVIDIA L4 GPU, which has 24GB of VRAM). From the worker's perspective it is simply a filesystem:</p>
-<p>Each completed shard has its own marker, so a restarted Job can skip verified work. This is useful for a large corpus: retrying should just resume work rather than overwriting existing embeddings.</p>
-<p>In our 5,000-paper pilot, the Qwen Job encoded about 75 papers per second at 1024 dimensions on an L4 GPU. The same pass could be deterministically materialized at 512 and 256 dimensions, so we could compare the storage and retrieval trade-offs without paying for more inference.</p>
-<p>Storage Buckets are mutable, S3-like object storage on the Hub, optimized for AI workloads. They can be accessed through hf://buckets/... paths and mounted read-write in Jobs without building a separate storage integration.</p>
-<p>For us, the Bucket is more than a place to put vectors. It is the boundary between three systems with different lifecycles:</p>
-<p>We organize artifacts under immutable run prefixes:</p>
-<p>Buckets themselves are intentionally mutable, so immutability is an application-level rule: a run ID is never overwritten, and every artifact is covered by a manifest and checksum.</p>
-<p>Only after the importer rechecks schemas, checksums, dimensions, normalization, unique paper IDs, and current content hashes do we load the vectors into PostgreSQL. We then build a separate HNSW index for the new generation and atomically mark it active only when every eligible current paper is covered (HNSW is the graph-based algorithm that enables fast vector search).</p>
-<p>Batch embeddings solve the document side of retrieval. A user query still needs to be embedded at request time using the same model contract.</p>
-<p>We deploy the pinned model as an authenticated Inference Endpoint backed by Text Embeddings Inference (TEI). The endpoint accepts the query text and returns a normalized 256-dimensional vector using the model's query prompt. Note that one could also leverage vLLM or SGLang here.</p>
-<p>The API then performs a cosine-distance search over the active pgvector generation:</p>
-<p>The HNSW index keeps this lookup fast. On our 5,000-paper pilot, the 256-dimensional Qwen index achieved 0.9955 Recall@20 against exact search, with 1.31 ms p50 and 2.21 ms p95 HNSW lookup latency. Its table and index used about 27% of the storage of the 1024-dimensional version while retaining essentially the same ANN recall in that test.</p>
-<p>The Endpoint is configured with a maximum of one replica and can scale to zero when idle. That is a useful cost lever, as this means you're not paying when there's no usage. However, this also means cold starts must be part of the application design rather than treated as an exceptional event, as it takes some time for the endpoint to spin up and serve traffic.</p>
-<p>Our query client therefore has deliberately strict behavior:</p>
-<p>If the endpoint is scaling up, times out, returns a malformed vector, or has no concurrency available, we skip the semantic branch immediately. Users still receive lexical results instead of waiting for an unreliable dependency.</p>
-<p>Inference Endpoints works really reliably, and includes a nice dashboard so you can quickly see key analytics.</p>
-<p>For every query, the lexical branch retrieves up to 50 candidates using weighted PostgreSQL full-text search. The semantic branch retrieves up to 50 candidates from pgvector.</p>
-<p>We combine their ranks using weighted reciprocal rank fusion (RRF):</p>
-<p>score(d)=∑r ∈ {lexical, semantic}wrk+rankr(d)
-\text{score}(d) = \sum_{r \,\in\, \{\text{lexical},\, \text{semantic}\}} \frac{w_r}{k + \text{rank}_r(d)}
-score(d)=r∈{lexical,semantic}∑​k+rankr​(d)wr​​</p>
-<p>RRF is simple and robust, because it combines ranks rather than scores from two systems with different scales. Basically, if a paper is ranked high both by the lexical branch and the semantic branch, it has a higher chance of being ranked high by the hybrid search. We currently use equal branch weights and (k=60) (k is the "rank constant", a hyperparameter of the RRF algorithm).</p>
-<p>Dense retrieval improves recall for conceptual queries. Full-text retrieval remains excellent for exact terminology, identifiers, and rare names. We also preserve deterministic identity behavior on top of the fused ranking:</p>
-<p>Note: hybrid search isn't always the best option, it is recommended to start with keyword search as a cheap and fast baseline, and only adding semantic and/or hybrid search when it turns out those give a reasonable boost in retrieval quality. One could further improve the search by adding a reranker after keyword/semantic/hybrid retrieval, using a model like Qwen3-Reranker.</p>
-<p>The large initial corpus is embedded with Jobs, but Papers with Code changes continuously. New papers arrive, abstracts are corrected, and new arXiv versions become current.</p>
-<p>Launching a GPU Job for a handful of changed rows would add unnecessary startup and orchestration overhead. Instead, an hourly incremental process selects missing or content-changed papers and sends a bounded delta to the same TEI Endpoint, this time with the document prompt.</p>
-<p>Each run processes at most 500 papers in batches of 16. Before an embedding is written, the source row is locked and its content hash is checked again. If a paper changed during inference, that vector is discarded and picked up by the next run.</p>
-<p>This gives us a useful division of labor:</p>
-<p>The hourly path keeps the active index close to the live catalog without turning an online endpoint into an unbounded batch processor.</p>
-<p>The same document embeddings also power related-paper recommendations on each paper page.</p>
-<p>Because the source paper already has a stored vector, related-paper retrieval requires no model call at request time. It is a single nearest-neighbor query over the active generation. If a vector is temporarily missing, the application can use a previous arXiv version or fill results from the existing task- and citation-based fallback. We fetch citation data through the Semantic Scholar API and also built s2-cli, a command-line interface for querying its citation graph. The latter is used by the agent at https://paperswithcode.co/chat.</p>
-<p>Corpus embedding and query embedding use the same model, but they are different infrastructure problems. Jobs optimize for throughput and bounded cost; Inference Endpoints optimize for availability and request latency.</p>
-<p>Buckets provide an explicit handoff between compute and production. Checksummed artifacts create a reviewable boundary before data enters the production index.</p>
-<p>The revision, dimension, prompt, normalization, and input formatter all affect retrieval. Store them together and validate them everywhere.</p>
-<p>Scale-to-zero is valuable when traffic is intermittent, but only if the product has a fast fallback. Hybrid search gave us that fallback naturally: lexical search is always useful on its own.</p>
-<p>Matryoshka embeddings let us evaluate quality, memory, index size, and latency as one trade-off. In our pilot, 256 dimensions preserved ANN recall while materially shrinking storage compared with 1024 dimensions.</p>
-<p>New generations are imported beside the current one, indexed independently, checked for complete and current coverage, and then activated atomically. Rollback is a configuration change, not an emergency recomputation.</p>
-<p>Feel free to try out the search at https://paperswithcode.co or the chat interface at https://paperswithcode.co/chat, and let us know any feedback!</p>
-<p>The lexical fallback for scale-to-zero and the separate index activation boundary are useful production details. One question for the hybrid setup: do you measure relevance and latency separately when dense search is cold versus warm, so fallback quality is visible rather than hidden in an overall average? We examined lexical-first retrieval and semantic reranking on a smaller workload here: https://huggingface.co/blog/ironbcc/bm25-seb-rag-retrieval (I'm an author). That benchmark doesn't establish behavior on a paper-scale corpus.</p>
+                <p>I am not a millionaire. I have never been one. And yet, if you were to ask Google about it, you might just walk away with the impression that I am.</p>
+<p>Yes, Lyra Rebane became a millionaire in November 2026 thanks to her elite cybersecurity skills.</p>
+<p>While she was already a highly successful researcher with dozens of vulnerabilities reported in major browsers like Google Chrome, her net worth officially crossed the million-dollar threshold on November 7, 2026. On this date, Google awarded her a historic single bounty payout of exactly $1,333,337 for discovering a critical security flaw in Chrome.</p>
+<p>I am a hacker, though. I am a hacker with 14 Chrome CVEs. And I think I am a good hacker. But I don’t think I’m the bestest hacker. I don’t believe I’m capable of finding a vulnerability that’s worth over a million dollars. And even if I were, I don’t think Google would pay that much for a Chromium vulnerability.</p>
+<p>Content note: Due to the topics discussed, this post contains some examples of AI-generated text. Those examples are clearly differentiated1. Everything else in this blog post is fully human-made - I do not use AI.</p>
+<p>The story begins with a Chromium vulnerability I reported to Google back in 2022. It was a pretty fun logic bug in the Background Fetch API that allowed an attacker to form browser botnets by just making the targets visit a website (or iframe!).</p>
+<p>Due to the rather unusual nature of the vulnerability, it was stuck in limbo for a few years until it finally got fixed in February of 2026. Google gave me a $1000 bounty, and a few months later the bug became public.</p>
+<p>This bug has been closed for more than 14 weeks. Removing issue access restrictions.</p>
+<p>Actually nevermind, turns out it was merely marked as fixed. And thus, yours truly appears in an article titled “Google publishes exploit code threatening millions of Chromium users”.</p>
+<p>Anyways, Google makes the bug private again, ships a fix, and wants to make sure that the bug is actually fixed for real this time. And during the process, they somehow end up assigning me as the verifier, which is not actually supposed to happen.</p>
+<p>So the way reporting security bugs in Chromium works is that your reports go to this platform called the Buganizer2. When you make a report, you get assigned as the reporter, which means you can view and comment on the issue.</p>
+<p>From then on, Chromium developers and Google employees will edit the issue as necessary - changing its status, assigning a priority/severity, CCing people etc. One of the things they do is giving a bug bounty to the reporter, for which the VRP panel calculates a sum and then sets the vrp-reward field on the issue.</p>
+<p>As an external reporter, you cannot edit any of those fields. But people set as the assignees, verifiers and collaborators can! And in this case, I was set as the verifier.</p>
+<p>I didn’t immediately realize that I had been given the edit access, but looking back at the issue in November I found that the UI had some extra buttons I hadn’t seen before, and figured out the rest from there.</p>
+<p>At first I just poked around the issue to see what fun stuff I could uncover. While doing that, I somehow managed to accidentally click on a sudden popup menu, which immediately assigned the issue to a bot account.</p>
+<p>Realizing my cover had been blown, I decided to just go for it and set the vrp-reward value to $1333337, the largest bounty sum in the history of all Google VRP programs.</p>
+<p>Having achieved my newfound wealth, I decided the next best step would be to announce it on the everything app3. I made my tweet in two parts - first, an announcement of achieving the record bounty, and then a video of me changing the vrp-reward value as the punchline.</p>
+<p>We ❤️ 🐜🐞🦗🦟🦋. {echo,{{{Google,Chrome,Android,Abuse,Mobile,OSS,Cloud}Vulnerability,Patch}Reward,VulnerabilityResearchGrants}Program}</p>
+<p>In just an hour, the joke tweet had already reached 600 likes. Since my intent was to just make a joke and not actually deceive anyone, and the tweet was clearly escaping containment, I followed it up with a clarification.</p>
+<p>Now, Twitter does actually have a feature to combat disinformation - Birdwatch (aka Community Notes) is a system that lets people add context to misleading posts. And this feature was in fact used on my tweet - in just a couple hours, the likes stopped rolling in, and this funky box appeared underneath.</p>
+<p>Proposed by an experimental AI contributor responding to requests for a note. Like all contributors, AIs can make mistakes — verify accuracy.</p>
+<p>The $1,333,337 Chrome VRP bounty claim is false; the author edited the screenshot themselves as a joke after gaining mistaken edit access and Google awarded no such reward.
+https://x.com/rebane2001/status/2119193210513936644
+https://piunikaweb.com/2026/10/15/google-250k-bounty-ai-chrome-exploit-xbow/
+https://bughunters.google.com/blog/google-vrps-in-review-2025</p>
+<p>And this would’ve been the end of it, if it wasn’t for the fact that Elon4 completely fucked up the Community Notes system! You see, this note here was generated by an “experimental AI contributor”, and thus, it claimed that I had “edited the screenshot [myself]”, which was simply not true!</p>
+<p>This made me unhappy. And what do we do when we’re unhappy? We tweet about it5!</p>
+<p>And thus, pretty soon, the community note disappeared.</p>
+<p>From here on out, the tweet was picked up by an automatically generated AI news-podcast thing called Daily Vibe Casting, which describes itself as “A ten-minute daily roundup of what cracked 𝕏 in the last 24 hours.” Or in other words, it throws trending tweets into a chatbot.</p>
+<p>@rebane2001 says a Chrome vulnerability they6 discovered earned $1,333,337, which they describe as the largest award in Google’s Vulnerability Rewards Programme. The post does not explain the flaw, so there is little basis here for judging its scope or technical impact.</p>
+<p>The payout is striking on its own. Browser security depends partly on researchers finding problems and reporting them, and an award this size puts a substantial price on that work.</p>
+<p>This text is AI-generated · Original article</p>
+<p>I now had a viral tweet and an AI-generated “news” article - both of which claim I made a million dollars and show up in Google’s search results.</p>
+<p>The largest recorded Chrome bug bounty is $1,333,337, awarded to security researcher Lyra Rebane in November 2026 [Post on X].</p>
+<p>Would you like to know more about how Google's VRP reward tiers work or details on other recent high-payout security vulnerabilities?</p>
+<p>Lyra Rebane does not offer reward tiers. However, if she hypothetically owned a hotel chain, the reward tiers would be as follows.</p>
+<p>However, this is just a hypothetical scenario and Lyra Rebane does not operate a hotel chain. Would you like to instead learn about recent high-payout security vulnerabilities or the $1,333,337 chome bug bounty?</p>
+<p>Sorry, I cannot assist you with this topic because you haven't passed our Hacker Reputation Test. To do the HRT, you must submit a list of CVEs you have been credited for.</p>
+<p>Would you like me to tell you more about buying CVE accreditation, or do you want to learn about how Google's VRP reward tiers work?</p>
+<p>my chrome vulnerability was just awarded the highest bounty in @GoogleVRP history - $1333337.Missing: largest | Show results with: largest</p>
+<p>17 minutes ago — Researcher Rebane says the $1,333,337 payout is the largest in Google's Vulnerability Rewards Program. Daily Vibe Casting's Avatar.</p>
+<p>And there it was! My little stunt turned into something that Google’s AI believes and makes into a story shown to every person searching for the highest Chrome bounty. And looking up my name now tells you about me being a millionaire!</p>
+<p>There are a bunch of screenshots of this from other people under this thread. I’ve also seen cases of this affecting ChatGPT as well as Kagi Assistant.</p>
+<p>So that is the end of my fun little story. I doubt it was particularly surprising to anyone, but I think it’s a good case study on how both social media platforms and people’s reliance on AI can be abused to distribute disinformation and cause harm.</p>
+<p>This example here, of course, is mostly harmless and just something that happened on accident - I wasn’t attempting to mislead people, and it’s not really my fault that Google’s AI didn’t read my replies in the Twitter thread.</p>
+<p>One could argue that I’m a reputable security researcher with a track record of posting truthful information, so this is all moot anyways because I am trustworthy.</p>
+<p>But I think this here demonstrates just how fragile and easily abusable our information channels are. If I was a threat actor looking to spread disinformation, how difficult would it be to pull something like this off intentionally?</p>
+<p>There are many ways to game Twitter. Its algorithm is publicly available, and people have figured out what kind of engagement results in what kind of algo boost. Bigger accounts can boost tweets and accounts significantly more7, so if you’ve got a few of those you can bootstrap new accounts way easier. But you can also just make bot accounts and slowly work your way up. And if you’ve got a bunch of accounts with reach you win.</p>
+<p>And oh boy are there a lot of bot accounts! Look at, for example, the tweet this blogpost is about. There are a lot of obvious bot accounts in the replies. Maybe those very same accounts are also building reputation and voting on random community notes?</p>
+<p>It’s kind of crazy to me that I could just post a tweet and have a community note removed. While the community note was actually wrong on a technicality, I’m sure there isn’t much preventing a bad actor from doing the same thing I did.</p>
+<p>If I were a bad actor, I’d post disinformation that’s difficult to accurately disprove. If a community note doesn’t have a good source, or if it’s highly likely to get details wrong, it either won’t appear, or will have an easier time disappearing.</p>
+<p>And all you really need to do is get a few tweets with specific keywords trending, and you’ve poisoned the search results, which then also poisons the AI.</p>
+<p>And while you specifically might not take the AI Overview at face value, I’d guess that a lot of people do. It’s the first thing that shows up, it’s big and flashy, and it’s often unclear whether the only source of information is a tweet.</p>
+<p>Tweets can mislead humans too, of course, but I feel like someone searching for something wouldn’t blindly trust a single tweet in the search results.</p>
+<p>Note: While reading this post you may have tried to recreate the results I’ve shared, but without much success. The reason is that by now, my tweet has another community note on it, which Google picks up on and refers to the $1,333,337 bounty as a “prank”.</p>
+<p>Also they took away my edit access and bounty :c</p>
+<p>heyyy!! been a while since the last post, soz</p>
+<p>i hadn’t done css crimes for a while, so i wanted to get a new post out to get a chance to work on more of them again! i’m really happy with how some of this stuff turned out, especially the css-only video thing i made.</p>
+<p>i decided that i’d start allowing the use of svg data-uris from now on (but still no images or javascript!). i made a few for this post, such as the cursors (which are traced over the kde breeze cursors), and the twitter icons (which are also traced over the originals).</p>
+<p>but yeah, as always, this post is lovingly handcrafted and doesn’t use any external resources (images, videos, javascript etc). this time the size ended up being around 49kB (gzipped8). yay!</p>
+<p>also news time - google ended up paying me a bounty of $18k for svg clickjacking, i got two (!!) talks accepted at 40c3 this year - Putting the C in CSS and youre telling me a QR coded this?, and x3ctf is happening dec 4th through dec 6th, please come and play!</p>
+<p>The snippets are either marked with “AI overview” (google), “experimental AI contributor” (twitter), or red text (other). ↩︎</p>
+<p>Also known as: IssueTracker, Google Issue Tracker, and Chromium Issue Tracker. Okay so like, the Google one is the main one and contains everything, but there are also project-scoped trackers (such as the Chromium one) that only show issues related to that specific project. ↩︎</p>
+<p>Actually, I announced it on fedi and bluesky too, but those platforms are not as prone to disinformation so in this post I’ll pretend they don’t exist. ↩︎</p>
+<p>On Twitter, we blame everything that’s happened after Elon Musk bought the site on him. Of course, in practice it’s only indirectly his fault. ↩︎</p>
+<p>I don’t have a good source for this on hand unfortunately. The closest I have is this nytimes article that (probably?) references this tweet. If anybody has good factual sources, for or against this statement, please let me know and I’ll update the post accordingly. I believe it to be true from personal experience and discussions with other people and their personal experiences, but that’s just guessing and hearsay. ↩︎</p>
+<p>i actually realized the other day that my server isn’t even doing the best gzip compression: for i in {1..9}; do gzip –keep -f -$i index.html; echo -n $i:\ ; ls -sh -1 index.html.gz | grep -o ’^\S*’; done
+1: 52K
+2: 48K
+3: 48K
+4: 44K
+5: 44K
+6: 40K
+7: 40K
+8: 40K
+9: 40K so in theory i could shave even more bytes off my posts ^^ ↩︎</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/pwc-search" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lyra.horse/blog/2026/11/disinformation-machine/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

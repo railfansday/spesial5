@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>Baseten on Hugging Face Inference Providers 🔥</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9906.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,33 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
+        <h1>Baseten on Hugging Face Inference Providers 🔥</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/inference-providers/welcome-baseten.png" alt="Baseten on Hugging Face Inference Providers 🔥" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/inference-providers/welcome-baseten.png" alt="Baseten on Hugging Face Inference Providers 🔥" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>We're thrilled to share that Baseten is now a supported Inference Provider on the Hugging Face Hub!</p>
+<p>Baseten joins our growing ecosystem, enhancing the breadth and capabilities of serverless inference directly on the Hub's model pages. Inference Providers are also seamlessly integrated into our client SDKs (for both JS and Python), making it super easy to use a wide variety of models with your preferred providers.</p>
+<p>Baseten is an AI infrastructure platform that covers serverless AI, training and more. With a catalog of many frontier models, Baseten makes it easy for developers to integrate a wide range of AI capabilities into their applications with minimal setup.</p>
+<p>Baseten supports a broad spectrum of model types - from LLMs to text-to-speech and more. As part of this initial integration, Baseten is launching support for conversational and text-generation tasks on Hugging Face, enabling access to popular open-weight LLMs such as Kimi K3, latest DeepSeek V4 Flash, GLM-5.2, and many more. Support for additional tasks will roll out soon!</p>
+<p>See the full list of models supported by Baseten here.</p>
+<p>Follow Baseten on Hugging Face: https://huggingface.co/baseten.</p>
+<p>Baseten is available through the Hugging Face SDKs - huggingface_hub (>= 1.26.1) for Python and @huggingface/inference for JavaScript.</p>
+<p>The following examples show how to use the latest DeepSeek V4 Flash through Baseten. Use a Hugging Face token to authenticate - the request will be routed to Baseten automatically.</p>
+<p>Hugging Face Inference Providers are integrated in most Agent Harnesses - including Pi, OpenCode, Hermes Agents, OpenClaw, and more. This means you can plug baseten-hosted models straight into your favorite tools without any extra glue code. Browse the full list of integrations here.</p>
+<p>For direct requests, i.e. when you use the key from an inference provider, you are billed by the corresponding provider. For instance, if you use a baseten API key you're billed on your baseten account.</p>
+<p>For routed requests, i.e. when you authenticate via the Hugging Face Hub, you'll only pay the standard provider API rates. There's no additional markup from us; we just pass through the provider costs directly. (In the future, we may establish revenue-sharing agreements with our provider partners.)</p>
+<p>Important Note ‼️ PRO users get $2 worth of Inference credits every month. You can use them across providers. 🔥</p>
+<p>We also provide free inference with a small quota for our signed-in free users, but please upgrade to PRO if you can!</p>
+<p>We would love to get your feedback! Share your thoughts and/or comments here: https://huggingface.co/spaces/huggingface/HuggingDiscussions/discussions/49</p>
+<p>Discuss and provide feedback on Hugging Face Hub features</p>
+<p>Thank you, beautiful work. I’ll take a closer look at it soon!</p>
+<p>Discuss and provide feedback on Hugging Face Hub features</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/baseten" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

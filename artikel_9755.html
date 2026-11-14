@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Pooling-Aware Training for Multi-Vector Embedding Models</title>
+    <title>Cyber Experts Weigh In: How to Fight Artex &amp;amp; AntiFox</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9755.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,74 +15,57 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Token Pooling-Aware Training for Multi-Vector Embedding Models</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-13</p>
+        <h1>Cyber Experts Weigh In: How to Fight Artex &amp;amp; AntiFox</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Token Pooling-Aware Training for Multi-Vector Embedding Models" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt131056a0513594b5/6af623f4a8a90fde9d0b34ee/Artex-ShaunWilkinson-Getty.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="Cyber Experts Weigh In: How to Fight Artex &amp;amp; AntiFox" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Token Pooling-Aware Training for Multi-Vector Embedding Models" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt131056a0513594b5/6af623f4a8a90fde9d0b34ee/Artex-ShaunWilkinson-Getty.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="Cyber Experts Weigh In: How to Fight Artex &amp; AntiFox" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Multi-vector embedding models give each query token its own opportunity to find a match in a document. This makes them wonderfully expressive for search, but those document vectors add up quickly. A corpus with millions of documents can contain hundreds of millions of vectors!</p>
-<p>Token pooling makes these representations smaller by merging similar token vectors. The more aggressively I compress them, however, the easier it becomes to lose something useful. Pooling-aware training teaches the encoder to preserve the information that matters when its vectors are merged, helping you retrieve better from the same storage budget.</p>
-<p>In this post, I'll explain how pooling works, train a model for compressed retrieval with Sentence Transformers, and explore the resulting quality and storage tradeoff. With pool_factor=4, my normally trained model retains 94.6% of its unpooled NanoBEIR nDCG@10, with a 4x reduction in document vectors. Token pooling-aware training raises that retention to 97.8% at the same storage budget! Let's see how.</p>
-<p>This post builds on pooling-aware training studied in Stefan Josef's Learn to Pool and LightOn's pooling regularization study, which also explores targeted training and adaptive budgets. Here, I'll focus on understanding the method and putting it to work with a short, reproducible Sentence Transformers example.</p>
-<p>Pooling-aware training improves retrieval quality at the same vector budget. Details below.</p>
-<p>A single-vector embedding model compresses an entire document into one vector. Multi-vector models such as ColBERT instead keep a collection of contextual token vectors, allowing different parts of a query to match different parts of a document.</p>
-<p>For example, a query about a laptop with a long battery life can find evidence about the laptop in one part of a document and battery endurance in another. With MaxSim scoring, each query vector selects its best matching document vector, and those scores are added together:</p>
-<p>MaxSim⁡(Q,D)=∑q∈Qmax⁡d∈Dq⊤d
-\operatorname{MaxSim}(Q, D) = \sum_{q \in Q} \max_{d \in D} q^\top d
-MaxSim(Q,D)=q∈Q∑​d∈Dmax​q⊤d</p>
-<p>Even with the 2-bit or 4-bit residual quantization supported by Fast-PLAID, storing hundreds of vectors per document adds up. At 4 bits per residual coordinate, 200 vectors of 128 dimensions require 12.8 KB of quantized residuals per document, or 12.8 GB across a million documents. Pooling each document to 50 vectors reduces that to 3.2 GB, at the same dimensionality and precision.</p>
-<p>The useful observation is that many document vectors can be similar. Several tokens might describe closely related concepts, creating an opportunity to represent them together.</p>
-<p>HierarchicalTokenPooling groups similar token embeddings using Ward hierarchical clustering. Starting with one group per token vector, it repeatedly merges the two groups that cause the smallest increase in how spread out the vectors are within their groups. This spread is measured by the sum of squared distances from each vector to its group's mean, so Ward's method favors compact groups of similar vectors.</p>
-<p>These merges build a hierarchy of progressively larger groups, letting us choose a level of compression that fits our budget. We then represent each group by its mean and normalize the resulting vectors again, ready for MaxSim scoring.</p>
-<p>You can make compression proportional to document length:</p>
-<p>With pool_factor=4, documents retain approximately one quarter of their original vectors, so longer documents can keep proportionally more capacity. By default, the first token is protected from merging and pooling applies only to document embeddings, leaving query embeddings unchanged.</p>
-<p>HierarchicalTokenPooling offers three alternative controls:</p>
-<p>This distinction matters when document lengths vary. With pool_factor=4, a longer document can retain approximately one quarter of its vectors, allowing its representation to grow with its content. With distance_threshold, the vector count can grow when more distinct embeddings need to be preserved.</p>
-<p>Adaptive pooling uses a shared distance threshold to merge similar embeddings more aggressively while preserving more vectors for documents with distinct content. It can be used with any multi-vector model, including one trained without a pooling-aware objective.</p>
-<p>Rather than choosing a threshold manually, you can calibrate it for a target average vector count. Given a representative sample of your corpus in calibration_documents:</p>
-<p>Calibration only needs document embeddings and returns a threshold you can reuse when indexing. The target is an average, so individual documents can receive more or fewer than 16 vectors. The achieved average can also change on another corpus.</p>
-<p>Pooling can already be useful on an ordinary multi-vector model. The difficulty appears when a document contains a distinction that matters for retrieval, but merging its vectors makes that distinction harder to recover. The original training objective never required the model to work with these compressed representations. But, you can teach it to do exactly that.</p>
-<p>If you've used Matryoshka embeddings, the training principle will feel familiar. Matryoshka applies a retrieval objective at several embedding widths, teaching smaller prefixes to remain useful. Pooling-aware training applies the objective to representations with fewer token vectors.</p>
-<p>For my example, each training batch contributes two losses:</p>
-<p>L=12Lunpooled+12Lpooled
-\mathcal{L} = \tfrac{1}{2}\mathcal{L}_{\mathrm{unpooled}} + \tfrac{1}{2}\mathcal{L}_{\mathrm{pooled}}
-L=21​Lunpooled​+21​Lpooled​</p>
-<p>The first term teaches the model to retrieve with its full representations. The second teaches it to arrange its token embeddings so that useful matches survive pooling. Both objectives update the same encoder, giving it feedback about retrieval before and after compression.</p>
-<p>Ward clustering makes discrete decisions about which tokens belong together. During training, HierarchicalTokenPooling uses a straight-through estimator to pass gradients from pooled vectors back to their member tokens, without differentiating the cluster assignments. The encoder can then learn from retrieval errors made with its pooled representations.</p>
-<p>MultiVectorTokenPoolingLoss wraps an existing multi-vector retrieval loss and applies it using your chosen poolers:</p>
-<p>CachedMultiVectorMultipleNegativesRankingLoss supplies the retrieval objective. It teaches each query to score its relevant document above the negative documents in the batch. By default, it uses model.similarity, using the model's similarity setting (MaxSim in this example) and kernel settings. A model configured with similarity_fn_name="meanmaxsim" would also use MeanMaxSim during training.</p>
-<p>Gradient caching allows the encoder to process small mini-batches while retaining a larger set of in-batch negatives. My training script uses mini-batches of 64 with a training batch size of 256.</p>
-<p>MultiVectorTokenPoolingLoss adds the compression objective. Here, None means that one variant uses the original embeddings, while pooling supplies the factor-4 variant. The two weights average their losses. Pooling variants reuse the computed token embeddings, so each additional pooler adds clustering and scoring work without requiring a separate encoder pass for that variant.</p>
-<p>The poolers can also be custom BaseTokenPooling implementations that preserve gradients through their input embeddings. You can adapt the training objective to the representation you want to deploy.</p>
-<p>Replace the factor-4 pooler with your chosen deployment configuration, or include several poolers and choose weights for their losses.</p>
-<p>The complete training script includes the dataset, trainer, validation loss, and small retrieval evaluations during training. From a checkout of the repository, run both variants locally with uv:</p>
-<p>The script declares its training and kernel dependencies, so uv installs them for you. Compatible kernels are enabled automatically.</p>
-<p>You can also train on a cloud GPU with Hugging Face Jobs. Install the CLI and log in with a token that can run Jobs and upload models:</p>
-<p>This runs the pooling-aware variant on an A10G GPU with a four-hour time limit. Passing HF_TOKEN as a secret lets the script upload the trained model to your Hub account when training finishes. To run the ordinary-loss baseline as well, repeat the command with --baseline after the script URL.</p>
-<p>You can accelerate MaxSim scoring, Ward clustering, and supported backbone operations with kernels. Install the training and kernel dependencies:</p>
-<p>In the training example above, replace the model and pooler initialization before constructing the loss:</p>
-<p>Hierarchical poolers inherit the model's kernel settings by default, so you only need to enable kernels on the model.</p>
-<p>Sentence Transformers selects compatible kernels for your setup and uses the existing implementation wherever a replacement isn't available. For example, the default MaxSim kernel scores queries against documents without building the full token similarity matrix in memory, but it does require CUDA and Triton.</p>
-<p>The default Ward clustering kernel considerably speeds up hierarchical clustering by running on CUDA instead of the CPU. We're talking about 30-150x faster than SciPy depending on the setting.</p>
-<p>Let's load the pooling-aware model and retrieve with compressed document embeddings. Kernel settings aren't saved with the model, so add use_kernels=True when loading if you'd like to use them for inference too:</p>
-<p>The pooler compresses the document embeddings after the encoder's forward pipeline, reducing the total from 58 vectors to 16 while leaving query embeddings unchanged. Mars still receives the highest similarity score, followed by Jupiter and Venus, so the ranking is preserved despite storing far fewer document vectors.</p>
-<p>You can change pool_factor at inference to explore a different storage budget with the same trained model. For repeated use, you can also pass token_pooling=pooling when initializing MultiVectorEncoder to make it the runtime default. The pooler's tasks still control which inputs are compressed (e.g. only documents).</p>
-<p>To investigate, I trained two models from answerdotai/ModernBERT-base, each with a fresh 128-dimensional token projection:</p>
-<p>Both runs use one epoch over the same 120,000 MS MARCO triplets, seed 42, and matching initialization and optimization settings. The training token cap is 300, and short queries are expanded to at least 32 token positions to provide additional contextual query vectors. Only the loss differs between the two experiments, and I didn't run a hyperparameter search.</p>
-<p>I evaluated both models on NanoBEIR@13, reporting mean nDCG@10 (%). The figure compares ordinary and pooling-aware training with pool factors of 2, 3, 4, and 6, alongside unpooled retrieval. The table also includes fixed caps and adaptive thresholds, showing how the training benefits transfer to other pooling settings.</p>
-<p>For adaptive pooling, I calibrated a separate threshold for each encoder and NanoBEIR corpus, using its unpooled document embeddings to match the average vector counts under caps of 64, 32, and 16. Short documents bring those averages below their respective caps.</p>
-<p>At the trained pool_factor=4, nDCG@10 improves from 49.03 to 51.23, while storing 74.8% fewer document vectors than unpooled retrieval. This increases score retention from 94.6% to 97.8%, where retention is the pooled mean nDCG@10 divided by each model's own unpooled mean. Unpooled retrieval also improves, from 51.84 to 52.39.</p>
-<p>The gains extend to fixed caps and adaptive pooling, even though training used only the full representation and proportional pooling. At an average of 29.58 vectors per document, adaptive pooling retains 97.3% of the pooling-aware model's unpooled score while storing 84.7% fewer document vectors. The normally trained model retains 93.3% at the same budget.</p>
-<p>If index size is your main concern, I would reach for these options in this order:</p>
-<p>If the model's default dimensionality is larger than 128, I would consider Matryoshka truncation and fine-tuning earlier as well. These approaches can be combined, so evaluate the resulting index size and retrieval quality with your search engine and corpus.</p>
-<p>MultiVectorMatryoshkaLoss trains token embeddings to remain useful after truncation. You can wrap it with MultiVectorTokenPoolingLoss to train for both smaller dimensions and fewer document vectors, reusing the encoder's embeddings across the compression settings.</p>
-<p>Try the complete training example, choose a budget that matters for your application, and compare it with a matched ordinary-loss run. The accompanying evaluation script measures unpooled retrieval, caps of 64, 32, 16, 8, and 4 vectors, and pool factors of 2 through 6, so you can plot the quality and storage tradeoff for your own model.</p>
-<p>With a few extra lines in the training objective, a smaller document representation becomes something the model actively learns to use. That opens up an exciting amount of room to make multi-vector retrieval more practical!</p>
+                <p>Cybercriminals using agentic pen-testing tools is a proverbial genie out of the bottle at this point, so enterprises need to get a defense plan in place right away.</p>
+<p>A month since it went closed-source, the Artex agentic penetration testing framework is spreading faster and causing more havoc than ever. Still, cyber defenders tell Dark Reading that defending against it is largely a matter of willingness, not capability.</p>
+<p>To recap: In August, a Chinese open source (OSS) developer released a cybercrime-grade agentic red-teaming tool called "Artex." In the months that followed, attackers and cybersecurity researchers have gradually realized just how effective Artex is at probing for vulnerabilities and turning initial access into meaningful compromise at so-called machine speed.</p>
+<p>"Artex is what the perpetual conflict era looks like," says Yuval Itzchakov, co-founder and chief technology officer (CTO) of A Security. "When our research team ran it against our open source benchmark, it found eight vulnerabilities in about 45 minutes, including a critical privilege escalation to admin, and chained them into a full attack path through a WAF, CAPTCHA, and MFA. All it took was a download, an install script, and a model key."</p>
+<p>Related:Attackers in Binance Breach Targeted Known Weakness, Missing Controls</p>
+<p>Nothing about it is so complicated, he says, "And that's the point. Take the guardrails off an AI hacking tool, and anyone can run agentic attacks at scale. In Artex, scope is just a suggestion to the model."</p>
+<p>Though its author de-listed the original Artex on Oct. 8, new variants continue to cause trouble. The variant du jour, "AntiFox," was recently weaponized by attackers to exploit Internet-facing Web services and their associated Amazon Web Services (AWS) environments. According to researchers at Arctic Wolf Labs, threat actors used their new agentic toy to breach, deploy Web shells, and execute operating system (OS) commands on compromised Microsoft Internet Information Services (IIS) servers, as well as enumerate services, expose production secrets, and manipulate Simple Storage Service (S3) buckets across AWS environments.</p>
+<p>Notably, Arctic Wolf Labs offered relatively banal advice for organizations defending against this quite new threat: hunt for indicators of compromise (IoCs), rotate and revoke relevant credentials and sessions. In fact, researchers say, there's little more to defending against Artex or AntiFox than basic cybersecurity hygiene. However, it's also important to avoid making assumptions; as GitGuardian pointed out in a blog post on AntiFox, "Blocking scanner tools won't stop these agents, and a leaked key stays dangerous until someone revokes it."</p>
+<p>The prospect of every Tom, Dick, and Harry having an agentic attack framework in their pocket might be intimidating, but cybersecurity defenders still possess some distinct advantages.</p>
+<p>Related:Getting Past the Post-Quantum Cryptography Discovery Phase</p>
+<p>First off, Itzchakov points out that "Artex stops at the front door. It has no lateral movement, no Active Directory testing, and no view inside. Defenders can see their whole environment and test it continuously with the same speed and autonomy, under guardrails no one can switch off. The organizations that come out ahead will treat this as permanent and build their security around it."</p>
+<p>In a profile of a recent incident response (IR) effort against an Artex attack, Eye Research noted another serious weakness of agentic tools in general: They're loud. "The agents left their name in pod names and probes, hammered endpoints no human would touch, and tripped detections on systems with EDR installed," it explained. "Where we had visibility, we saw them immediately."</p>
+<p>"If you want to be positive, there are a lot of small steps you can put together in order to protect networks and organizations," says Guillaume Valadon, lead cybersecurity researcher at GitGuardian. To catch Artex or AntiFox's loudness, for example, "blue teams must have in place a security information and event management (SIEM) platform and a really good detection system, to make sure that they will detect these tools in the noise."</p>
+<p>Related:Japan Pushes Emergency Funding for Cybersecurity as AI-Assisted Breaches Rise</p>
+<p>Besides active detection, organizations would be well advised to focus on secrets management. Artex and AntiFox have proven adept at finding secrets, in part because they use ordinary commands like "git" and "grep" to find what they're looking for, instead of shipping a more easily identifiable and blockable secret scanner.</p>
+<p>"Defenders need to be looking for exposed and dormant keys, checking Git repos for exposed secrets, and heavily implementing a defense-in-depth posture," adds Justin Moore, Arctic Wolf's director of adversary operations. "What makes these frameworks so effective is not that they’re conducting novel attacks; they’re just doing what we already know, just faster than we have seen before. Good cyber hygiene is exactly what prevents these types of attacks from being so successful, whether they’re agentic or not.”</p>
+<p>Despite all of the positive steps organizations can take, Valadon says, "If I'm being negative, I would say that it's too late."</p>
+<p>"For years we have been telling people that they should not output secrets — that we're finding really important hardcoded secrets everywhere, publicly. On Docker, GitHub, and so on. Now, because we have these tools that can go fast from nothing to discovery to weaponization, that makes it more difficult for blue teams," he says.</p>
+<p>"The agentic capacity for the attacker is already here, and they're going faster and faster and faster," he notes. "So if you didn't do the right stuff before, it will be difficult for you to catch up."</p>
+<p>The cybersecurity industry has been waiting for AI-driven cyberattacks for years now. Product marketing campaigns have hinged on agentic attacks being right around the corner. Stories of lightly AI-influenced tactics, techniques, procedures (TTPs), and malware have kept food on cyber reporters' plates. Most of the discourse has been, at best, theoretical, at worst, misleading.</p>
+<p>A meaningful, if incomplete, turning point seems to have occurred around midyear, if not among the most sophisticated attackers, then at least in the world of middling cybercriminals.</p>
+<p>"When we all started using ChatGPT, at that time, we were just asking it simple questions. It was fun, but it was not possible to code," Valadon explains. "And then we had agents that were more capable at coding and syncing. This year you can do it all, from end to end. You just give [an agent] a rough idea, and it will do some planning, syncing, it will build the code for you, and deploy it for you. It's getting better and better at doing the whole cycle."</p>
+<p>He also points to Anthropic and OpenAI's warnings about OSS AI earlier this fall: "Some people are saying that we are seeing these [attack] frameworks because of Chinese open-weight models. Because if you have a big GPU, you are able to run your own offensive models with Artex."</p>
+<p>"It's getting more and more dangerous," he says. "It's all fitting into the HuggingFace, OpenAI, Anthropic narrative [warning against attackers] having access to real offensive tools."</p>
+<p>Nate Nelson is a journalist and award-winning scriptwriter. In addition to Dark Reading he writes for Darknet Diaries, the most popular show in cybersecurity across all media.</p>
+<p>He began his career as a freelancer, ghostwriting Forbes and CNBC op-eds for executives in tech and finance. Then he transitioned to journalism at Threatpost, where he covered cybersecurity news and trends. Throughout those years he co-created a cybersecurity podcast, Malicious Life, which in its day climbed into the Top 20 technology podcasts charts on Apple Podcasts and Spotify.</p>
+<p>He holds degrees from New York University and Bard College. As a born and bred New Yorker, he enjoys a superiority complex, but is polite enough to keep it to himself.</p>
+<p>The Autonomous Endpoint Management Advantage</p>
+<p>2026 State of Cybersecurity Report: Bridging the Divide</p>
+<p>The State of Cloud Security: The Latest Challenges</p>
+<p>How Organizations Are Managing Incident Response</p>
+<p>How Enterprises Are Developing Secure Applications</p>
+<p>Securing Active Directory: Defending Against Modern Attack</p>
+<p>When the Plumbing Breaks: Lessons from PHP2Shell and LiteLLM</p>
+<p>From Shadow AI to Rogue Agents: Securing the AI You Can't See</p>
+<p>LLM Security Architecture: Building Secure AI Systems from the Ground Up</p>
+<p>Resilient Architecture: Designing Systems That Survive Compromise</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/token-pooling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/cybersecurity-operations/cyber-experts-fight-artex-antifox" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
