@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Inkling by Thinking Machines</title>
+    <title>Rust 1.100.0 released</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9930.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,75 +15,29 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome Inkling by Thinking Machines</h1>
+        <h1>Rust 1.100.0 released</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Update: Inkling 2 Small is here! 🤗
-Thinking Machines released Inkling 2 Small, the next generation of the Inkling family. We have updated this post with a new section on Inkling 2 Small, covering what changed in the architecture and how to run it with transformers.</p>
-<p>Inkling is Thinking Machines' family of open multimodal models, and it now spans two generations on the Hub:</p>
-<p>In this post, we start with the first-generation architecture, then walk through what changed in Inkling 2 Small and how to run it. The rest of the post covers inference, use cases, post-training, and deployment, with examples built on the first-generation checkpoints.</p>
-<p>Inkling is the first large open model with ~1T parameters and 1M context window to natively receive image, text, and audio inputs, trained on 45 trillion tokens of text, images, audio and video. It’s focused on reasoning across modalities such as audio, images, and text. It is intended for domain adaptation via fine-tuning. We’ve tinkered (pun intended) with this model to build some demos and explore the architecture, and we think it’s great for building a new wave of multimodal reasoning apps.</p>
-<p>Inkling is a decoder-only multimodal Mixture-of-Experts (MoEs) model with 975B total and 41B active parameters. There are a lot of things going on, so let’s break each part down:</p>
-<p>Here’s a quick glance of the architecture.</p>
-<p>Relative attention: Instead of RoPE, which is the usual method to inject positional information in transformers models, Inkling uses relative attention to encode position information. Each attention layer learns position directly in the attention logits. Aside from key-query-values, there's a fourth projection producing a per-token, per-head relative feature R. This projection tensor is then tweaked with distance information (distance between the key and the query vector) and propagated into the attention module.</p>
-<p>Hybrid attention: The decoder layers alternate between global attention (attending to the full context length at once) and sliding window attention (attending to a fixed context window in a sliding fashion). The architecture has a pattern of 5:1 sliding window to global attention layers. This hybrid attention scheme provides efficiency in computation. The final layer uses global attention to help build feature-rich representations.</p>
-<p>Short convolution: The model uses a distinctive short 1D convolution, or SConv over the hidden states. SConv reads the current token and the previous W-1 hidden states, with W being the sliding window size. The intuition here is that SConv helps with local attention while freeing the attention and MoE modules from local representations.</p>
-<p>MoE with shared experts sink: In Inkling, the router scores both routed experts and shared experts. Top-k selection is performed over 6 experts, plus 2 shared experts always active.</p>
-<p>Vision understanding: The model includes a simple hierarchical MLP patchifier consisting of several linear layers. Each layer merges pixels progressively, until the final layer produces one embedding per patch.</p>
-<p>Audio understanding: The architecture employs a discretized mel spectrogram, where each of the audio chunks (of 100 ms) are converted to the mel scale and then classified into the exact mel spectrogram bin.</p>
-<p>The multimodal towers are relatively simple modules, unlike other models that employ separate encoders for each modality. Each image patch passes through the image embedding tower and the audio chunk is passed through the audio embedding tower to get both media embeddings. Image inputs also include an additional temporal dimension for video processing. We expect this capability to be useful for downstream fine-tuning, but we haven’t evaluated out-of-the-box video performance. The tower folds the patch grid, a small local block of neighboring tokens is stacked into the channel dimension and goes through hMLP. The audio waveform is converted to mel scale, which is then classified into a discrete mel bin. These mel bin values are embedded in the audio embedding tower and the embeddings are then summed to construct the final audio input.</p>
-<p>Inkling 2 is the next generation of the family. It takes text and image inputs (but no audio), and generates text. It keeps the core ideas of Inkling's decoder:</p>
-<p>Almost everything around that core was redesigned, though. The layers read from the residual stream differently, attention is bounded and gated, the MoE is simpler and wider, and the vision tower is now a real vision transformer.</p>
-<p>Let's go over the most notable changes together:</p>
-<p>Block attention residuals: In a standard transformer, every layer adds its output to the residual stream, and the next layer reads it. Inkling 2 has no single residual stream. Instead, it groups its 48 layers into 8 blocks of 6 and keeps one sum per block:</p>
-<p>A sublayer (attention or MLP) doesn't read one of these sums directly. It attends over depth, which means at each token position, it treats the finished block summaries plus the current partial block as a short sequence, and takes a softmax-weighted mix of them.</p>
-<p>The query is a single learned vector per sublayer. The keys and values are the RMS-normalized block summaries at that position. So the weights differ from token to token, depending on what each block wrote there.</p>
-<p>In other words, each sublayer learns how much to draw from each earlier stage of the network, rather than always reading the sum of everything. By the last layer, there are up to 9 sources to choose from (the embeddings, 7 finished blocks and the current partial block), and the final norm reads its input the same way. Global attention layers learn three queries, so their query, key and value projections can each draw on a different mix of blocks.</p>
-<p>Dynamic short convolutions: The short convolutions on keys and values in the global attention layers are now dynamic. The 4 taps of each convolution are a fixed learned weight plus a per-token weight predicted from the input, shared within each key/value head. So the model can change, token by token, how much local context goes into each key and value. All short convolutions also rescale their residual sum to keep its variance stable through depth.</p>
-<p>A leaner, wider MoE: Each layer has 384 routed experts with 8 active per token, and the shared experts are gone.</p>
-<p>A new vision encoder: Inkling encoded images with a lightweight hierarchical MLP. Inkling 2 uses a 23-layer vision transformer based on the Perception Encoder. It has the following properties:</p>
-<p>Several images are packed into one sequence, and each image only attends to itself.</p>
-<p>Inkling 2 uses the same Auto classes as Inkling. Make sure to have updated transformers to run the model.</p>
-<p>Inkling comes with day-0 transformers support and is supported in major inference engines like SGLang and vLLM.</p>
-<p>This model is huge. The bf16 checkpoint requires 2 TB of VRAM, while the nvfp4 version requires 600 GB of VRAM. You can try the model through serverless inference routers like Inference Providers, or use ggml quants for local deployment with llama.cpp.</p>
-<p>The easiest way to infer with transformers directly is to use the any-to-any pipeline. You can use either the 16 bit "thinkingmachines/Inkling" on Hopper or later GPUs, or the quantized NVFP4 checkpoint "thinkingmachines/Inkling-NVFP4" on Blackwell Nvidia GPUs. Make sure to have the latest version of transformers (5.14.0 was released today) (pip install -U transformers).</p>
-<p>After initializing the pipeline, you can pass in the prompt as follows.</p>
-<p>Going one level lower, you can use Auto classes. For inference, you can use the AutoModelForMultimodalLM class for models and AutoProcessor class for processors. For different reasoning tasks, the tokenizer takes in a reasoning_effort argument. Existing options for reasoning effort are "none", "minimal", "low", "medium", "high", "xhigh", and "max".</p>
-<p>For multimodal inference, you can use the same classes. We provide example snippets for each different modality in the model card.</p>
-<p>Inkling also takes in audio input. Below is an example inference snippet, which still uses the same AutoModelForMultimodalLM class.</p>
-<p>For more realistic parallel deployment in a cluster of several nodes, please refer to the Slurm section below.</p>
-<p>SGLang is one of the fastest deployment frameworks for Inkling at the time of release, as it includes a custom model implementation. The launch command below shards the model across 8 GPUs and serves an OpenAI-compatible API on port 30000.</p>
-<p>Match --tp-size to your GPU count. Add --mem-fraction-static (e.g. 0.85) if you need to leave more headroom for the KV cache.</p>
-<p>vLLM is strong for production serving. A single vllm serve command downloads the weights from the Hub, shards the model across your GPUs with tensor parallelism, and starts an OpenAI-compatible server on port 8000. You can view the vLLM Recipe for the model here to customize to your hardware.</p>
-<p>In practice, you might need multiple nodes and a distribution tool like SLURM (see below). Key parameters are --tensor-parallel-size to the number of GPUs on your node, and use --max-model-len to cap the context window if you hit KV-cache memory limits.</p>
-<p>You can infer with this model using several inference providers through Hugging Face. You can see all the code snippets to consume here. Below you can see how to use with the OpenAI client.</p>
-<p>Using the “:auto” suffix routes to your preferred provider in your settings; you can also use “cheapest” or “:fastest” as well. For this release, we cover the inference costs for 2 hours within the release for everyone.</p>
-<p>Note: audio support in Inference Providers is work in progress and will be added shortly.</p>
-<p>You can use llama.cpp to run quantized versions of the model on limited hardware. Unsloth have quantized the model down to 1-bit precision, reducing VRAM consumption by 95% over the original model.</p>
-<p>This starts an OpenAI-compatible server running at http://localhost:8080/v1 that you connect to in your preferred tool or clients. Heading there, you can start chatting with the model, and set it up with your favorite MCPs, pass in images or files conveniently and more!</p>
-<p>Llama cpp also ships with a built-in UI that supports tools, mcp, and agentic workloads. Checkout Inkling running at 1-bit precision in the llama app:</p>
-<p>Inkling GGUFs are also runnable in Unsloth Studio with dynamic 1-bit GGUFs which retain ~74.2% of top-1% accuracy whilst being 86% smaller.</p>
-<p>Pi is a minimal coding agent harness you can use with different language models. You can use Pi with either an inference engine server endpoint, such as llama.cpp, or with Inference Providers on Hugging Face by adding this to your ~/.pi/agent/models.json after installation.</p>
-<p>Then you can start Pi in your project directory by calling pi and you’re good to go! In this demo, we give the model a hard math reasoning problem and it uses tools in pi to solve it.</p>
-<p>Inkling is focused on broad multimodality reasoning and low token consumption, so try it out with document processing or audio tasks.</p>
-<p>MTP adds extra layers to the model that predict several tokens at once, not just the next one. During inference, the extra layers act as “drafters” for speculative decoding, speeding up generation without compromising performance. With MTP, you get the exact same generated outputs, multipliers in generation speed-up at small memory cost in VRAM (due to serving the drafter). Thinking Machines also provides an MTP drafter with this release.</p>
-<p>We have prepared a small suite of reasoning questions from expert-level sources and university entrance exams. We have taken photos of the screen with watermarks in the screenshot to challenge the model. The model has solved all of them on high one, failed one in highest and medium reasoning efforts, so we provide a link to the model answers for you to check out how the model sounds and provide the number of tokens the model has taken to solve each of them. Note that we provide no system prompts in these vibe evals, and these reasoning questions should often be run with a good system prompt. The vibe eval images and results live here.</p>
-<p>We have vibe-evaluated the model on some audio reasoning examples from BigBenchAudio and a few multilingual audio examples of GlobeAudio (Russian and Chinese multi-choice questions asking the last word in transcription). The BigBenchAudio examples we tested consist of logical statements and questions that either ask for formal fallacies (whether an argument can be logically deduced from the context given in audio) or object counting (stating multiple distinctive objects in the audio, asking for the total count of a certain one). Although this benchmark is initially made for speech-to-speech reasoning, we just want to see audio reasoning capabilities of this model. For GlobeAudio, the questions are relatively straightforward, so we ran with reasoning efforts of 0.1. We ran the first example of each language within GlobeAudio. All tests pass on all questions and efforts, except for second formal fallacy example on lowest effort, so we only provide the number of tokens spent in each question against reasoning effort. Vibe eval results and audio files live here.</p>
-<p>If you would like to use Inkling for post-training, Thinking Machines have built tinker, a managed tool for post-training open weight models. Their cookbook includes examples for fine-tuning, distillation, and reinforcement learning.</p>
-<p>We post trained Inkling with tinker and OpenEnv, an agentic RL environment tool. We used the ECHO algorithm that trains a model to predict the environment without a verifier, applying next-token cross-entropy loss to tokens produced by the environment, alongside the usual policy learning on agent actions. This teaches the policy an implicit world model without requiring a separate model, teacher, or additional rollouts. Check out the example.</p>
-<p>If you’re working with Transformers Reinforcement Learning we suggest using Inkling as a teacher model in a knowledge distillation setup. For example, take advantage of Inkling’s document understanding abilities to improve the performance of a smaller (on-device) model. In this example, we use the transformer reinforcement learning library and the GOLD algorithm to distill knowledge. GOLD is handy here because it matches token logits between different tokenizers, so you can distill to any model on the hub.</p>
-<p>Below you can find each Inkling checkpoint as well as their VRAM requirements.</p>
-<p>To deploy Inkling on a cluster, we provide SLURM scripts serving with transformers API, as well as how to query the endpoint with different modalities. You can adapt these scripts to vLLM or SGlang by updating the commands. These scripts live here.</p>
-<p>You can deploy an Inkling-Small NVFP4 checkpoint using Inference Endpoints. We provide a pre-tested configuration to deploy it on 8 RTX PRO 6000s with an aggregated VRAM of·768 GB, giving large space for KV cache, costs $ 22 per hourly uptime (scales to zero when unused). To deploy, run hf endpoints catalog deploy --repo thinkingmachines/Inkling-Small-NVFP4 using the Hugging Face CLI or alternatively, head to https://endpoints.huggingface.co/new/thinkingmachines/Inkling-Small-NVFP4. With this setup, you can get 140 TPS (single user inference, prepared for multi-user support with continuous batching)</p>
-<p>Once the endpoint is up, you can query as follows.</p>
-<p>Releasing a natively multimodal model (text, vision, and audio) open-weights is a huge step forward for the open-source AI ecosystem! Having variable and controllable thinking effort built into a MoE architecture makes Inkling a really attractive foundation for fine-tuning. Excited to test out the smaller 12B active parameter variant for local agent workflows at https://geometrydashsubzero.io</p>
+                <p>Version
+1.100.0 of the Rust language has been released. Notable changes include the
+stabilization of the never type,
+core parts of the Allocator API, reporting of unused dependencies in
+Cargo, and more.</p>
+<p>Note: you can avoid this step in the future by logging
+        into your LWN account.</p>
+<p>Note: you can avoid this step in the future by logging
+        into your LWN account.</p>
+<p>Copyright © 2026, Eklektix, Inc.
+            
+            Comments and public postings are copyrighted by their creators.
+            Linux  is a registered trademark of Linus Torvalds</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/thinkingmachines-inkling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lwn.net/Articles/1107187/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

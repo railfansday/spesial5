@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AI and the Future of Cybersecurity: Why Openness Matters</title>
+    <title>Making Knowledge Distillation Cheap Enough to Run at Scale</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10050.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,35 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>AI and the Future of Cybersecurity: Why Openness Matters</h1>
+        <h1>Making Knowledge Distillation Cheap Enough to Run at Scale</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Knowledge distillation, training a smaller student model to match the performance of a larger teacher, is a well-known technique in Machine Learning. With the recent wave of open-source Large Language Models, such as gpt-oss, Qwen, GLM, or Kimi, it has become a mainstream research topic again. Deploying these very large models is expensive: the recent Kimi-K3 model has 2.8 trillion parameters and needs roughly 3TB of VRAM just to load. Compressing them into smaller models and recovering the original capabilities through knowledge distillation has therefore become standard practice, with companies like Nvidia (Nemotron 3 Puzzle 75B) or Multiverse Computing (Hypernova 60B) recently releasing high-quality compressed models.</p>
+<p>The distillation step is what decides most of the final quality, but it's also usually the most expensive part of the pipeline. Keeping both the teacher and student loaded, and producing a probability distribution over the entire vocabulary for every token, requires enormous amounts of VRAM, typically feasible only with hundreds of GPUs and careful tensor-parallelism strategies. Our latest paper, Efficient Knowledge Distillation for LLMs: Offline Top-K Logits and a Fused Chunked KL Loss, tackles this with two systems changes: caching the teacher's top-K logits once so the teacher never has to sit in memory alongside the student, and a new, memory-efficient KL-divergence loss that avoids ever materializing the full vocabulary-size × sequence-length matrix, cutting VRAM use far below what the default implementations in libraries like PyTorch or NVIDIA Megatron-Bridge achieve. Together, these two changes cut training cost enough to make long-context healing possible on a single GPU, and cheap enough to make large-scale experimentation practical.</p>
+<p>The standard setup, online distillation using the Kullback-Leibler divergence loss (KL loss), keeps both the teacher and the student loaded at the same time. At every training step, the teacher runs a full forward pass to produce its output distribution, and the student is trained to match it. This is the most expressive setup, since the full teacher distribution is available, but it is also the most memory- and compute-intensive: two full-vocabulary tensors have to be held per token position, and the teacher has to be recomputed on every single step even though its behavior does not change across a training run.</p>
+<p>As a practical example, gpt-oss-120b has a vocabulary of 201,088 tokens. At a sequence length of 32K and batch size 4, the teacher-probability tensor alone has shape 4 × 201,088 × 32,768; in bfloat16, that's already about 50GB of VRAM for a single tensor. Add gradients, activations, model weights, and optimizer states, and a single training iteration of distillation can peak at roughly 250GB of VRAM, more than even an H200 or B200 GPU can provide. In this post, we show that reformulating the KL loss to process the data in chunks reduces this cost to almost nothing.</p>
+<p>Dense KL spikes to roughly 250GB, above a single H200's 141GB capacity. The fused chunked loss never forms that spike and peaks at about 128GB. Source: paper Figure 1.</p>
+<p>Offline distillation. Instead of recomputing the teacher at every step, we compute its output once, cache the top-100 most likely tokens per position, and train the student against that cache. The teacher never has to sit in memory during training and does not need to be run again once the cache exists, so the same cache can be reused across many ablations.</p>
+<p>A fused, chunked KL loss. To see why the loss itself is expensive, picture what it actually builds: for every token position in a sequence and every word in the vocabulary, the loss needs a number describing how much the student's prediction disagrees with the teacher's. Laid out as a grid, that's one row per vocabulary entry and one column per sequence position, for a vocabulary of 100K+ words and a long sequence, that grid is enormous, and the default way of computing a KL loss builds the whole thing before it can produce a single number.</p>
+<p>We compare three ways of computing this same loss, all mathematically equivalent:</p>
+<p>The GIF below shows the difference between the dense and fused-chunked approaches: one builds the whole comparison grid and holds onto all of it, the other builds and discards one slice at a time, so memory never grows beyond a single chunk.</p>
+<p>We have open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
+<p>The table below puts all four setups head to head: online distillation, and the three offline loss implementations just described. Comparing them on a single H200 GPU with Llama 3.1 8B Instruct as teacher and a 3.2B Llama model as student at an 8K token context, all four reach near-identical training loss, even though the offline runs train against only the cached top-100 logits per token.</p>
+<p>The loss curves overlap almost exactly across all four methods, confirming offline distillation with top-100 cached logits is lossless relative to online distillation. Source: paper Figure 2. At this sequence length, the fused chunked loss is not yet the fastest option, its extra backward-pass projection costs a bit of speed, but its real advantage only shows up as context length grows, which the next section demonstrates.</p>
+<p>To see the scaling pattern more starkly, we ran an isolated benchmark on a toy output-projection network (no transformer body, just the loss kernel). At 32K tokens, peak memory falls from 85.2 GiB with the dense loss to 5.45 GiB with the fully chunked version, a 15.6× reduction, and the dense loss fails outright from 64K tokens onward. At 256K tokens, the fully chunked loss uses 11.6 GiB against 134.2 GiB for the next-best chunked variant, and is about 3.3× faster per iteration at that length.</p>
+<p>Distilling a GPT-OSS 20B model at a 32,768-token context, the memory freed by the fused loss let the setup shrink from four GPU nodes down to one. Step time fell from 57.0 to 12.23 seconds, about 5× faster, and throughput per GPU rose from 74.2 to 345.7 TFLOP/s.</p>
+<p>The efficient offline setup is what made a large-scale distillation campaign affordable in the first place. The resulting compact student, distilled from Llama 3.1 8B Instruct down to about 3.2B parameters, retains most of the teacher's accuracy on BoolQ and HellaSwag, stays within about nine points of it on MMLU, at less than half the parameter count.</p>
+<p>The student retains most of the teacher's short-context accuracy at less than half the size. Source: paper Figure 6.</p>
+<p>This work is part of Multiverse Computing's ongoing research into making distillation and healing practical to run at scale, not just as a one-off recipe, but as something teams can iterate on cheaply. The paper also covers additional ablations, such as how the choice of loss function and sequence packing affect recovery quality.</p>
+<p>Want the full technical details, including the closed-form gradient behind the fused chunked loss and the complete training configuration? Read the full paper, or get in touch with our team to talk about applying this to your own distillation pipelines.</p>
+<p>We have also open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/cybersecurity-openness" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/MultiverseComputingCAI/efficient-knowledge-distillation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

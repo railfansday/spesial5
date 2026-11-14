@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Claude Merged 30,401 Changes in One Day. Git Couldn&#x27;t Keep Up.</title>
+    <title>Expo Simulators</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9730.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,50 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Claude Merged 30,401 Changes in One Day. Git Couldn&#x27;t Keep Up.</h1>
+        <h1>Expo Simulators</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/pIGapHGH9NNT6tb7uPaRnsVFH123-8r83c3v.png" alt="Claude Merged 30,401 Changes in One Day. Git Couldn&#x27;t Keep Up." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/pIGapHGH9NNT6tb7uPaRnsVFH123-8r83c3v.png" alt="Claude Merged 30,401 Changes in One Day. Git Couldn't Keep Up." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>An agent gets a task - fix a flaky test. Before it reads a single line of code, it needs a working copy of the repository.</p>
-<p>Under git, that meant waiting 7.1 minutes.</p>
-<p>Multiply that wait by tens of thousands of agents a day and you get the problem Anthropic described in its engineering post on 13 October 2026. The code wasn't the slow part any more. Claude could write the fix in seconds; the plumbing built for human engineers (source control, builds, CI) couldn't hand it the repo fast enough.</p>
-<p>So Anthropic threw out git for its main repository and built Scion.</p>
-<p>The numbers tell the story better than I can. In January 2026, Anthropic merged roughly 1,000 code changes a day. By May it was about 2,500.</p>
-<p>The team tried everything git offers to cope: shallow clones, sparse checkouts, promisor remotes, repository snapshots and several hundred git mirrors. Each one bought time. None of them bought enough, because the main-branch history was close to 100 GB and the compressed working copy was over 25 GB. CI alone ran around 25 million checkouts a day.</p>
-<p>The mirrors eventually outgrew their disks. At that point you can split the monorepo (and lose speed) or rebuild source control. Anthropic picked the second option.</p>
-<p>By September, Anthropic was merging more than 30,000 changes a day. The peak was 30,401 on 9 September. That's a 12x jump in four months, and most of it came from Claude.</p>
-<p>That's the day git stopped being a tool and became a ceiling.</p>
-<p>Scion looks more like Subversion than git, and Anthropic says so openly. Git assumes every client is a full copy of history that can work offline. Scion assumes the opposite: clients are always online, so the server does the heavy lifting.</p>
-<p>Anthropic reports a cache hit rate above 99% at every tier. Almost nothing travels all the way to the servers.</p>
-<p>The unit of history changes too. A git commit points to a full tree. A Scion changeset lists only the files that changed relative to its first parent, each with a content-addressed pointer to a compressed blob. The server works out trees, history and blame from those changesets when someone asks.</p>
-<p>Branches are discouraged, except for main and release branches. Creating a changeset never touches a branch; moving one is a single compare-and-swap on one Spanner row. That's why 30,000 merges a day don't trip over each other.</p>
-<p>Anthropic's post doesn't publish a single runbook, so this is the flow pieced together from what the team described. Follow one agent and one flaky test.</p>
-<p>Step 1: Get a worktree in seconds. Claude asks scn for a working copy. It doesn't clone anything. The client names the root tree it wants and fetches only the objects it's missing, usually from the local daemon. Checkouts are sparse or virtual: a file lands on disk only when Claude opens it. A new agent worktree went from 7.1 minutes to 5.1 seconds, an 84x speedup.</p>
-<p>Step 2: Ask the server questions instead of the disk. Where was this test last changed? Who touched this function? Under git, Claude would run git log or git blame over local history. Under Scion, history, blame and diffs are server queries exposed through an API. Many jobs never need a local repository at all; Anthropic says its automated bisect and revert pipelines wouldn't be practical at scale without this.</p>
-<p>Step 3: Edit, and let status stay cheap. Claude changes two files. The client watches the filesystem rather than rescanning the whole tree, so checking status for an agent fell from 4.3 seconds to under 0.2.</p>
-<p>Step 4: Commit straight to the server. A commit creates a changeset on the server, and it's visible everywhere at once. There's no push step and no packfile negotiation. An agent commit dropped from 18 seconds to 761 milliseconds.</p>
-<p>Step 5: Open a change request in Antique. Antique is Anthropic's new code review tool, built alongside Scion. Reviewers check the intent of a change, not every line. Semantic approval rules can tell a comment-only edit apart from one that touches sensitive logic, so the review effort goes where the risk is. Review moved to Antique between May and June 2026; by August almost every merged change went through it.</p>
-<p>Step 6: Merge without a global queue. Here's the part that surprised me. Anthropic dropped the old globally locked merge queue, because serialising 30,000 merges a day doesn't work. Changes merge concurrently. When two of them conflict, Claude repairs the conflict.</p>
-<p>Step 7: Test after merge, before deploy. With no queue holding everything back, the safety net moves later. Post-merge and pre-deploy testing catches what pre-merge serialisation used to. If something breaks, the same cheap server-side history powers the automated bisect and revert.</p>
-<p>Add it all up and the source-control overhead for one change request fell from 34 minutes to 3.7 minutes. Across roughly 22,000 change requests a day, that's a lot of machine time handed back.</p>
-<p>There's a loop in this story I find hard to ignore. Claude created the load that broke git, and then Claude helped build the replacement.</p>
-<p>Engineers set the architecture, the scaling targets and the invariants. Claude wrote much of the code; the source control and Antique directories received 12,257 changes between January and September. The team's original git-to-Scion ingestion pipeline was hand-written. They gave it to an early internal snapshot of Claude Mythos Preview and asked for a rewrite, with no further instructions. The new version used 20x less memory and ran 4x faster, and it kept the ordering rules the old one relied on.</p>
-<p>The team also runs dedicated Claude instances that each watch one component's telemetry and logs (the daemon, the cache, Antique's merge flow). And the engineers' most common job, by their own account, was telling Claude "no"; for example, when it read the commit log instead of querying the review tool.</p>
-<p>Scion isn't free. You lose offline work: no server, no source control. You also lose portability, because Scion only makes sense with Anthropic's own review, search and CI systems wired around it.</p>
-<p>The results, as Anthropic reports them on its own workload:</p>
-<p>The infrastructure footprint shrank about 200x compared with the git mirror fleet, and CI needed 25% less CPU. These aren't general benchmarks against git, and Anthropic is careful to say so.</p>
-<p>You can't. Scion isn't open source, and Anthropic calls it "by no means a suitable replacement for git for general use."</p>
-<p>What it does want is for git platforms to borrow the ideas: full server-side APIs, a better fetch protocol, and stronger sparse and shallow support for agent-sized workloads. It credits Google's Piper, Meta's Sapling and the Mononoke server (with its Bonsai data model) for many of the techniques.</p>
-<p>If your team runs a handful of agents, git is fine. If you're heading toward thousands, look at where your agents spend their first seven minutes.</p>
-<p>That's where Anthropic found 30,000 merges a day.</p>
-<p>Sources: Anthropic Engineering, "Redesigning source control at Anthropic" (13 October 2026, updated 15 October); coverage by InfoQ, Simon Willison and Matthews Wong. All performance figures are company-reported.</p>
-<p>Binance's Post-Mortem Is Out. The $6.3 Billion Hack Started With a Job Offer.</p>
+                <p><p>
+            Cloud simulators built for agents
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/expo?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1314456?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/claude-merged-30401-changes-in-one-day-git-couldnt-keep-up?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/expo" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

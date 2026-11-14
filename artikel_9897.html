@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fixing a WebKit bug to see if promises are made of train tracks</title>
+    <title>How to Assess OT Incident Response Preparedness</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,69 +15,76 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fixing a WebKit bug to see if promises are made of train tracks</h1>
+        <h1>How to Assess OT Incident Response Preparedness</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://alistair.sh/api/og?slug=thenables" alt="Fixing a WebKit bug to see if promises are made of train tracks" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt850556f866500627/654a5a8e05eb4d040a046894/325351_DR23_Graphics_General_Large_Text_v1.png?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="How to Assess OT Incident Response Preparedness" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://alistair.sh/api/og?slug=thenables" alt="Fixing a WebKit bug to see if promises are made of train tracks" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt850556f866500627/654a5a8e05eb4d040a046894/325351_DR23_Graphics_General_Large_Text_v1.png?disable=upscale&width=1200&height=630&fit=crop" alt="How to Assess OT Incident Response Preparedness" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Here is a program that, until July, never finished in Bun or Safari.</p>
-<p>Don't worry if this looks confusing. The JavaScript spec says that because the getter throws an error, then await p should also throw, and so the program should crash. Node.js does, but Safari 26 and Bun 1.3.14 print 'before', report the error, and then hang.</p>
-<p>Bun and Safari both embed JavaScriptCore so the behaviour is the same - the promise is never settled! It is neither fulfilled nor rejected, so it stays pending forever. This was WebKit bug 318399. I fixed it in WebKit/WebKit#68749, and the fix was only +16 lines!</p>
-<p>When you construct a new promise in JavaScript, the engine creates two functions, resolve and reject, and passes them to the callback you pass to the promise constructor.</p>
-<p>The builtin helper function Promise.resolve(value) does the same thing by constructing a promise and immediately calling resolve with the value you passed (with the exception that if value is a promise, and has a .constructor property equal to Promise, it is returned as is). A simple userland implementation would look like this:</p>
-<p>The same is also true for literally writing await 42. The engine creates a promise and immediately calls resolve(42), just like Promise.resolve() does, and the same exception applies.</p>
-<p>Many folks think of a promise as a value that can end in two ways - fulfilled with a value or rejected with a reason. This is a reasonable approximation since it maps pretty closely to how using promises actually feels when writing JavaScript day-to-day. Therefore, a naive implementation of a promise might look like this:</p>
-<p>I've called it MediocrePromise. It has a pending state, a way to resolve with a value, and a way to reject with a reason. It even has a list of callbacks to run, just like a real promise! Is this a good implementation?</p>
-<p>Sadly, no. It is not a good implementation. MediocrePromise misses an important difference between how resolving and rejecting work.</p>
-<p>Let's start with rejections. Rejecting a promise is simple! Calling reject(reason) marks the promise as rejected, with reason as the rejected value. Excellent! MediocrePromise implements rejections correctly!</p>
-<p>Resolving is more complex. Calling resolve(value) does not store value straight away. First, it checks whether value has a .then() method. If it doesn't (e.g. a number, a string, an object without one, ..) the promise is fulfilled with value and we are done. Otherwise, if it does have a .then() method, value is treated like another promise. Our original promise is not settled yet and instead, resolve passes itself and the reject function to value.then(resolve, reject). Whichever of those functions value.then() eventually calls is what settles the promise. Sorry, that was a mouthful. There's a diagram in a sec to explain. Bear with me.</p>
-<p>The resolve function is defined in the spec as the resolve procedure. To find out whether value has a .then, it reads value.then, and a property read can run a getter, and a getter can throw (just like in our program at the beginning). So, looking for a .then() method on some value can result in three possible outcomes:</p>
-<p>Our MediocrePromise is missing the extra check and additional behaviour!</p>
-<p>This asymmetry exists because a failure is not a pending operation. When something fails, you already have the reason in your code (presumably an error)! So you can call reject(reason) immediately. This is not the case for the happy path of resolving, where a useful value might arrive later:</p>
-<p>This is why the extra behaviour is only implemented in resolve.</p>
-<p>In the path where value.then is a function, the spec considers value to be a thenable. Promises are thenables, since they have a .then() method. Any other object with a .then() method is a thenable too. Thenables work everywhere a promise would.</p>
-<p>Simply put: a thenable is any value with a .then() method. Therefore, any promise is also a thenable.</p>
-<p>The spec calls the aforementioned process of passing the resolve/reject functions to a thenable's .then() assimilation. But, perhaps a friendlier word is flattening: instead of holding the inner thenable as its value, the outer promise waits for it, so two layers become one.</p>
-<p>Lastly, note that "resolved" isn't a real promise state. MediocrePromise also got this one wrong! Once resolve has been called the promise is locked-in to an outcome, but it can absolutely still be pending:</p>
-<p>Here, outer was resolved, but it stays pending forever because inner never settles. MediocrePromise's resolved state was actually the spec's definition of fulfilled.</p>
-<p>Scott Wlaschin's article Railway Oriented Programming draws fallible code as a piece of track with one input and two outputs: a success track and a failure track.</p>
-<p>Once a request hits the failure track it stays there, skipping every later step, until something at the end deals with the result. Wlaschin calls joining two pieces of the railway binding - not to be confused with JavaScript's fn.bind(). Rust folks might know binding as and_then, or maybe the ? operator. They all mean the same thing: run the next bit of code only if the previous bit succeeded, otherwise pass the failure straight through.</p>
-<p>Look at how the last step is skipped because the update() failed:</p>
-<p>You can think of each piece of the railway as a function returning a Result. In statically typed programming languages, implementations of a Result type will usually accept two type parameters, the success type and the failure type, one per track. For example in Rust you could imagine a validate function's signature being:</p>
-<p>To chain validate() with the other steps using and_then, every piece has to fail with the same type. So instead of ValidationError, lets make each function return an AppError, an enum of every way a request can fail:</p>
-<p>Promises in JavaScript kinda look a lot like this! There's a fulfilled track and a rejected track, and .then(onFulfilled, onRejected) is a switch between them.</p>
-<p>As a reminder, here's that resolve procedure diagram again:</p>
-<p>In the path on the right, where value.then is a function, the engine does not call the .then() immediately. Instead, the engine queues a job, which we call a microtask. The spec names this particular job a NewPromiseResolveThenableJob and it is defined as follows:</p>
-<p>a. Let resolvingFunctions be CreateResolvingFunctions(promiseToResolve).</p>
-<p>b. Let thenCallResult be Completion(HostCallJobCallback(then, thenable, « resolvingFunctions.[[Resolve]], resolvingFunctions.[[Reject]] »)).</p>
-<p>c. If thenCallResult is an abrupt completion, return ? Call(resolvingFunctions.[[Reject]], undefined, « thenCallResult.[[Value]] »).</p>
-<p>Sorry, that's another mouthful. Let me translate:</p>
-<p>Remember that .then is simply whatever is defined on the thenable. If the thenable is a real promise, the method being called is the one on the prototype, Promise.prototype.then.</p>
-<p>Here's the important line of our program again:</p>
-<p>We only changed p here, so the global Promise is untouched.</p>
-<p>Remember the exception from earlier? When you await a real promise whose constructor is Promise (which, by default, is true for all promises), the engine takes a shortcut and waits on that promise directly. We just replaced p.constructor, meaning we cannot take the shortcut. Instead, the engine treats p in await p like any other value: it makes a fresh promise and calls resolve(p) on it.</p>
-<p>p has a .then(), so it is a thenable, so resolve(p) calls p.then(resolve, reject). Now, we saw our program crash, so Promise.prototype.then must somehow eventually be accessing p.constructor[Symbol.species], right? But why on earth would .then() care about a Symbol.species getter?</p>
-<p>It cares because .then() returns a new promise, which is what lets you chain .then().then(). If you subclass Promise, you'd expect .then() to return an instance of your subclass, not a plain Promise:</p>
-<p>So before a real promise's then does anything with its arguments, it works out which constructor to build the new promise with. It does this by first reading this.constructor and then by reading constructor[Symbol.species] (the spec calls this step SpeciesConstructor). Both are ordinary property reads and, as we found out, property reads can run getters, and getters can throw!</p>
-<p>This is precisely what our original program at the beginning does! We made p.constructor have a Symbol.species getter that throws, so p.then(resolve, reject) throws during the species lookup, before it has stored resolve and reject as callbacks. Recall that Step C of NewPromiseResolveThenableJob makes the engine reject the promise if calling .then() throws - this is the spec-correct behaviour we saw in V8/Node.js.</p>
-<p>So why do Safari and Bun hang instead of rejecting the promise?</p>
-<p>JavaScriptCore had a fast path for the most-common case where the thenable is a real, normal promise, and that fast path did the species lookup first, only creating the resolve/reject functions afterwards. When the lookup threw (like how our program does), the resolving functions didn't exist yet, so there was nothing to reject with. The exception escaped the job entirely (that's the red Error: boom in the inspector) and our promise stayed pending forever.</p>
-<p>Our train had effectively derailed! We didn't even get the chance to finish our journey on either track and so the original program hung because the train never even arrived at the station!</p>
-<p>Luckily, the fix is simple, and might already be obvious to you! We must create our resolve/reject functions before calling .then(), so that we actually have the ability to reject the promise if calling .then() throws. Creating the resolving functions is just an allocation and allocations can't throw, and once the functions exist, the existing error handling rejects the promise just like any other failure would.</p>
-<p>With the two steps in the right order, Bun 1.4 and Safari 27 now behave like the spec, and like Node:</p>
-<p>Bug fixed! But it left me with a question. Earlier I drew promises as railways, with a fulfilled track and a rejected track. However, we just watched the engine put an error on the rejected track that no line of our code ever passed to reject(). So does that mean we can't actually ever know what's on that track?</p>
-<p>In TypeScript, the Promise<T> interface has only one type parameter and offers no way for a developer to express ways in which the promise might reject:</p>
-<p>TypeScript users have asked for a Promise<T, E> to exist since 2015 - see this issue: microsoft/TypeScript#6283! Ron Buckton, who used to work on TypeScript at Microsoft, closed this issue, stating:</p>
-<p>we cannot guarantee the correct type of the exception at design time.</p>
-<p>Which we have now learnt is true! Earlier, we saw the runtime reject a promise with boom: p.then() read a Symbol.species getter that threw the error, and Step C of the job rejected the promise with it, very far away from any userland reject() call! If the spec itself can put values on the reject track, then even code that only ever calls reject() with one type cannot be given an E. The failure track has to be any (okay, yes, it could technically be unknown, but adoption and backwards compatibility are also important things for a project of TypeScript's scope and size to care about!).</p>
-<p>Look - we have no control over that failure track! This means we can draw promises as railways but it's a bit less useful than a real result type, like Rust's.</p>
-<p>If you read all the way to the end, then I am glad you are as excited about promises as I am. Thank you very much for reading!</p>
-<p>Thank you to Landon Boles, Jacob Thornton, Amadeus Demarzi, and Conrad Crawford, who all helped me review a draft of this post.</p>
+                <p>Cloud Range's free 28-question OT Cyber Readiness Assessment helps organizations identify gaps in operational technology (OT) incident response.</p>
+<p>Cloud Range introduces a 28-question OT Cyber Readiness Assessment to help organizations identify gaps in preparedness for cyberattacks affecting operational technology.</p>
+<p>The assessment covers seven critical areas, from OT asset visibility and IT/OT coordination to incident detection, response, recovery, and readiness validation.</p>
+<p>Recent OT cybersecurity research reinforces the importance of preparing IT, security, OT, and engineering teams to investigate and respond to attacks that can disrupt physical operations.</p>
+<p>NASHVILLE, Tenn., Nov. 10, 2026 (GLOBE NEWSWIRE) — Cyberattacks affecting operational technology (OT) can disrupt production, equipment, and essential services, resulting in consequences that extend beyond disruptions to traditional IT systems. To help organizations evaluate their preparedness, Cloud Range today introduced the Cloud Range OT Cyber Readiness Assessment, a free, 28-question resource designed to identify potential gaps in OT incident response preparedness.</p>
+<p>Related:Why Europe's Freezer Hacks Spread So Far, So Fast</p>
+<p>The assessment provides a practical starting point for IT, security, OT, and engineering teams to evaluate how well they understand their environments, coordinate responsibilities, and prepare to detect, investigate, respond to, and recover from cyber incidents affecting industrial operations.</p>
+<p>“Organizations can have incident response plans, security tools, and experienced teams in place without knowing how effectively those capabilities will work together when an attack affects operations,” said Debbie Gordon, CEO of Cloud Range. “The first step is understanding where teams are prepared, where they may be relying on assumptions, and where further validation is needed. The stakes are different in OT because decisions made during a cyber incident can have direct operational consequences.”</p>
+<p>Recent research illustrates the scale of cyber threats facing industrial organizations. The Dragos 2026 OT Cybersecurity Year in Review reports that approximately 3,300 industrial organizations were affected by ransomware in 2025.</p>
+<p>Palo Alto Networks’ 2026 State of Critical Infrastructure Cybersecurity Report found that 59% of surveyed critical infrastructure organizations experienced a significant security breach in the past year. The research also found that 74% had not fully integrated IT and OT security operations, highlighting the importance of coordinated incident response.</p>
+<p>The report also identifies operational consequences of cybersecurity incidents, including safety concerns, unplanned downtime, production disruptions, and financial losses.</p>
+<p>Related:Fresh European Fridge Attacks Put Cold-Chain Security in Focus</p>
+<p>Together, these findings underscore a central challenge for organizations operating OT and industrial control systems (ICS): preventing attacks is important, but so is understanding whether teams can recognize, investigate, and respond quickly and effectively when incidents occur.</p>
+<p>An attack does not have to originate within an OT network to affect industrial operations. Compromises involving enterprise IT systems, third-party access, supply chains, or interconnected infrastructure can create consequences for production environments and critical services.</p>
+<p>The Cloud Range OT Cyber Readiness Assessment examines seven areas that influence an organization's ability to prepare for and respond to cyberattacks affecting OT environments:</p>
+<p>Know Your Environment: Understand critical OT assets, systems, dependencies, and connections between IT and OT environments.</p>
+<p>Know Your Threats and Stakes: Recognize relevant cyber threats and their potential impact on operations, equipment, and safety.</p>
+<p>Bridge IT and OT: Establish shared responsibilities, communication, and decision-making across IT, security, OT, and engineering teams.</p>
+<p>Detect and Investigate: Identify suspicious activity, investigate threats, and determine their potential operational consequences.</p>
+<p>Respond Without Making It Worse: Make coordinated incident response decisions that account for production continuity, equipment, and safety.</p>
+<p>Recover and Maintain Resilience: Understand recovery priorities, system dependencies, and procedures for restoring critical operations.</p>
+<p>Prove Readiness Before It Matters: Validate response capabilities through realistic cyberattack simulations and measurable performance.</p>
+<p>Related:Les supermarchés de l'UE paient d'un firmware de réfrigérateur non mis à jour</p>
+<p>Each area includes three questions, with responses of Ready, Developing, or Unsure.</p>
+<p>Rather than assigning a numerical score, the assessment helps organizations identify gaps, uncertainties, and areas requiring further attention. IT, security, OT, and engineering teams can complete it independently and compare their responses to uncover differences in understanding, unclear responsibilities, or differing assumptions about preparedness.</p>
+<p>Why OT Incident Response Preparedness Requires Cross-Functional Coordination</p>
+<p>OT environments present distinct incident response challenges because cyber decisions can affect physical equipment, industrial processes, production availability, and potentially safety.</p>
+<p>Actions that may be appropriate in an enterprise IT environment, such as isolating a system or shutting down a device, can require additional operational evaluation when industrial systems are involved.</p>
+<p>Effective OT incident response therefore depends on coordination among teams with different responsibilities and expertise.</p>
+<p>IT and security personnel may focus on identifying malicious activity, containing threats, and investigating compromised systems. OT and engineering personnel understand process dependencies, equipment limitations, and the operational consequences of response decisions.</p>
+<p>Both perspectives are essential. The integration gap identified in the Palo Alto Networks research reinforces the importance of shared understanding, clear responsibilities, and coordinated decision-making across IT, security, OT, and engineering teams.</p>
+<p>Understanding how to assess OT cyber readiness across these functions helps organizations identify where their procedures, communication, and decision-making may require further attention.</p>
+<p>The assessment is intended to support those conversations before an actual incident demands coordinated action.</p>
+<p>An assessment can help organizations identify preparedness gaps, but it cannot establish how effectively teams will perform during a real cyber incident.</p>
+<p>That requires opportunities to investigate attacks, make decisions, coordinate across functions, and evaluate the results in realistic environments.</p>
+<p>Cloud Range helps organizations strengthen critical infrastructure cyber readiness, realistic cloud-based OT/ICS, IT, cloud, and hybrid environments where teams can investigate cyber threats, coordinate incident response, and measure performance. Its critical infrastructure cybersecurity and readiness programs help organizations prepare for attacks that may disrupt industrial processes, equipment, and essential services.</p>
+<p>The Cloud Range OT Cyber Range supports flat and Purdue-model industrial network architectures, allowing teams to investigate how connectivity, segmentation, and system dependencies influence attack progression and response. Hardware-in-the-loop capabilities can also connect physical OT laboratory equipment to the cyber range for cyber-physical security validation.</p>
+<p>Through OT cyberattack simulations and adversary emulation, teams can investigate ransomware, supply-chain compromise, credential theft, lateral movement, and threats affecting industrial systems.</p>
+<p>Performance metrics highlight how teams improve in detecting threats, investigating activity, coordinating decisions, and improving incident response over time.</p>
+<p>Across Cloud Range customer engagements, measured improvements have included reductions of up to 66% in mean time to detect and improvements of up to 30% in overall incident response time. These results reflect broader cyber readiness programs and are not specific to OT environments.</p>
+<p>As IT and OT environments become more interconnected, organizations face growing pressure to understand both their cybersecurity exposure and their ability to respond to incidents with operational consequences.</p>
+<p>The Cloud Range OT Cyber Readiness Assessment provides a structured way to evaluate preparedness across seven critical areas. Organizations can use the findings to prioritize improvements and identify where realistic attack-based validation can provide stronger evidence of readiness.</p>
+<p>The objective is not simply to have an incident response plan. It is to build confidence that the people, processes, and technologies involved can work together when an attack affects operations.</p>
+<p>Cloud Range is the leader in Cyber Readiness and Validation, helping organizations continuously measure and improve how people, processes, and AI perform under real-world attack conditions. As the creator of the industry's first full-service, cloud-based cyber range, Cloud Range provides realistic IT, OT/ICS, and cloud environments where organizations can safely train, test, validate, measure, and benchmark cyber readiness across people, processes, and AI agents.</p>
+<p>Used by enterprise organizations, government agencies, higher education institutions, critical infrastructure organizations, and managed security service providers (MSSPs), Cloud Range helps organizations strengthen cyber readiness through live-fire cyberattack simulations, objective performance measurement, expert guidance, continuous readiness programs, and AI validation.</p>
+<p>Cloud Range has received multiple industry awards recognizing innovation and leadership in cyber readiness, cyber defense, and cybersecurity excellence and has been recognized by leading analyst and research organizations for its contributions to cyber readiness, cyber ranges, AI validation, and modern security operations. Learn more at cloudrangecyber.com.</p>
+<p>The Autonomous Endpoint Management Advantage</p>
+<p>2026 State of Cybersecurity Report: Bridging the Divide</p>
+<p>The State of Cloud Security: The Latest Challenges</p>
+<p>How Organizations Are Managing Incident Response</p>
+<p>How Enterprises Are Developing Secure Applications</p>
+<p>Securing Active Directory: Defending Against Modern Attack</p>
+<p>When the Plumbing Breaks: Lessons from PHP2Shell and LiteLLM</p>
+<p>From Shadow AI to Rogue Agents: Securing the AI You Can't See</p>
+<p>LLM Security Architecture: Building Secure AI Systems from the Ground Up</p>
+<p>Resilient Architecture: Designing Systems That Survive Compromise</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://alistair.sh/thenables" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/ics-ot-security/assess-ot-incident-response-preparedness" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

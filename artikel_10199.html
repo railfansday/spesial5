@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Hill-Climbing Agent Quality with Agents CLI Evaluation</title>
+    <title>What’s !important #19: CSS Refraction Effects, Scroll State Queries, @custom-media, and More</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10199.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Hill-Climbing Agent Quality with Agents CLI Evaluation</h1>
+        <h1>What’s !important #19: CSS Refraction Effects, Scroll State Queries, @custom-media, and More</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://css-tricks.com/wp-content/uploads/2026/09/wi19.jpg" alt="What’s !important #19: CSS Refraction Effects, Scroll State Queries, @custom-media, and More" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://css-tricks.com/wp-content/uploads/2026/09/wi19.jpg" alt="What’s !important #19: CSS Refraction Effects, Scroll State Queries, @custom-media, and More" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A live walkthrough of the Agents CLI eval loop, from a first run to regression tracking, model-backend experiments, and automated alerting</p>
-<p>Building an agent that works on a demo is a different problem from building an agent that stays working across model upgrades, tool changes, and new conversation shapes. The first takes a weekend; the second takes a loop. A team writes test cases, runs them, grades them, reads what failed, changes the agent, and runs the cases again. If the score goes up, the change was good. If it goes down, revert. Over weeks of this, the agent inches toward the ceiling of what the model, tools, and prompt can do together. The quality-engineering name for this is hill-climbing.</p>
-<p>The Agents CLI eval namespace was built around this loop. The commands are small and framework-agnostic: eval generate runs the agent against a dataset of cases, eval grade scores the generated traces, eval compare diffs two run results side by side, eval analyze clusters failures into themes, and eval optimize runs an automated hill-climbing pass on the agent's prompt.</p>
-<p>Below: baseline → regression → model swap → scheduling and alerting.</p>
-<p>The scaffold used throughout is the LangChain template that ships with Agents CLI v1.8.0. The setup is a single command:</p>
-<p>The scaffold ships with an eval dataset at tests/eval/datasets/basic-dataset.json, a config at tests/eval/eval_config.yaml, and a custom LLM-as-judge metric at tests/eval/response_quality.py. The config declares the metric to run:</p>
-<p>The metric grades each response on a 1-to-5 scale for accuracy, relevance, and clarity, using gemini-3.8-flash as the judge. The default dataset has a single trivial case, which is not enough for a hill-climb. The first thing we do is expand it to four cases that probe different behaviors:</p>
-<p>Four cases: a greeting, a weather question the mock tool handles with the hardcoded foggy response, a weather question for a city the tool defaults on, and an off-topic question that the agent has to decide how to handle. This is a small dataset by design; the hill-climbing loop pays off when the dataset is small enough to run on every change.</p>
-<p>With the dataset in place, we run eval generate to drive the agent against each case, then eval grade to score the resulting traces:</p>
-<p>Mean 4.0 out of 5 across four cases, with a standard deviation of 1.41. That stdev tells us immediately that the cases are not scoring uniformly, which is a healthier starting point than a flat 5.0 across the board. A flat 5.0 either means the agent is perfect (unlikely) or the dataset is too easy to show variation. 4.0 with real spread is a hill to climb.</p>
-<p>To demonstrate the loop, we introduce a realistic regression. A developer working across several agent projects accidentally pastes the wrong system prompt into our weather agent: a chef persona meant for a different codebase. In app/agent.py:</p>
-<p>The change compiles, the agent still runs, and nothing in the pre-eval pipeline (lint, unit tests, type checks) catches it. Re-running the same eval generate plus eval grade sequence produces:</p>
-<p>Mean 2.75, down from 4.0. The judge agrees with our intuition that a chef persona on a weather agent is a worse product than a general-purpose helpful assistant. The stdev also tightened from 1.41 to 0.96, consistent with the chef prompt pushing most cases toward the same mediocre range.</p>
-<p>A 1.25-point drop on a 1-to-5 scale is substantial, and the kind of regression that can slip through code review when the diff looks small ("one string literal changed"). The loop surfaced the change at all, with a specific number attached to it, before the agent reached production.</p>
-<p>Mean scores are a start; the per-case diff is where the hill-climb happens. eval compare reads two result files and produces a structured JSON diff:</p>
-<p>The output lists which keys changed and which stayed the same:</p>
-<p>The differences object has the full per-case breakdown with the baseline and candidate values side by side. For a hill-climbing workflow, we typically pipe the output through jq or a small Python script to extract the signal; the raw JSON is the complete evidence.</p>
-<p>Walking the two result files and lining up the scores per case shows where the regression landed:</p>
-<p>Three cases dropped, one held. The most important of the three is sf_weather: the chef persona pulled the model's attention away from the registered get_weather tool, so the agent stopped calling it and started making up weather values. Unit tests can't catch this: the code runs, the tool is still registered, but the model's behavior around it has shifted. Only an end-to-end eval that scores the response in context surfaces this.</p>
-<p>The mean drop by itself (−1.25) is a clear signal, but the per-case breakdown is what tells the developer where to look. A one-line system-prompt change propagated through three different cases in three different ways: greeting lost a point on tone, sf_weather lost two on tool usage, off_topic lost two on scope creep.</p>
-<p>A common hill-climbing question is whether a cheaper or faster model would do the job acceptably. For the LangChain template, the model is defined in app/agent.py:</p>
-<p>We swap gemini-3.8-flash for gemini-2.5-flash (restoring the helpful system prompt first), re-run eval generate plus eval grade, and compare the two result files. The mean drops from 4.00 to 2.75, the same magnitude as the chef-prompt regression, but the per-case breakdown tells a completely different story:</p>
-<p>The cheaper model matched 3.8-flash exactly on the greeting and rome_weather cases and lost a point on sf_weather (slightly less polished phrasing). The whole visible drop traces to off_topic, where the cheaper model refused with a hedge about the event "not having happened yet" (a training-cutoff artifact), and the judge marked it harshly.</p>
-<p>The lesson is that the summary number is misleading. Look only at the mean and you'd call gemini-2.5-flash as bad as the chef prompt. Look at the per-case breakdown and you'd call it a reasonable swap for most of the agent's workload, with one case (handling out-of-scope questions about recent events) exposing a real limitation. If the production distribution of user questions matches the first three cases more than the fourth, the swap is worth considering. If off_topic-style questions are common, it is not.</p>
-<p>Two caveats on this experiment. First, model swaps interact with the prompt: a prompt tuned for a stronger model often leaks capability when ported to a weaker one, so the right comparison is "weaker model with a prompt tuned for it" versus "stronger model with its own tuned prompt." Second, the Vertex AI Eval Service calls a judge model to grade the traces, and the judge is held constant across the comparison. Changing the judge is a different experiment and should be done separately.</p>
-<p>Agents CLI does not ship a scheduler, but the eval commands are designed to drop into standard infrastructure. The pattern we can use here is a cron job or Cloud Scheduler trigger that runs eval generate plus eval grade on a cadence and writes the results to a persistent location:</p>
-<p>A nightly run against a stable regression dataset catches drift from model updates, data changes in the agent's tools, and dependencies that shift under the agent's feet. For a production agent, the scheduled run also captures the model vendor's quiet upgrades, which can move the agent's behavior without any change on our side. The dataset for the scheduled run is typically larger than the one used in the inner loop (dozens to hundreds of cases rather than a few), since it only runs once a day.</p>
-<p>The scheduled run produces a result file every day, but a file nobody looks at is not an alert. The pattern here can be a wrapper script that compares each new run's mean against a baseline (the previous run, or a committed known-good) and exits non-zero when the drop exceeds a threshold. The non-zero exit is what triggers the alert from the surrounding scheduler.</p>
-<p>Running it against our regression demo (baseline 4.0, candidate 2.75 from the chef-prompt run):</p>
-<p>And against an identical pair (self-compare):</p>
-<p>The non-zero exit code is what a cron job, Cloud Scheduler, or GitHub Actions step picks up to send the alert.</p>
-<p>For ADK projects, eval optimize runs an automated hill-climbing pass on the agent's prompt using the GEPA framework (not currently supported for the LangChain extension). The command takes a dataset and a target metric, proposes prompt variants, grades each one, keeps the variants that improve the metric, and iterates. The output is a set of candidate prompts ranked by their eval score, which a human then reviews and promotes to the agent definition.</p>
-<p>Two things to understand about eval optimize. First, it is scoped to prompt optimization, not to arbitrary agent changes: the agent's tools, structure, and model stay fixed. Second, GEPA sometimes finds genuine improvements and sometimes finds prompt variants that score higher on the specific metric by overfitting to its wording. The reviewer is the control. For projects where the loop applies, the discipline is to run eval optimize on the regression dataset (where improvements are measurable) and to review the candidate prompts carefully before promotion.</p>
-<p>A few patterns and anti-patterns from running this loop ourselves and watching teams do the same.</p>
-<p>Lead with a small, representative dataset, not a comprehensive one. The temptation when starting an eval is to try to cover every edge case the agent will ever see. The result is a dataset that takes an hour to run and that nobody runs on a change. Four cases that run in under a minute, as above, exercise the main behaviors and get run on every change. A regression dataset of three hundred cases that runs for an hour becomes a release gate at best and shelfware at worst.</p>
-<p>Snapshot result files, not scores. The score is a summary; the result file is the evidence. When a regression surfaces three weeks after a prompt change, having the full result JSON from before and after the change (not just the mean score) is what lets eval compare show the specific case that moved. The per-case breakdown in Step 4 above would not have been possible from scores alone.</p>
-<p>Separate the dataset from its expectations. The dataset is the inputs. The eval config is the expectations. They evolve on different cadences: the dataset grows as new real-world cases surface in production, and the config evolves as the team's definition of "good" matures. Keeping them in separate files, both committed to version control, makes it clear which half changed when a score moves.</p>
-<p>Treat summary metrics with suspicion. The model-swap experiment in Step 5 is the clearest example. The mean dropped by half a point, but the per-case breakdown showed the drop was concentrated in one case while the others held or improved. A team that only looked at the mean would have made the wrong call.</p>
-<p>More evals do not automatically lead to more fixes. A recent controlled study we ran found that coding agents using agents-cli run four times as many evals as coding agents without it, but change the agent after an eval about as often as the baseline. The behavior gain comes from what the skills put into the build at the start, not from the inner iteration. Evals are necessary for quality, but the quality comes from acting on what the evals show.</p>
-<p>Scaffold an Agents CLI project and run the first eval loop in a handful of commands:</p>
-<p>The full eval namespace is documented at google.github.io/agents-cli/cli. The source code, including the first-party eval primitives, is at github.com/google/agents-cli.</p>
-<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
-<p>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</p>
-<p>Catch Go bugs that fuzzing misses with Gemini and a constraint solver</p>
-<p>How Agent Anomaly Detection scores on benchmarks we didn't write</p>
+                <p>We’re back! Don’t worry, this isn’t a trick (despite what our name suggests!). However, due to the hiatus, we’re also a little behind. That’s why this issue of What’s !important is absolutely stacked. All killer, no filler. Here’s what you missed.</p>
+<p>By the way, before we dive in, Mat Marquis’ highly recommended JavaScript for Everyone course is currently -30% off (code: CSSTRICKSFRIENDS). You don’t want to miss this.</p>
+<p>Preethi Sam demonstrated how to create background image refraction effects with CSS. The effects are stunning, can be animated, don’t need very much CSS (no JavaScript), and we don’t need to duplicate the image either.</p>
+<p>Brecht De Ruyte demonstrated how to build customizable components using container style queries and advanced attr(), showcasing some incredible interactive demos, including the two below:</p>
+<p>Dan Holloran showed us how to use the different scroll-state() queries (scrollable, scrolled, snapped, and stuck). It’s not a long read, which is exactly what you want for a new but simple feature like this.</p>
+<p>A quick, no-context CSS snippet to entice you:</p>
+<p>Declan Chidlow shared some of the craziest CSS to ever exist, and I mean craziest. Most of it comes from Internet Explorer, but let’s face it, you knew that already. Thankfully, they don’t build them like they used to.</p>
+<p>Bramus demonstrated how to animate CSS grids using anchor positioning. The idea is that we anchor content to its corresponding cell, and then as the grid reflows, it’s the content (not the cell) that animates with it.</p>
+<p>(But it doesn’t work in Firefox due to what sounds like a bug.)</p>
+<p>Chris Coyier talked about a bunch of new HTML features, and honestly, there’s a whole lot in there that you definitely haven’t heard of. Like, I’m certain of it.</p>
+<p>Victor Ayomipo contemplated why container query adoption has been so terrible despite them topping CSS wishlists for years. Victor thinks that we’re using them wrong, so he’s here to set the record straight.</p>
+<p>Cory LaViska demonstrated how to use @custom-media in addition to container style queries as a fallback.</p>
+<p>Also, don’t forget that Declan has an extremely thorough @custom-media deep-dive in our Almanac.</p>
+<p>Ahmad Shadeed tackled an interesting topic — detecting overlapping elements (with CSS, of course). If you’re keen on anchor positioning, scroll-driven animations, and again (!), container style queries, then this walkthrough is for you.</p>
+<p>I want to know when the decorative element hits the section from the left edge, taking into consideration that the element might have a fluid position or size that changes with the viewport size or container size. Basically, it’s a dynamic problem. It’s not about using a media query to hide the decorative element, I want to hide it upon overlapping.</p>
+<p>Maybe container queries are finally picking up?</p>
+<p>Patrick Brosset walked us through a proposal for the previewsrc HTML attribute, which would enable us to supply preview images for images that haven’t yet loaded using only HTML. For example, we could supply a blurry preview image. However, I’d rather have something like :loaded/:not(:loaded) so that we can style/transition unloaded images with CSS rather than needing to create extra images.</p>
+<p>Temani Afif shared a custom borders demo, where the trick is to declare a transparent border, use border-shape to define its shape, then declare a background in addition to background-clip: border-area so that it only shows up within the border, like this (requires Chrome at the moment):</p>
+<p>In a similar manner, Leon Arnott shared this awesome trick for animating the background color of ::selection, something that’s actually forbidden (or so we thought, anyway…):</p>
+<p>Today in CSS:
+
+We all know you can change the highlight colour of selected text, but it's impossible to animate that colour.
+
+Unless…
+the colour was just a variable inherited from the parent element, using @​property to make it animatable…
+
+Hahahahaha… [image or embed]</p>
+<p>And that’s it, really. Simply use var(--bg-color) on ::selection or some other visually restrictive element.</p>
+<p>Chris Coyier demonstrated how to random()ly animate an element along the edge of another element. There’s a cute doggo, by the way. Probably should’ve led with that.</p>
+<p>Polypane explained how we might disable the root scroller accidentally (which is surprisingly easy to do — I’ve definitely done it), what we lose in doing so, and what to do instead.</p>
+<p>Also, have you ever completely misunderstood how the root (:root/html) works? This is a solid explainer for that, too.</p>
+<p>Speaking of accidents, have you ever tapped on a target twice, apparently in quick succession, and ended up zooming in? Andy Bell revealed that touch-action: manipulation disables the double-tap-to-zoom-in functionality. It isn’t new, but I don’t see many web developers using it. One for the CSS reset, I think?</p>
+<p>Chrome and Firefox now ship every two weeks. The inaugural releases were fairly exciting (not smaller, as I assumed they’d be). In addition, Safari 27 (along with iOS, iPadOS, and macOS 27) shipped with some of the same features as Firefox, making them Baseline in the same release window. High fives all around!</p>
+<p>We've got lots of ways to help you connect with the greatest front-end community in all the land.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>For the CSS grid animation with anchor positioning, there is indeed a Firefox bug, tracked at https://bugzilla.mozilla.org/show_bug.cgi?id=1924226</p>
+<p>Your email address will not be published. Required fields are marked *</p>
+<p>Save my name, email, and website in this browser for the next time I comment.</p>
+<p>Notify me of follow-up comments by email.</p>
+<p>Join our community of front-end nerds! You'll get into the Discord server and member-only perks and free swag.</p>
+<p>Sign up to get front-end roundups, browser updates, and exclusive content sent to your inbox bi-weekly.</p>
+<p>Get your t-shirts, prints, stickers, and yes, even mousepads at the brand-spankin' new CSS-Tricks store, now open.</p>
+<p>CSS-Tricks is powered by a small team of real-life humans.</p>
+<p>Handwritten. Twice a month. No spam. See past issues →</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/hill-climbing-agent-quality-with-agents-cli-evaluation/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://css-tricks.com/whats-important-19/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
