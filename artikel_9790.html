@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Record, train, and deploy from one place with Strands Agents, LeRobot, and Hugging Face Storage Buckets</title>
+    <title>Parsing nested lists in BQN</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9790.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,73 +15,241 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Record, train, and deploy from one place with Strands Agents, LeRobot, and Hugging Face Storage Buckets</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
+        <h1>Parsing nested lists in BQN</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6a1dc0f2b4238bb17ff94794/St00mBynNYpgz93MpL17G.png" alt="Record, train, and deploy from one place with Strands Agents, LeRobot, and Hugging Face Storage Buckets" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6a1dc0f2b4238bb17ff94794/St00mBynNYpgz93MpL17G.png" alt="Record, train, and deploy from one place with Strands Agents, LeRobot, and Hugging Face Storage Buckets" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A walkthrough of the streaming data loop in Strands Robots, one agent loop that records robot demonstrations, trains on them by reading straight from the Hub, and deploys the policy back to hardware, with the dataset in the same on-disk LeRobot format the whole way through.</p>
-<p>You have an agent that can already record a demonstration and push it to the Hugging Face Hub. Now you want to run that loop continuously: collect episodes through the day, train a policy on the growing dataset, deploy it, and pull the next batch back to improve it. Run that loop once and every piece works. Run it every day and you start paying for the same byte transfers over and over. The recordings you upload keep growing, each training run copies the whole dataset to the GPUs before it starts, and every new checkpoint ships out while the next batch of recordings comes back.</p>
-<p>The first post in this series introduced Strands Robots, an open source SDK from AWS (Apache 2.0) that exposes robot abstractions, simulation, and the LeRobot stack as AgentTools you compose into a single Strands agent. It covered the Robot() factory, recording a demonstration in simulation, running a policy, and deploying the same agent code to a physical SO-101. That factory resolves a name against a registry of arms, humanoids, mobile bases, and hands, so the SO-100 used throughout this post is one of many supported embodiments. The robot catalog lists every robot the factory knows about. LeRobot's dataset format is already used by over 90,000 datasets and models on the Hub from more than 8,000 publishers (LeRobot Project Pulse). A Strands Robots recording is one more of them, so anything built to read LeRobot data can read it without conversion. If you are new to Strands Robots, start there; this post assumes that setup.</p>
-<p>That post followed the agent loop in one direction, from a Hub dataset to a physical robot. This one follows the data the other way, from the first recorded frame back to the deployed policy, over Hugging Face Storage Buckets - a mutable, non-versioned, Xet-backed object-storage repository type announced in March 2026. A bucket sits beside your dataset repositories in the same hf:// namespace and uses the hf CLI you already have, so it becomes the working layer that holds your data between the day you record it and the day you train on it.</p>
-<p>Someone has to decide which episodes to keep, when the scene has drifted far enough to re-record, whether today's batch is enough to train on, and which checkpoint replaces the one on the arm. Each of those decisions comes up dozens of times over a collection campaign, and each one needs a look at what came back before the next command goes out. That is the work an agent is for. This post walks you through the data loop inside a single agent: record a demonstration into a Storage Bucket, store it so that each sync uploads only the bytes that changed, train by streaming the dataset straight from the Hub instead of downloading it, and deploy the checkpoint back to hardware with one keyword argument change. The runnable companion to this post lives at examples/notebooks/05_streaming_data_loop.ipynb.</p>
-<p>Where the first post recorded a dataset and pushed it to the Hub, the agent you build here records a LeRobotDataset from a natural-language prompt, syncs it into a Storage Bucket, and streams that same dataset back frame by frame, decoding camera video on the fly, with no local copy. You read it back in the same process that wrote it: the same Strands Robots Robot() that recorded the dataset streams it. Your trained checkpoint then deploys to that same Robot() with one keyword argument change, and the demonstrations it records on hardware return to the same bucket.</p>
-<p>Figure 1. The four stages share one backend. Robot("so100") records a LeRobotDataset through the shared DatasetRecorder; sync_dataset_to_bucket(...) syncs it into a Storage Bucket; stream_dataset(...) reads it back over the Hub with no full download; and the trained checkpoint deploys to the same Robot with mode="real". The on-disk format stays exactly as LeRobot wrote it.</p>
-<p>Because one Robot() both records a dataset and reads it back, collecting data and training on it are two methods on one object over one backend. The agent decides to run an episode and invokes one tool; the rollout then proceeds at the robot's control frequency until the episode ends, with the trained policy producing every action. The whole loop, in a handful of lines:</p>
-<p>What follows is what's actually happening inside that loop, step by step.</p>
-<p>That's it. Every stage in this post runs on a laptop with these three. What runs is the loop, not a working policy: the default path uses a mock policy, which records a valid dataset but not a useful one.</p>
-<p>You record new episodes through the day, each a continuous run of camera frames and joint state-action telemetry. LeRobot writes that as a small set of large files that grow as you record. Push them into a versioned dataset repository and every append becomes a commit, and every revision is retained. Collection wants the reverse: somewhere to write bytes and overwrite them in place. That is a Storage Bucket, which lives inside your Hugging Face workspace and uses the permissions you already have. There are no identity and access management (IAM) roles to configure, no cross-origin resource sharing (CORS) rules, and no upload service to maintain.</p>
-<p>Your agent records a LeRobotDataset in the same format LeRobot writes on hardware. Record the episode, then sync the finished dataset into a bucket. The prompt asks for the mock policy, a stand-in that produces joint actions without a trained model, so you can run the whole loop before you have a checkpoint to run:</p>
-<p>The sync writes to hf://buckets/{bucket}/{run_id}, where run_id defaults to the dataset directory name. The streaming read in Step 3 names the run too: the first two segments of the id are the bucket, and everything after them is the path inside it.</p>
-<p>sync_dataset_to_bucket(root, bucket, run_id=...) validates the dataset and syncs it through the hf CLI, decoupled from the recording lifecycle. The same capability is on DatasetRecorder.sync_to_bucket(bucket, run_id=...) if you drive an open recorder directly, and stop_recording(bucket=...) syncs at the moment you stop an active recording. The bucket is the working layer you write to through the day; for the versioned, published artifact you still call push_to_hub(). Both hold the same format.</p>
-<p>The episode is structurally complete, but the actions are placeholders, so it is not training data you would want. Swap in a real policy with create_policy("<hf_repo>") for actual grasping; the prompt, the format, and the bucket sync stay identical.</p>
-<p>To record on a physical SO-101, LeRobot's record CLI handles the leader-follower bring-up:</p>
-<p>The dataset lands on disk in the same format as the simulation recording, so the same sync call takes it to a bucket: sync_dataset_to_bucket("./recordings", "my-org/robot-fave", run_id="run-021") (or the hf sync ./recordings hf://buckets/my-org/robot-fave/run-021 CLI it wraps). Collection runs append into one place, and your published repositories only get the versions you choose to publish.</p>
-<p>Now that a dataset is in the bucket, the question is what the next sync costs you. Point two fixed cameras at an arm clearing the same table for eight hours and most of what you record is pixels you already have: the same lighting, the same chassis, the same background, across thousands of episodes. On a versioned repository it gets worse, because changing one frame in a multi-gigabyte video shard re-uploads the whole file.</p>
-<p>Buckets are backed by Xet, which deduplicates your uploads at the byte level using content-defined chunking. Chunk boundaries follow the content, so inserting a few bytes changes only the chunk it lands in instead of shifting every boundary after it. In Hugging Face's own measurements (HF Storage), content-defined chunking reduces data transferred per upload by about four times across the Hub, and on Enterprise plans billing is on the deduplicated footprint. Their bucket benchmarks show what that looks like on a single file. Starting from a 500 MB upload, changing 1% of the bytes and re-uploading moved 5.5 MB, changing 5% moved 27.5 MB, and changing 10% moved 55 MB. Without chunk-level deduplication, overwriting an object means sending all of its bytes again, whether or not they changed.</p>
-<p>How much that saves you depends on the file layout, and the Strands Robots recorder uses LeRobot's. Episodes go into Parquet shards (data/chunk-000/file-000.parquet) and per-camera MP4 shards (videos/observation.images.front/chunk-000/file-000.mp4), rolling to a new file only when the current one fills, at LeRobot's defaults of 100 MB for data Parquet and 200 MB for video MP4. So a sync after a day of recording uploads the new trailing shards plus the one partially-filled shard that grew, rather than the whole dataset. Sync the same bucket again tomorrow and Xet handles the deduplication.</p>
-<p>Figure 2. A sync uploads only what changed. The first sync of a fresh dataset uploads every chunk; after recording more episodes, Xet's content-defined chunking means the next sync uploads only the new chunks and skips the ones already stored.</p>
-<p>To train, you point GPUs at your dataset. Download it first and those GPUs sit idle until hundreds of gigabytes finish copying. Streaming straight from the Hub works here because of the shard layout from Step 2: a batch becomes a few byte-range reads over large shards rather than thousands of small fetches. LeRobot's StreamingLeRobotDataset turns that into a drop-in torch iterable, and Strands Robots exposes it through stream_dataset():</p>
-<p>Figure 3. Stream, don't download. The download path copies the whole dataset to local disk first, so the GPU waits; stream_dataset() reads batches straight from the bucket with nothing on local disk, so the GPU trains from the first batch.</p>
-<p>Nothing lands on local disk except the small meta/ folder of schema, statistics, and episode index. Camera frames are decoded from the remote MP4 shards as you iterate; state and action come from the Parquet shards. That loop reads one frame at a time, which suits inspecting an episode. To train, pass the reader to a DataLoader and iterate batches instead. The streaming dataset shuffles internally through a bounded reservoir buffer, so video decoding parallelizes across worker processes, and the training step itself is the ordinary PyTorch one:</p>
-<p>If you would rather not write the loop at all, LeRobot's own trainer reads through the same engine, so the dataset your agent collected trains without a line of new code. It takes a bucket through the same keyword argument the in-process reader uses:</p>
-<p>Buckets are streaming-only, so --dataset.repo_type=bucket requires --dataset.streaming=true and the config rejects the combination otherwise. Reach for stream_dataset() when you want the loop in your own process: validating an episode, replaying it in simulation, or feeding a custom evaluation loop. For proprioceptive-only streaming, drop_videos=True skips video decode entirely, which is what makes this work on an edge device with no torchcodec wheel. The recording and datasets guide documents that argument along with the delta_timestamps map it requires.</p>
-<p>Provider names are shared between running a policy and training one. create_trainer("lerobot_local") returns a Trainer that works like create_policy(), and a TrainSpec describes the run; the record-train-deploy loop then closes in a few lines:</p>
-<p>On a single NVIDIA L4 (g6.4xlarge), 500 optimizer steps of ACT (51.6M parameters, effective batch size 8) over a 120-frame episode completed in 133 seconds and wrote a checkpoint that create_policy() loads back through the same entry point used to run any other policy. Training time scales with dataset size, batch size, and step count, so treat this as one measured configuration rather than a benchmark. The "groot" and "cosmos3" providers target the same TrainSpec and Trainer lifecycle, so the surrounding loop is unchanged; each one validates its own required fields first, so a GR00T run needs a base_model and an embodiment tag, and a Cosmos 3 run needs a base_model and an SFT recipe. Call trainer.validate(spec) before train() and it returns the exact list of what a given backend is missing.</p>
-<p>Hugging Face's pre-warming caches bucket data at edge locations near the cloud and region where your jobs run, so your cluster reads locally and the dataloader stays ahead of the GPU. In Hugging Face's own bucket benchmarks, a warm content delivery network (CDN) read hit about 1,086 MB/s on a 10 GB payload against 780 MB/s cold, and roughly 1,124 MB/s warm at 100 GB, measured on an m5dn.24xlarge in us-east-1. The full comparison against plain object storage, upload as well as download, is on that dashboard. Choosing where that data lives is a Storage Regions setting on Team and Enterprise plans, as of this writing US and EU, with Asia-Pacific and Gulf Cooperation Council (GCC) regions announced as coming; outside those plans repositories are stored in the US.</p>
-<p>On macOS, import strands_robots puts Homebrew's ffmpeg on the loader path for you, so torchcodec decodes streamed video without extra setup.</p>
-<p>In this step you take the checkpoint you just trained, run it on a physical robot, and record the next round of demonstrations with it. This is the same agent code from the first post, with one keyword argument changed to mode="real":</p>
-<p>The checkpoint runs against the physical arm, and the demonstrations that arm records are saved to disk in the same LeRobot format you started with, ready to sync back to the bucket for the next training run.</p>
-<p>If your data already lives on Amazon Simple Storage Service (Amazon S3), none of the format work in this post changes. A LeRobotDataset is a directory of Parquet and MP4 shards, so it stores on Amazon S3 the same as anywhere else, and the recording, training, and deploy steps read that format wherever it sits. What a bucket adds is the Hub-native route: sync_dataset_to_bucket and stream_dataset(repo_type="bucket") target hf:// directly, so you get the sync and the streaming read with no separate storage path to wire up. Both paths run the same loop: Amazon S3 if that is where your data already sits, a bucket if you want the sync and the streaming read without provisioning storage first.</p>
-<p>Run the loop again tomorrow and you are recording into that bucket, syncing only the bytes that changed, and streaming those bytes to the GPUs without waiting for a download. The data never leaves the LeRobot format, and it never leaves the Hub.</p>
-<p>The full Strands Robots sample is on GitHub at strands-labs/robots in examples/notebooks/05_streaming_data_loop.ipynb. It walks you through the full loop cell by cell: record, render, sync to a bucket, stream back, train, and load the checkpoint. Every cell runs in simulation on the mock policy, so no GPU, no Docker, and no Hugging Face credentials are needed.</p>
-<p>Run the cells top to bottom. The recorded dataset lands under /tmp/nb5_dataset. To sync it to a bucket, set BUCKET = "my-org/robot-fave" in the first cell (after hf auth login); the neighboring RUN_ID names the folder inside the bucket, and the notebook streams back from f"{BUCKET}/{RUN_ID}". To train on a GPU, raise steps to 500 and set device="cuda". The agent-driven version of the same loop lives at examples/06_agent_collect_and_stream.py.</p>
-<p>The snippets here are a "hello world" of the Strands Robots data loop. Five things change once you run it against real data.</p>
-<p>Prompt injection. Supplying untrusted data to an agent can lead to prompt injection, where untrustworthy context is treated as LLM instructions. These agents actuate robots and now also write to and read from shared storage, so this is an important risk to track. Feed the agent only data from trusted sources. If not all input can be trusted, restrict the tools available to the agent so it cannot take safety-critical actions or overwrite bucket contents.</p>
-<p>Training data is a trust boundary. An agent that can write into the collection bucket can also write episodes that a policy later trains on, and that policy drives a physical arm. Keep the credential that writes collection data separate from the one a training job reads with, sync each run under its own run_id so an episode can be traced to the run that produced it and removed on its own, and treat the versioned dataset repository as the reviewed artifact, because the bucket keeps no revisions to audit against.</p>
-<p>Bucket credentials and scope. sync_dataset_to_bucket(...), stop_recording(bucket=...), and sync_to_bucket upload through the hf CLI using the token from hf auth login. Use a token scoped to the specific namespace you are writing to, prefer --private buckets for collection data, and keep the bucket distinct from the versioned dataset repository you push_to_hub and share.</p>
-<p>Overwrite in place keeps no revisions. A bucket overwrites in place and retains no revisions, which is what makes it a working layer and also means a repeated run_id replaces the run already stored there. Pass an explicit run_id per collection run, as in sync_dataset_to_bucket("./recordings", "my-org/robot-fave", run_id="run-021"). For anything you need to be able to return to, push_to_hub() to a versioned dataset repository, where every revision is retained.</p>
-<p>Only use trusted Hugging Face orgs. The local inference path loads Hugging Face models with trust_remote_code=True. Set STRANDS_TRUST_REMOTE_CODE=1 to opt in, and only load checkpoints from organizations you trust. When loading pre-trained weights from the Hub (e.g., via pretrained_name_or_path), verify the organization is trusted before loading. Model weights can contain arbitrary code (pickle-based checkpoints). Prefer safetensors-format checkpoints where available.</p>
-<p>The loop leaves a bucket, datasets under /tmp, and a checkpoint on disk. Bucket contents count toward your stored volume, so remove what you no longer need:</p>
-<p>Stop any training process still on a GPU instance, and stop the instance. If you ran the notebook, substitute its RUN_ID (nb5_demo by default) for cube_pick. Anything you published with push_to_hub() is in a versioned repository and is untouched.</p>
-<p>The Strands Robots documentation covers the robot catalog, simulation, policy providers, recording, and the mesh in depth. The recording and datasets guide documents the DatasetRecorder API, sync_dataset_to_bucket / sync_to_bucket, and stream_dataset in full.</p>
-<p>If you collect from more than one robot, give each one its own run_id and they write into the same bucket in parallel. The multi-robot mesh fans one agent out across those robots, so the same loop becomes a fleet collecting through the day into shared storage. A streaming reader reads one run at a time. The recording and datasets guide describes how to train across several of them.</p>
-<p>If you want a larger policy than ACT, the TrainSpec and Trainer lifecycle from Step 3 covers GR00T and Cosmos 3 behind their own provider names, so fine-tuning a VLA on the dataset you just streamed is the same calls with a different provider string and a base model. Running the result is where the paths diverge, because a VLA checkpoint deploys to hardware rather than to the simulator you trained from. For heavier simulation to generate that data, the Newton (sim-newton) and Isaac Sim (isaac) backends sit behind the same Robot() factory, so the agent code does not change as you scale up.</p>
-<p>Bucket streaming reached LeRobot through contributions from both the Strands Robots and LeRobot teams, upstream in LeRobot itself, so the datasets your agent collects are readable by every tool in that ecosystem. That runs both ways: the reader in Step 3 opens any of the LeRobot datasets already published on the Hub, so an agent can replay and evaluate against existing demonstrations before it records one of its own.</p>
-<p>Contributions are welcome under Apache 2.0. If you build something with this loop, open an issue with what worked and what didn't.</p>
-<p>Results of a internal benchmark on HF Storage Buckets</p>
-<p>Explore the robot data lifecycle with an interactive visual guide</p>
-<p>Explore robot learning results with an interactive dashboard</p>
-<p>What makes this architecture particularly compelling is that the agent isn’t just executing a task—it’s sitting inside a continuous data, learning, and deployment loop. Connecting data collection, streaming, training, evaluation, and deployment through one agent workflow opens up some fascinating possibilities for adaptive systems. At the same time, the trust boundaries around data, credentials, and agent actions become critical. This is where custom AI agent development and enterprise AI agent solutions need to be designed as complete systems rather than isolated agent features. I came across Mobisoft Infotech while exploring this space: https://mobisoftinfotech.com/services/ai-agent-development-company</p>
-<p>¡Qué buena onda! Esta integración de Strands Robots con los Storage Buckets de Hugging Face está perrísima para automatizar todo el flujo de trabajo en robótica sin perder tiempo ni dinero. La verdad, la deduplicación de datos a nivel de bytes con Xet y el poder entrenar modelos mediante streaming directo desde la nube nos aligera un buen el trabajo con las GPU. ¡Es una chulada total para acelerar la recolección de demostraciones y el despliegue en hardware real sin complicarse la vida!  https://starzbet.mx/</p>
-<p>Results of a internal benchmark on HF Storage Buckets</p>
-<p>Explore the robot data lifecycle with an interactive visual guide</p>
-<p>Explore robot learning results with an interactive dashboard</p>
+                <p>Three ways to parse the nested lists from Advent of Code 2022 day 13 in BQN.</p>
+<p>Advent of Code 2022 day 13 requires you to parse nested lists like</p>
+<p>This post covers three different ways to handle the problem:
+1. "Cheating" by using •BQN to do the heavy lifting
+2. Writing a conventional recursive descent parser
+3. Writing an array-style parser</p>
+<p>We'll also do some simple benchmarking to compare the three approaches.</p>
+<p>We'll be using my advent of code input file to test the different approaches on.
+Here's the first six lines:</p>
+<p>The lists come in pairs, with each pair separated by a blank line.
+Since the problem requires you to compare pairs of lists,
+a suitable format for working with the data is to parse it all into one list of pairs of lists.
+Thus we can turn the problem into parsing one giant list.</p>
+<p>The lines come in groups of three: the first list, the second list, and then a blank line.
+The first line of each group needs an opening bracket added to the beginning (to open the pair) and a comma added to the end (to separate the two lists in the pair).
+The second line of each group needs a closing bracket at the end (to close the pair) and a comma after (to separate it from the next pair).
+The blank lines are fine as is.
+Then we join all the lines together and drop the final trailing comma.
+Finally, we need to wrap the whole thing in one more set of brackets, to make it all one big list.</p>
+<p>This approach is undoubtedly the easiest, and it's what I used to solve the problem in December.
+The idea is that the notation is almost valid BQN; we just need to replace the square brackets with angle brackets.
+Then we can use the system function •BQN to "eval" the string into a BQN list.</p>
+<p>Here's the idea behind replacing a character with another character using a small example.
+I've written both an explicit expression and a tacit function.
+We take the difference between the new character and the old character,
+since adding this to the old character changes it into the new one.
+Then we use a mask of old character locations to make sure the addition happens only at those locations.</p>
+<p>Now to write our parser, we just replace both kinds of square brackets with the respective angle brackets and call •BQN.</p>
+<p>Uh oh! Well, here's a strike against this approach.</p>
+<p>I'm not sure what's going on to be honest.
+When I solved the problem in Decemeber I didn't do the "turn it all into one giant list" approach,
+and instead parsed the individual lines.
+So let's do that here.</p>
+<p>This complicated-looking line just works the data into a list of pairs of strings.
+First we append a blank line to the end, to complete the last group of 3 lines.
+Then we use a computed reshape to make an array with 3 columns.
+Finally, on each row of the array we drop the the blank line and enclose the two remaining lines.</p>
+<p>Now we just have to parse each string to get the final result.</p>
+<p>Looks alright!
+Let's do a quick benchmark.</p>
+<p>Around 3/4 of a second for each run. So slow!</p>
+<p>This is not meant to be an introductory tutorial on recursive descent parsing.
+Rather, I want to show that "normal" algorithms are applicable in BQN.
+In fact, Singeli uses a recursive descent parser.</p>
+<p>We assume that the input is error-free and proceed in a classic two-stage tokenize-then-parse fashion.</p>
+<p>The token types are opening brackets, closing brackets, and numbers.
+We get rid of the commas, after we've used them to delimit the numbers.
+The tokenizer is actually array-style, I guess, since we just use ⊔ to split the string up.</p>
+<p>Okay, okay, springing that tacit tokenizer on you is a joke.
+Let's break it down.
+The overall strategy is to create a mask of token starting points.
+Then we're pretty much a sum scan and a group away from success.</p>
+<p>Each opening bracket and closing bracket starts a new group.
+However, a digit starts a new group iff it is not preceded by a digit.</p>
+<p>We start by finding a mask of digits in the string.</p>
+<p>Comparing with the shifted mask lets us check if the preceding character was also a digit.
+The use of < is a little BQN trick.
+For booleans p and q, p<q is true iff p is 0 and q is 1.
+So now we have the start points of the number tokens.</p>
+<p>To get the rest of the token start points, we just ∨ in all the bracket locations.</p>
+<p>Taking a sum scan gives us a different number for each token, but each comma gets lumped in with the previous token.</p>
+<p>Multiplying by a mask of non-commas zeros out the commas.</p>
+<p>We subtract 1 to drop the commas when we group and give the first group index 0.
+Finally, we group and voila!</p>
+<p>Getting from here to my definition of T is just standard tacit refactoring stuff.
+And to be honest T is hard for me to read, so I probably wouldn't write it that way.
+But we already have it, so let's continue to parsing.</p>
+<p>Now it's just standard recursive descent stuff.
+Here's a sketch of the grammar.</p>
+<p>We write one function each for parsing values, lists, and numbers.</p>
+<p>The basic idea is that a value is a list if it starts with "[", otherwise it's a number.
+To parse a number, we just do a standard string-to-number-left-fold thing on the first element,
+and we return that number along with the rest of the tokens.
+To parse a list, we build up a list rslt by repeatedly parsing a value off the front of the list
+until we hit a "]".
+Then we return rslt and the rest of the tokens.
+Gotta be careful to drop the brackets in the right spots and to enclose the value before appending to rslt!</p>
+<p>To parse a list, we tokenize, parse the list, and then take the value from the ⟨value, tokens⟩ pair the parser returns.</p>
+<p>It agrees with the parsing we did earlier using •BQN,</p>
+<p>and works on the "one giant string" approach.</p>
+<p>Not to mention it's around 10x as fast as using •BQN.</p>
+<p>Using array techniques, we can achieve even faster parsing.
+Both the self-hosted compiler and the bqn-libs json parser use an array style.
+The following ideas come from studying the json parser.
+(I haven't looked at the compiler in any depth.)</p>
+<p>The fundamental idea for handling nesting is to reorder the tokens by depth.
+Once we've done that, there's a sense in which we've already mostly parsed the tokens!
+(At least for a simple case like these nested lists.)</p>
+<p>Opening brackets increase depth by 1 at the bracket, and closing brackets decrease depth by 1 at the bracket.</p>
+<p>We can use ⍋ to reorder the tokens according to their depths.</p>
+<p>This is really weird-looking at first, but once you learn how to read it, it's nicer to work with than the original order.</p>
+<p>Each closing bracket is like a nested list waiting to be filled, or an arrow pointing to a sublist.
+Each opening bracket signals the start of a new sublist.
+The list being pointed to by a closing bracket is the next unused sublist.</p>
+<p>If we replace each closing bracket with a ↓ and each opening bracket with a ∘, just for pictorial purposes,
+we can arrange the list into the follow diagram.</p>
+<p>The downward arrows represent sublists, and the circles represent list starting points.
+The numbers in the first column are the depths.
+The first closing bracket is the only token with depth zero, and it points at the whole list.
+The element between 2 and 7 and the last element are each sublists, the first of which has its own sublist.</p>
+<p>We almost have an algorithm that goes something like this:
+for each closing bracket, find the next unused sublist and replace the closing bracket with the sublist.</p>
+<p>For example, we might build the list this way:</p>
+<p>Instead of ordering by depth, we can go further and split by depth.</p>
+<p>And then perhaps we can use some kind of fold to fill in the "gaps" in each list with the lists from the next element.
+Going left to right would build the list "top down" like the example above.
+One snag with this approach is that at each step we have to search at a different depth for the closing brackets.
+Sure, we know exactly what depth to search at, but we can eliminate this complication entirely by going right to left.
+This builds the list bottom up, so at every step we are plugging sublists into a list at the outermost depth.</p>
+<p>Here is the complete idea. We're going to perform a right fold. 
+At each step, the operand to the fold splits up the right argument at the opening brackets
+and then plugs the resulting lists into the closing brackets of the left argument.</p>
+<p>Thus we need two functions: one to split up the right argument on opening brackets and one to plug the lists into the closing brackets.</p>
+<p>It works!
+The whole thing is inside a singleton list because of that left-most closing bracket,
+so we'll need to apply ⊑ at the end.
+Also, we've still got to turn strings into numbers at the end.
+We can write a string to number function and apply it at depth 1,
+but there's one small catch that's not apparent from our example so far:
+if we parse an empty list, then applying our string to number function at depth 1 will apply it to that empty list.
+So we need to check for empty input to the string to number function.</p>
+<p>Other than that, we just need to package this together into a parser.</p>
+<p>Oof! It's twice as slow as the conventional parser!</p>
+<p>That's okay because this was really just a warm-up to get us in the array mood.
+Even though what we have now is slow, the concepts we used will help us write a fast parser.
+And isn't it kind of amazing how we parsed a recursive data structure with just some arithmetic and primitives like ⊔ and folding?
+I think it's cool.</p>
+<p>Anyway, we can make significant improvements.
+First of all, have you been feeling the nagging pain of using lists of strings instead of just a string?
+It's so annoying writing "["⊸≡¨tok instead of just '['=tok, and it's probably slower too.
+Let's try to keep our representations "flatter".</p>
+<p>So the new idea is that the tokenizer will just output a string, meaning that each token is now a single character.
+This leaves no room for the values of the tokens (the numbers themselves), just the token types,
+so actually the tokenizer will output a string and a list of numbers.</p>
+<p>This is the idea behind the part of the tokenizer that extracts the numbers into one flat list.</p>
+<p>Here is the second part of the tokenizer.
+We get the first characters of each token by adding in the brackets to the number starts.
+Then we replace all the numbers with 0.
+The idea is that this string now represents the token types with the brackets standing for themselves
+and the 0s standing for a number type token.
+The numbers themselves are separated out as we showed previously.
+Any character would do to represent the numbers,
+but I chose 0 because it's what the json parser does and it reminds me of a number.</p>
+<p>Now for parsing we're going to build the list from the bottom up again, using the same depth ordering ideas.
+We obviously can't operate only on the token types (the string the tokenizer produces);
+we need to incorporate the token values (the numbers) at some point.
+The way we'll do that is operating on the token types to produce indices that we use to select from a list of values.</p>
+<p>So if we were trying to produce the final result list, which in a depth-based token-types-only representation would look like 00]00],
+we need to somehow say that the first 0 stands for 1, the second 0 for 2, the first closed bracket for the whole list ⟨3,4,⟨5,6⟩⟩,
+the third 0 for 7, the fourth 0 for 8, and the final closed bracket for the whole list ⟨9,10⟩.
+Then we could just grab all the values we mentioned and put them together as ⟨1,2,⟨3,4,⟨5,6⟩⟩,7,8,⟨9,10⟩⟩.</p>
+<p>The way we'll be able to reference a whole sublist like ⟨3,4,⟨5,6⟩⟩ is by building from the bottom up, as previously mentioned,
+so that by the time we need to use a value, we've already built it.
+At the beginning, the values we have are just the numbers themselves.
+We start with the deepest list ⟨5,6⟩, which we can build by indexing into the list of values (which again at this point is just numbers).
+Then we append this to the list of values.
+Now in a future step where we need to build ⟨3,4,⟨5,6⟩⟩, all three elements of this list already reside in our list of values,
+and all we need to do is index into the list of values to assemble them into a new value that gets appended to the end.</p>
+<p>So let's start by trying to organize the tokens so we can build the values in the correct order.</p>
+<p>Here's that same reorder by depth trick we've already discussed,
+but this time it's a little less painful to write since we just have a string instead of a list of strings.</p>
+<p>By taking a sum scan of a mask of opening bracket locations in the depth ordering we can give a number to each sublist of the list.
+This is the order we have to construct values in, with higher numbers going first.
+It's reminiscent of how we split the on opening brackets in our earlier approach.</p>
+<p>Now what we need are indices that tell us where to pull the values from. 
+For example, we start with list 4 (the [00 at the end), so we need to know that those 0s are associated with indices 4 and 5,
+since 4‿5 ⊏ num is the 5‿6 we want.
+Then later when constructing list 2, which looks like [00], we need to know that the 0s are associated with indices 2 and 3,
+and the closing bracket is associated with index 10, since (after appending 5‿6 to a list of values vals at index 10) we have 2‿3‿10 ⊏ vals giving ⟨3,4,⟨5,6⟩⟩.</p>
+<p>Here we filter away the opening brackets, keeping only those tokens that represent values: 0 for numbers and ] for sublists.
+Then we assign each value a number working left to right, but with numbers always coming before sublists.
+That ⍋⍋ is the ordinals pattern, which shows which index the element would end up at if sorted.
+(You can read about that here.)</p>
+<p>This is close to what we want.
+The 0s each have been associated with the proper index.
+However, the closing brackets (representing sublists) have not.</p>
+<p>We need to bring in our previous work r where we numbered the lists.
+But r is in depth ordering and vi is in the original ordering, so we put r back into original ordering and call it l.</p>
+<p>We invert the permutation g with ⍋ to translate from the depth ordering back to the original ordering.
+We call the resulting numbers the "sublist index" here.
+(It's really a pain to name a new idea. I don't wanna name things! That's why I'm a BQN programmer.)</p>
+<p>We can use l to fix vi by finding the sublist index associated with each closing bracket.
+If we just take the sublist index at a closing bracket, we get the sublist index associated with the list containing it.
+So we need the sublist index at the token before the closing bracket to get the index of the sublist itself.</p>
+<p>Here we show c/l and c/»l. The first element of c/l is 2, indicating that the first closing bracket (which closes ⟨5,6⟩) represents a sublist contained in the sublist with index 2 (i.e. ⟨3,4,⟨5,6⟩⟩).
+The first element of c/»l, however, is 4, indicating that the sublist ⟨5,6⟩ is itself sublist number 4.
+That's the number we want.</p>
+<p>Sublist number 4 is the first sublist to be constructed, and after being constructed and appended to the value list it has index 10.
+The arithmetic above adjusts the sublist indices to become indices into the value list.
+We subtract each sublist index from the number of sublists to invert the order, and then add the result to the number of numbers,
+to offset the indices correctly.</p>
+<p>From here, it's not hard to complete the value indices list.
+We append the value indices just calculated for the sublists to the list ↕≠num, which are the value indices for the numbers.
+Since both vi and c»l reference the closing brackets in the original left to right order, indexing into this list with vi pulls everything out in the correct order.</p>
+<p>We group these value indices i using the sublist indices from l and reverse the result to finally complete the task of arranging the value indices.
+We use 1-˜f/l instead of just l because we need to remove the opening brackets and drop the final closing bracket.
+Now we can see the first element contains indices 4 and 5, which correspond to the values 5 and 6.
+The third element contains the indices 2, 3, and 10, which correspond to values 3, 4, and ⟨5,6⟩.
+Etc.</p>
+<p>All that's left to do is the indexing and appending described earlier.</p>
+<p>It works!
+The list of values vals starts off as just the numbers num.
+With each application of the block function we index into vals and append the result to vals.
+The ⋄@ is at the end of the block both to signal that we are using the block for side-effects only
+and to not waste time and space building a list of results.</p>
+<p>We're not quite done yet!
+There is one final wrinkle that our example so far hasn't made clear.
+We need to ensure that the result of (1-˜f/l)⊔i always has as many elements as there are closing brackets
+(even if some or all of them are empty) in order to accomodate empty lists.
+This is roughly because each closing bracket represents a sublist value,
+so we always need to build at least that many values.</p>
+<p>Thus we change 1-˜f/l to (+´c)∾˜1-˜f/l to append the number of closing brackets to the end.
+Group has the option of using a left argument with an extra last element relative to right argument,
+and this last element sets the minimum number of elements of the result.</p>
+<p>It works, and it's really fast! It's also the only parser that's faster on the one big string approach.</p>
+<p>Using •BQN is definitely the easiest, but it is slow and has problems parsing large lists, at least on my machine.</p>
+<p>For a little more effort (at least if you're already familiar with recursive descent) we can get a much more performant parser.
+Probably should be your method of choice if •BQN is too slow.</p>
+<p>A well-written array style parser is the fastest (and coolest obviously), but wow is it confusing to implement!
+For this Advent of Code problem it's certainly not worth the trouble.
+I mean, even just using •BQN works fine honestly.
+If we had to parse way more data, or reuse this parser many times, the array method would start to make sense.
+Also if the lists had very very deep nesting, the recursive parser would hit the maximum recursion limit and fail.</p>
+<p>Here's a little table recapping the time in seconds it took each method to parse my input file.
+Each time is the average of 100 runs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/amazon/strands-lerobot-streaming-data-loop" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://saltysylvi.github.io/blog/parsing-nested-lists-in-bqn.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

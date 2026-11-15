@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Automating Contract Signing in Node.js: Webhooks, Verification, and Storing Signed PDFs</title>
+    <title>SpaceX Falls Short of Historic Double Starship Catch</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10000.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,55 +15,95 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Automating Contract Signing in Node.js: Webhooks, Verification, and Storing Signed PDFs</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-14</p>
+        <h1>SpaceX Falls Short of Historic Double Starship Catch</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Icon_Padding_Bg_PNG_1024_9e9a885895.png" alt="Automating Contract Signing in Node.js: Webhooks, Verification, and Storing Signed PDFs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/space_64.png" alt="SpaceX Falls Short of Historic Double Starship Catch" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Icon_Padding_Bg_PNG_1024_9e9a885895.png" alt="Automating Contract Signing in Node.js: Webhooks, Verification, and Storing Signed PDFs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/space_64.png" alt="SpaceX Falls Short of Historic Double Starship Catch" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Sending a document for signature is the easy part of an e-signature integration. One POST request and the signer gets an email. The work that actually breaks in production happens afterwards: knowing when the document was signed, trusting the notification that told you so, handling the same notification twice, and getting the final PDF into storage before the download link expires.</p>
-<p>This tutorial builds that whole loop in Node.js with Express. An event in your app (a deal is approved, a client is onboarded, a task moves to "ready to sign") sends a contract from a template. When the signer finishes, a webhook arrives, your server verifies it, and the signed PDF plus its audit trail get saved without anyone touching them.</p>
-<p>The code uses Firma.dev, the e-signature API I work on, because I needed a real API to make the examples runnable. The patterns are not specific to it, though. Signature verification, idempotent handlers, short-lived download URLs, and reconciliation jobs show up in almost every webhook-driven integration, and the same structure applies whether you're receiving events from a payment processor, a CI system, or another signing provider.</p>
-<p>There's a fifth part that tutorials usually skip: a reconciliation job that catches anything the webhooks missed. We'll build that too, because webhooks are a notification mechanism, not a delivery guarantee.</p>
-<p>Before sending anything, wrap the HTTP calls in one place. This is where authentication lives, and it's also where you handle 429 Too Many Requests once instead of in every caller. Most APIs, this one included, return a Retry-After header on a 429, so the client should honour it rather than guessing a backoff.</p>
-<p>The 503 branch matters later. When a document has just been completed, the final PDF and its completion certificate take a moment to generate, and the download endpoint says so with a 503 and a Retry-After instead of handing you a half-built file.</p>
-<p>The trigger depends on your product. It might be a route handler, a queue consumer, or a CRM automation calling into your service. What matters is that the function doing the sending is small and takes plain data:</p>
-<p>Two design choices are worth calling out.</p>
-<p>Use a single create-and-send call when you can. Many signing APIs split this into "create a draft" and "send the draft." That's useful when a human needs to review the document first, but for automation it creates a window where your process can crash between the two calls and leave an orphaned draft. A combined endpoint makes the operation atomic from your side.</p>
-<p>Store the provider's ID on your own record immediately. Webhook payloads reference the signing request, not your deal or customer. Without that mapping you'll end up searching by email address, which falls apart as soon as one client signs two documents.</p>
-<p>Here's the first place integrations quietly go wrong. Webhook signatures are computed over the exact bytes the sender transmitted. If Express parses the body as JSON first, you lose those bytes, and re-serialising the object won't reproduce them (key order, whitespace, and number formatting can all change). Signature checks then fail intermittently, which is the worst kind of failure.</p>
-<p>The fix is to use express.raw() on the webhook route only, so the handler receives a Buffer:</p>
-<p>Most webhook providers sign payloads with HMAC-SHA256 using a shared secret. The details vary, so read your provider's docs for the exact header format, but the scheme here is common: the header looks like t=1731456000,v1=5f2b..., and the signed string is the timestamp, a dot, and the raw body. Stripe uses a very similar format, and the Standard Webhooks spec describes the same idea as a vendor-neutral convention.</p>
-<p>Each line here defends against something specific.</p>
-<p>The OWASP guidance on cryptographic storage covers the other half of this: the secret belongs in an environment variable or secrets manager, never in the repository.</p>
-<p>Every serious webhook system delivers at least once, not exactly once. If your endpoint is slow, returns a 5xx, or the network drops the response, the sender retries. Firma.dev, for example, makes up to three attempts per event (immediately, then after at least five minutes, then after at least an hour) and treats anything other than a 2xx as a failure, including redirects. Other providers retry more aggressively. Either way, your handler will eventually see the same event twice.</p>
-<p>The defence is to record each event's unique ID and skip ones you've seen. In the server above that's alreadyProcessed and markProcessed. For a demo, a Set works:</p>
-<p>In production, use your database and let a unique constraint do the work, so two concurrent deliveries can't both pass the check:</p>
-<p>Also notice the order in the route: respond with 200, then do the work. Many providers time out deliveries after a few seconds (five, in this case). Downloading a PDF and uploading it to object storage can easily take longer than that, and a timeout counts as a failure, which triggers a retry, which triggers duplicate work. Acknowledging fast and processing asynchronously avoids that loop.</p>
-<p>setImmediate is fine for a tutorial, but it has a real weakness: if the process dies after sending the 200 and before finishing the work, the event is acknowledged and lost. In production, push the event onto a durable queue (BullMQ, SQS, a jobs table) before responding. Step 7 covers the safety net for whatever still slips through.</p>
-<p>Now the actual business logic. You'll usually see several event types (sent, viewed, a signer signed, declined, expired, completed). Only one of them means "the document is final":</p>
-<p>Three things in here are easy to get wrong.</p>
-<p>Don't treat "a signer signed" as "the document is done." With multiple signers, each one triggers its own event, and a per-signer "all complete" flag can be true on more than one of them. Key your storage logic off the single completion event.</p>
-<p>Don't persist the download URL. Pre-signed URLs expire (this one carries an expires_at). Saving the link to your database and serving it to users later produces broken links a few minutes or hours later. Download the bytes and store them in storage you control. Swapping the fs.writeFile calls for an S3 PutObject or a Google Drive upload is a drop-in change.</p>
-<p>Store the audit trail, not just the PDF. If a signature is ever disputed, the PDF shows what was signed, and the audit trail shows who signed it, when, and from where (timestamps, IP addresses, the sequence of views and signatures). That evidence is what makes an electronic signature defensible, which brings us to the legal side.</p>
-<p>Retries are finite. Endpoints go down during deploys. Some providers auto-disable a webhook after enough consecutive failures, and events aren't guaranteed to arrive in order. Any one of these can leave a completed document sitting unsaved.</p>
-<p>A small scheduled job closes that gap. Keep a list of signing requests your app considers "pending," and periodically ask the API for their real status:</p>
-<p>Since storeSignedDocument overwrites by ID, running it twice for the same document is harmless. That's the property you want from every step in a webhook pipeline: doing it again shouldn't change the result.</p>
-<p>None of this is legal advice, but a few facts shape how you build.</p>
-<p>In the US, the ESIGN Act and the Uniform Electronic Transactions Act (adopted by 49 states) give electronic signatures the same legal standing as handwritten ones for most commercial documents. ESIGN also has requirements around consumer consent and record retention, which is part of why you store the final PDF yourself rather than relying on a third-party link.</p>
-<p>In the EU, eIDAS defines three levels: simple (SES), advanced (AdES), and qualified (QES). SES and AdES cover most business contracts. QES requires a qualified trust service provider and certificate-based identity, and some documents (certain property transfers and court filings, depending on the country) require it or exclude e-signatures entirely. Check which level your document types need before you pick a provider, since not every API offers every level.</p>
-<p>Across jurisdictions, the evidence that holds up is the same: who signed, how they were identified, when it happened, and proof the document hasn't changed since. That's the audit trail and the completion certificate, which is why Step 6 stores both.</p>
-<p>If you're evaluating providers for a workflow like this, the questions that matter at the integration level are mostly not on the pricing page:</p>
-<p>The send call is one line. The reliability comes from everything around it: keeping the raw body for verification, checking timestamps and comparing in constant time, acknowledging fast and deduplicating by event ID, downloading files before their links expire, and running a reconciliation job for the events that never arrive. Get those right and contract signing becomes something your app does in the background, with no one chasing signatures or copying PDFs between folders.</p>
-<p>For the Firma.dev-specific details used here (event names, header format, rate limits), see the webhooks guide.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>The video I've seen shows it descending to a tower-like height over the sea, then hovering until it ran out of fuel. So it they had been able to reach the tower it would probably have been caught.</p>
+<p>So either it didn't have enough fuel to do that or they decided to be cautious to ensure they don't wreck the tower before the ship comes back. We'll find out when they make some official announcement later.</p>
+<p>Contrary to the fine summary, SpaceX have said nothing yet about why they diverted the booster into the gulf. As yet, the problem could have been at the pad and nothing to do with the booster. Aside from one engine failing to restart for the boost-back burn (which is tolerable), the booster appeared to function correctly.</p>
+<p>Good point. They aborted at least one other catch attempt because of an equipment problem on the tower rather than the booster, but I'm pretty sure somewhere in the launch broadcast today they said the tower was good to go this time.</p>
+<p>Musk has since said the booster was low on fuel.</p>
+<p>That is, the rocket called the off-shore abort because something about the system that calculates the exact location of the rocket, and directs it to where it should be, was wrong. A problem with the rocket and the tower communicating would match this, but it could be any number of other things.</p>
+<p>There were suggestions that it could have been not enough methane remaining, but that wouldn't match the new information. We did get a flash of green indicating oxygen rich combustion at the end, but that could have</p>
+<p>It is never going to happen, even if they find enough volunteers with a death wish.</p>
+<p>Probably. But every time Elon tweets about it the stock price will go up.</p>
+<p>Don't be such a naysayer! If Musk believes it'll work, maybe we'll get lucky and he'll get on one of those rockets.</p>
+<p>This whole Mars thing is pure hypium. It is never going to happen, even if they find enough volunteers with a death wish.Yeah we got to the moon without any rockets blowing up or losing any astronauts during the Mercury, Gemini, and Apollo programs ... oh wait. 
+
+Go watch the movie "The Right Stuff:.
+https://www.imdb.com/title/tt0... [imdb.com]</p>
+<p>This whole Mars thing is pure hypium. It is never going to happen, even if they find enough volunteers with a death wish.</p>
+<p>Yeah we got to the moon without any rockets blowing up or losing any astronauts during the Mercury, Gemini, and Apollo programs ... oh wait. 
+
+Go watch the movie "The Right Stuff:.
+https://www.imdb.com/title/tt0... [imdb.com]</p>
+<p>Gotta remember Elon has a loose conception of what's true.No. You confuse what is 'true' with what is possible 'today'. Then he goes on to create the technology that make a 4 door sedan perform better than a race car, rockets land on their tail for reuse, cars hover and glide past obstacles. Things that were only seen in movies and manga until Elon decided to rethink what is possible given new technological innovations.He first called Tesla's level 2 automation Autopilot and now he's calling it Full Self-driving.The latter is more accurate. Autopilot can refer to many levels of technology, originally it was a plane flying in a straight line, maintaining hea</p>
+<p>Gotta remember Elon has a loose conception of what's true.</p>
+<p>No. You confuse what is 'true' with what is possible 'today'. Then he goes on to create the technology that make a 4 door sedan perform better than a race car, rockets land on their tail for reuse, cars hover and glide past obstacles. Things that were only seen in movies and manga until Elon decided to rethink what is possible given new technological innovations.</p>
+<p>He first called Tesla's level 2 automation Autopilot and now he's calling it Full Self-driving.The latter is more accurate. Autopilot can refer to many levels of technology, originally it was a plane flying in a straight line, maintaining hea</p>
+<p>He first called Tesla's level 2 automation Autopilot and now he's calling it Full Self-driving.</p>
+<p>The latter is more accurate. Autopilot can refer to many levels of technology, originally it was a plane flying in a straight line, maintaining hea</p>
+<p>The rocket itself called the abort, not any controllers. The rocket also seems to have called its flight termination when it hovered off-shore.</p>
+<p>"forcing controllers to abort its return before it exploded "
+
+Forcing controllers to explode it after it had completed a picture perfect return, only in the ocean instead of at its Tower because one of the automatic systems triggered an abort.Only Spacex can make a picture perfect return that didn't come back to the place it was supposed to. 
+
+I'll bet you think the Flying car is an actual flying car you'll be driving some day. 
+
+This is the unfortunate thing about the cult. Even the failures are perfect.</p>
+<p>"forcing controllers to abort its return before it exploded "
+
+Forcing controllers to explode it after it had completed a picture perfect return, only in the ocean instead of at its Tower because one of the automatic systems triggered an abort.</p>
+<p>Only Spacex can make a picture perfect return that didn't come back to the place it was supposed to.</p>
+<p>I'll bet you think the Flying car is an actual flying car you'll be driving some day.</p>
+<p>This is the unfortunate thing about the cult. Even the failures are perfect.</p>
+<p>It's not a 100% success.  But if the explosion was because of some detected failure inside the first stage, this was a success for their internal monitoring systems and preserved their recovery tower and launch infrastructure.</p>
+<p>For comparison, this is what real failure looks like: https://www.youtube.com/watch?... [youtube.com]</p>
+<p>https://www.youtube.com/watch?... [youtube.com]</p>
+<p>Yes, SpaceX is familiar with that sort of failure too.</p>
+<p>So, since they're so good at this, maybe they should send rockets to currently orbiting, valuable satellites like super expensive communications satellites and space telescopes, and use the rocketry wizardry to soft-land them for repair, refurbishment, and relaunch.   Would that be cool, or what?</p>
+<p>So, since they're so good at this, maybe they should send rockets to currently orbiting, valuable satellites like super expensive communications satellites and space telescopes, and use the rocketry wizardry to soft-land them for repair, refurbishment, and relaunch.   Would that be cool, or what?It's been done. And it was cool. https://www.lloyds.com/about-l...  [lloyds.com]</p>
+<p>So, since they're so good at this, maybe they should send rockets to currently orbiting, valuable satellites like super expensive communications satellites and space telescopes, and use the rocketry wizardry to soft-land them for repair, refurbishment, and relaunch.   Would that be cool, or what?</p>
+<p>https://www.lloyds.com/about-l...  [lloyds.com]</p>
+<p>Yes. Pretty much no-one thought SpaceX could land a rocket that couldn't hover on a barge that was bouncing around in the ocean, and they failed a bunch of times but now it's routine.</p>
+<p>The catch exists because as you say it means no need to add delicate landing legs, and it means the booster can be placed back on the pad to be refuelled and relaunched in an hour or two. Obviously we're a long way from the point where a booster can be relaunched with minimal maintenance but that's the long-term goal.</p>
+<p>So at a conservative estimate it saved them about $200,000,000 in Falcon 9 launches.. if throwing away a booster and Starship costs less than that then they're already making a per-launch operating profit.</p>
+<p>The contract price for a launch of a fully recovered Starship+booster is $90 million. We don't know how much it costs to build one, but its going to be more than that. Unrecovered, Starship should be very uncompetitive, particularly with something like Falcon.</p>
+<p>SpaceX is at the point where they can start tak</p>
+<p>Ok so catching a rocket means that the rocket doesn't need legs and probably some other heavy or expensive items.  The commentators declared that SpaceX will only attempt the catch under perfect conditions because they don't want to take a chance of damaging the pad, ala New Glenn.  That makes a lot of sense.  This is spaceflight we're talking about.  Big rockets, lots of explosive bits.  "Perfect" is something will rarely occur, which means the boosters and upper stages will be splashed.  That makes everything way more expensive and prevents SpaceX from keeping to their aggressive launch / catch / refurb fast turn-around cycle.
+
+
+Am I missing something?"Perfect" is something that takes practice and refinement to happen reliably.   It took quite a few launches before the Falcon 9 booster could reliable land too.  There is a lot more scrutiny directed at Starship's refinement process than there was for Falcon 9.  Falcon 9 was assumed to be expendable and successful at that.  SpaceX started doing practice landings as a bonus activity.  Sometimes it worked.  Sometimes it didn't.  But with progressive refinement it reached the point where nearly every launch e</p>
+<p>Ok so catching a rocket means that the rocket doesn't need legs and probably some other heavy or expensive items.  The commentators declared that SpaceX will only attempt the catch under perfect conditions because they don't want to take a chance of damaging the pad, ala New Glenn.  That makes a lot of sense.  This is spaceflight we're talking about.  Big rockets, lots of explosive bits.  "Perfect" is something will rarely occur, which means the boosters and upper stages will be splashed.  That makes everything way more expensive and prevents SpaceX from keeping to their aggressive launch / catch / refurb fast turn-around cycle.
+
+
+Am I missing something?</p>
+<p>"Perfect" is something that takes practice and refinement to happen reliably.   It took quite a few launches before the Falcon 9 booster could reliable land too.  There is a lot more scrutiny directed at Starship's refinement process than there was for Falcon 9.  Falcon 9 was assumed to be expendable and successful at that.  SpaceX started doing practice landings as a bonus activity.  Sometimes it worked.  Sometimes it didn't.  But with progressive refinement it reached the point where nearly every launch e</p>
+<p>Congratulations, you got me to log in for the first time in FIVE YEARS to correct all the misreporting here:</p>
+<p>> was derailed when the Super Heavy booster malfunctioned</p>
+<p>Nope, we don't know that yet.  Something between booster AND/OR the tower AND/OR the communications between them failed.  It's a system.  We'll find out soon enough, but we definitely do not know that "the booster malfunctioned".</p>
+<p>> (re ship catch) If successful, it would mark the first time a spacecraft has returned from orbit to land vertically at a launch tower.</p>
+<p>Technically true, but the real power of the Starship system will be that it will be the first to recover THE ENTIRE LAUNCH VEHICLE, all of the parts, not just the first stage.  Of course in this case the booster was lost, so Flight 15 won't be the one that gets to claim that "first" title, but it's imminent.  (attn pedants: the space shuttle expended the external tank, and cost a bazillion dollars and many months to refurb after every flight)</p>
+<p>Well, this is part of your problem.  Since when do we rely on a farm town's local newspaper for space news?  If it was actually a wire report, say that.</p>
+<p>> The spacecraft portion of the 14 previous Starships ended up in the ocean, either by design at flight's end or by accident in a stream of flaming wreckage.</p>
+<p>Poor writing.  ALL of them ended up in the ocean in the end "by design", in a remarkable string of successes.  After the first few attempts, they have pretty much stuck the landing every time, with the ship then blowing up after falling over into the water, as intended .  The one exception was Ship 40 of Flight 13 that surprisingly did NOT blow up after it fell over into the water, which then gave us those 2-3 months of entertainment as they (successfully!) recovered that ship and brought it all the way back to Boca Chica.</p>
+<p>There are lots of news outlets that cover this much better: NASAspaceflight (NSF), Ars Technica, SpaceFlightNow, heck even sad old Space.com probably does a better job.</p>
+<p>yeah, sure, they all blew up by design.  They can barely use billion tax payer dollars to deliver a banana to the Indian ocean, great success.</p>
+<p>As far as I can tell, catching it was never in question.  They chose to have a hard rule in a single engine out condition in advance, rather than making the call on the fly.  The craft was fully capable of doing what was required to be caught at the tower, and in fact did exactly those maneuvers ... except over the ocean where the tower wasnt.</p>
+<p>Seemed pretty successful to me, just safety over everything else.  Thanks for that, it is rocket science after all.</p>
+<p>Pity a company that does such impressive things is headed by such a terrible person.</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>FAA Lifts Nationwide Ground Stop for All Aircraft [UPDATE]</p>
+<p>Lego's BrickLink Marketplace Back Online After Week-Long Outage Caused By 'Cyber Incident'</p>
+<p>Time to take stock.  Go home with some office supplies.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/automating-contract-signing-in-node-js-webhooks-verification-and-storing-signed-pdfs/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://science.slashdot.org/story/26/11/14/0046259/spacex-falls-short-of-historic-double-starship-catch?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
