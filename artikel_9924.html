@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Making Knowledge Distillation Cheap Enough to Run at Scale</title>
+    <title>America Cancels 4,000 More Flights.  FAA Denies Impact of New AI System.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9924.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,35 +15,149 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Making Knowledge Distillation Cheap Enough to Run at Scale</h1>
+        <h1>America Cancels 4,000 More Flights.  FAA Denies Impact of New AI System.</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/ai_64.png" alt="America Cancels 4,000 More Flights.  FAA Denies Impact of New AI System." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/ai_64.png" alt="America Cancels 4,000 More Flights.  FAA Denies Impact of New AI System." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Knowledge distillation, training a smaller student model to match the performance of a larger teacher, is a well-known technique in Machine Learning. With the recent wave of open-source Large Language Models, such as gpt-oss, Qwen, GLM, or Kimi, it has become a mainstream research topic again. Deploying these very large models is expensive: the recent Kimi-K3 model has 2.8 trillion parameters and needs roughly 3TB of VRAM just to load. Compressing them into smaller models and recovering the original capabilities through knowledge distillation has therefore become standard practice, with companies like Nvidia (Nemotron 3 Puzzle 75B) or Multiverse Computing (Hypernova 60B) recently releasing high-quality compressed models.</p>
-<p>The distillation step is what decides most of the final quality, but it's also usually the most expensive part of the pipeline. Keeping both the teacher and student loaded, and producing a probability distribution over the entire vocabulary for every token, requires enormous amounts of VRAM, typically feasible only with hundreds of GPUs and careful tensor-parallelism strategies. Our latest paper, Efficient Knowledge Distillation for LLMs: Offline Top-K Logits and a Fused Chunked KL Loss, tackles this with two systems changes: caching the teacher's top-K logits once so the teacher never has to sit in memory alongside the student, and a new, memory-efficient KL-divergence loss that avoids ever materializing the full vocabulary-size × sequence-length matrix, cutting VRAM use far below what the default implementations in libraries like PyTorch or NVIDIA Megatron-Bridge achieve. Together, these two changes cut training cost enough to make long-context healing possible on a single GPU, and cheap enough to make large-scale experimentation practical.</p>
-<p>The standard setup, online distillation using the Kullback-Leibler divergence loss (KL loss), keeps both the teacher and the student loaded at the same time. At every training step, the teacher runs a full forward pass to produce its output distribution, and the student is trained to match it. This is the most expressive setup, since the full teacher distribution is available, but it is also the most memory- and compute-intensive: two full-vocabulary tensors have to be held per token position, and the teacher has to be recomputed on every single step even though its behavior does not change across a training run.</p>
-<p>As a practical example, gpt-oss-120b has a vocabulary of 201,088 tokens. At a sequence length of 32K and batch size 4, the teacher-probability tensor alone has shape 4 × 201,088 × 32,768; in bfloat16, that's already about 50GB of VRAM for a single tensor. Add gradients, activations, model weights, and optimizer states, and a single training iteration of distillation can peak at roughly 250GB of VRAM, more than even an H200 or B200 GPU can provide. In this post, we show that reformulating the KL loss to process the data in chunks reduces this cost to almost nothing.</p>
-<p>Dense KL spikes to roughly 250GB, above a single H200's 141GB capacity. The fused chunked loss never forms that spike and peaks at about 128GB. Source: paper Figure 1.</p>
-<p>Offline distillation. Instead of recomputing the teacher at every step, we compute its output once, cache the top-100 most likely tokens per position, and train the student against that cache. The teacher never has to sit in memory during training and does not need to be run again once the cache exists, so the same cache can be reused across many ablations.</p>
-<p>A fused, chunked KL loss. To see why the loss itself is expensive, picture what it actually builds: for every token position in a sequence and every word in the vocabulary, the loss needs a number describing how much the student's prediction disagrees with the teacher's. Laid out as a grid, that's one row per vocabulary entry and one column per sequence position, for a vocabulary of 100K+ words and a long sequence, that grid is enormous, and the default way of computing a KL loss builds the whole thing before it can produce a single number.</p>
-<p>We compare three ways of computing this same loss, all mathematically equivalent:</p>
-<p>The GIF below shows the difference between the dense and fused-chunked approaches: one builds the whole comparison grid and holds onto all of it, the other builds and discards one slice at a time, so memory never grows beyond a single chunk.</p>
-<p>We have open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
-<p>The table below puts all four setups head to head: online distillation, and the three offline loss implementations just described. Comparing them on a single H200 GPU with Llama 3.1 8B Instruct as teacher and a 3.2B Llama model as student at an 8K token context, all four reach near-identical training loss, even though the offline runs train against only the cached top-100 logits per token.</p>
-<p>The loss curves overlap almost exactly across all four methods, confirming offline distillation with top-100 cached logits is lossless relative to online distillation. Source: paper Figure 2. At this sequence length, the fused chunked loss is not yet the fastest option, its extra backward-pass projection costs a bit of speed, but its real advantage only shows up as context length grows, which the next section demonstrates.</p>
-<p>To see the scaling pattern more starkly, we ran an isolated benchmark on a toy output-projection network (no transformer body, just the loss kernel). At 32K tokens, peak memory falls from 85.2 GiB with the dense loss to 5.45 GiB with the fully chunked version, a 15.6× reduction, and the dense loss fails outright from 64K tokens onward. At 256K tokens, the fully chunked loss uses 11.6 GiB against 134.2 GiB for the next-best chunked variant, and is about 3.3× faster per iteration at that length.</p>
-<p>Distilling a GPT-OSS 20B model at a 32,768-token context, the memory freed by the fused loss let the setup shrink from four GPU nodes down to one. Step time fell from 57.0 to 12.23 seconds, about 5× faster, and throughput per GPU rose from 74.2 to 345.7 TFLOP/s.</p>
-<p>The efficient offline setup is what made a large-scale distillation campaign affordable in the first place. The resulting compact student, distilled from Llama 3.1 8B Instruct down to about 3.2B parameters, retains most of the teacher's accuracy on BoolQ and HellaSwag, stays within about nine points of it on MMLU, at less than half the parameter count.</p>
-<p>The student retains most of the teacher's short-context accuracy at less than half the size. Source: paper Figure 6.</p>
-<p>This work is part of Multiverse Computing's ongoing research into making distillation and healing practical to run at scale, not just as a one-off recipe, but as something teams can iterate on cheaply. The paper also covers additional ablations, such as how the choice of loss function and sequence packing affect recovery quality.</p>
-<p>Want the full technical details, including the closed-form gradient behind the fused chunked loss and the complete training configuration? Read the full paper, or get in touch with our team to talk about applying this to your own distillation pipelines.</p>
-<p>We have also open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>That was part of it, but the real issue is as always located inside management.</p>
+<p>Yes. The problem is that they called it AI, while it should have been called SI.</p>
+<p>Speaking of which, I have no idea who this Sean Duffy guy is (I'm not in the US), so I looked him up.</p>
+<p>He's a former Fox TV presenter.  The kakistoracy strikes again.</p>
+<p>Yes. The problem is that they called it AI, while it should have been called SI.
+You joke, but in a press brief about the ground stop, DHS Secretary Markwayne Mullin corrected a reporter who asked about AI:
+
+Markwayne Mullin Chides Reporter Amid FAA Ground Stoppage Chaos: ‘We Call it SI’ [mediaite.com] “There are thoughts that, you know, this could be an AI related error or issue,” the reporter asked Mullin.
+
+“We call it SI around here remember. SI,” he said, before adding, “You just can’t rule out anything at this point. We’re going through that process and we’re going to find out what happened.”
+These renaming things are so pointless/stupid.</p>
+<p>Yes. The problem is that they called it AI, while it should have been called SI.</p>
+<p>You joke, but in a press brief about the ground stop, DHS Secretary Markwayne Mullin corrected a reporter who asked about AI:</p>
+<p>Markwayne Mullin Chides Reporter Amid FAA Ground Stoppage Chaos: ‘We Call it SI’ [mediaite.com]</p>
+<p>“There are thoughts that, you know, this could be an AI related error or issue,” the reporter asked Mullin.
+
+“We call it SI around here remember. SI,” he said, before adding, “You just can’t rule out anything at this point. We’re going through that process and we’re going to find out what happened.”
+These renaming things are so pointless/stupid.</p>
+<p>“There are thoughts that, you know, this could be an AI related error or issue,” the reporter asked Mullin.</p>
+<p>“We call it SI around here remember. SI,” he said, before adding, “You just can’t rule out anything at this point. We’re going through that process and we’re going to find out what happened.”</p>
+<p>These renaming things are so pointless/stupid.</p>
+<p>These renaming things are so pointless/stupid. Stupid Indeed</p>
+<p>These renaming things are so pointless/stupid.</p>
+<p>These renaming things are so pointless/stupid.It's not stupid to them. They know that, if they don't do it, they'll have to deal with the wrath of their Stable Genius boss - and they'd like to keep their jobs.</p>
+<p>These renaming things are so pointless/stupid.</p>
+<p>It's not stupid to them. They know that, if they don't do it, they'll have to deal with the wrath of their Stable Genius boss - and they'd like to keep their jobs.</p>
+<p>These renaming things are so pointless/stupid.These people renaming things are so pointless/stupid.FTFY</p>
+<p>These renaming things are so pointless/stupid.</p>
+<p>These people renaming things are so pointless/stupid.</p>
+<p>Fiber is immune to EMP, except at the enter / exit nodes.</p>
+<p>an L3Harris contractor was working in a remote FAA location and switching old copper wire to fiber while replacing a router. The router that was being switched then started flooding other routers, overloading the system. There were 1,000 attempts to log on every four to five seconds, he said.</p>
+<p>If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad. Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.</p>
+<p>The system is ancient and built for a time when floppy disks were common. Notably, they're still used to load weather data into the system.</p>
+<p>Such systems do not expect modern volumes of data transport, nor are they built to handle it.</p>
+<p>"But this fairly modern threat isn't handled well by this ancient system". Indeed. But updating such systems requires functioning bureaucracy, that isn't devoured by corruption on one side, and by ideology that views competence as the greatest evil that exists on the other.</p>
+<p>It's in fact one of the greatest achievements of US that it can run with this level of dysfunction and remain clear #1 in the world in most productive aspects, including adoption of commercial aviation.</p>
+<p>It may not have been thousands of simultaneous requests at the time the software was implemented, it may have been dozens or even fewer</p>
+<p>Dont underestimate how much a legacy system or aspects of a legacy system can be overlooked when growth happens.</p>
+<p>But did SMART generate the traffic? It's possible some bottleneck was the only thing which kept SMART stable and the fibre upgrade would have worked fine without it.</p>
+<p>Why would it? It doesn't sound like it has anything to do with ATC, it's a recommendation system for scheduling.</p>
+<p>The network DDoS'ed itself.If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad. Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.I'm guessing someone could actually explain at a technical level exactly how these particular makes/models/configurations would DDoS "itself". Or better yet, have someone produce the actual audit trail of the events leading up to the network crashing, as every router is capable of logging.You know, for shits and taxpayers sake.  Make sure that cover story lines up with a $50B request.  See who's asking for that pocket change.</p>
+<p>If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad. Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.</p>
+<p>I'm guessing someone could actually explain at a technical level exactly how these particular makes/models/configurations would DDoS "itself". Or better yet, have someone produce the actual audit trail of the events leading up to the network crashing, as every router is capable of logging.</p>
+<p>You know, for shits and taxpayers sake.  Make sure that cover story lines up with a $50B request.  See who's asking for that pocket change.</p>
+<p>actual audit trail of the events leading up to the network crashingThe mere thought of that audit occurring while this specific bunch of clowns is running the show, strikes me as insanely naive.</p>
+<p>actual audit trail of the events leading up to the network crashing</p>
+<p>The mere thought of that audit occurring while this specific bunch of clowns is running the show, strikes me as insanely naive.</p>
+<p>If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad. Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.
+Networks are designed to route around damage but can't route around this Administration. :-)</p>
+<p>If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad. Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.</p>
+<p>Networks are designed to route around damage but can't route around this Administration. :-)</p>
+<p>If the system is designed so that a couple of routers in one spot can make it necessary to ground everything, the design is bad.</p>
+<p>For me, the bigger question is who the fuck authorized replacement of network equipment in the middle of the day?  When I worked on an FAA contract, we had to perform even basic software updates overnight.</p>
+<p>Saying they need $50B stat is wild when it clearly wasn't done right the first time with however much was spent so far.</p>
+<p>Indeed.  If this really was a network issue, there is already a contract well under way to replace FTI with FENS.  But if the story about the L3Harris contractor is true, then the problem was human error.  If Mr. Duffy wants us to believe it takes $50 billion to fix human error during maintenance that shouldn't have been approved to be done during the day in the first place, then maybe he needs to spend more time in the Real World.</p>
+<p>when it clearly wasn't done right the first timeYou're making an assumption. Networks like this do not get designed and stay the same throughout their service life. They are built and the systems connected to them change over time. The problem isn't the network design wasn't done right, it is that it wasn't reviewed at every stage of a change in the systems on it.</p>
+<p>when it clearly wasn't done right the first time</p>
+<p>You're making an assumption. Networks like this do not get designed and stay the same throughout their service life. They are built and the systems connected to them change over time. The problem isn't the network design wasn't done right, it is that it wasn't reviewed at every stage of a change in the systems on it.</p>
+<p>L3Harris has a long history of various contracting and implementation anomalies.  As a large government contractor, with lots of moving parts and lots of contracts, that is not, itself, too surprising.  However Duffy seems to be throwing them under the bus before the full facts in this case are known.  That always raises an eyebrow or two.
+Also, who does an IT infrastructure update/upgrade in the middle of a weekday, especially on an apparently critical piece?</p>
+<p>L3Harris has a long history of various contracting and implementation anomalies.  As a large government contractor, with lots of moving parts and lots of contracts, that is not, itself, too surprising.  However Duffy seems to be throwing them under the bus before the full facts in this case are known.  That always raises an eyebrow or two.</p>
+<p>Also, who does an IT infrastructure update/upgrade in the middle of a weekday, especially on an apparently critical piece?</p>
+<p>On Saturday morning at their press conference (11am EST ish) the Transportation Secretary and FAA Administrators were blaming a routine remote site network upgrade (from copper to fiber) for the system instability.</p>
+<p>On Saturday morning at their press conference (11am EST ish) the Transportation Secretary and FAA Administrators were blaming a routine remote site network upgrade (from copper to fiber) for the system instability.
+I posted this elsewhere, but it's worth noting again.
+
+Who does an IT infrastructure update/upgrade in the middle of a weekday, especially on an apparently critical piece?</p>
+<p>On Saturday morning at their press conference (11am EST ish) the Transportation Secretary and FAA Administrators were blaming a routine remote site network upgrade (from copper to fiber) for the system instability.</p>
+<p>I posted this elsewhere, but it's worth noting again.</p>
+<p>Who does an IT infrastructure update/upgrade in the middle of a weekday, especially on an apparently critical piece?</p>
+<p>This and I would like to add.  Who does an IT infrastructure update/upgrade this close to the busiest day(s) of the year for air travel?  Maybe if you are building out a new infrastructure in parallel that is not interconnected yet but that does not seem to be the case.</p>
+<p>"And Friday CNN's aviation analyst said they believed that AI system could be connected to the nationwide outage, "</p>
+<p>Wow, such dedicated investigative work.  "Is it true that X?"  "It could be.  Dunno, really, but it could be connected."</p>
+<p>Slashdot should be embarrassed for publishing this non-informative crap.</p>
+<p>Slashdot should be embarrassed for publishing this non-informative crap.They're probably proud instead, of posting sheerly speculative anti-AI FUD, because vibes say they should do that and be proud of it.</p>
+<p>Slashdot should be embarrassed for publishing this non-informative crap.</p>
+<p>They're probably proud instead, of posting sheerly speculative anti-AI FUD, because vibes say they should do that and be proud of it.</p>
+<p>To add to the whole AI must succeed, we now have</p>
+<p>Duffy's son-in-law's company got the contract for the FAA's AI tool after they'd made a 3 million donation, so of course Duffy has no reason to pull excuses out of his ass whatsoever...</p>
+<p>On the other hand, no one has even alleged a mechanism for how the SMART system could control anything.</p>
+<p>Duffy's son-in-law's company got the contract for the FAA's AI tool after they'd made a 3 million donation, so of course Duffy has no reason to pull excuses out of his ass whatsoever...
+Adding... The PAC associated with the contractor, who was awarded the SMART system, donated to the congressional campaign of U.S. Rep.-elect Michael Alfonso (R-WI), who is Secretary of Transportation Sean Duffy's son-in-law.  The contract it won was worth up to $875.9 million.
+
+Google: FAA AI SMART Duffy son [google.com] 
+Startup eyed over flight chaos funnels cash to Transportation chief's son-in-law [rawstory.com] Air Space Intelligence INC PAC, which is associated with the contractor Duffy announced in June would develop the Federal Aviation Administration's new AI-powered air traffic management system, contributed to the congressional campaign of U.S. Rep.-elect Michael Alfonso (R-WI)
+Nothing to see here; move along... /s</p>
+<p>Duffy's son-in-law's company got the contract for the FAA's AI tool after they'd made a 3 million donation, so of course Duffy has no reason to pull excuses out of his ass whatsoever...</p>
+<p>Adding... The PAC associated with the contractor, who was awarded the SMART system, donated to the congressional campaign of U.S. Rep.-elect Michael Alfonso (R-WI), who is Secretary of Transportation Sean Duffy's son-in-law.  The contract it won was worth up to $875.9 million.</p>
+<p>Google: FAA AI SMART Duffy son [google.com] 
+Startup eyed over flight chaos funnels cash to Transportation chief's son-in-law [rawstory.com]</p>
+<p>Air Space Intelligence INC PAC, which is associated with the contractor Duffy announced in June would develop the Federal Aviation Administration's new AI-powered air traffic management system, contributed to the congressional campaign of U.S. Rep.-elect Michael Alfonso (R-WI)
+Nothing to see here; move along... /s</p>
+<p>Air Space Intelligence INC PAC, which is associated with the contractor Duffy announced in June would develop the Federal Aviation Administration's new AI-powered air traffic management system, contributed to the congressional campaign of U.S. Rep.-elect Michael Alfonso (R-WI)</p>
+<p>... move them back to floppies [slashdot.org].</p>
+<p>It appears that we took the training wheels off too soon.</p>
+<p>To me it seems it had little to do with AI, just bad update/rollback procedures.</p>
+<p>Clearly had nothing to do with AI because if so they could've typed "Hey Claude, fix this mess. Make no mistakes".</p>
+<p>That doesn't explain why Microsoft didn't use their AI to fix the Outlook outage. Weird</p>
+<p>The explanation given at the initial press conference was such an obvious lie. It was a meaningless word salad. They blamed the outage on routers and switches. What? Seriously?</p>
+<p>Do they understand that anyone with even the most basic knowledge of networking and/or IT would find that laughable?</p>
+<p>The explanation given at the initial press conference was such an obvious lie. It was a meaningless word salad.Not the one I saw around 7pm Pacific. it sort of sounded like something was updated recently, integration testing apparently missed things, something else was overloaded with data and reboot, yet another thing did not restart properly, then it seemed some voice commands from air traffic control were not being broadcast, then they worried it might be happening all over the place, ... ground everything. 
+
+Basically the controller side has been digitized, the data then transmitted to an analog system for broad</p>
+<p>The explanation given at the initial press conference was such an obvious lie. It was a meaningless word salad.</p>
+<p>Not the one I saw around 7pm Pacific. it sort of sounded like something was updated recently, integration testing apparently missed things, something else was overloaded with data and reboot, yet another thing did not restart properly, then it seemed some voice commands from air traffic control were not being broadcast, then they worried it might be happening all over the place, ... ground everything. 
+
+Basically the controller side has been digitized, the data then transmitted to an analog system for broad</p>
+<p>Sure. It's not like a misconfigured router has ever taken down a network before.</p>
+<p>I've actually been peripherally involved in something like this, I think it was September 2000, maybe a few months later.An ATC system where they had two networks, the "office" network and the "core business of actually directing flights" network.  The offices were around 10 miles away from the airport, which is where the ATC mainframe and - obviously- the ATC tower were.  There was a bridge between the networks.There were building works going on in the city, and they cut the cables while excavating.  The a</p>
+<p>You've never seen a BGP problem take entire countries off the internet? Are you new here?</p>
+<p>time to go after the criminals who are making these decisions</p>
+<p>When a twenty-something strong network of nodes that controls air traffic handoff for every aircraft traveling between ATC towers (lets call it Achilles for DNS's sake) is targeted for a demonstration of just how weak our decades old system truly is regarding felling key dominos, it tends to scream one thing.</p>
+<p>Duffy's Debrief was portraying the old man yelling at old systems so hard that he might as well been called Red Foreman.</p>
+<p>C'mon folks.  Zero risk to any American at any time, followed up by a</p>
+<p>Same idiots, same melody, slightly different song</p>
+<p>1) Solicit political donaitions from cronies2) Award government contracts based on who did and didn't donate3) When work done by cronies' companies fails miserably, blame the Biden administration4) Be sure to say "Thank You President Trump"</p>
+<p>Contrast with organizations with well defined CAPA and executive visibility into the process where everyone is religious about making sure It Never Happens Again</p>
+<p>Betteridge's law of headlines with a question mark says that these questions are always to be answered with 'NO'!</p>
+<p>Competent people have a look what the network can take in addition to what it carries, then shape a new thing down well below that. And make sure they can turn it off fast. Sounds a like nobody even checked. Amateurs.</p>
+<p>I have seen this extreme level of stupidity only with IBM tech consultants before. They killed the network of a large bank were I also transferred monitoring data, pretty much the same as they did. The difference is my first question was how much data and my second how much bandwidth can I safe</p>
+<p>The below is what Trump is actually concerned about today according to his own official account:</p>
+<p>“I am working with Senator Tim Scott and, believe it or not, Senator Adam Schiff  and many others, both Republican and Democrat, on the Motion Picture, Television, and Entertainment Revitalization Act. The support and popularity of doing this, and bringing Entertainment back to the United States of America, has been unbelievable!</p>
+<p>“Hollywood, and so many other places, have been virtually ‘emptied</p>
+<p>Trump wasn't flying that day, so why should he care.
+More so, why would he acknowledge a massive failure that happened on his watch.</p>
+<p>Duffy complained that Democrats, former presidential administrations and previous sessions of Congress are to blame, ignoring the fact that Republicans have controlled Congress for 2+ years, the White House for 2 years and that only one Senator, Eric Schmitt (R-MO), has signed on to the Modern Skies Act.  Seems a little self-serving and disingenuous.  Plus the FAA already go</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Amazon Expands Drone Deliveries, and Gets Noise Complaints. 'Like a Swarm of Bees'</p>
+<p>Linus Torvalds Wonders If Linux's AI-Prompted Patch Flood Has Peaked</p>
+<p>The first time, it's a KLUDGE!  The second, a trick.
+Later, it's a well-established technique!
+		-- Mike Broido, Intermetrics</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/MultiverseComputingCAI/efficient-knowledge-distillation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://yro.slashdot.org/story/26/11/14/125229/america-cancels-4000-more-flights-faa-denies-impact-of-new-ai-system?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

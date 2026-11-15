@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Circular Dependencies Between Modules in a Database: A Real Dependency, or One Table in the Wrong Module?</title>
+    <title>llama.cpp v1.0.0 : A stronger foundation for the local AI ecosystem</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9657.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,28 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Circular Dependencies Between Modules in a Database: A Real Dependency, or One Table in the Wrong Module?</h1>
+        <h1>llama.cpp v1.0.0 : A stronger foundation for the local AI ecosystem</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fschemity.com%2Fimages%2Fblog%2Fcircular-dependency-between-modules-misplaced-table%2Fog.png" alt="Circular Dependencies Between Modules in a Database: A Real Dependency, or One Table in the Wrong Module?" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/63148d3b996c52bf0142cdbe/2PgU1GxpJX_LVORaP2RRy.png" alt="llama.cpp v1.0.0 : A stronger foundation for the local AI ecosystem" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fschemity.com%2Fimages%2Fblog%2Fcircular-dependency-between-modules-misplaced-table%2Fog.png" alt="Circular Dependencies Between Modules in a Database: A Real Dependency, or One Table in the Wrong Module?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/63148d3b996c52bf0142cdbe/2PgU1GxpJX_LVORaP2RRy.png" alt="llama.cpp v1.0.0 : A stronger foundation for the local AI ecosystem" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 15
-•
-Originally published at schemity.com</p>
-<p>Disclosure: I build Schemity, a desktop ERD tool - this post is from our blog and uses it for the examples.</p>
-<p>TL;DR: A cycle between modules is counted from two things: the foreign keys, and the list that says which table belongs to which module. On a 34-table PostgreSQL store split into seven modules, ten cycles fell to three when addresses moved to the accounts module and to zero when stock_levels moved to shipping, with no constraint changed. A cycle is a real dependency when every table already sits with the module that writes it; then one foreign key has to go, or the two modules are one.</p>
-<p>A circular dependency between two modules is not only a fact about your foreign keys. It is a fact about your foreign keys and about the list that says which table belongs to which module, and changing that list can remove the cycle without touching the database. So before you break a dependency, check whether one table is filed in the wrong module.</p>
-<p>I measured it on a 34-table PostgreSQL 18.3 store with 43 foreign keys, split into seven modules. That split gave ten cycles between modules. Moving addresses from shipping to accounts left three. Moving stock_levels from catalog to shipping left none. Not one constraint changed. This post shows the query that counts the cycles, how to tell which tables are worth moving, and what a cycle looks like when no move can remove it.</p>
-<p>Because module A depends on module B as soon as one table in A references one table in B, so moving a single table can add or remove a whole dependency.</p>
-<p>Tools that check module structure treat a cycle as an error. Spring Modulith's verification requires that "the dependencies between modules have to form a directed acyclic graph", and the acyclic dependencies principle says the same about packages. Those checks read the code. The database has the same graph, drawn by foreign keys, and those checks never read it.</p>
-<p>Here is the part of the store that matters. A user has addresses, a user has a default address, and a warehouse has an address:</p>
-<p>I had filed addresses under shipping, next to warehouses, carriers and shipments. That one choice makes accounts depend on shipping (users.default_address_id) and shipping depend on accounts (addresses.user_id). File addresses under accounts and both of those keys stay inside one module. The keys are the same; the cycle is gone.</p>
-<p>Write the module of each table into a small table, join it to pg_constraint twice, and walk the result with a recursive query.</p>
-<p>The mapping is the part no catalog can give you, so it is a table you fill in:</p>
-<p>The first query lists every dependency between two modules, with the tables that cause it:</p>
-<p>On the store it returns 14 rows. Three of them point out of shipping and three point into it, which is where every cycle will turn out to run:</p>
-<p>The second query walks those dependencies and prints each cycle once, starting from its alphabetically first module:</p>
-<p>The query reads declared foreign keys only. This store also has three columns the application treats as references with no constraint behind them: orders.coupon_id, tickets.order_id and return_requests.shipment_id. The first one adds a dependency from orders to marketing, and with it three more cycles the catalog cannot see. Counting those three columns, there are ten.</p>
-<p>Now move the table. One UPDATE each, and the cycle query again:</p>
-<p>After the first UPDATE the query returns two cycles, catalog > shipping and catalog > shipping > orders. After the second it returns no rows.</p>
-<p>Two limits before you trust it on your own database. The join is an inner join, so a table missing from table_domains drops out of the count without an error, and conrelid::regclass::text writes a table outside the search_path as shop.addresses and a mixed-case or reserved name in double quotes, so the mapping has to spell names the same way. This lists every table the mapping misses (it will name table_domains itself, which is fine):</p>
-<p>The tables that hold a foreign key into another module, and of those, the ones whose rows the other module writes.</p>
-<p>Counting is a poor guide, and I checked that by brute force. With 34 tables and seven modules there are 204 ways to move one table to another module. A script tried all of them against the ten cycles:</p>
-<p>More than twice as many moves make it worse as make it better, and the second best move by the numbers is nonsense: putting users in the catalog module leaves four cycles. A low count proves nothing about whether the table belongs there.</p>
-<p>So ask who owns the rows, and use the count only to confirm. Two questions settle most tables:</p>
-<p>A third option is to give the contested table a module of its own. That does not help when two tables reference each other. I put addresses alone in a new locations module and got four cycles, one of them accounts > locations, because users and addresses point at each other. Two tables that reference each other form a cycle wherever you draw the line between them; they can only share a module, or lose one of the two keys.</p>
-<p>It is real when every table already sits with the module that writes it and the cycle is still there.</p>
-<p>To see one, I added a column that many order tables grow sooner or later, on top of the cycle-free split:</p>
-<p>The cycle query returns one row, orders > shipping: shipments.order_id points one way and the new column points back. Both tables are where their writers are: the order flow writes orders, dispatch writes shipments.</p>
-<p>The move test agrees. I ran the 204 single moves again and exactly one clears the cycle: moving orders into the shipping module, which leaves an orders module without its orders table. Moving two tables together, shipments and shipment_items into orders, clears it as well, and that is not a table changing module. It is shipping losing its shipments, which is merging the two modules under another name.</p>
-<p>For a real cycle one direction has to go. Here the back reference is the weak one: the latest shipment of an order is the row in shipments with the highest id for that order_id, so a query can derive it and the column can be dropped. Dropping only the constraint and keeping the column does not count: the reference is still there, the catalog query just stops seeing it, as it already fails to see orders.coupon_id. When neither direction can go, merging the two modules is the honest answer: they were one module all along.</p>
-<p>It counts the cycles from the diagram's context views, so trying a table in another module is a drag, one button and a new count.</p>
-<p>Schemity is database design software that reads your live database, shows the impact of every schema change before it runs, and keeps the diagram as a file in Git. To understand your schema at the module level it has two pieces. A context view is a saved, focused view of the schema that shows only a subset of entities and the relationships between them. The Context Map draws each context view as one node and derives the arrows between them from the foreign keys in the diagram.</p>
-<p>I connected the store, grouped its tables into seven legends, and made a context view per legend with Sync from legends. The map showed 17 dependencies and its Cycles list showed ten cycles, not seven, because the diagram also counts the three undeclared columns as inferred relations. Clicking an arrow lists the keys behind it, which is the list you need for the ownership questions above.</p>
-<p>Moving a table is dragging it into the other legend and pressing Sync from legends again, which adds it to one context view and removes it from the other. After addresses moved, the map showed 15 dependencies and three cycles. After stock_levels moved, 14 dependencies and none.</p>
-<p>An AI agent can do the same reading over the local MCP server. get_context_views returns the dependencies, the keys behind each and the cycles. The built-in prompt Organize a diagram by domain groups the tables from your codebase, puts a table several domains use with the domain that writes it, and ends by asking the agent to say, for each cycle, whether one table looks like it belongs in another domain or the dependency is real.</p>
-<p>Schemity does not make that call itself. It lists every cycle the same way and does not mark one as a boundary cycle and another as real. The count is computed; the ownership decision is yours.</p>
-<p>Check the module list before you change the schema.</p>
-<p>A cycle that one sensible table move removes was never a dependency between the modules. List the foreign keys behind both directions. If one of them sits in a table the other module writes, move the table and count again. If every table is where it belongs, drop or turn around one key, and say in the review which one and why.</p>
-<p>The same picture, drawn from a live database, is in how a DDD context map is already in your foreign keys. Once the cycles are gone, the remaining arrows are the keys that cross a boundary, and whether to keep foreign keys between modules is the next decision. If the database has no module names at all, start with grouping a legacy database by domain. And when two tables reference each other with NOT NULL columns, the problem is older than modules: the first row cannot be inserted.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p>llama.cpp makes it possible to run multi-modal LLMs across a wide range of hardware - from consumer-grade local machines to high-end enterprise servers. Through quantization, optimized backends, and a portable C/C++ implementation, we make AI inference accessible at every level of the software stack. We believe this is the most lightweight, versatile and sensible platform for building cross-platform and private AI products.</p>
+<p>Today we release libraries v1.0.0, highlighting our responsibility to those developers. Moving forward, both llama.cpp and ggml will reflect API and ABI incompatibilities with major-version bumps. As adoption grows, we will be stricter about making those boundaries visible to downstream consumers.</p>
+<p>The following rules apply to all ggml-org projects using semantic versioning:</p>
+<p>We are looking forward to expanding the ways in which ggml-org software is distributed and reaches developers and end-users. For more information about how to add ggml-org projects to your packaging and release pipelines, please check the following discussion.</p>
+<p>The project has fostered an amazing open-source community with highly-skilled and talented contributors. With the rapid advance of AI capabilities in the field of software engineering, we continue to adapt and integrate LLMs in our developement cycle in a thoughtful and resonable manner. Maintaining a high quality codebase, staying in control of the architecture and understanding the implementation details will remain our top priorities.</p>
+<p>To reinforce the faster pace of development we continue to invest more and more resources in improving the CI infrastructure behind the projects. Thanks to HF technologies such as HF Buckets and HF Jobs we are able to scale the capacity necessary to guarantee correctness for every change that lands on the master branches. With hardware support from NVIDIA, AMD, Qualcomm, Arm, IBM and Intel, we continue to enroll more self-hosted runners across all major hardware platforms.</p>
+<p>The underlying machine learning engine of llama.cpp - ggml is designed to run on virtually any hardware in existence. This is achieved by implementing dedicated ggml backends. Each backend can be compiled as a dynamic library and optionally loaded at runtime.</p>
+<p>A complete list of the currently implemented backends can be found here.</p>
+<p>We are committed to provide continuous support of all model architectures. Currently, llama.cpp supports more than 150 architecture variants as well as all mainstream speculative decoding methods.</p>
+<p>The llama.cpp team at Hugging Face is thankful for the incredible support from the community. Special thanks to the long-time maintainers of the project and all contributors. This is a significant milestone which would not have been possible without our joint efforts!</p>
+<p>Hey, can you guide me with a project? I am not connected.</p>
+<p>llama.cpp is nice but still needs improvement on huge prompt processing or aka prefill</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/tbson87/circular-dependencies-between-modules-in-a-database-a-real-dependency-or-one-table-in-the-wrong-4eod" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ggml-org/llama-cpp-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

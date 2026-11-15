@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Pointer Provenance in Rust vs C++</title>
+    <title>Quantization-Aware Healing: a compressed, 4-bit model that outperforms its full-precision original</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,131 +15,53 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Pointer Provenance in Rust vs C++</h1>
+        <h1>Quantization-Aware Healing: a compressed, 4-bit model that outperforms its full-precision original</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/yves-alarie-MmZet_7mzMY-unsplash.jpg" alt="Pointer Provenance in Rust vs C++" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/2DSE26PMq2hJqKqEDOLIn.png" alt="Quantization-Aware Healing: a compressed, 4-bit model that outperforms its full-precision original" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/yves-alarie-MmZet_7mzMY-unsplash.jpg" alt="Pointer Provenance in Rust vs C++" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/2DSE26PMq2hJqKqEDOLIn.png" alt="Quantization-Aware Healing: a compressed, 4-bit model that outperforms its full-precision original" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I’ve been exploring Rust, and one topic that got me intrigued is pointer
-provenance, particularly because it’s not easy to visualize.</p>
-<p>To get a feel for
-vtables,
-what I wanted was to look at the actual memory, to see what it really looked
-like and prove that I could in fact call these functions through their
-respective function pointers. With provenance, I wanted to take it apart the
-same way, but it turns out it’s not so straightforward. This only got me more
-intrigued, so let’s see what we can find!</p>
-<p>My first time hearing about provenance, I wondered, why hadn’t I heard about it
-before? It seems so crucial, yet a bit of an obscure concept.</p>
-<p>Let’s start by taking a good look at this snippet. It’s short, but our intuition
-can trick us if it’s our first time coming across this concept. void opaque(int*) is forward declared here, so for us it’s a black box. Neither we
-nor the compiler can rule out that this function dereferences p and writes to
-memory.</p>
-<p>If we compile this with -O2, Clang optimizes this to return 1. Let’s try this
-on Godbolt:</p>
-<p>The question is, how does it know that int* p doesn’t point to the same memory
-address where x lives (meaning that opaque(p) could end up modifying x)?</p>
-<p>The compiler assumes p can’t equal &x because p wasn’t derived from x.</p>
-<p>When I first heard about this, I thought it was a bit of a strange concept. What
-does it mean that something is derived from something?</p>
-<p>I mean, if pointers were just numbers (memory addresses), p could
-theoretically happen to hold the same memory address as x’s allocation on the
-stack. Good thing they’re not just numbers!</p>
-<p>This brings us to the core of provenance. That “derived from” relation
-is provenance: for every pointer, the compiler keeps track of which
-allocation it belongs to and may, therefore, touch.</p>
-<p>I tried to find a way to print this mysterious provenance, but it turns out that
-it’s purely a compiler abstraction. It does not exist as an actual data field
-stored alongside the memory address. (There are exceptions though: feel free to
-look up the CHERI architecture to go down another rabbit hole).</p>
-<p>So what can we do to inspect it? If the compiler knows about it then it must
-exist somewhere. If so, there must be a way to see it.</p>
-<p>This is how I learned about LLVM IR (intermediate representation), which is
-essentially a low-level programming language that acts as a bridge between
-high-level languages (like Rust, C++, etc) and machine code.</p>
-<p>Let’s try it for this code instead, where we also pass &x to opaque to see
-what happens when the compiler doesn’t optimize that part away:</p>
-<p>We can use the -emit-llvm flag on Godbolt to see the LLVM
-IR:</p>
-<p>What the compiler does is to conceptually construct a DAG (directed acyclic
-graph), to answer the question of where a pointer comes from and whether two
-pointers can touch the same memory.</p>
-<p>If the root origins don’t match, LLVM can guarantee that writing through %0
-will never alter the value stored at %2.</p>
-<p>There is so much more to explore here that it’s hard not to get carried away
-because it’s truly fascinating. However, my original goal was to compare how C++
-and Rust handle this, so let’s continue.</p>
-<p>If we were to cast &x to an integer, then LLVM must assume that anyone could
-rebuild a pointer to x from that integer.</p>
-<p>The result is that the compiler gives up the optimization:</p>
-<p>That’s a pity if we only wanted to read the address and never intended to cast
-it back to a pointer. Wouldn’t it be nice if we could communicate this intent to
-the compiler?</p>
-<p>This is exactly what Rust provides with its powerful provenance APIs.</p>
-<p>p.addr() extracts the raw memory address integer while telling Rust’s abstract
-machine:</p>
-<p>I am reading this numeric address for inspection, but I guarantee I WILL NOT
-cast it back to a valid pointer.</p>
-<p>To mirror our previous experiments, we can try to see if the optimization was
-avoided or not:</p>
-<p>What we see is that mov eax, dword ptr [rsp + 12] reloads x after
-opaque(p), meaning that, at least for now, the optimization is given up. Same
-as in the C++ case.</p>
-<p>Still, we can benefit from using the more expressive API, and not relying on
-exposure semantics. It gives the compiler room to optimize in the future, and,
-by telling Miri explicitly what we mean, it can better help us catch bugs.</p>
-<p>In lock-free data structures, we sometimes need to store status flags in the
-lower unused bits of a pointer. It’s a very cool trick, which left me with my
-eyes wide open for a minute when I first read about it. I talk more about it in
-this
-post.
-Essentially, due to alignment, the lower bits of pointers are “wasted” (always
-0), so we can use them to store flags.</p>
-<p>What we can do is work with an intermediate pointer value, which will have the
-flag bit set BUT that also inherits provenance from the original pointer. This
-is exactly the functionality that with_addr provides us. After we’re done, we
-can recreate our valid initial pointer.</p>
-<p>The tagged value is stays a pointer rather than ‘usize’ because an integer is
-just a number and can’t carry provenance.</p>
-<p>Keep in mind that tagged isn’t dereferenceable, given that p.addr() | 1 is
-misaligned for u32. Dereferencing it would be UB.</p>
-<p>addr() reads the address without exposing provenance.</p>
-<p>with_addr() builds a new pointer with a new address but the same
-provenance as the original.</p>
-<p>In legacy code, we’d have to do something like this:</p>
-<p>This code will run, but if we run it with Miri, it emits a warning:</p>
-<p>Actually, the reason that it runs is also interesting. What happens is similar
-to the C++ example. p as usize exposes the provenance of p, and since the
-reconstructed pointer points to the same allocation, provenance is recovered.</p>
-<p>Provenance would be lost if we did some pointer arithmetic and landed in a
-different allocation.</p>
-<p>To see what happens when provenance is not exposed, we can use
-ptr::without_provenance, which creates a bare address with no allocation
-behind it. (It’s useful for dangling or sentinel pointers, but it can’t be
-dereferenced).</p>
-<p>As expected, Miri complains about a dangling pointer and tells us explicitly that it has no provenance.</p>
-<p>Provenance, in short, is a hidden piece of information tracking “which
-allocation” a pointer originates from, which LLVM uses for optimizations.</p>
-<p>In C++, uintptr_t casts force the optimizer to prepare for the worst case by
-disabling some optimizations.</p>
-<p>In Rust, addr(), with_addr() and without_provenance() let you state your
-intent explicitly: you only want the number, or you are deriving a new pointer
-from an existing one. In principle, that gives the compiler room to optimize
-more aggressively. In our experiment, however, the Rust version is unoptimized
-too: x was still reloaded from the stack. Using more expressive
-APIs is still valuable though, as Miri can enforce the rules and catch bugs that
-stem from unintended usage.</p>
-<p>I had planned to compare what Miri and ASan can catch, but I’ll save that for
-another post. It was enough new info as it is and it takes some time to fully
-wrap my head around it.</p>
-<p>I’m currently between jobs and looking for a Rust role, so writing these posts
-keeps me motivated and has helped me find a sense of community. Thank you for
-reading, and I hope you enjoyed it!</p>
+                <p>Making a large language model smaller almost always comes with a cost. The now-standard recipe for efficient deployment is to compress the architecture first, cutting the parameter count by removing layers, heads, or neurons, and then quantize the remaining weights down to 4 bits to shrink memory and compute further. Both steps save a lot, but together they systematically degrade the capabilities people actually care about: reasoning, mathematical problem-solving, and code generation. Because of this, serious deployment pipelines add a recovery step, usually called healing, before the model goes into production. Recent open-weight releases such as gpt-oss, NVIDIA's Nemotron family, and our own Hypernova 60B all rely on some version of this compress-then-heal approach.</p>
+<p>Our latest paper, Quantization-Aware Healing: A Practical Recipe for Recovering Compressed, 4-Bit LLMs, asks a question that the field has mostly left open: once a model has already been through structural compression, not just quantization, how well does that recovery step actually work, and what is the right way to do it? We introduce Quantization-Aware Healing (QAH), and applied to a GPT-OSS 120B model compressed to 60B parameters and quantized to MXFP4, it produces a model that beats its own full-precision (bfloat16) version on 7 of 9 benchmarks. The 4-bit model ends up smaller, cheaper to run, and more accurate than the checkpoint it was quantized from. This inverts the usual relationship between a 4-bit model and the 16-bit model it came from.</p>
+<p>Most efficiency pipelines follow the same three steps: compress the architecture, quantize the compressed weights, then heal the damage. The difference between methods is entirely in that last step.</p>
+<p>The dominant healing recipe is quantization-aware training (QAT). It inserts fake-quantization operators into the forward pass and keeps fine-tuning the model on a task loss, so the weights learn to tolerate the low-precision representation. In practice this means re-running an already expensive multi-stage post-training process, supervised fine-tuning, RLHF, agentic tuning, through a noisier, lower-precision forward pass. It is costly, and as our results show, it can also become unstable if training continues too long past its best point.</p>
+<p>An alternative, quantization-aware distillation (QAD), avoids re-running that history. Instead of a task loss, it distills a frozen full-precision teacher directly into the quantized student through a KL-divergence loss on the output logits. This works well when the only change is quantization, because a genuine full-precision version of the exact same model exists to act as teacher. But once a model has gone through structural compression, fewer layers, heads, or neurons, and not just fewer bits, that assumption breaks. There is no independently trained full-precision version of the smaller architecture. The only candidate teacher is the recovered bfloat16 checkpoint, which is itself a distilled approximation of the original model. Distilling from it anchors the quantized student to a degraded target and caps its accuracy at that recovered checkpoint's own ceiling.</p>
+<p>So the question of how to heal a model that has been both structurally compressed and quantized was, until now, genuinely open.</p>
+<p>QAH removes that ceiling with one change: it distills directly from the original, pre-compression model rather than from the recovered one. Teacher and student do not even share an architecture. The teacher is full-size and full-precision, the student is half the size and running in MXFP4. Because a teacher's output distribution is architecture-agnostic, nothing about the size or shape mismatch prevents the transfer. The student never sees hard labels, only the teacher's output distribution, matched through KL divergence on the logits.</p>
+<p>This reframes what the quantization stage is doing. Under QAH it is no longer a lossy postprocessing step applied after healing is finished. It is a second, full pass of distillation against the original teacher, supervision that the bfloat16 checkpoint never received. The 4-bit student is not compensating for information lost to quantization; it is picking up information the earlier recovery stage did not have the time or data to transfer.</p>
+<p>There is also a stability benefit that falls out of the loss itself. Because KL distillation ties the student to a fixed teacher distribution, once the student catches up there is no further pressure for it to drift. A cross-entropy task loss, by contrast, keeps pushing the student toward hard labels indefinitely. That difference turns out to matter for both accuracy and training stability, as the comparison below shows.</p>
+<p>To make QAH work at long context, where the healing corpus includes documents up to 32k tokens, we reuse the memory-efficient chunked KL-divergence loss from our companion paper on efficient distillation. That loss computes the KL one slice of the sequence at a time and never materializes the full vocabulary-by-sequence grid, which is what makes 32k-token healing fit inside a fixed GPU memory budget. We covered the mechanics of that loss in a previous post.</p>
+<p>QAH overview. After structural compression and quantization, capabilities drop sharply. QAH distills from the original model, a frozen teacher whose logits are precomputed offline, rather than from the recovered checkpoint. Source: paper Figure 1.</p>
+<p>We applied QAH to a GPT-OSS 120B model, compressed to 60B parameters and recovered in bfloat16, then re-quantized to MXFP4 under QAH. The natural comparison is against that same 60B model's bfloat16 checkpoint, the best full-precision version of this architecture that exists. The QAH model wins on 7 of the 9 benchmarks.</p>
+<p>The two benchmarks where QAH trails, MMLU-Pro and SciCode, lose by less than a point and a half. Everywhere else the 4-bit model is ahead of its own 16-bit source, and the largest gains land on exactly the capabilities compression usually damages most: long-context reasoning (+7.4 on AA-LCR) and math (+5.6 on AIME 2025).</p>
+<p>The comparison against the original 120B teacher is just as telling. Despite running at half the teacher's parameter count and roughly a quarter of its weight memory, the QAH model surpasses the full-size teacher on LiveCodeBench (66.5 vs. 66.0) and comes within 1.6 points on GPQA Diamond (67.4 vs. 69.0). The largest remaining gap against the teacher is on AA-LCR, an extreme long-context benchmark where the capacity lost to compression is intrinsically the hardest to recover.</p>
+<p>The 4-bit QAH model matches or beats its bfloat16 source on 7 of 9 benchmarks, and beats the full-size teacher on LiveCodeBench. Source: paper Figure 2.</p>
+<p>To isolate the effect of the loss function from everything else, we also compared QAH directly against QAT under matched conditions, quantizing a GPT-OSS 9B model to MXFP4 and tracking average performance across MMLU-Pro, LiveCodeBench, and GPQA Diamond as training progresses.</p>
+<p>Both methods reach a similar peak, 54.9 for QAH against 54.6 for QAT, so on best-case accuracy they are effectively tied. The difference is in how they get there and what happens afterwards. QAH reaches its peak in about 100 steps, roughly 7 times faster than QAT's 700, and then stays within about two points of that peak for the rest of training. QAT collapses sharply once past its peak, shedding nearly 19 points by step 1,200.</p>
+<p>The practical consequence is a real deployment risk difference. A QAT checkpoint needs careful early stopping against a held-out signal to avoid shipping a model that has already started to degrade, whereas a sufficiently trained QAH checkpoint can be served safely because it simply does not drift. This is consistent with the mechanism: KL distillation against a frozen teacher gives the student no incentive to move once it matches the teacher, while a cross-entropy objective keeps pushing on hard labels and eventually erodes capabilities the model inherited from the original.</p>
+<p>QAH peaks at 54.9 in roughly 100 steps and holds; QAT reaches 54.6 only around step 700, then loses nearly 19 points by step 1,200. Source: paper Figure 3.</p>
+<p>The accuracy story comes paired with the efficiency story that motivated compression in the first place. At 4-bit precision the QAH model uses roughly 4 times less weight memory than the bfloat16 student, and at half the parameter count of the 120B teacher it roughly halves compute per token, which is what lets it run on substantially smaller hardware. For model families that ship in bfloat16 rather than 4-bit, the combined parameter and precision reduction would be closer to 8 times less compute per token.</p>
+<p>The takeaway is that a compressed, 4-bit model does not have to be a lower-accuracy version of its full-precision counterpart. With this healing recipe it can be smaller, cheaper to serve, and more accurate at the same time, and it reaches that point in a fraction of the training a QAT recipe would need. Quantization stops being a tax you pay for efficiency and becomes an extra opportunity to teach the model.</p>
+<p>This work is part of Multiverse Computing's ongoing research into making large models smaller and cheaper to run without giving up the capabilities that make them useful. It sits alongside our companion work on efficient distillation, which supplies the long-context training machinery QAH depends on.</p>
+<p>Want the full technical details, including the healing pipeline, the chunked KL implementation for long-context healing, and the distributed-training findings? Read the full paper, or get in touch with our team to talk about applying compression and healing to your own models.</p>
+<p>Making a large language model smaller almost always comes with a cost. The now-standard recipe for efficient deployment is to compress the architecture first, cutting the parameter count by removing layers, heads, or neurons, and then quantize the remaining weights down to 4 bits to shrink memory and compute further. Both steps save a lot, but together they systematically degrade the capabilities people actually care about: reasoning, mathematical problem-solving, and code generation. Because of this, serious deployment pipelines add a recovery step, usually called healing, before the model goes into production. Recent open-weight releases such as rbtv77 gpt-oss, NVIDIA's Nemotron family, and our own Hypernova 60B all rely on some version of this compress-then-heal approach.</p>
+<p>This is a really fascinating take on model compression 🤯🔥. The idea that a 4-bit model can actually outperform the full-precision version turns the usual assumption about quantization completely upside down.... Instead of simply accepting the accuracy loss that comes with compression, QAH seems to show how targeted recovery can bring back—and even improve—important capabilities like reasoning, math, and coding. 🧠⚡</p>
+<p>What really caught my attention is the result with the compressed GPT-OSS 120B → 60B model.... Getting a smaller MXFP4 model to beat its own bfloat16 checkpoint on 7 of 9 benchmarks is pretty impressive. 📊🚀 It makes the whole compress-then-heal pipeline feel much more practical for real-world deployment, especially when memory usage and inference costs matter.</p>
+<p>I also like the broader implication here.... Quantization doesn't necessarily have to mean sacrificing model quality if the recovery process is designed with the quantized model in mind. 💡🔧 A smaller model that costs less to operate while still delivering stronger benchmark performance could be a huge advantage for teams trying to deploy capable LLMs efficiently.</p>
+<p>Definitely an interesting direction for efficient AI deployment.... Turning a heavily compressed 4-bit model into something that can outperform its larger full-precision counterpart is the kind of result that makes you rethink what "compression" actually means. 👏🔥 Really curious to see how far Quantization-Aware Healing can go across other architectures and workloads.... 🚀🧠</p>
+<p>Hi there! From how I'm reading this, I think you might have missed a method error in your experiment that invalidates your headline.</p>
+<p>The headline comparison looks like it has no control. The bf16 60B got one round of distillation and the MXFP4 60B got that round plus a second round from a better teacher. The obvious missing comparison is to give the bf16 60B the identical second distillation pass in bf16, same data, same steps, same teacher. Without that comparison you cannot separate "QAH is a good recipe" from "we trained one checkpoint longer against a teacher than the other."</p>
+<p>Results table labels the teacher "120B teacher (MXFP4)", which is right since gpt-oss-120b ships with MXFP4 MoE weights natively. But the approach section says the teacher is full-size and full-precision, and the title claims the student beats its full-precision original. Those contradict.</p>
+<p>Unless I'm wrong, I'd retract this and consdier republishing when you can show the significant difference on the comparable arms without extending one further than the other with more compute.</p>
+<p>You're right that the headline table compares checkpoints with unequal training. The 60B bf16 checkpoint got one distillation pass (the recovery); the 60B MXFP4 checkpoint got that pass plus a second one against the 120B teacher. We describe that second pass in the approach section, but we should have been explicit that the table therefore doesn't, on its own, separate "distilling under quantization" from "distilling for longer." We'll add that caveat to the text.</p>
+<p>A bit of context on what the paper is: it's an applied case study, not a theoretical claim. The question we set out to answer is the one a deployment team faces: Given a compressed model that has to ship in 4 bits, what's the best way to run the quantization step? The result we stand behind is narrow and reproducible: the shipped 4-bit checkpoint scores above the bf16 checkpoint it was quantized from, rather than below it, which is the usual outcome of direct post-training quantization. What we shouldn't have leaned into is the stronger causal reading, that quantization itself is "free training", and you're right that the current table doesn't isolate that.</p>
+<p>The comparison that would settle it is the one you describe: the bf16 60B given the identical second pass. same data, steps, teacher and, separately, that continued bf16 checkpoint post-training-quantized to MXFP4. The second is really the decision anyone deploying faces: heal under quantization, or quantize afterwards. If we extend this for a revised version, those are the arms we'd add; either way we're flagging them as a limitation of the current version rather than claiming the table resolves the question.</p>
+<p>We don't think retraction is the right call. The reported numbers are real and reproducible, and the practical result stands. But we agree the causal framing needs that control, and we'd rather correct it in the open than argue it. Appreciate the push.</p>
+<p>Finally, now make the network complex, and use classical versions of 7 1 3 code to build a carnot cycle, details: jhegedus42/Szima on github, the codes will give the hamiltonian/legendre... if u want look at the 7x7x7 steano tower and E8 - more details : https://chatgpt.com/share/6a9ed0ab-0578-83ed-adb6-5cd5f1fac11e - u go on the right path as an engineer, now u need the theory to know where u r going</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://sofiabelen.github.io/projects/pointer-provenance-in-rust-vs-cpp/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/MultiverseComputingCAI/quantization-aware-healing" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

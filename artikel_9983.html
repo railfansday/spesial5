@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Run AI workloads on any cloud, store on Hugging Face: zero-egress storage with SkyPilot</title>
+    <title>Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9983.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,32 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Run AI workloads on any cloud, store on Hugging Face: zero-egress storage with SkyPilot</h1>
+        <h1>Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/skypilot-hf-storage/thumbnail.png" alt="Run AI workloads on any cloud, store on Hugging Face: zero-egress storage with SkyPilot" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/236933.jpg?imageId=236933&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="Jensen Huang&#x27;s self-sabotage sends Nvidia into a midlife crisis" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/skypilot-hf-storage/thumbnail.png" alt="Run AI workloads on any cloud, store on Hugging Face: zero-egress storage with SkyPilot" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/236933.jpg?imageId=236933&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="Jensen Huang's self-sabotage sends Nvidia into a midlife crisis" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>For most teams, models and datasets live in a bucket in one region of one cloud. The GPUs you can get, whether for development, training, or serving, increasingly sit on a different cloud than your data. The moment those two come apart, you pay a cross-cloud transfer tax just to read your own data onto your own GPUs.</p>
-<p>Together with Hugging Face, we've joined the two halves: your models and datasets stay on the Hub, and SkyPilot runs the compute (dev, training, or serving) on whatever cluster has the GPUs. Mount a Hugging Face Bucket or any Hub repo into a SkyPilot job with one hf:// URL and the HF_TOKEN you already have, then launch it wherever capacity is. Hugging Face charges no egress, so reading your data onto those GPUs costs nothing, on any cloud.</p>
-<p>SkyPilot tasks already read and write cloud object stores (S3, GCS, Azure, R2, and many more) by mounting them at a local path. Hugging Face Storage now joins that list as store: hf, reached through the hf:// scheme:</p>
-<p>That one hf:// scheme covers the whole lifecycle: read the model and dataset from their repos, write checkpoints to a Bucket while you train, publish the finished model back to a repo, and pull it onto inference servers when you serve. Most teams already keep their models and datasets on the Hub, so there is no migration step and no new storage account to create.</p>
-<p>MOUNT uses Hugging Face's hf-mount FUSE backend, so a bucket or repo shows up as a local path next to SkyPilot's other FUSE mounts (gcsfuse, blobfuse2, rclone, goofys). The fetching happens at the filesystem layer: when your code issues a read(), the driver pulls just those bytes from the Xet backend, so only the data you actually touch crosses the network, and hf-mount keeps an on-disk cache so repeat reads stay local. That on-disk cache is the behavior SkyPilot gives its other backends under MOUNT_CACHED, where a plain MOUNT instead streams every read from the bucket with nothing kept locally. For the hf store, MOUNT and MOUNT_CACHED behave the same, so either mode keeps the cache.</p>
-<p>Because reads are lazy, a process can start working through a large file before the whole file has downloaded, instead of blocking on a full copy first. That keeps the GPU busy almost immediately, training on data as it streams in rather than sitting idle (and billing) while a dataset or checkpoint copies down. It pays off most on the first epoch, when nothing is cached yet. COPY takes the other route and downloads through huggingface_hub up front, with no special requirements.</p>
-<p>Authentication is the token you already have. Set HF_TOKEN in your environment and hand it to a run with --secret HF_TOKEN; SkyPilot uses it for the mount on whatever cloud the job lands. One token works whether the job lands on AWS, GCP, Azure, Nebius, Lambda, or your own Kubernetes cluster, so there are no per-cloud bucket keys to juggle.</p>
-<p>GPU capacity rarely comes from one place anymore. To get enough H100s and H200s, teams hold reserved and committed capacity across several vendors at once (a block on a hyperscaler, a cluster on a neocloud, maybe an on-prem rack) and run wherever they have allocation. SkyPilot is built for this: one job spec, scheduled across 20+ clouds, Kubernetes, and on-prem, landing on whichever reserved cluster is free.</p>
-<p>Object storage has been the catch. Object stores are regional and per-cloud, so feeding a GPU or an inference server that sits in a different vendor's data center means either keeping a copy of your data in every vendor's bucket or paying to pull it across. Most clouds charge egress (around $0.09/GB out of AWS) the moment data leaves their network, and often between regions inside one cloud. Pulling a base model onto every inference node, or iterating a dataset for several epochs from a cluster on another cloud, adds a hefty bill on top of GPUs you have already reserved. Teams end up pinning each run to whichever vendor holds the data and leaving the rest of their capacity idle.</p>
-<p>Hugging Face Storage takes that cost off the table where it bites: the read side. With no egress or CDN fees and storage at $12-18/TB/month (versus AWS S3 at roughly $23/TB plus egress), the same bucket is reachable from every one of those clusters, and reading from it is free no matter where the GPUs run. Writing back still costs your compute cloud's usual egress, the same as it would to any off-cloud store, but for most AI work the reads dominate: a dataset streamed over many epochs, or model weights pulled onto every new training or inference node. So you stop pinning each run to whichever vendor holds a copy of the data.</p>
-<p>To collect some benchmark numbers, we ran a small fine-tune: Qwen/Qwen3.5-4B on the HuggingFaceH4/Multilingual-Thinking dataset with TRL's SFTTrainer, mounting the model read-only from its Hub repo and writing every checkpoint to a Hugging Face Bucket. The same SkyPilot YAML ran on AWS, GCP, and Lambda, changing only --infra. SkyPilot placed each job wherever GPUs were free, and all three read and wrote the same bucket.</p>
-<p>Per cloud, checkpoints wrote to the bucket at:</p>
-<p>Hugging Face Buckets are built on Xet, which uses content-defined chunking to split files into ~64 KB chunks and store each unique chunk once. Because the boundaries follow the content, an edit changes only the chunks it touches and the rest are recognized as already stored. This pays off in a few places:</p>
-<p>How much you save depends on how much your artifacts overlap, but the deduplication is automatic: you write a checkpoint as usual, and only the new chunks leave the machine.</p>
-<p>Add an hf:// mount to any SkyPilot task and launch. MOUNT needs a base image with glibc 2.34+ and /dev/fuse.</p>
-<p>The initial store: hf support started as a contribution from Nikhil Jha. The Hugging Face team carried it forward and upstreamed the hf-mount FUSE fixes that let it mount in unprivileged containers, the default on many Kubernetes clusters. The SkyPilot team wired it into the storage backend. The whole path is open source: SkyPilot, Hugging Face's hf-mount, and the huggingface_hub client.</p>
+                <p>The competition is circling like vultures</p>
+<p>Nvidia CEO and founder Jensen Huang has been ousted after nearly two weeks of controversy that, at times, felt more like a soap opera than reality: a wealthy businessman, reported affairs, and an alleged Chinese spy and GPU smuggler.</p>
+<p>For Nvidia’s board, it seems there was no question Huang had to go. The man behind what was recently the most valuable company in the world proved too big a liability to retain in any capacity. He was too toxic even for a demotion from CEO to chairman, a vantage point that would have retained Huang as the face of the company even if he could no longer be trusted to run it.</p>
+<p>Replacing him won’t be so easy. Nvidia now faces an identity crisis. Huang, who has led the company for more than three decades, has no clear successor. The GPU slinger has no shortage of brilliant engineers, but executives capable of wrangling one of the biggest and most influential brands in the world, not so much.</p>
+<p>Ian Buck, father of CUDA and Nvidia’s VP of hyperscale and HPC is currently favored by many to be Huang’s successor. Buck has taken on a more public role within Nvidia in recent years headlining keynotes at events like Supercomputing and the AI Infra Summit.</p>
+<p>CFO Colette Kress, a bean counter who’s kept Jensen’s ambitions grounded for more than a decade, now takes the reins as interim CEO while the board searches for its next figurehead.</p>
+<p>And while Kress fights to contain the chaos, others will no doubt capitalize on Huang’s controversial choice of consorts to advance their own agendas.</p>
+<p>One need only ask a few inconvenient questions to cast doubt on Nvidia’s loyalties. How deep does China’s influence in Nvidia go? Can Nvidia’s hardware still be trusted? You get the idea.</p>
+<p>It certainly wouldn’t be the first time Nvidia’s and, by extension, Huang’s loyalties have been called into question. In late 2023, Cerebras CEO Andrew Feldman blasted rival Nvidia for supplying GPUs to China in spite of US export controls, calling the behavior “un-American” and likening the graphics titan to an AI arms dealer.</p>
+<p>Nvidia has also faced criticism from US government officials, including former commerce secretary Gina Raimondo, for failing to take a hint and trying instead to limbo under US export controls in order to continue selling chips to the Middle Kingdom.</p>
+<p>After the Trump administration's short lived blockade of H20 sales early last year cost the company some $10.5 billion, Huang spent much of the 2025 lobbying the Trump administration to reverse export bans on the sales of older Hopper generation GPUs to China, an endeavor which ultimately proved successful.</p>
+<p>One could make the case that Huang’s ongoing efforts to sell Nvidia’s chips to China were financially motivated. But that argument is undermined by Huang admitting to having an extramarital affair with Megaspeed exec Alice Huang (no relation), a woman that US intelligence has accused of moonlighting as a Chinese spy and helping to smuggle GPUs into the country.</p>
+<p>When technology and politics collide, the appearance of impropriety is often more damning than the impropriety itself.</p>
+<p>Uncle Sam has forced Chinese companies out of the United States for the mere possibility that they could be coerced into planting back doors in critical infrastructure. Just ask Huawei whether the truth counts for anything once Washington has decided that you’re a national security threat.</p>
+<p>Huang’s affairs may not just cost him his job, but could cost Nvidia key government contracts and make the company’s hardware less attractive, particularly in highly-regulated and notoriously risk-averse industries.</p>
+<p>Rival chipmakers will no doubt capitalize on Nvidia’s bad optics if Huang’s departure doesn’t pop the AI financing merry-go-round bubble first – Nvidia's stock lost about 25% of its value in the few days after news about Huang started breaking, only recovering slightly after his ouster. Regardless, with Nvidia’s reputation marred and its future shrouded in uncertainty, once loyal customers may be more willing to explore alternative providers.</p>
+<p>There are certainly plenty to choose from. Amid a surge in custom AI chips from the likes of Broadcom, Marvel, and others, Nvidia’s main advantage wasn’t so much technological as it was simply considered a safe bet.</p>
+<p>AMD is the most obvious winner here. As we reported earlier this year, the House of Zen’s GPU tech has already surpassed Nvidia’s, at least on paper. What’s more, the company has a long and unblemished relationship serving the US government. AMD’s chips now power two of the Department of Energy’s three largest and most sensitive supercomputers.</p>
+<p>Meanwhile, hyperscalers with sufficient cashflow – think Google, Microsoft, Amazon, and Meta – may seek to insulate themselves from Huang’s fallout by investing more heavily in homegrown silicon and offering it to customers.</p>
+<p>Then there's the threat from the man himself. Huang's ambitions and influence are such that he's unlikely to fade into obscurity. He may disappear from the spotlight while things blow over, but it’s a pretty sure bet that he’ll pop up at a new company eventually, and will still have enough sway to poach some of Nvidia’s top engineers. ®</p>
+<p>Collabora and Nextcloud pitch alternatives as education customers weigh the cost of losing free services</p>
+<p>Accessing banned content is as easy as whipping out a thesaurus, Parliament's Communications and Digital Committee hears</p>
+<p>PARTNER CONTENT: Real-time endpoint data keeps AI-driven IT operations accurate, fast and under control</p>
+<p>Safety reasons and unspecified communications issue cited</p>
+<p>In the aftermath of Jensen Huang's resignation, not only may the AI bubble pop, but the world economy is in some peril</p>
+<p>Forensic report finds Blackwell's fingerprint in DeepSeek, Moonshot AI, MiniMax and Ant Group models</p>
+<p>Forensic report finds Blackwell's fingerprint in DeepSeek, Moonshot AI, MiniMax and Ant Group models</p>
+<p>Anthropic sets behavior standards to protect Claude from rough treatment</p>
+<p>The competition is circling like vultures</p>
+<p>Chips boast up to 256 cores, clocks up to 5.3 GHz, and IPC gains of 20 to 31 percent, just not all on the same SKU</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Mint 27 to land before Christmas, with stable Wayland display upgrades, as punters try out Cinnamon 6.8</p>
+<p>One installer now offers conventional and read-only systems as separate Micro distro bows out</p>
+<p>Very nearly 30something environment gets spruced up… and there's a new Trinity, too</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/skypilot-hf-storage" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/ai-and-ml/2026/11/12/jensen-huangs-self-sabotage-sends-nvidia-into-a-midlife-crisis/5309480" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

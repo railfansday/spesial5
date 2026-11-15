@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing a DSL for high performance parallel programming in OxCaml</title>
+    <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9857.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,217 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Writing a DSL for high performance parallel programming in OxCaml</h1>
+        <h1>Rebuilding AUTOMATIC1111 with Gradio Workflow</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://blog.janestreet.com/writing-a-dsl-for-high-performance-parallel-programming-in-oxcaml/spmd.png" alt="Writing a DSL for high performance parallel programming in OxCaml" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://blog.janestreet.com/writing-a-dsl-for-high-performance-parallel-programming-in-oxcaml/spmd.png" alt="Writing a DSL for high performance parallel programming in OxCaml" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Using ASCII waveforms to test hardware designs</p>
-<p>The following is part of a series of posts about 2026 summer intern projects—for more,
-see “What the interns have wrought, special jumbo 2026
-edition”</p>
-<p>We have a lot of performance-critical SIMD code (single-instruction, multiple-data)
-running on CPUs across the firm. These are highly parallel programs where you run the same
-computation across arrays of data, in our case for options pricing or for low-latency risk
-checks. Because OCaml hasn’t historically exposed SIMD instructions, these programs often
-involve an inner loop written in fairly esoteric C. Writing these loops requires
-implementers to think carefully about hardware, and doing performance tuning, such as
-modifying unroll factors or vector widths, can require major changes to the code.
-Moreover, these programs are constrained to a specific instruction set. If we were to
-target a different architecture or a newer processor, we’d have to rewrite the program.</p>
-<p>For his summer internship, Sai Konkimalla built a compiler for a domain specific language
-(DSL) that makes SIMD more ergonomic and widely accessible. The compiler takes advantage
-of OxCaml features that were only very recently added to the
-language, such as runtime metaprogramming, to enable users to write a kernel just once as
-a regular-ish OxCaml function, then compile and run it on multiple architectures.</p>
-<p>To help solve the problem of SIMD code being rather difficult to write and maintain, our
-DSL uses the SPMD, or “single program, multiple data” programming model. As
-opposed to SIMD intrinsics, SPMD is higher level and not tied to a specific instruction
-set. We might normally think of higher-level languages as slower, but with SPMD, a higher
-level of abstraction lets the compiler make better decisions about how to optimally use
-the underlying hardware. This ability can lead to significantly faster code.</p>
-<p>SPMD was popularized by CUDA (for Nvidia GPUs) and ISPC (for Intel CPUs). In this model,
-you write a program describing what happens at each index of a loop, then the compiler
-converts it into a parallel computation. For example, in CUDA:</p>
-<p>Notice how there’s no loop here: you only define the loop body, and the compiler decides
-how to run it. In CUDA, when you launch a kernel on a GPU, you can declare how many blocks
-of threads to run and the GPU will schedule them accordingly.</p>
-<p>In ISPC, foreach also abstracts away how the loop is actually executed:</p>
-<p>In both cases, the compiler translates the code into low-level SIMD instructions. Not
-specifying the exact instructions also means SPMD programs can benefit from future
-hardware improvements. If we get a new, faster CPU with a different instruction set, the
-SPMD compiler can seamlessly compile existing code to it.</p>
-<p>Let’s go over an example of the DSL that Sai implemented. We start by defining the
-kernel’s signature, including its output type, input types, and the dimension of the
-output:</p>
-<p>In this example, we’re writing a kernel that takes in two F32 slices and returns one
-F32 slice.</p>
-<p>Future work on a ppx syntax extension will make it possible to rewrite the above simply
-as:</p>
-<p>Note the let open (val Spmd.open_ graph) in. This brings the DSL operations which
-construct a computational graph into scope. You can think of the graph value as proof
-that you’re in the graph-construction phase, not the runtime of the generated program.
-(Bonsai uses a similar
-trick
-for creating its incremental graph.)</p>
-<p>Like CUDA, we don’t write the kernel as a loop. Instead, the developer writes a function
-that computes a single entry of the output slice, and the SPMD compiler generates code to
-loop over the output slice and compute the value at each index.</p>
-<p>You may wonder why we loop over the output and not the inputs. Looping over the output
-is easier to model because each iteration writes to exactly one location, so iterations
-can be easily vectorized, reordered, or parallelized. If we were to loop over the inputs,
-different iterations could write to the same output entry. The compiler would then have to
-reason about whether the writes could be re-ordered. By guaranteeing that each output
-entry is written exactly once, we can avoid this complexity.</p>
-<p>One wrinkle with Sai’s project is that we wanted to execute the SPMD compiler at runtime.
-Runtime compilation (often called just-in-time or JIT compilation) is when the compiler
-generates code while the program is running. This gives us two main advantages: we don’t
-have to worry about building for all potential target architectures at compile time, and
-we can use data obtained at runtime for optimizations.</p>
-<p>That latter point is especially important for generating high-performance code. When
-executing at runtime, the compiler has more data that it can use to optimize the code than
-it would when executing ahead-of-time. For example, our compiler can use runtime data to
-compile away branch instructions, which can slow down execution by consuming CPU
-resources.</p>
-<p>To implement our JIT compiler, we used runtime metaprogramming, a feature that lets us
-generate, compile, and evaluate OxCaml code at runtime by using the OxCaml compiler as a
-library. As far as we know, Sai’s project was the first real program at Jane Street to use
-it. (He discovered some bugs in its implementation and helped report/reproduce them for
-the OxCaml team.)</p>
-<p>Let’s take a look at an example that illustrates the power of compiling at runtime. In
-this code, we match on the metric to choose which algorithm to execute:</p>
-<p>With a normal OCaml program, this would create a branch and two code paths. Every time we
-execute this code, we’d have to spend time evaluating the branch and picking the right
-code path.</p>
-<p>With the SPMD compiler, we can compile after we know the value of metric. Then the JIT
-compiler can evaluate the branch during compilation and produce more efficient code. For
-example, here’s the intermediate representation that the code gets compiled into:</p>
-<p>Notice how we don’t branch on metric in the emitted code. Because the compiler knows the
-value of metric, it can emit just the chosen algorithm.</p>
-<p>Sai started his project by working on the compiler’s front end. The front end takes the
-kernel definition that we saw above and translates it into the following
-GADT that models a directed acyclic graph
-(DAG):</p>
-<p>(The 'u type variable in this GADT declares the expression’s rate, which indicates
-whether an expression is the same for every index in the entire output slice (uniform)
-or may change at each element in the slice (varying). In other words, it signals which
-pieces of your computation only need to be computed once and which pieces need to be
-computed per index.)</p>
-<p>Sai’s first task was to add support for numeric data types such as I8, I16, I64,
-U8–U64 and F64, including arithmetic operations and conversion operators. After
-that, he started implementing booleans and control flow constructs. Unlike most
-conventional programming languages, SPMD has some nuances to its control flow. Instead of
-a single if construct, SPMD has three separate constructs all designed for parallel
-execution:</p>
-<p>if_var lets you branch on data that varies per index (i.e., per SIMD lane). In the code
-below, the if_var allows the user to guard code that should only be run when g happens
-to be positive:</p>
-<p>The plain if_ can’t do that, because the condition is a bool# uniform and therefore it
-must be the same value for all lanes.</p>
-<p>select and if_var are similar in that they both take in a condition of type bool#
-varying. Where the two constructs differ is in how the branches are evaluated. With
-if_var, the compiler can decide whether to execute the branch that is not chosen by
-the condition, whereas with select, both branches are always evaluated. Further,
-if if_var executes an untaken branch, any potential side effects, such as raising
-exceptions, will not be observable. So select true 1 (1/0) will raise an exception,
-but {if,if_var} true 1 (1/0) will not.</p>
-<p>Usually, a high-performance JIT compiler would target a low-level language such as
-assembly or LLVM IR, which necessitates thinking quite hard about complicated details such
-as registers, pointers, and so on. Luckily, we didn’t have to do this, since we could use
-metaprogramming to emit OxCaml code. This also lets us rely on optimizations in the OxCaml
-compiler, saving us from having to implement them ourselves.</p>
-<p>OxCaml’s metaprogramming features let us explicitly generate OxCaml code at runtime using
-quotes and splices. A quotation represents an OxCaml expression that is created at
-runtime and will be evaluated at a later time. For example, <[if Random.bool () then 42
-else 5]> represents an unevaluated expression of type int, so the quotation itself has
-type <[int]> expr. Once this expression is evaluated, its result will be an int.</p>
-<p>Quotations can be interpolated into other quotations by splicing ($):</p>
-<p>So rather than writing the standard recursive power function that computes x^n:</p>
-<p>you can write a power_expr function that creates a quoted expression that will compute
-x^n for a given n, effectively inlining and optimizing the recursive function into a
-single expression. This is a form of partial
-evaluation where we’re able to take a
-function and produce a much faster version specialized to a particular value of n.</p>
-<p>Sai’s backend walked the DAG and emitted OxCaml code for each node. For instance, the
-backend emits the following quoted OxCaml code for arithmetic expressions:</p>
-<p>If we were to compile a basic kernel such as:</p>
-<p>we’d get a DAG that represents the arithmetic operations, and use that to generate quoted
-OxCaml code:</p>
-<p>Sai implemented these emitters for all of the node types in the DAG, such as the if_,
-if_var and select control flow constructs.</p>
-<p>At this point, Sai needed to validate that his JIT implementation was both fast and
-correct. One strategy he used was to compare the JIT against a reference implementation.
-We had previously implemented an interpreter that took the front-end representation and
-directly executed it. While extremely slow, we could be fairly confident that the
-interpreter would have the correct behavior, so could be used to verify that the JIT was
-also correct.</p>
-<p>Sai wrote four example programs, including an implementation of Newton’s square root
-algorithm and a kernel adapted from some production code, in plain OxCaml, C with AVX2
-intrinsics, C with AVX512 intrinsics, and as an SPMD kernel (which could be either
-executed by the interpreter or JIT compiled). Each combination was benchmarked on inputs
-of various sizes.</p>
-<p>Sai also worked on an extensive test suite for all of the different language features and
-edge-cases. This suite included a test that generated random inputs with Quickcheck
-generators, then ran those inputs on the four example programs. Their outputs were
-cross-checked and compared bit by bit. He also wrote tests confirming that the code didn’t
-allocate on the heap.</p>
-<p>The benchmarks found that the JIT was much faster than the interpreter. However, the JIT
-was about the same speed (or slightly slower) than the manual OxCaml code and
-significantly slower than the C implementations. This wasn’t that surprising, since we
-hadn’t implemented any real optimizations or tuning in the compiler. Naturally, this
-needed to change if we wanted to catch up to the C implementations.</p>
-<p>Sai then started looking at adding optimizations to the compiler. With the current
-compilation pipeline, this would have been slightly painful. Our front end representation
-was not designed to be easily analyzed or optimized. While that wouldn’t have necessarily
-stopped us from doing analysis, it’s often a better idea to add an intermediate
-representation (IR) that is more amenable to optimization. Sai implemented an IR based on
-A-normal form (ANF), a format where each intermediate value gets its own variable. This is
-the IR that we saw in the previous section about optimizing away control flow:</p>
-<p>The IR is more verbose but easier to analyze. For example, because all intermediate values
-are assigned a variable, it becomes easy to remove dead code; just look if an intermediate
-value is used anywhere after its definition.</p>
-<p>Sai designed this IR with a key design principle in mind: Generating the final OxCaml code
-from the IR should be a trivial process. Any interesting compilation logic should end up
-explicitly represented in the IR.</p>
-<p>One instance of this principle shows up in how we model loops. As we mentioned before,
-kernels only declare what we do on each loop iteration, not how we loop over the code
-itself.</p>
-<p>But in the IR, we explicitly specify the loop, as well as load/store logic. That way, the
-optimizer can reason about how to re-order or unroll loops. For example, the above kernel
-would produce the following IR:</p>
-<p>The optimizer can analyze this IR and see that v1 and v2 do not depend on i and
-therefore can be lifted out of the loop:</p>
-<p>It can also rewrite the loop to process 4 elements at a time, which reduces the amount of
-branching in the code.</p>
-<p>By making the IR fairly explicit, we’re able to reason about—and therefore optimize—the
-code effectively.</p>
-<p>Like with the previous backend implementation, Sai put in a lot of work to validate the
-correctness of the new compilation path. He added the new backend to the existing
-cross-validation logic across the test suite, then added expect tests that printed the IR
-and the emitted OxCaml for various examples, which helped us confirm that the behavior was
-exactly as expected.</p>
-<p>Once we were confident that the new IR-based path was correct, Sai deleted the previous
-backend.</p>
-<p>With the current implementation, the IR backend generates essentially the same code as the
-first JIT, so the two perform about the same.</p>
-<p>However, optimizations are now significantly easier to add. We’re currently working on
-adding vectorization and constant hoisting to the compiler. Preliminary benchmarks have found
-that these changes result in code that is on-par with our C AVX2 implementation.</p>
-<p>We’re also working on adding scheduling. Scheduling lets users customize how the kernel
-loops over the code with a sophisticated set of transformations like “split this loop into 8
-piece chunks, vectorize these chunks, then unroll by 4”. Intelligent scheduling is important
-for getting the maximum possible performance out of the kernel. Eventually these schedules
-could also be auto-generated and benchmarked, so that the compiler can find the optimal
-one for your kernel.</p>
-<p>Nicholas is a software engineer and technical writer at Jane Street. He has written
-multiple blog posts about chili oil.</p>
-<p>Using ASCII waveforms to test hardware designs</p>
-<p>If you're interested in working at a place where functional programming meets the real world, then apply for a job at Jane Street.</p>
+                <p>In our last post, we built five small gr.Workflow graphs and hinted at what it would take to build something as complex as AUTOMATIC1111's stable-diffusion-webui. In this post we walk you through Workflow1111, where we have rebuilt most of AUTOMATIC1111's feature set as a single workflow canvas.</p>
+<p>Workflow1111 is a graph of eleven media pipelines built using seventy-three nodes. It brings together SOTA models for text-to-image, hi-resolution fix, image-to-image, prompt-matrix grids, VLM interrogate, detection-to-inpaint masks, ControlNet-style annotators, background removal, PNG Info storing, and image-to-video.</p>
+<p>You can run any of these pipelines by signing in with your Hugging Face account or providing an access token. Once you sign in, the model calls use your own quota.</p>
+<p>👉 Try Workflow1111, or duplicate the Space and start rewiring it for your own use case.</p>
+<p>All the media pipelines are built from the same four operator kinds covered in our last post and the official guide. Each node on the canvas wraps one operator, and the operator's inputs and outputs become the ports you connect edges to. As a quick reference on our four operator kinds: fn is a Python function, model is a model called through InferenceClient, space is another Gradio Space, and dataset is a row from a Hub dataset.</p>
+<p>Let's go through the pipelines one by one.</p>
+<p>This is the core pipeline. It has the controls you'd expect from A1111's txt2img tab: negative prompt, steps, CFG, seed, width and height, plus a model_id field for choosing the checkpoint. The prompt goes through a prompt-builder fn node first, which appends the selected style preset and cleans up the text, then into a model node that calls the checkpoint through Inference Providers. A post-process fn node writes the generation parameters into the PNG's metadata on the way out, which is what the PNG Info pipeline reads back later.</p>
+<p>In Automatic1111, hi-resolution fix first upscales the txt2img output and then runs a second denoising pass. Here it's a two-node detour instead. The text-to-image result goes into a FLUX.1-Kontext model node with a refine instruction ("enhance fine detail and micro-texture, keep the composition identical") and comes back sharper and larger.</p>
+<p>That same Kontext node doubles as the image-to-image tab. Upload an image, describe the change you want, and it returns the edited image.</p>
+<p>Start with a rough prompt like "A lighthouse in a storm." This pipeline sends it to a Qwen3-4B model node, and a small fn node turns the reply into a clean list of tags, capped at forty: "stormy sea, wet rocks, dramatic composition, low angle shot, volumetric lighting, ominous tone." You can connect any diffusion model node to this output to render the image.</p>
+<p>There's no custom node involved, unlike in ComfyUI. In a Gradio workflow the LLM and the diffusion model are both ordinary model operators on the same canvas.</p>
+<p>This is like AUTOMATIC1111's Interrogate button, with a VLM doing the interrogating instead of CLIP. Qwen2.5-VL looks at a night-market photo and writes a prompt that could have produced it. A ViT classifier node reads the same image and returns labels: restaurant 51.9%, tobacco shop 15.6%, toyshop 9.1%.</p>
+<p>Both nodes use the same image input, so gr.Workflow runs them in parallel and you get both answers in roughly the time it takes to run one.</p>
+<p>AUTOMATIC1111 makes you paint an inpaint mask by hand. This pipeline generates one from a detector instead. DETR finds six objects in a street photo (three people, a dog, a bicycle, and a car), and from there the workflow splits into two branches: one draws the detected boxes on the original image, the other turns them into a mask you can feed into an inpaint pipeline downstream.</p>
+<p>The drawing and the mask creation both happen locally with Pillow and NumPy. Only the detection call leaves the machine.</p>
+<p>This is like AUTOMATIC1111's prompt matrix. A base prompt, "a lone oak tree," gets combined with four suffixes (at sunrise, in a thunderstorm, under the Milky Way, in autumn fog) by a fn node, and each variant goes to its own text-to-image node. A final node stitches the four results into one contact sheet.</p>
+<p>gr.Workflow has no loop operator, so the four text-to-image nodes sit side by side on the canvas. Since they're at the same dependency depth they run in parallel, and all four images start generating at once.</p>
+<p>This is like the Extras tab in Automatic1111. There are two upscaler nodes, and they take different routes. The first is a local Lanczos resample in an fn node, which needs no network call and finishes as fast as Pillow can resize. The second is AuraSR ×4, and it's the first space node on the canvas: it calls a Space on the Hub and treats the result like any other node output.</p>
+<p>Background removal works the same way. BRIA RMBG-2.0 is another space node, so the whole model lives in its own Space and this canvas just calls it in.</p>
+<p>Canny, line art, sketch, luma-depth, and posterize are the preprocessors you'd normally get from the ControlNet extension in Automatic1111. Here, each one is a fn node written in plain NumPy, with no model behind it. On a pre-loaded example photo of a building facade, each annotator takes about half a second on CPU.</p>
+<p>There are 36 operator nodes in the app, 32 are fn nodes, and 22 of those run entirely in-process without a network call. Roughly two-thirds of the canvas keeps working if you lose your connection. Since these are regular Python functions, you can also test them directly, with no canvas, server, or GPU involved.</p>
+<p>AUTOMATIC1111 stores generation details in the PNG's parameters text chunk, and the PNG Info tab reads them back. Workflow1111 does the same. The post-process node on the text-to-image pipeline writes the metadata, and this pipeline reads it back out, including the prompt, negative prompt, steps, CFG, seed, image size, and model.</p>
+<p>The image node that PNG Info reads from also feeds a Wan 2.2 I2V A14B node, which animates it; in the demo example a sleeping fox wakes up and starts moving. There's no second upload box because one reference node can feed as many downstream pipelines as you need, so a single upload gets its metadata read and gets animated on the same canvas.</p>
+<p>So far every model call has gone to someone else's hardware, through Inference Providers or a Space. That's why you can build and run something like Workflow1111 without a GPU of your own.</p>
+<p>A fn node is just Python, though, so it can equally load a model locally and run it on your own GPU. FastVideo/fastvideo-fasth3-preview is a gr.Workflow app that does exactly that. It runs FastH3, a four-step distillation of MiniMax-H3, and generates video with a soundtrack on ZeroGPU.</p>
+<p>The whole app comes down to one bound function:</p>
+<p>ZeroGPU gives the function a GPU when it needs one, then releases it when the call is done. gr.Workflow doesn't need to know about any of that. It just calls the fn node.</p>
+<p>This isn't specific to Spaces either. Point bind= to a function that loads a local checkpoint, run .launch() on your own machine, and the Workflow1111 canvas can drive your own GPU.</p>
+<p>Every output node on the canvas becomes a REST endpoint, with no routes written by hand. Workflow1111 exposes nine of them: /image, /edited_image, /generated_prompt, /recovered_prompt, /detected_objects, /x_y_grid, /upscaled_local, /annotator_map, and /png_info.</p>
+<p>The same endpoints are also MCP tools. Launch with mcp_server=True (guide) and every output node shows up as a tool an AI assistant can call. Point Claude Code, Cursor, or any MCP client at the server URL:</p>
+<p>Now an agent can generate an image, read a prompt back out, or run detection as steps in a larger task, with no glue code. Each caller sends their own token in the X-HF-Token header, so the Space holds none of its own.</p>
+<p>AUTOMATIC1111 gave us the feature list, but the tool Gradio Workflow really gets compared to is ComfyUI, since both are node graphs. For a lot of what people want to build and ship, gr.Workflow covers the same ground.</p>
+<p>The result is a multi-model pipeline that people can open in a browser, sign into, use right away, and call from code.</p>
+<p>Workflow1111 has 73 nodes, but it started with just this:</p>
+<p>bind= turns your functions into nodes, edges= connects them, and .launch() opens the canvas in your browser so you can keep editing there. When it's ready, gradio deploy puts the whole thing on a Space. The gr.Workflow guide has the full details, including the JSON schema and every operator type.</p>
+<p>If you'd rather start from something that already works, open Workflow1111, hit Duplicate, and pick one of the eleven pipelines to change: delete nodes, swap models, rewire the flow. If you'd rather start smaller, the previous post has five workflows you can get running in about a minute each.</p>
+<p>Whatever you build, post it on X and tag @gradio. We'd be happy to amplify your workflows.</p>
+<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
+<p>Automatic1111-style studio on one gr.Workflow canvas</p>
+<p>Really impressive breakdown the part that stands out most is how the graph structure gives you free parallelism (the prompt-matrix and interrogate examples) without any extra orchestration code. The mix of fn, model, and space node types on one canvas also makes the ComfyUI comparison land well: you get custom-node flexibility from plain Python, but zero-code REST/MCP endpoints for free. Curious how complex a canvas can get before performance or maintainability becomes a concern has anyone pushed past 73 nodes</p>
+<p>Analisis yang sangat mengesankan, bagian yang paling menonjol adalah bagaimana struktur graf memberikan paralelisme gratis (contoh prompt-matrix dan interrogate) tanpa kode orkestrasi tambahan. Perpaduan tipe node fn, model, dan space pada satu kanvas juga membuat perbandingan dengan ComfyUI tepat: Anda mendapatkan fleksibilitas node kustom dari Python biasa, tetapi endpoint REST/MCP tanpa kode secara gratis. Saya penasaran seberapa kompleks sebuah kanvas dapat dibuat sebelum kinerja atau pemeliharaan menjadi masalah, apakah ada yang pernah melampaui 73 node?</p>
+<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
+<p>Automatic1111-style studio on one gr.Workflow canvas</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://blog.janestreet.com/writing-a-dsl-for-high-performance-parallel-programming-in-oxcaml/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/gradio-workflow-1111" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

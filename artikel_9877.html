@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Granite 4.2 LLMs: How They&#x27;re Built</title>
+    <title>Creating a self booting ZIP archive</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9877.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,84 +15,292 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Granite 4.2 LLMs: How They&#x27;re Built</h1>
+        <h1>Creating a self booting ZIP archive</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/65cc2c288ebd392213e58899/XHWV2L_wZsFe3ekksCgvQ.webp" alt="Granite 4.2 LLMs: How They&#x27;re Built" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/65cc2c288ebd392213e58899/XHWV2L_wZsFe3ekksCgvQ.webp" alt="Granite 4.2 LLMs: How They're Built" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A technical walkthrough of how we built the Granite 4.2 reasoning model family.</p>
-<p>TL;DR: Granite 4.2 is our first family of dense, decoder-only reasoning LLMs, released in three sizes: 3B, 8B, and 30B. These  models are post-trained from Granite-4.1 base models. Granite-4.1 base models were pre-trained from scratch on roughly 15T tokens with a five-phase strategy that extends the context window to 512K tokens, supervised fine-tuned on chain-of-thought, reasoning, and agentic-trajectory data, then post-trained with a multi-stage reinforcement learning pipeline. That pipeline includes agentic RL, where the 8B and 30B models learn to act with tools inside real sandboxed environments. Every model has a thinking / non-thinking switch, a low-effort thinking mode that spends a short reasoning budget on easy questions, and native tool calling. All Granite 4.2 models are released under the Apache 2.0 license.</p>
-<p>Granite 4.2 is the reasoning-focused release of the Granite language-model family. Earlier Granite releases were strong instruction-following assistants; Granite 4.2 adds explicit reasoning. Every model can produce a chain of thought before its answer and can run in thinking or non-thinking mode depending on how much deliberation a task needs. A low-effort mode falls between the two, spending a short reasoning budget on easy questions.</p>
-<p>The three sizes (3B, 8B, and 30B) share the same architectural design and follow the same training pipeline (base model, SFT, then multi-stage RL), each at its own scale. All three are strong reasoners and instruction followers. The clearest capability split shows up in post-training. The 8B and 30B models additionally go through an agentic RL block that teaches them to operate as agents: calling tools, editing and running code, driving a terminal, and searching the web inside real environments. Every model supports native tool calling. Served through an OpenAI-compatible endpoint (for example, with vLLM), it emits tool calls in the OpenAI function-calling format and plugs into agentic harnesses without extra glue. Granite 4.2 is also supported in SGLang, see the SGLang cookbook for a ready-to-serve recipe.</p>
-<p>The rest of this post walks through the build: architecture, pre-training, supervised fine-tuning, the multi-stage RL pipeline, and results.</p>
-<p>Granite 4.2 models are built on a decoder-only dense transformer architecture with the following core components:</p>
-<p>Granite 4.2 models are post-trained from Granite-4.1 base models. Granite-4.1 base models were trained from scratch on approximately 15 trillion tokens using a five-phase training strategy. Phases 1–2 focus on foundational pre-training, phases 3–4 perform mid-training with progressively higher-quality data annealing, and phase 5 introduces long-context training, extending the context window to 512K tokens. Each phase uses a distinct data mixture and learning-rate schedule, gradually shifting from broad web-scale data toward more curated, high-quality sources.</p>
-<p>The pre-training recipe closely follows the previous generation; for a detailed treatment of the data blend, phase schedule, and long-context extension, see the Granite 4.1 blog.</p>
-<p>Supervised fine-tuning (SFT) turns the base model into a reliable instruction-following, reasoning, and tool-using assistant. The SFT data mixture combines agentic (31.6%) and non-agentic (68.4%) data, totaling approximately 7.2 million samples, or roughly 100B tokens, of which about 65B are trainable.</p>
-<p>The agentic corpus covers a broad range of domains, including software engineering (SWE, 69%), tool calling (12.1%), terminal use (8.0%), math (3.5%), search (0.8%), and action (0.2%). These samples and trajectories are generated using a diverse set of agent scaffolds and harnesses, including OpenHands, OpenCode, Terminus-2, SWE-agent, OpenResearcher, MiniSWE, OpenSeeker, EnvScaler, Gemini CLI, Hermes, Codex, and Goose. The agentic data combines samples from both open-source datasets and our own synthetically generated RL environments, spanning a variety of agent–harness combinations.</p>
-<p>The non-agentic corpus consists of several major categories: instruction following (18.8%), coding (18.8%), math (14.6%), multilingual (7.0%), science (5.4%), reasoning (3.0%), and safety (0.8%).</p>
-<p>We apply multiple stages of quality control before a sample enters the final SFT mixture. First, data from different sources is normalized and reformatted into a consistent OpenAI Chat format, making the conversation structure and tool interactions uniform across datasets and scaffolds.</p>
-<p>We then use GPT-OSS-120B and Gemma 4 as LLM-based judges to assess sample quality. Low-scoring samples are removed, as are samples containing hallucinated or fabricated information, invalid tool interactions, or tool calls to functions that are not defined in the corresponding tool list. Several targeted, dataset-specific heuristic rules are also applied where appropriate to further improve quality and remove known sources of noise.</p>
-<p>Finally, we perform both local and global deduplication. Deduplication is based on SHA-256 hashes computed over the combination of the tools and messages fields, removing duplicate samples both within individual data sources and across the overall SFT mixture.</p>
-<p>The complete corpus is first globally shuffled to reduce ordering effects and ensure that samples from different domains are well mixed during training. The shuffled corpus is then partitioned into equally sized .parquet shards, which are tokenized using the model's tokenizer and chat template and prepared for large-scale distributed training.</p>
-<p>Before launching the final large-scale runs, we tune hyperparameters on representative configurations, sweeping learning-rate schedules, initial learning rates, and warm-up ratios to find settings that train stably across model sizes. The final training configuration is summarized below:</p>
-<p>For the 30B model, we additionally perform a second phase of SFT focused specifically on agentic coding. In this phase, agentic, SWE, and coding data are upsampled to increase their effective contribution to the training distribution, while approximately 16% of the mixture is retained as replay data from the original SFT corpus.</p>
-<p>The 30B model is then fine-tuned for roughly one additional epoch at a lower learning rate of 3.0e-6. This targeted second phase increases the model's exposure to agentic coding trajectories without discarding the capabilities acquired during the initial SFT phase.</p>
-<p>After SFT, we apply a multi-stage, multi-environment reinforcement learning pipeline. Rather than a single RL pass, we run a chain of focused stages spanning many environments: math, code, science, instruction following, tool use, and structured output, then software engineering, terminal use, and web search. Each stage is an independent RL run that targets one capability and warm-starts from the previous stage's checkpoint.</p>
-<p>Figure 1. The staged RL curriculum. Foundational RL (verifiable rewards + skill boosters) runs for all sizes; the agentic RL block (SWE → Terminal → Search) runs for 8B and 30B only. Every model finishes with RLHF. Each stage is a separate GRPO run that warm-starts from the previous checkpoint.</p>
-<p>Every stage trains with asynchronous GRPO (Group Relative Policy Optimization), so the generator and trainer halves of the loop never block on each other. A pool of generation workers keeps sampling responses and dropping the finished trajectories into a shared buffer; once the buffer holds a full step's worth, the trainer pulls that batch, takes an optimizer step, and streams the updated parameters back to the generator workers without pausing them. A refresh can land partway through a rollout, leaving a single trajectory stitched together from two adjacent policy versions. We allow this instead of paying to prevent it: the workers reuse their existing KV cache rather than rebuilding it after each refresh, and the one guardrail is a limit that keeps them from drifting more than a single update behind the trainer, which bounds how off-policy any sample can get. Whatever mismatch survives that limit is handled in the objective by truncated importance sampling, which clamps the train-versus-generation log-probability ratio to a fixed ceiling so a handful of stale tokens cannot dominate an update.</p>
-<p>Advantages are group-relative with a leave-one-out baseline: each response is judged against the mean reward of the other samples drawn for the same prompt, which removes the need for a separate value network. To make this concrete, take RLVR, the first and longest-running stage: each step pairs 256 prompts with 16 sampled responses apiece for a 4,096-example batch, which the trainer consumes in a single optimizer step before the next rollout begins. Later stages keep this machinery unchanged and adjust only the per-stage shape, shown next.</p>
-<p>The pipeline keeps a common backbone of hyperparameters across every stage, which makes the curriculum easier to run and compare. A handful of knobs are fixed everywhere:</p>
-<p>What changes from stage to stage is the shape of each run: how many prompts and generations per step, how long the context is, whether the agent loop runs, and how hard we pull back toward the reference policy. The table below gives the exact settings for the 30B chain, stage by stage:</p>
-<p>Parameters shown for the 30B model. Global batch size = prompts/step × generations/prompt (e.g. 256 × 16 = 4096 for RLVR). The 3B and 8B models use the same recipe and hyperparameters with fewer stages (see How the Three Sizes Differ); the stage list is what changes, not the knobs.</p>
-<p>The KL schedule follows the reward type: explore freely where the reward is objective and verifiable (RLVR and SWE 2 run at KL 0), and stay close to the reference where the objective is preference, safety, or a narrow skill graft (RLHF and the code booster use KL 0.05). The rollout-turns column counts the environment interactions GRPO itself sees per rollout. In every case the model is trained on complete, real-environment trajectories.</p>
-<p>Each stage is a separate RL run with a single objective and its own reward signal. When it finishes, its policy is exported to Hugging Face format and becomes the base model for the next stage, so the pipeline is a sequence of warm-starts:</p>
-<p>The 8B and 30B models follow the full ladder. The 3B model takes a shortened path: foundational RL and alignment, without the agentic block.</p>
-<p>A stage is defined mostly by how it is rewarded. Across the pipeline there are three reward types, and a single stage can use more than one:</p>
-<p>Verifiable rewards are objective and hard to game, so the pipeline front-loads them. Judge- and preference-based rewards handle open-ended qualities that no checker can express. Agentic-outcome rewards are the sparsest: often a single bit at the end of a long tool-use trajectory.</p>
-<p>RLVR is the foundational stage and the broadest data mix in the pipeline: a single blended dataset spanning many verifiable domains.</p>
-<p>Each task type carries its own verifier, so the reward is grounded per example. RLVR runs for two rounds on 3B and 8B, and three on 30B. Each round is a fresh warm-started run on a re-weighted mix of public and internally curated RL data.</p>
-<p>After RLVR, a few short booster stages sharpen specific capabilities that benefit from concentrated training focusing on the following domains:</p>
-<p>Boosters are small, focused runs. A light KL penalty keeps the model close to its current behavior while nudging one skill.</p>
-<p>In the agentic stages the model learns to act: call tools, observe results, and iterate inside a real environment, rewarded on whether the task was actually solved. These stages share the same shape: multi-turn tool use, real (not simulated) environments, sparse outcome rewards, and GRPO, warm-started from the coding-boosted checkpoint. They run in order: SWE → Terminal → Search.</p>
-<p>Figure 2. The three agentic-RL environments. Each pairs a real harness with a real environment and a sparse, outcome-based reward. The 3B model runs none of these.</p>
-<p>The final stage of every model is RLHF for human preference and safety. It optimizes against a generative reward model (GenRM) for preference, plus a safety reward covering jailbreak resistance and appropriate refusals. This stage uses the highest KL penalty in the pipeline, aligning tone and safety without eroding the capabilities the earlier stages built. In addition to human preference and safety alignment, this stage also applies a reasoning-length penalty to discourage overly verbose reasoning behavior acquired during earlier stages.</p>
-<p>Same method and infrastructure; the difference is how far up the ladder each model goes.</p>
-<p>3B is a strong foundational-RL model; 8B and 30B add the agentic-RL block on top, learning to act with tools in real environments.</p>
-<p>Reinforcement learning at this scale needs infrastructure that can drive a training loop and a fleet of live environments at the same time. This matters most in the agentic stages, where every training example is a multi-turn rollout that edits code, runs commands, or browses the web. Granite 4.2's RL runs on two open components: NeMo-RL on the training side and NeMo-Gym on the rollout side.</p>
-<p>Figure 3. The RL system. NeMo-RL drives the GRPO loop (Megatron-Core training backend, vLLM generation, and Megatron-Bridge for HF⇄Megatron weight conversion). NeMo-Gym orchestrates rollouts and hosts the tools, sandboxes, and reward/verifier calls as pluggable Resources.</p>
-<p>That uniformity is what makes the staged curriculum above practical: a booster's rule-based checker and a full SWE sandbox present the same interface to GRPO.</p>
-<p>This split is also what makes the asynchronous training loop described above physically possible: generation and policy updates live on separate GPU pools, so the expensive generation fleet — including the live agentic environments — stays busy instead of idling through optimizer steps.</p>
-<p>Granite 4.2 was evaluated across agentic coding, general agentic and tool use, reasoning, chat and instruction following, and long context. The full benchmark table is below, followed by charts that break out the headline results by model size.</p>
-<p>Supported languages: English, German, Spanish, French, Japanese, Portuguese, Arabic, Czech, Italian, Korean, Dutch, and Chinese.</p>
-<p>The charts below break these results out by capability area.</p>
-<p>Figure 4. Reasoning (pass@1). Scores rise consistently with model size across math (AIME25, HMMT), science (GPQA), and code reasoning (LiveCodeBench, SciCode).</p>
-<p>Figure 5. Agentic coding resolve rates. The agentic-RL block is trained only for 8B and 30B; the 30B model leads across SWE-Bench variants and Terminal-Bench.</p>
-<p>Figure 6. General agentic and tool-use benchmarks, reported for all three sizes.</p>
-<p>We also released four quantized variants of the Granite 4.2 models for inference with vLLM. The models are converted to FP8, NVFP4, and MXFP4 using LLM Compressor, and to the GGUF format using the llama.cpp framework for reduced-memory deployment.</p>
-<p>The FP8 version is quantized with dynamic per-channel weights and per-token activations.  No calibration is used.</p>
-<p>The NVFP4 and MXFP4 versions are quantized using GPTQ calibrated on 2K samples drawn from the SFT dataset.  Max context length is 2K during calibration.</p>
-<p>Conversion of the Granite 4.2 models to GGUF is done with the canonical llama.cpp tool as described in https://github.com/IBM/gguf#gguf-conversion--quantization.</p>
-<p>We trained the Granite 4.2 language models on an NVIDIA GB200 NVL72 cluster hosted by CoreWeave, featuring:</p>
-<p>This infrastructure delivers the high-bandwidth, low-latency communication required for efficient large-scale distributed training.</p>
-<p>The training software stack is packaged into .sqsh container images, each giving a run a reproducible, portable environment with its SBSA-compatible CUDA targets, Linux aarch64 Python wheels, and GPU-specific binaries pinned. The large-scale SFT runs build on an NGC PyTorch base image (Ubuntu 22.04, CUDA 12.8, Python 3.12); the RL stack runs in its own NeMo-RL container.</p>
-<p>Granite models support tool calling with integrated reasoning: the model reasons about which tool to call and why before calling it. Tools are defined with the OpenAI function definition schema.</p>
-<p>Granite models can serve as the backbone for agentic coding tools. Because they support reasoning and tool calling through the OpenAI-compatible API, they integrate with popular agentic harnesses without extra adapters. Start the vLLM server, then follow the harness-specific instructions below.</p>
-<p>OpenCode is an AI coding agent that runs in your terminal.</p>
-<p>Configure ~/.config/opencode/opencode.json:</p>
-<p>For full documentation, see opencode.ai/docs.</p>
-<p>Pi is a minimal agent harness for AI-powered coding that runs in your terminal. It supports custom providers via a models.json configuration file.</p>
-<p>Then select the granite-4.2-30b model with /model or Ctrl+L in the interactive session.</p>
-<p>OpenHands is an AI software engineer that can plan, write code, and execute commands.</p>
-<p>Install and launch OpenHands following the official installation guide.</p>
-<p>Configure the LLM in the OpenHands settings with:</p>
-<p>Note: The openai/ prefix is required when connecting to OpenAI-compatible endpoints like vLLM. Refer to the OpenHands local LLM documentation for detailed setup instructions, troubleshooting, and alternative installation methods.</p>
-<p>Last updated: September 11, 2026 to clarify base models.</p>
+                <p>So, after a debugging session the other day, I was having some shower
+      thoughts regarding early userspace and initrd.</p>
+<p>Linux initramfs supports unpacking CPIO, a stupid, simple, standardized
+      format. In the discussion on whether to support TAR instead, much
+      emphasize has been put on the fact that CPIO is standardized and less
+      fragmented.</p>
+<p>Luckily, Linux (the kernel) includes its own tool to produce the specific
+      variant of the standard that it happens to implement. The standard CPIO
+      tool is possibly the most cursed archiver under the SUN.</p>
+<p>In the old DOS/WinDOS world, ZIP was probably the most wide spread and
+      well known archive format, being displaced to some extend by the rise of
+      RAR during the 2000s.</p>
+<p>Because of the design of the format, ZIP lends itself to all kinds of
+      polyglot trickery. Way back when, self extracting ZIP archives where a
+      thing, EXE/ZIP polyglots that can be run and unpack themselves, which is
+      useful if you don't have an archiver installed.</p>
+<p>I don't think I need to explain where I am going with this, here is the
+      resulting ZIP archive I built:</p>
+<p>It is a completely normal ZIP archive, containing its own source code
+      needed to build itself from scratch:</p>
+<p>A particularly interesting file here is boot/ZIPHEAD.COM, that
+      contains executable code that is run when booting the archive.</p>
+<p>You need to fix the execute permissions of mk.sh after
+      unpacking, and you will need a copy of Zlib installed for
+      the tools. Running mk.sh from it's directory should
+      leave you with a fresh copy of the bootable ZIP archive.</p>
+<p>The simplest way to run it, is to just pass it to Qemu direct kernel boot:</p>
+<p>"That's easy" you might say, "Qemu supports Multiboot, that ZIPHEAD.COM
+      is uncompressed, at the beginning of the archive and has a Multiboot
+      header in it!"</p>
+<p>Yes, that's all true! But this ZIP archive also brings it's own boot
+      loader along. You can try putting it on a floppy and throw that in front
+      of Qemu:</p>
+<p>The first 512 bytes of the archive contain a valid boot sector that
+      loads some more code from the second sector and then bootstraps itself
+      into highmem with the A20 enabled and 32 bit protected mode set up.</p>
+<p>You can also put it on a hard drive too, it detects what INT 13h
+      drive it's been loaded from and dutifully queries the disk geometry.</p>
+<p>If you care to try, you can also dump it on a real floppy and stuff it
+      into a PC:</p>
+<p>That's a Pentium MMX by the way, but I also tried an i486 DX2 and an
+      Am386DX-40, just to be sure. My 486 had me hold my breath for a moment,
+      it has a spectacularly slow floppy drive. The text on screen is from
+      the file boot/MESSAGE.TXT</p>
+<p>"But that's not special either" you might respond, "ZIPs are read from
+      the back, you can just put anything you want in front, so you put a boot
+      sector there!"</p>
+<p>That is sadly not quite true anymore, I'll get to that. But for
+      now, lets take a look at the first couple bytes of that archive
+      together and we'll see the real party trick:</p>
+<p>The ASCII P stands for Phil
+      (
+        not Picard
+      ), as in
+      Phil Katz,
+      followed by 03h and 04h. What you are looking at, is a
+      completely valid ZIP local file header for boot/ZIPHEAD.COM</p>
+<p>Oh, and those other bytes there after the ZIP header: 02 b0 ad 1b,
+      if you flip them around to human endian, it reads 1BADB002.
+      That's the Multiboot magic :-)</p>
+<p>The 16 bit real mode code starts right after the Multiboot header,
+      at offset 00000050. If you are feeling a little confused,
+      so is the file utility:</p>
+<p>If you take a closer look at the first line of the hex dump, you might
+      be able to spot the jump instruction that makes this little magic trick
+      possible. Luckily, Phil Katz' initials are valid opcodes. The Multiboot
+      entry point is much further into the file at offset 00000331.</p>
+<p>Here's a picture you probably recognize from
+      
+        the Wikipedia article about the ZIP format
+      .
+      This here is a local copy, Wikimedia Commons hosts
+      
+        the original with attribution and licensing information
+      .</p>
+<p>Much like a TAR or CPIO archive, a ZIP file is an amalgamation of tightly
+      packed files with a short header in front, specifying the full file path
+      and other meta data:</p>
+<p>The timestamps are DOS datetime, the checksum is a CRC-32, there are no
+      attributes or permission bits, we are thoroughly in DOS land. Directories
+      are implied by the file paths.</p>
+<p>Unlike TAR or CPIO, there is a central directory in the end, with
+      a listing of all of the file headers and back references to the file in
+      the archive. Unlike traditional file formats that have are
+      started by a header, ZIP is terminated by a footer.</p>
+<p>That last part was especially important in the days when ZIP archives
+      would be split over several floppies. To access a file, just scan the
+      directory on the last floppy, then tell the user what floppy to insert to
+      get the file.</p>
+<p>By comparison, accessing a file in a tarball requires linearly scanning
+      over the whole thing (which, on the other hand, is
+      
+        preferable for tape drives
+      , where TAR originates).</p>
+<p>ZIP archives are meant to be read from the back, the footer points to the
+      central directory, the directory points to the files. In theory,
+      the archiver shouldn't care if there happens to be a gap between two
+      files, containing something else or if there is something else in the
+      front of the archive, like a file header for a different file format.</p>
+<p>The local file headers also supports up to 64k of "extra" stuff between
+      the header and the file data, the footer has "comment" at the end, also
+      up to 64k.</p>
+<p>If you look at the footer for a second, you might spot an interesting
+      design flaw:</p>
+<p>it is variable size, an archiver needs to find it looking
+      from the back, but the magic and the size are both stored before
+      the variable sized comment field. Ask yourself this for a moment: how
+      would you implement this in an archiver? Demanding that there is no
+      comment? Reading the last 64k plus some change and scanning it? From
+      which direction? What if there is another valid footer inside the
+      comment field of the footer? Depending on how an implementation deals
+      with this, a specifically crafted archive can appear to contain
+      different files when viewed with different archivers.</p>
+<p>Trying to make the format extensible ended up building a whole lot of
+      foot guns in there. And we are not even talking about the plethora of
+      extensions that have been tacked on to the official specification over
+      the years.</p>
+<p>Many modern implementations decided to save themselves a lot of headaches
+      and just treat ZIP archives the same way as tarballs, linearly scanning
+      them from the front instead. They expect the archive to start with a
+      local header, skipping by the size MUST lead to the next entry
+      or finally, the central directory. They reject any archives where this
+      is not possible. This effectively prevents a lot of polyglot trick
+      fuckery, but at the cost of rendering possibly valid archives unreadable.</p>
+<p>For the self booting ZIP archive, the challenge thus becomes: the archive
+      MUST start with a local file header, there cannot be any
+      gaps, everything must be properly contained inside files.</p>
+<p>Anybody who has ever looked at a DIY toy OS tutorial has probably
+      stumbled across
+      
+        The Multiboot Specification
+      , the possibly easiest and most beginner friendly way to get
+      a program running on bare metal x86.</p>
+<p>The multiboot spec originates in the GNU/FSF ecosystem and is implemented
+      by boot loaders like GRUB or Qemu direct kernel boot. SYSLINUX supports
+      it via a plugin. There is a draft for an over engineered 2nd version, that
+      also supports MIPS, but this is of no concert to us here.</p>
+<p>A Multiboot 1 compliant kernel simply contains the magic
+      value 0x1BADB002 somewhere in the first in the first 8k.
+      This is followed by flags and a checksum (all 3 must add up to zero).
+      Depending on the flags, additional fields may follow.</p>
+<p>The kernel itself can be an ELF file from which the loader extracts
+      load address and entry point. The kernel is run in 32 bit protected
+      mode with flat segments (base=0, limit=4G) and the A20 gate enabled.</p>
+<p>Alternatively to a plain old ELF file, the kernel can also specify the
+      memory layout manually (indicated via a flag), allowing flat binaries or
+      other file formats to be loaded. The extended header looks like this:</p>
+<p>The hdr_addr specifies the in-memory address of the header after
+      loading the file, using this and the file offset where the header was
+      found, the other addresses can be converted back to file offsets by the
+      loader.</p>
+<p>This way, the load_addr and load_end_addr are used to figure
+     out what parts of the file to load where into memory. If the
+     bss_end_addr is past that, the loader zero-fills it, before finally
+     jumping to entry_point to run the kernel.</p>
+<p>The Multiboot compliant loader also sets up a structure with system
+      information (e.g. memory map, APM tables), kernel command line,
+      etc… and passes the pointer to the kernel (via register
+      EBX, magic value 0x2BADB002 in EAX).</p>
+<p>Making a Multiboot bootable ZIP archive is trivial. Simply pack a flat
+      binary with a Multiboot header as uncompressed file binary, make sure it
+      is at the beginning and the addresses line up. An external tool can then
+      fix up the headers, so that the whole archive is loaded.</p>
+<p>For any practical applications, it would make sense to stop
+      right here, but we're not here for "practical" or "sane".</p>
+<p>On an IBM compatible machine, the BIOS iterates over the installed
+      drives, loads the first sector from each (to location 0x7c00),
+      until it finds one where the first sector ends with 0xaa55.
+      It then jumps to the first byte.</p>
+<p>Disks that are formatted with a filesystem, typically have a header in
+      the beginning that starts with a jump instruction across the header into
+      the bootstrap code that follows. The DOS MBR format opts to instead store
+      the partition table at the end of the first sector and all the code in
+      the front.</p>
+<p>If we stuff a BIOS boot signature into the ZIP archive, at least parts
+      of the ZIP local file header will be executed, the first few bytes are
+      a mandated magic value and we cannot just put a jump instruction there.</p>
+<p>The puzzle exercise now becomes, filling the header fields with values
+      that make sense but also happen to be valid 8086 opcodes. At least,
+      until we hit something that can be abused as a free-form field that we
+      can stuff a jump into.</p>
+<p>Let's take a look at that hex dump again:</p>
+<p>I've tried to highlight the relevant header up to the jump
+      instruction: 0xeb is a relative jump with a single byte
+      immediate argument.</p>
+<p>If we take a look again at the header structure, we can make out what
+      fields those bytes correspond to:</p>
+<p>The timestamp is the first best place where we can put a jump
+      instruction. The 0xeb relative jump works out to 8:30-ish
+      in the morning, give or take the jump distance.</p>
+<p>The two bytes in front of the modtime are compression
+      method. We really, really want to have 0x0000 here,
+      i.e. uncompressed, so that an archiver doesn't choke on the
+      file data.</p>
+<p>The first four bytes are the magic value of the format, we don't have any
+      choice what to put here either, it has to be "PK\03\04". The
+      version and flags fields are the only places where we have
+      some creative freedom.</p>
+<p>If we run the file through a dissassembler and take a look at the
+      first few bytes, we'll end up with this:</p>
+<p>This is AT&T syntax, source operands are left, destination
+      on the right. We use GNU tools in this household, deal with it.</p>
+<p>Anything that just fiddles around with a register doesn't really hurt us.
+      Same goes for memory reads. We don't have memory protection, no
+      matter what we access, there won't be any faults, the only memory
+      mapped hardware around should be the frame buffer.</p>
+<p>Memory writes are another story. Worst case, we could shoot up the
+      interrupt vectors, the BIOS RAM areas (BDA, EBDA), or shadowed option
+      ROMs.</p>
+<p>The P for Phil also happens to also decode to
+      push %ax. If the BIOS leaves us with a somewhat sane stack
+      pointer, the push instruction should hopefully not mess anything
+      up. It is part of the ZIP magic and thus unavoidable.</p>
+<p>The version field is itself actually structured, containing
+      a decimal encoded version number, followed by an OS ID byte. If we set
+      it to 0x000a (stored as little endian), this decodes to version
+      1.0 on MS DOS.</p>
+<p>0x0a is an orb, version 1.1 would be double byte sized,
+      version 0.8 and 0.9 would be register direct and not touch the memory.
+      An address of BX + SI is the result of a mod-reg-r/m field
+      with all zeros.</p>
+<p>We could try to code golf our way into consuming at least part of the
+      flags as well, but low-valued, "harmless" opcodes that result
+      in sane versions are sparse. Also, some version numbers change the
+      meaning how an archiver is supposed to interpret the file. Also also,
+      mod-reg-r/m combinations in the OS code field quickly end up as
+      an undefined OS ID. Also also also, we have the method as well,
+      that has to be 0x0000, which would result in a memory
+      write if executed. We have to consume that somehow, rather than running
+      it.</p>
+<p>So for the flags, I came up with 0x8002 (stored as little
+      endian). The lowest, set bit has a compression method dependent meaning,
+      currently only defined for LZMA (14), deflate (8) and implode (6). For
+      uncompressed (method 0) there is no defined meaning (the specification
+      just ignores that part, it doesn't use nasty words like
+      undefined). For deflate it would mean that
+      maximum compression was used.</p>
+<p>The MSB is specified as "reserved for use by PKWARE", whatever they chose
+      to put there, if they ever chose anything at all. Most imporanly, the
+      opcode 0x02 decodes to a single byte, indirect add, and in the
+      mod-reg-r/m, the MSB tells the CPU to consume another 2 bytes of
+      immediate DISPlacement. This is how we can get rid of the
+      compression method.</p>
+<p>At this point, we've made it! We reached the modtime field
+      that we can just stuff a jump into.</p>
+<p>Once we've made it past the header, we are in 16 bit real mode. We just
+      need to go through all of the neccessary steps to set up the environment
+      that the Multiboot code expects:</p>
+<p>This might sound like a lot, but in the current version, the actual code
+      boils down to 817 bytes. That includes all the headers (ZIP, multiboot),
+      the rather bulky GDT. But it is still quite a lot and outside the scope
+      of this post anyway, I might pick some interesting parts out of it for
+      some follow-up posts (watch this space?).</p>
+<p>The Multiboot entry code re-loads the GDT, but this time using the
+      highmem location, and sets up a stack after the archive. The size is
+      extracted from the Multiboot header. Knowing the start address, the C
+      code can then iterate over itself to locate and access files in the
+      archive.</p>
+<p>Some linker script trickery is used to tie it all into one blob, but with
+      the GDT and Multiboot header visible from both lomem and highmem code at
+      different locations.</p>
+<p>At this point, you might be inclined to actually read the source code
+      in the ZIP archive. There are lots of comments trying to explain what
+      is going on.</p>
+<p>There's a README that points out the structure of the code with
+      suggestions where to start reading. I decided to keep it readable rather
+      than stuff it all into a single sector. Self-modifying trickery is kept
+      to a minimum (to safe some space, the function to enter unreal mode
+      modifies itself, the code is run twice, courtesy of a misdirected
+      ret, entering protected mode the first time round, leaving it
+      again and restoring the segment registers on the second run, before
+      returning for real).</p>
+<p>Code in the archive and this blog posts have been written with
+      assistance from:</p>
+<p>If you poke around in the code and have any suggestions for improvements,
+      or otherwise do anything interesting with it, please let me know.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-granite/granite-4-2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://goliath32.com/blog/ziphead.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

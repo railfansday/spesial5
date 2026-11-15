@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</title>
+    <title>Terminal borders that don&#x27;t cost a cell</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9869.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,160 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI</h1>
+        <h1>Terminal borders that don&#x27;t cost a cell</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.joshka.net/cell-borders/og.png" alt="Terminal borders that don&#x27;t cost a cell" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/webgpu-kernels/thumbnail.png" alt="Introducing @huggingface/kernels: 200+ WebGPU Kernels for Local AI" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.joshka.net/cell-borders/og.png" alt="Terminal borders that don't cost a cell" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>One of our biggest goals on the WebAI team at Hugging Face is to make browser inference as fast and as user-friendly as possible. Getting there is a multi-layer effort: models need browser-friendly representations, runtimes need to build efficient execution plans, and the individual GPU operations at the bottom of the stack need to make the most of many different devices and browser implementations.</p>
-<p>Today, we are releasing the first layer of that effort: @huggingface/kernels, a minimal library for loading and running optimized WebGPU kernels from the Hugging Face Hub, together with an initial collection of 207 kernels at huggingface.co/webgpu-kernels.</p>
-<p>The collection covers operations used across a wide variety of machine learning architectures and workloads. More importantly, each kernel is published as a complete, versioned package: its interface, shader templates, correctness cases, benchmark cases, and usage instructions all live together on the Hub.</p>
-<p>We are also launching Fleet, an in-browser GPU benchmarking and testing suite that runs and scores the kernels on your hardware. Beyond the results for your own machine, Fleet gives the community a way to contribute performance and correctness evidence from devices we could never cover in a conventional test lab. With your consent, every run adds private evidence that can help us find failures (incorrect results, pathologically slow cases, etc.), improve kernel variants, and make better optimization decisions across real-world hardware.</p>
-<p>A model running in the browser eventually becomes a sequence of GPU operations: matrix multiplications, normalizations, convolutions, attention primitives, quantization operations, data-layout transformations, and many more. WebGPU makes these operations available across modern browsers through a portable API, while WGSL provides a common language for the shaders that execute them.</p>
-<p>Portability, however, does not automatically mean performance. Two shaders can implement the same operation and produce the same output while behaving completely differently across different accelerators. Workgroup sizes, memory access patterns, vectorization, data types, and fusion strategies can all affect performance. The best choice can also change with the input shape, device, browser, and available WebGPU features.</p>
-<p>This is why kernels form a foundational layer of fast browser inference. Higher-level runtimes can only be as efficient as the operations they dispatch. By making those operations individually discoverable, testable, benchmarkable, and versioned, we can improve the foundation independently while keeping a stable contract for the layers above it.</p>
-<p>Each kernel in the collection has its own repository and kernel card. The card documents the operation's semantics, inputs, outputs, attributes, supported data types, source files, and a ready-to-run @huggingface/kernels example.</p>
-<p>For example, ai.onnx.Add implements elementwise addition with multidirectional broadcasting. It is one of the simplest operations in a neural network, used everywhere from residual connections to adding a bias. Its card documents the two inputs, the broadcasted output shape, supported data types, and the variants available for different shapes and devices.</p>
-<p>Behind the card, the repository contains the artifacts needed to understand and evaluate the implementation:</p>
-<p>This structure turns a shader into a reusable software artifact. The interface is inspectable without reading WGSL, correctness and performance cases travel with the implementation, and published versions can be loaded explicitly rather than depending on an unversioned file URL. Our kernels can also serve as reference implementations for developers building custom WebGPU kernels or integrating these operations into their own runtimes.</p>
-<p>Running these kernels requires a browser with WebGPU support. WebGPU availability depends on the browser, operating system, GPU, and driver. You can check for it in JavaScript with "gpu" in navigator.</p>
-<p>@huggingface/kernels provides the bridge between a kernel repository and your application. Call getKernel with a Hub repository ID and a contract version, then invoke the returned function with typed input data and tensor shapes. Here is a small bias-add example:</p>
-<p>The second input is broadcast across the first dimension, producing an output with shape [2, 3]. The loader derives that output shape and logical data type from the manifest contract and the inputs, then allocates c automatically.</p>
-<p>Addition on six floats is deliberately the smallest possible demo. At this size, the GPU round trip costs far more than the math. The point is the call pattern: it stays exactly the same for the heavyweight operations where optimized kernels actually pay off, such as matrix multiplication (ai.onnx.MatMul). Only the repository ID and the inputs change.</p>
-<p>Even this elementary operation illustrates why kernels need variants. Equal-shape addition can use a direct vectorized path, while broadcasted inputs need different indexing logic. The published Add kernel includes variants for equal shapes, vectorized broadcasting, scalar processing, and general broadcasting. The runtime can select an implementation that fits the current call and device without changing the application-facing API.</p>
-<p>The version: 1 option selects version 1 of the published kernel contract. It is separate from an ONNX opset, an operator's since_version, or a model revision. Keeping those concepts separate lets applications depend on a stable JavaScript-facing contract while kernel implementations evolve behind it.</p>
-<p>So, how much of a difference do optimized kernels actually make? We put our collection head-to-head with ORT WebGPU on an Apple M4 GPU, using ONNX Runtime Web 1.30.0-dev.20260826-b1f76d586a. We started with 1,756 test cases across all 207 operations and kept the 809 cases where both sides produced matching outputs and reliable timings.</p>
-<p>Across those comparisons, our kernels were 2.57x faster by geometric mean and 1.90x faster at the median, with 629 wins, 176 losses, and 4 ties. Here is a closer look at four familiar operations:</p>
-<p>Some individual wins were much bigger. A particularly difficult bilinear Einsum case (i,ij,j with size 4096) ran in 0.136 ms with our kernel versus 1,396 ms with ORT WebGPU: more than 10,000x faster. A row-wise CumSum over [256, 4096] was 301x faster, at 0.016 ms versus 4.784 ms. These are unusual cases rather than the speedups you should expect everywhere, but they show how much a specialized kernel can help when a general implementation hits a slow path.</p>
-<p>We timed the work done on the GPU itself, leaving out setup such as loading kernels, creating sessions, uploading inputs, compiling shaders, and reading outputs back. Very short workloads are naturally harder to measure, and small cases can benefit from the GPU cache, so these numbers are best read as a useful comparison rather than a promise for every application.</p>
-<p>They are also results for individual operations, not complete models. Exact performance will change across GPUs and browsers, which is why Fleet is so important for building a broader picture.</p>
-<p>We are also working with the ONNX Runtime team to upstream these improvements so they can benefit the broader ONNX Runtime Web ecosystem.</p>
-<p>WebGPU performance varies across GPUs, browsers, and drivers, so results from one machine only tell part of the story. Fleet lets anyone run correctness and performance checks in the browser and see how the kernels behave on their hardware.</p>
-<p>With consent, each run privately contributes evidence that helps us spot device-specific failures, compare variants, and improve selection rules. The goal is simple: use broad, real-world coverage to make the kernels faster and more reliable for everyone.</p>
-<p>The initial 207 kernels are a starting point, not the end state. Publishing kernels independently on the Hub gives us a common place to inspect contracts, compare implementations, reproduce correctness checks, and improve performance without embedding every shader directly into every runtime.</p>
-<p>The collection is also part of the Hub's broader kernel ecosystem: on the Kernels page, the WebGPU kernels sit alongside kernels for CUDA, ROCm, Metal, and other platforms, and can be filtered, sorted, and explored like any other artifact on the Hub.</p>
-<p>This is the low-level foundation for the next steps in our browser inference stack. We are excited to connect these kernels to higher-level model tooling, continue expanding operation coverage, and make fast local inference easier to use across the WebAI ecosystem.</p>
-<p>Explore the WebGPU kernel collection, try @huggingface/kernels, and join the Fleet to contribute evidence from your device and help us make the kernels better for everyone.</p>
-<p>The Fleet part may matter as much as the kernels. The 809 comparable cases on an M4 are useful, but browser, driver and device variance is where WebGPU tends to get painful. Will Fleet eventually expose per-device distributions, or is the plan to use the runs only for aggregate selection rules?</p>
-<p>In an automated build system, I could see per device kernels, made more interesting by fusion of ops.</p>
-<p>The area that obviously needs more attention are the 947 tests that did not result in reliable output. This could be the test, it could be that the ORT WebGPU is wrong, or the new kernel is wrong, or the test harness had issues, hard to know from the outside. Perhaps the Fleet thing is meant to improve this.</p>
-<p>Very excited to see such attention at making WebGPU first class in ML!</p>
-<p>@sroussey  Agreed—the excluded 947 need a taxonomy before the 2.57× summary can travel. I'd want counts by operation and device for unsupported, ORT mismatch, new-kernel mismatch, and harness/timeout, with raw failing cases downloadable. Then Fleet can optimize only within a proven-correct compatibility envelope; fusion and per-device tuning become much safer.</p>
-<p>Excellent! This will help our WebAI community continue developing highly optimized solutions. Many thanks @Xenova  and @nico-martin  for the great work you have been doing.</p>
+                <p>This post (and the code behind it) was written with a lot of help from AI. I'm not going to
+apologize for that. If that bothers you, feel free to close the tab.</p>
+<p>I maintain Ratatui, so I see a lot of the TUIs people build. Many of them end up looking fairly
+same-ish: plain boxes on a boring background, missing a bunch of the things that good design in
+other mediums brings us.</p>
+<p>Borders are part of the problem. They have to take up space, so they become part of the panels
+people want to build. One option is to drop them and just use color, but borders are really nice
+for delineating and surrounding things. There are lots of ways to sort of get borders in a
+terminal, but none that are 100% good. I've drawn enough ┌──┐ by hand to have opinions about
+this.</p>
+<p>The usual way is the Unicode Box Drawing block, which has 128 characters for lines, corners and
+joins. Somehow that's still not enough:</p>
+<p>So I've been working on a terminal protocol that draws thin lines on the edges of cells instead.
+I've got it working as a patch to Ghostty (and an earlier version in
+Rio before that), and
+I've built demo apps for it with Ratatui. I'd like feedback from
+terminal and TUI authors.</p>
+<p>Every line in that screenshot is a cell border. None of them use up a row or column. The tab
+labels sit on the top edge of each pane, the text fields are underlined right under the text, and
+the buttons are one row tall and rounded.</p>
+<p>Here's the same app in a terminal without cell borders, falling back to box-drawing characters:</p>
+<p>Each pane loses a row and a column on every side, so the log pane shows two fewer lines and the
+notes wrap differently. The tab labels move inside the frame. The text fields use the underline
+attribute instead, and the checkbox and buttons turn into brackets.</p>
+<p>The settings form, with cell borders and then with the box-drawing fallback:</p>
+<p>The tabs are the same story. With cell borders they sit on the pane's top edge. With box
+characters they need their own row inside the frame:</p>
+<p>Lines between cells also work for charts. btop-style braille graphs fill every cell with dots, so
+there's nowhere to put a gridline or an average line without giving up a row. With cell borders
+they sit on the cell edges between the dots. Here's a monitor in that style, built with Ratatui:</p>
+<p>And the fallback, which has to drop the gridlines:</p>
+<p>Here's the tiling panes demo moving panes around, opening menus and the about dialog:</p>
+<p>Partway through, it turns on a checkerboard of the cells, which shows how everything lines up
+with the grid. Toggle it here:</p>
+<p>The root of it is that box-drawing characters are text. Each line is a glyph that takes up a whole
+cell, and pretty much everything annoying about them falls out of that.</p>
+<p>Space is the obvious one. On my 16" laptop with a font I can actually read, the terminal is
+something like 200x50 (your prefs will move that around a bit). Columns are mostly fine at that
+size. Rows aren't. A layout with a couple of levels of nested panels can easily spend 6 or 8 of
+those 50 rows on nothing but lines. That's a lot of screen to give up for decoration.</p>
+<p>You also can't put a line between two cells that both have something in them. So there's no way to
+underline a text field right under its text, or to outline a button, without adding padding around
+it. Rounded corners sort of work, except the corner glyph has one background color, and when the
+panel's background is different from what's around it you get a little square of the wrong color
+in each corner. And the line itself is whatever the font decides it is, weight and position
+included.</p>
+<p>Then there's copy and paste. Select some text inside a box and you get the box too. Everyone who's
+pasted from a TUI into Slack knows the little │ cleanup dance. Sometimes you do want the box
+(pasting a table into a chat, say), but mostly it's junk. Cell borders aren't text, so they never
+get copied, which cuts both ways.</p>
+<p>A cell border is a cell attribute, like a background color. Each cell can carry up to twelve line
+segments: the two halves of each of its four edges, and four arms from its center. Each segment
+has its own color, width, placement and style, and the terminal draws them over the cell grid.
+Borders are stored in the cells, so they scroll, erase, insert and reflow with the text. What
+happens on erase or scroll already has an answer, the same one as for colors.</p>
+<p>The edges are split into halves so borders line up with quadrant block characters (▖▗▘▝ and
+friends). That makes it easy to draw a shape that's a half cell in from the grid and still put a
+neat border around it. Yes, that still uses a character for the fill, and there might be a better
+way to do that part. One problem at a time.</p>
+<p>The same idea could stretch to sextants and octants, or to quarter and eighth widths, if designs
+need them.</p>
+<p>Lines can be solid, double, dashed or dotted. Each corner and center of a cell can be square or
+rounded, with a configurable radius and anti-aliased arcs. A rounded corner can name an outside
+color, so the area outside the arc is painted correctly when the panel's background differs from
+what's behind it.</p>
+<p>When two neighboring cells both put a line on their shared edge, they merge into one line. The
+stroke with the higher priority wins, then the wider one, then the one to the right or below.
+That way a focused pane can raise its priority and keep its whole outline, whatever order its
+neighbors were drawn in. My first try was "right/bottom always wins", which lasted until the
+focused pane lost half its outline to its neighbor.</p>
+<p>Everything is one DCS string with a namespace:</p>
+<p>The common path is a pen, held in the cursor like the current background color. Set it, print
+some text, and the printed cells get the borders:</p>
+<p>There are also rectangle commands that set or clear borders on existing cells without touching
+the pen, and a capability query. An app sends the query followed by DA1. If the DA1 reply arrives
+without a cell-border reply first, the terminal doesn't support it, so the app falls back to box
+characters and reserves the space they need. Terminals that don't understand the DCS ignore it,
+the same as any unknown DCS.</p>
+<p>The minimum a terminal needs is the pen, the rectangle commands and solid strokes. I've tried to
+keep that first cut small, because there's always one more "... and this" to add, and that's a
+slippery slope.</p>
+<p>Line styles, rounded joints, priority and outside colors are extension fields listed in the
+capability reply, and unknown fields are ignored, so they can be added later. I'd rather the
+early decisions be two way doors where possible.</p>
+<p>The spec calls itself version 1 (it's the 1 in DCS 1 + b). That's v1 in the old sense, before
+we all got bogged down in semver. It doesn't mean done or stable, it means it's the first one I was willing to write
+down. Read it as v0.1, or a draft, or whatever you prefer.</p>
+<p>What none of these give you is a line with its own color and width on each edge. The
+rationale document covers the prior art in more detail and explains each choice in
+the protocol.</p>
+<p>My own first prototype was in Rio (raphamorim/rio#1947), with an earlier
+version of the spec that used APC instead of DCS. Feedback pointed out that APC isn't safe to
+reuse: Kermit 95 has run APC payloads as Kermit commands since the 90s. DCS is where structured
+terminal commands already live, and terminals ignore DCS strings they don't recognize, so I
+switched to that.</p>
+<p>When I first showed this around, most of the questions were about these. The spec goes into all
+of them properly, but here's roughly where I landed.</p>
+<p>Multiplexers were the first thing people asked about. tmux and friends redraw panes from their own
+idea of the cell grid, so passing these sequences through would just put borders in the wrong
+place. A multiplexer that doesn't know about the protocol should drop them and answer DA1 itself,
+and then apps running inside it fall back to box characters like they would anywhere else. One
+that does know about it can store borders like any other attribute and redraw them.</p>
+<p>Conflicting lines on a shared edge are settled when the terminal renders, using the priority rule
+above, so it doesn't matter what order the app wrote the cells in.</p>
+<p>Erase, insert and delete all work the way they do for background colors. Erased cells pick up the
+current pen, and lines that get inserted or deleted take their borders along. Scrollback, the
+alternate screen and reflow mostly come for free, because the border lives in the cell.</p>
+<p>On cost: the Ghostty change is about 1,650 lines, and a fair chunk of that is tests. Each cell gets
+a 16-bit border ID, which fits in padding that was already there, so cells don't get any bigger
+and a screen with no borders costs nothing extra. The IDs point into a table of distinct border
+sets (about 100 bytes each) that's shared by the whole terminal. A typical TUI only uses a
+handful of distinct sets, but the table is never freed, so in the worst case (all 65,535 IDs in
+use) it's somewhere around 10-15 MB.</p>
+<p>Rendering only does extra work for cells that have borders. Each one looks at its four neighbors to
+resolve shared edges, so changing a row also rebuilds the rows either side of it. Straight lines
+are a few solid quads per cell. Rounded corners cost more, because the anti-aliased arc is drawn as
+rows of small quads, roughly one per edge pixel. I haven't benchmarked any of this properly yet,
+and it's the part I'd most like another set of eyes on.</p>
+<p>The spec and rationale are on my Ghostty fork. The Ghostty
+branch implements all of version 1. I've only built and run it on macOS so far, so the
+GTK and OpenGL builds are untested. To build and run it (you'll need Zig 0.17 and Xcode):</p>
+<p>Inside that Ghostty, the gallery script on the same branch draws the style gallery above. It
+detects support first, so it's also a quick check for another terminal's implementation:</p>
+<p>Once it's running you can flip between views with keys: p placement, c colors, h blocks, j
+junctions, e halves, s styles and l live. w cycles the stroke width, b turns borders off
+so you can compare, and q quits. Each view also has a matching flag (--placement, --styles
+and so on) if you want to start on it.</p>
+<p>The tiling panes demo is on the Ratatui branch. It falls back to box-drawing
+characters when the terminal doesn't support cell borders, which is how I made the comparison
+shots above:</p>
+<p>Drag panes around with the mouse to retile them. n and v split, x closes, and right click
+opens a pane menu. Press b to switch between cell borders and box drawing, or g to shade
+alternate cells and see where the edges are.</p>
+<p>The btop-style monitor from the chart screenshots is in the same branch. Given how much of it an AI
+wrote, I did briefly consider calling it bslop:</p>
+<p>It's a real system monitor (it reads your actual CPU, memory, network and processes), so it's a
+better test of how this looks on a busy screen than the panes demo. 1 to 4 show and hide the
+boxes, b and g work the same as in the panes demo, and h or ? lists the rest of the keys.
+It needs a newer Rust (1.95) than the rest of Ratatui because of the sysinfo dependency.</p>
+<p>I'm not attached to this being the exact solution, but I think it's a problem worth solving, and
+I'd like it to be more than one terminal's feature (and more than one weekend's worth of yak
+shaving). If you work on a terminal, would you implement this, and which parts look expensive? If you work on a TUI library or app, which of your widgets
+would use it, and what would they need that isn't here? Comments are welcome on the
+Ghostty discussion, or on Hacker News and Lobsters.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/webgpu-kernels" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.joshka.net/cell-borders/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
