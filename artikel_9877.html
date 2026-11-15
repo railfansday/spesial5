@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Creating a self booting ZIP archive</title>
+    <title>Transformers now runs llama.cpp quants</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9877.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,292 +15,58 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Creating a self booting ZIP archive</h1>
+        <h1>Transformers now runs llama.cpp quants</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/transformers_llama_cpp_quants/thumbnail.png" alt="Transformers now runs llama.cpp quants" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/transformers_llama_cpp_quants/thumbnail.png" alt="Transformers now runs llama.cpp quants" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>So, after a debugging session the other day, I was having some shower
-      thoughts regarding early userspace and initrd.</p>
-<p>Linux initramfs supports unpacking CPIO, a stupid, simple, standardized
-      format. In the discussion on whether to support TAR instead, much
-      emphasize has been put on the fact that CPIO is standardized and less
-      fragmented.</p>
-<p>Luckily, Linux (the kernel) includes its own tool to produce the specific
-      variant of the standard that it happens to implement. The standard CPIO
-      tool is possibly the most cursed archiver under the SUN.</p>
-<p>In the old DOS/WinDOS world, ZIP was probably the most wide spread and
-      well known archive format, being displaced to some extend by the rise of
-      RAR during the 2000s.</p>
-<p>Because of the design of the format, ZIP lends itself to all kinds of
-      polyglot trickery. Way back when, self extracting ZIP archives where a
-      thing, EXE/ZIP polyglots that can be run and unpack themselves, which is
-      useful if you don't have an archiver installed.</p>
-<p>I don't think I need to explain where I am going with this, here is the
-      resulting ZIP archive I built:</p>
-<p>It is a completely normal ZIP archive, containing its own source code
-      needed to build itself from scratch:</p>
-<p>A particularly interesting file here is boot/ZIPHEAD.COM, that
-      contains executable code that is run when booting the archive.</p>
-<p>You need to fix the execute permissions of mk.sh after
-      unpacking, and you will need a copy of Zlib installed for
-      the tools. Running mk.sh from it's directory should
-      leave you with a fresh copy of the bootable ZIP archive.</p>
-<p>The simplest way to run it, is to just pass it to Qemu direct kernel boot:</p>
-<p>"That's easy" you might say, "Qemu supports Multiboot, that ZIPHEAD.COM
-      is uncompressed, at the beginning of the archive and has a Multiboot
-      header in it!"</p>
-<p>Yes, that's all true! But this ZIP archive also brings it's own boot
-      loader along. You can try putting it on a floppy and throw that in front
-      of Qemu:</p>
-<p>The first 512 bytes of the archive contain a valid boot sector that
-      loads some more code from the second sector and then bootstraps itself
-      into highmem with the A20 enabled and 32 bit protected mode set up.</p>
-<p>You can also put it on a hard drive too, it detects what INT 13h
-      drive it's been loaded from and dutifully queries the disk geometry.</p>
-<p>If you care to try, you can also dump it on a real floppy and stuff it
-      into a PC:</p>
-<p>That's a Pentium MMX by the way, but I also tried an i486 DX2 and an
-      Am386DX-40, just to be sure. My 486 had me hold my breath for a moment,
-      it has a spectacularly slow floppy drive. The text on screen is from
-      the file boot/MESSAGE.TXT</p>
-<p>"But that's not special either" you might respond, "ZIPs are read from
-      the back, you can just put anything you want in front, so you put a boot
-      sector there!"</p>
-<p>That is sadly not quite true anymore, I'll get to that. But for
-      now, lets take a look at the first couple bytes of that archive
-      together and we'll see the real party trick:</p>
-<p>The ASCII P stands for Phil
-      (
-        not Picard
-      ), as in
-      Phil Katz,
-      followed by 03h and 04h. What you are looking at, is a
-      completely valid ZIP local file header for boot/ZIPHEAD.COM</p>
-<p>Oh, and those other bytes there after the ZIP header: 02 b0 ad 1b,
-      if you flip them around to human endian, it reads 1BADB002.
-      That's the Multiboot magic :-)</p>
-<p>The 16 bit real mode code starts right after the Multiboot header,
-      at offset 00000050. If you are feeling a little confused,
-      so is the file utility:</p>
-<p>If you take a closer look at the first line of the hex dump, you might
-      be able to spot the jump instruction that makes this little magic trick
-      possible. Luckily, Phil Katz' initials are valid opcodes. The Multiboot
-      entry point is much further into the file at offset 00000331.</p>
-<p>Here's a picture you probably recognize from
-      
-        the Wikipedia article about the ZIP format
-      .
-      This here is a local copy, Wikimedia Commons hosts
-      
-        the original with attribution and licensing information
-      .</p>
-<p>Much like a TAR or CPIO archive, a ZIP file is an amalgamation of tightly
-      packed files with a short header in front, specifying the full file path
-      and other meta data:</p>
-<p>The timestamps are DOS datetime, the checksum is a CRC-32, there are no
-      attributes or permission bits, we are thoroughly in DOS land. Directories
-      are implied by the file paths.</p>
-<p>Unlike TAR or CPIO, there is a central directory in the end, with
-      a listing of all of the file headers and back references to the file in
-      the archive. Unlike traditional file formats that have are
-      started by a header, ZIP is terminated by a footer.</p>
-<p>That last part was especially important in the days when ZIP archives
-      would be split over several floppies. To access a file, just scan the
-      directory on the last floppy, then tell the user what floppy to insert to
-      get the file.</p>
-<p>By comparison, accessing a file in a tarball requires linearly scanning
-      over the whole thing (which, on the other hand, is
-      
-        preferable for tape drives
-      , where TAR originates).</p>
-<p>ZIP archives are meant to be read from the back, the footer points to the
-      central directory, the directory points to the files. In theory,
-      the archiver shouldn't care if there happens to be a gap between two
-      files, containing something else or if there is something else in the
-      front of the archive, like a file header for a different file format.</p>
-<p>The local file headers also supports up to 64k of "extra" stuff between
-      the header and the file data, the footer has "comment" at the end, also
-      up to 64k.</p>
-<p>If you look at the footer for a second, you might spot an interesting
-      design flaw:</p>
-<p>it is variable size, an archiver needs to find it looking
-      from the back, but the magic and the size are both stored before
-      the variable sized comment field. Ask yourself this for a moment: how
-      would you implement this in an archiver? Demanding that there is no
-      comment? Reading the last 64k plus some change and scanning it? From
-      which direction? What if there is another valid footer inside the
-      comment field of the footer? Depending on how an implementation deals
-      with this, a specifically crafted archive can appear to contain
-      different files when viewed with different archivers.</p>
-<p>Trying to make the format extensible ended up building a whole lot of
-      foot guns in there. And we are not even talking about the plethora of
-      extensions that have been tacked on to the official specification over
-      the years.</p>
-<p>Many modern implementations decided to save themselves a lot of headaches
-      and just treat ZIP archives the same way as tarballs, linearly scanning
-      them from the front instead. They expect the archive to start with a
-      local header, skipping by the size MUST lead to the next entry
-      or finally, the central directory. They reject any archives where this
-      is not possible. This effectively prevents a lot of polyglot trick
-      fuckery, but at the cost of rendering possibly valid archives unreadable.</p>
-<p>For the self booting ZIP archive, the challenge thus becomes: the archive
-      MUST start with a local file header, there cannot be any
-      gaps, everything must be properly contained inside files.</p>
-<p>Anybody who has ever looked at a DIY toy OS tutorial has probably
-      stumbled across
-      
-        The Multiboot Specification
-      , the possibly easiest and most beginner friendly way to get
-      a program running on bare metal x86.</p>
-<p>The multiboot spec originates in the GNU/FSF ecosystem and is implemented
-      by boot loaders like GRUB or Qemu direct kernel boot. SYSLINUX supports
-      it via a plugin. There is a draft for an over engineered 2nd version, that
-      also supports MIPS, but this is of no concert to us here.</p>
-<p>A Multiboot 1 compliant kernel simply contains the magic
-      value 0x1BADB002 somewhere in the first in the first 8k.
-      This is followed by flags and a checksum (all 3 must add up to zero).
-      Depending on the flags, additional fields may follow.</p>
-<p>The kernel itself can be an ELF file from which the loader extracts
-      load address and entry point. The kernel is run in 32 bit protected
-      mode with flat segments (base=0, limit=4G) and the A20 gate enabled.</p>
-<p>Alternatively to a plain old ELF file, the kernel can also specify the
-      memory layout manually (indicated via a flag), allowing flat binaries or
-      other file formats to be loaded. The extended header looks like this:</p>
-<p>The hdr_addr specifies the in-memory address of the header after
-      loading the file, using this and the file offset where the header was
-      found, the other addresses can be converted back to file offsets by the
-      loader.</p>
-<p>This way, the load_addr and load_end_addr are used to figure
-     out what parts of the file to load where into memory. If the
-     bss_end_addr is past that, the loader zero-fills it, before finally
-     jumping to entry_point to run the kernel.</p>
-<p>The Multiboot compliant loader also sets up a structure with system
-      information (e.g. memory map, APM tables), kernel command line,
-      etc… and passes the pointer to the kernel (via register
-      EBX, magic value 0x2BADB002 in EAX).</p>
-<p>Making a Multiboot bootable ZIP archive is trivial. Simply pack a flat
-      binary with a Multiboot header as uncompressed file binary, make sure it
-      is at the beginning and the addresses line up. An external tool can then
-      fix up the headers, so that the whole archive is loaded.</p>
-<p>For any practical applications, it would make sense to stop
-      right here, but we're not here for "practical" or "sane".</p>
-<p>On an IBM compatible machine, the BIOS iterates over the installed
-      drives, loads the first sector from each (to location 0x7c00),
-      until it finds one where the first sector ends with 0xaa55.
-      It then jumps to the first byte.</p>
-<p>Disks that are formatted with a filesystem, typically have a header in
-      the beginning that starts with a jump instruction across the header into
-      the bootstrap code that follows. The DOS MBR format opts to instead store
-      the partition table at the end of the first sector and all the code in
-      the front.</p>
-<p>If we stuff a BIOS boot signature into the ZIP archive, at least parts
-      of the ZIP local file header will be executed, the first few bytes are
-      a mandated magic value and we cannot just put a jump instruction there.</p>
-<p>The puzzle exercise now becomes, filling the header fields with values
-      that make sense but also happen to be valid 8086 opcodes. At least,
-      until we hit something that can be abused as a free-form field that we
-      can stuff a jump into.</p>
-<p>Let's take a look at that hex dump again:</p>
-<p>I've tried to highlight the relevant header up to the jump
-      instruction: 0xeb is a relative jump with a single byte
-      immediate argument.</p>
-<p>If we take a look again at the header structure, we can make out what
-      fields those bytes correspond to:</p>
-<p>The timestamp is the first best place where we can put a jump
-      instruction. The 0xeb relative jump works out to 8:30-ish
-      in the morning, give or take the jump distance.</p>
-<p>The two bytes in front of the modtime are compression
-      method. We really, really want to have 0x0000 here,
-      i.e. uncompressed, so that an archiver doesn't choke on the
-      file data.</p>
-<p>The first four bytes are the magic value of the format, we don't have any
-      choice what to put here either, it has to be "PK\03\04". The
-      version and flags fields are the only places where we have
-      some creative freedom.</p>
-<p>If we run the file through a dissassembler and take a look at the
-      first few bytes, we'll end up with this:</p>
-<p>This is AT&T syntax, source operands are left, destination
-      on the right. We use GNU tools in this household, deal with it.</p>
-<p>Anything that just fiddles around with a register doesn't really hurt us.
-      Same goes for memory reads. We don't have memory protection, no
-      matter what we access, there won't be any faults, the only memory
-      mapped hardware around should be the frame buffer.</p>
-<p>Memory writes are another story. Worst case, we could shoot up the
-      interrupt vectors, the BIOS RAM areas (BDA, EBDA), or shadowed option
-      ROMs.</p>
-<p>The P for Phil also happens to also decode to
-      push %ax. If the BIOS leaves us with a somewhat sane stack
-      pointer, the push instruction should hopefully not mess anything
-      up. It is part of the ZIP magic and thus unavoidable.</p>
-<p>The version field is itself actually structured, containing
-      a decimal encoded version number, followed by an OS ID byte. If we set
-      it to 0x000a (stored as little endian), this decodes to version
-      1.0 on MS DOS.</p>
-<p>0x0a is an orb, version 1.1 would be double byte sized,
-      version 0.8 and 0.9 would be register direct and not touch the memory.
-      An address of BX + SI is the result of a mod-reg-r/m field
-      with all zeros.</p>
-<p>We could try to code golf our way into consuming at least part of the
-      flags as well, but low-valued, "harmless" opcodes that result
-      in sane versions are sparse. Also, some version numbers change the
-      meaning how an archiver is supposed to interpret the file. Also also,
-      mod-reg-r/m combinations in the OS code field quickly end up as
-      an undefined OS ID. Also also also, we have the method as well,
-      that has to be 0x0000, which would result in a memory
-      write if executed. We have to consume that somehow, rather than running
-      it.</p>
-<p>So for the flags, I came up with 0x8002 (stored as little
-      endian). The lowest, set bit has a compression method dependent meaning,
-      currently only defined for LZMA (14), deflate (8) and implode (6). For
-      uncompressed (method 0) there is no defined meaning (the specification
-      just ignores that part, it doesn't use nasty words like
-      undefined). For deflate it would mean that
-      maximum compression was used.</p>
-<p>The MSB is specified as "reserved for use by PKWARE", whatever they chose
-      to put there, if they ever chose anything at all. Most imporanly, the
-      opcode 0x02 decodes to a single byte, indirect add, and in the
-      mod-reg-r/m, the MSB tells the CPU to consume another 2 bytes of
-      immediate DISPlacement. This is how we can get rid of the
-      compression method.</p>
-<p>At this point, we've made it! We reached the modtime field
-      that we can just stuff a jump into.</p>
-<p>Once we've made it past the header, we are in 16 bit real mode. We just
-      need to go through all of the neccessary steps to set up the environment
-      that the Multiboot code expects:</p>
-<p>This might sound like a lot, but in the current version, the actual code
-      boils down to 817 bytes. That includes all the headers (ZIP, multiboot),
-      the rather bulky GDT. But it is still quite a lot and outside the scope
-      of this post anyway, I might pick some interesting parts out of it for
-      some follow-up posts (watch this space?).</p>
-<p>The Multiboot entry code re-loads the GDT, but this time using the
-      highmem location, and sets up a stack after the archive. The size is
-      extracted from the Multiboot header. Knowing the start address, the C
-      code can then iterate over itself to locate and access files in the
-      archive.</p>
-<p>Some linker script trickery is used to tie it all into one blob, but with
-      the GDT and Multiboot header visible from both lomem and highmem code at
-      different locations.</p>
-<p>At this point, you might be inclined to actually read the source code
-      in the ZIP archive. There are lots of comments trying to explain what
-      is going on.</p>
-<p>There's a README that points out the structure of the code with
-      suggestions where to start reading. I decided to keep it readable rather
-      than stuff it all into a single sector. Self-modifying trickery is kept
-      to a minimum (to safe some space, the function to enter unreal mode
-      modifies itself, the code is run twice, courtesy of a misdirected
-      ret, entering protected mode the first time round, leaving it
-      again and restoring the segment registers on the second run, before
-      returning for real).</p>
-<p>Code in the archive and this blog posts have been written with
-      assistance from:</p>
-<p>If you poke around in the code and have any suggestions for improvements,
-      or otherwise do anything interesting with it, please let me know.</p>
+                <p>We're adding support for running GGUF models efficiently in transformers, so you can use checkpoints sized for your laptop's memory through the familiar transformers APIs. Pick a GGUF from the Hub, load it with from_pretrained, and start generating on your own machine.</p>
+<p>Running AI models on your laptop has become much easier, and llama.cpp has been a big part of that. Its inference engine powers local AI tools such as Ollama, LM Studio, and Jan. Alongside projects like MLX, it has helped make local inference a practical option for everyday use.</p>
+<p>A recent example of what local AI can feel like:</p>
+<p>This is where we are right now. And i’m not gonna lie it feels pretty magical 🧙‍♀️Qwen3.6 27B running inside of Pi coding agent via Llama.cpp on the MacBook ProFor non-trivial tasks on the @huggingface codebases, this feels very, very close to hitting the latest Opus in Claude… pic.twitter.com/lsIxLoUneU</p>
+<p>GGUF, developed by the llama.cpp team, is a widely used format for local inference. The team also shares quantized checkpoints under ggml-org on the Hub. Publishers such as Unsloth, LM Studio Community, and bartowski also provide ready-to-use GGUF checkpoints in a range of quantizations, so users can pick the version that fits their machine. GGUF models have been downloaded millions of times.</p>
+<p>We want to make it easier to run these models locally with transformers, too. Compatibility is only useful if the model is pleasant to run. To bring performance close to llama.cpp, we're reusing its underlying ggml kernels through the kernels library, and reducing overhead in generate. Our initial focus is local inference on Apple Silicon, starting with the Qwen3.5 architecture.</p>
+<p>GGUF packages model weights and metadata, including tokenizer information and an optional chat template, in one file. It supports different quantization levels, letting you trade some precision for a smaller memory footprint. Variants such as Q4_K_M mix tensor precisions, using mostly 4-bit weights while keeping sensitive tensors at higher precision.</p>
+<p>Here's how quantization changes the file size of Unsloth's Qwen3.5-4B:</p>
+<p>We suggest starting with Q4_K_M, then trying Q5_K_M or Q6_K if you have more memory available. More aggressive quantization can help larger models fit, but the quality tradeoff depends on the model and the task. Evaluate it on the work you actually want the model to do. The Hub's GGUF documentation describes the available quantization types.</p>
+<p>To load a GGUF model, pass its Hub model_id and filename as gguf_file to from_pretrained.</p>
+<p>No extra configuration is needed: when the weights stay packed on Metal, transformers automatically loads the compatible ggml/Metal layer kernels and uses ggml-org/ggml-attn as the attention implementation. If that kernel cannot be fetched, the model falls back to "sdpa" with a warning, and you can always force "sdpa" by passing attn_implementation="sdpa" explicitly. See the GGUF documentation for more loading options.</p>
+<p>That is the only GGUF-specific step. Everything after it is the standard transformers API:</p>
+<p>Without a compatible quantization kernel, the loader falls back to dequantizing the model and uses more memory.</p>
+<p>You can also use the same checkpoint with transformers serve, which exposes an OpenAI-compatible API:</p>
+<p>The model argument uses <model_id>:<filename>.gguf: before the colon is the Hub repository (unsloth/Qwen3.5-4B-GGUF), and after it is the file to load (Qwen3.5-4B-Q4_K_M.gguf). This selects a specific quantization from a repository that may contain several.</p>
+<p>For models whose chat template supports thinking, add --reasoning off to skip it or --reasoning on to enable it. The default, --reasoning auto, follows the chat template’s default. See the reasoning options for details.</p>
+<p>You can connect a client such as Jan or Pi by adding a custom OpenAI-compatible provider with these settings:</p>
+<p>transformers runs the model on your Mac, while the client provides the conversation interface. The same endpoint can be used by other clients that support this API.</p>
+<p>Our reference for local inference performance is llama.cpp. The comparison below focuses on three GGUF checkpoints: a small dense model, a larger dense model, and a mixture-of-experts model.</p>
+<p>The llama.cpp column comes from the llama-bench tool (build 5f55650a7, release b10200, Metal backend from ggml 0.18.0), run as llama-bench -m <file> -p 0 -n 128 -r 3, which reports tg128: the token-generation rate over 128 decoded tokens, averaged across three repetitions, with prompt processing excluded. The transformers column is generate producing the same 128 tokens from a 12-token prompt, best of three warmed runs, and it includes prefill.</p>
+<p>Measured on a MacBook Pro M2 Max, 32 GB unified memory, macOS 26.6, PyTorch 2.12.1, kernels 0.17.0,
+plugged in.</p>
+<p>Transformers is close to llama.cpp across all three checkpoints. The chart uses the same measurements described above; it does not imply identical benchmark conditions, since the Transformers measurement includes prefill while llama-bench reports decode-only throughput.</p>
+<p>When GGML and llama.cpp joined Hugging Face, we described their complementary roles: llama.cpp provides a foundation for local inference, while transformers provides a foundation for model definition. GGUF support brings those two closer together.</p>
+<p>llama.cpp remains our recommended engine when your priority is efficient local inference. Its dedicated runtime, memory management, and broad hardware support are built around that goal. This integration gives developers a convenient way to work with the same GGUF checkpoints inside transformers:</p>
+<p>For that last case, use GgufConfig(dequantize=True):</p>
+<p>The bigger opportunity is bringing ggml's performance to models that llama.cpp does not support.</p>
+<p>transformers already provides the PyTorch implementations of these architectures. With ggml kernels and quantization schemes available in PyTorch, we can work toward accelerating their supported operations without first implementing the entire model in llama.cpp. This is especially useful for new architectures, research models, and custom variants that may never receive a dedicated llama.cpp implementation.</p>
+<p>That opportunity extends beyond the GGUF format itself. A kernel operates on tensors; it does not require the whole model to come from a GGUF file. The same building blocks can be integrated into other transformers models and loading workflows. This also opens a path to other modalities: computer vision models, audio models, and multimodal models could reuse compatible attention, normalization, and matrix multiplication kernels without first having a full implementation in llama.cpp. Each architecture still needs integration and validation; the initial GGUF examples here cover text generation.</p>
+<p>We also wanted to show how far we can get while keeping the model and generation loop in Python. With the right kernels and an efficient generation loop, Python and PyTorch can deliver strong local inference performance. The kernels handle the heavy computation, while the generation loop keeps the GPU busy by avoiding unnecessary synchronization.</p>
+<p>Our focus was to make eager execution fast without requiring torch.compile. For interactive use, we wanted a quick start and a steady stream of tokens, without compilation pauses or recompilation when input shapes change. The two main pieces of that work are the kernels and generate itself.</p>
+<p>A kernel is a small program that performs an operation on the GPU. PyTorch supplies general-purpose implementations; a specialized kernel can do less work, combine several operations, or read quantized weights directly in their stored format.</p>
+<p>The kernels library lets us distribute compatible builds of ggml's Metal kernels on the Hub and call them from transformers. That brings ggml's work into the PyTorch model without replacing the model with a separate inference runtime.</p>
+<p>The first four packages build on ggml's kernels; the top-k kernel addresses a separate bottleneck in MoE routing. Together they reduce the GPU work needed for each generated token.</p>
+<p>To show the contribution of the layer kernels, we compare the same packed GGUF checkpoints with and without them. The quantization kernel stays enabled in both configurations: disabling it would also change how weights are represented and would measure a different tradeoff.</p>
+<p>Faster kernels only help if the GPU has work to do. During generation, the CPU schedules GPU operations and controls the loop that produces the next token. Reading a result back from the GPU can force the CPU to wait until queued operations finish. Repeating even a small wait for every token can noticeably reduce throughput.</p>
+<p>Two changes address this in generate, which results in improvements for all transformers models (not just when running GGUF files):</p>
+<p>These changes improve the generation loop around the model, so their usefulness extends beyond GGUF. They complement the kernel work: kernels reduce the cost of an operation, while fewer synchronization points let CPU scheduling and GPU execution overlap.</p>
+<p>These measurements keep all layer kernels enabled; the bars isolate the changes to the generation loop.</p>
+<p>The initial target is a single interactive conversation on Apple Silicon. There are a few boundaries to keep in mind:</p>
+<p>If you have a GGUF model you would like to use in transformers, open an issue with the checkpoint and your use case. That will help us prioritize support for the models people are running locally.</p>
+<p>We would like to thank Arthur Zucker for initiating this work and reviewing all of my PRs, and Cyril Vallez for the generate PRs. We are grateful to Sayak Paul, the llama.cpp team, and Bertrand Chevalier for their help integrating the kernels. We also thank Aritra Roy Gosthipaty and Pedro Cuenca for reviewing this blog post, and Lysandre Debut for overseeing the project.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://goliath32.com/blog/ziphead.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/transformers-llama-cpp-quants" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

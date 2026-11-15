@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Solving the fox game</title>
+    <title>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9858.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,194 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Solving the fox game</h1>
+        <h1>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Christoffer Stjernlöf posted about the Fox Game,
-an old Norse asymmetric board game (seemingly also called “halatafl”) where
-twenty sheep try to outsmart two foxes and get to the other side.
-His AI uncovered some interesting insights, but left the question open as of whether the 
-foxes or the sheep actually win with perfect play (the general sentiment
-in his family was that winning with the foxes was easy). This was too tempting
-for me to leave on the table, so I set out to make a strong solve.</p>
-<p>Since I don't know this game myself, I've stayed with the rules he describes
-even when they differ from e.g. Wikipedia
-(in particular, I do not use forced fox jumps, or multi-jumps); the only
-real change is that I don't have a 40-move draw rule, any position that is
-a forced win for one of the sides would be a win no matter how long it would
-take. (I consider this just an implementation detail in his AI, although
-morally, I consider a draw a loss for the sheep.) You might want to read
-his post to get the full rules, because I'm not going to repeat them here.</p>
-<p>The results first: The sheep win with perfect play, even with only 19 sheep
-(remove one on the flank), or 18 if they are allowed to go first. Even with
-only 9 sheep (the minimum possible that isn't an instant win for the foxes),
-the sheep can force a draw right from the start. With one fox, 11 sheep
-suffice for a forced win. (The draw margin is seemingly so large because
-one fox can just camp in the last spot in the pen, and it's hard to force
-it away without getting harassed by the other fox, unless you have lots of sheep.)</p>
-<p>The rest is about the implementation. I'll skip over a lot of wrong turns,
-and unsurprisingly, there were a lot of bugs to iron out, but hopefully,
-it got to a good place in the end. :-) I started out trying to make something
-very simple, and it worked for the first few cases, but then things got
-more complicated than I would have liked in the end. Still only at ~1000
-lines of code, though, with no dependencies.</p>
-<p>The board has 33 squares. I tried a few different ways of represent the state
-of the game, and ended up on a simple bitboard representation: There's a
-64-bit bitmap representing where there are sheep, and another bitmap
-representing where there are foxes. Since there's plenty of room in there,
-I use a spare bit to represent side-to-move. This is compact (which mattered
-a lot earlier on, but not as much later), easy to iterate over, and has
-little redundancy, so it's easy to keep valid. You need fast 64-bit population
-count and bit-scan instructions, but a) that's common now everywhere,
-and b) I decided fairly early that I wanted to require BMI2 anyway.</p>
-<p>The bit order mostly doesn't matter; I just started at top-left and went
-from there. All it really influences is square iteration order. There's
-a small tweak in that I store the right half of the board mirrored
-(reverse x order) for symmetry purposes; more on that below.</p>
-<p>I just typed in every possible move from every square into an array,
-then verified by generating some SVGs that I hadn't made any typos (I had).
-In retrospect, I should have done something more automated; it would have
-been less painful.</p>
-<p>The moves for sheep are just “you can go to X, Y or Z”. The moves
-for foxes are “you can go to X or Y, or you can go to Z if there's
-a sheep at W (which will be eaten)”. The move generator mostly just looks up
-the source square and tests every move. For the sheep, I make an easy
-test using bitboards; for the foxes, I could probably do something
-similar, but the jump moves proved a bit tricky (even with PEXT/PDEP)
-and I didn't end up using it.</p>
-<p>This is the part that really determines the geometry of the board
-(apart from debugging display). Everything else is pretty much geometry-agnostic.</p>
-<p>There's a little over 2^41 possible board states (this includes some
-illegal positions as well as some situations that could never arise
-during actual gameplay, such as a fox being stuck at C1 with a row
-of sheep ahead of it), and I want to remember all of them. With that
-many positions, I figured I needed a fairly compact representation.
-I needed to store that a position could be sheep win, fox win or
-a draw, and then there was a fourth “invalid” state that was useful
-for internal reasons, so that maps exactly to two bits per position.
-(A tablebase intended for distribution could be compressed to less using the usual
-tricks of entropy coding, skipping half of the positions, or similar.)</p>
-<p>This means we need to give a number to every possible position, ideally
-one with no collisions and no holes. I learned about
-combinatorial number systems
-which fit the bill exactly; given e.g. “we have 33 squares and 15 pieces”,
-it gives a dense mapping of positions from board to ID (ranking) and the
-opposite (unranking). (I made some fairly fast ranking and unranking
-algorithms, which may or may not have been novel, but it turned out
-I didn't actually need fast unranking after some other optimizations.)
-There are some extra complications in that there are two types of
-pieces, but you can solve them in a number of ways.</p>
-<p>On a macro level, I store everything with 9 sheep and 1 fox first,
-then 9 sheep and 2 foxes, 10 sheep and 1 fox, and so on. This gives
-beautiful locality (a single move can never remove more than one sheep,
-and only extremely rarely more than one fox), allowing me to just
-mmap everything and let the kernel deal with it, even though I only
-had 256GB of RAM and the total set was larger (329,870,110,455
-bytes after the symmetry optimizations below).</p>
-<p>mmap is almost never the right answer, but again, I was trying to
-go for simplicity. It certainly brought me pain, though, and perhaps
-some more explicit I/O would have been better.</p>
-<p>The board is left-right symmetric (with an odd number of columns,
-so that there is a middle column that is neither “left” nor “right”).
-I had hoped to just ignore this, but eventually the gains became
-too important to ignore, so I conceded.</p>
-<p>The basic idea is that I ranked the board twice, both as itself
-and mirrored (mirroring is just a couple of masks and shifts, given
-my representation), and picked the key that was the smaller as canonical.
-This reduced the number of positions I needed to look at to a bit
-over 50%, as expected, but it does nothing to the storage/RAM
-requirements; the new rank is not dense and the “illegal”
-(non-canonical) positions are spread out a bit all over the place
-(although of course near the low and high ends of values,
-it works much better).</p>
-<p>As a tweak, I chose to compute all 33+281 canonical fox positions
-and renumbered using those placements as an assumption. This slashes ~95% of 
-the waste, which is good enough; you can still rank a
-nonconical position if the foxes are symmetric about the center
-(or if there's only one fox and it's in the middle!), though.</p>
-<p>You can improve on this by making the macro-splitting finer;
-instead of having a chunk for e.g. “10 sheep, 2 foxes”, you
-could have one with “5 sheep in left, 0 foxes in left, 1 sheep
-center, 1 fox center, 4 sheep in right, 1 fox in right”
-and demand that there are more sheep in left than right.
-However, you still get problems when the number is balanced,
-you'd need finer splitting etc.. The gains are small enough
-that I didn't see the point in doing this, and it tends to be
-a place where it's easy to introduce bugs.</p>
-<p>I imagined calculating the exact number of positions up to symmetry
-would be an interesting exercise somehow, but I suppose it just
-immediately falls to Burnside's lemma
-as soon as you know how to count positions at all.</p>
-<p>Now that we have positions and moves and a way to store results,
-we want to know how to find the result for the starting position
-(and ideally also all other positions).</p>
-<p>My first attempt just did a depth-first search, caching as it went.
-This worked for the earlier stages but was generally a disaster; it ran out of stack
-easily (even with 8 GB—eight gigabytes of stack), and had problems
-with figuring out loops. (It didn't loop infinitely, but was prone
-to declaring loops where one side could break out of the loop by winning.
-I had a nasty hack to fix that, but it didn't really feel good.)</p>
-<p>What I did instead was propagating results one step at a time.
-For each possible position:</p>
-<p>If from a given position you know you can immediately win
-(e.g., the sheep reach the pen, or the fox eats the last
-relevant sheep), mark it as such.</p>
-<p>If you can, in one move, reach a known-won position, mark your
-position as won (for the side to move). Similarly, if you can only reach known-lost
-positions, mark your position as lost.</p>
-<p>Repeat #2 over and over again until you no longer have changes.</p>
-<p>This was simple but still inefficient; I typically needed 40–80
-passes for each chunk (where a chunk is something like “all
-positions with 15 sheep, 2 foxes”). However, it was super-easy to parallelize;
-I have 64 cores and could just hand out reasonable independent sub-chunks,
-you don't even need locking or atomic operations on the result set.</p>
-<p>The correct way of doing this is retrograde analysis (replace #2
-with doing backwards moves) and I assume this would have made the
-calculation roughly ten times as fast. But I only needed ~36 hours
-for the actual run (plus numerous pre-runs that failed for various
-reasons!), so I never got to this. After all, I wanted something
-simple to begin with.</p>
-<p>Since I only store win/draw/loss (WDL) for each position (also known as
-a “bitbase” in chess tablebases), it's not
-easy to know what the fastest way to win is; just that “this move
-does not mess it up, the other side still can't force a draw”.
-However, in practice, you could just do reasonable-looking moves that don't
-regress the position, and take forward moves whenever you can (i.e., do sheep
-pushes if that still wins).</p>
-<p>I made a simple alpha-beta searcher that tries to get win distances
-using the bitbase as a guide, which was a really fun challenge!
-It can find wins when they're perhaps ~20 ply (10 moves for each side)
-away, depending a bit on how narrow the win is (if there are only
-a few ways to win, it will obviously have to search a much smaller
-tree). Ultimately, though, alpha-beta for finding exact mate scores is just
-a losing game, since even perfect move ordering will only give you
-a sqrt() improvement over pure minimax.</p>
-<p>Perhaps making DTZ (distance-to-zeroing, referring to zeroing the
-draw move counter in e.g. chess) bases would be possible
-without breaking the bank on storage space; I would assume that
-usually, you can force some sort of progress pretty fast, at least
-as the sheep.</p>
-<p>I made a very rudimentary interface to the database; the UI isn't
-very nice, and it largely relies on hovering (which doesn't work all that
-well on mobile) but I didn't want a polished game-player, just to know the
-answer. :-) You can try it out at
-https://sheep.sesse.net/,
-although I don't envision keeping it up forever. Perhaps someone can
-gain new insight from it and become an expert player, although strong
-solves are rarely very insightful in themselves due to the brute-force
-nature. At least we've conclusively settled (again, under this ruleset!)
-that the sheep win with perfect play.</p>
-<p>Earlier, I would publish the source, but these days, the only ones
-who would be reading it would be the AI beast (fox?), and I'm not really
-so interested in that. :-) I'm definitely open to answering questions
-if anyone should have them; contact information at my home page as usual.</p>
+                <p>The pace of open-source text-to-speech (TTS) model releases has been incredible. On the Hugging Face Hub (as of Sep 30, 2026) there are more than 8K TTS models available 🚀</p>
+<p>Evaluation, however, hasn't kept pace: it remains fragmented and unstandardized. The gold standard is human preference scores such as MOS or MUSHRA (more on metrics). To this end, several arena-based leaderboards have established themselves as useful reference points for the community:</p>
+<p>These arenas compare models by presenting users with TTS outputs from two models, and asking them to choose one over the other. After collecting a sufficient number of votes, an Elo score is computed to rank models, typically with the Bradley–Terry model (see Voice Arena methodology).</p>
+<p>While human preference is the ultimate decider, arenas cannot scale to keep up with the pace of TTS releases. This may partly explain why open-source models are underrepresented on arena-style leaderboards: as of Sep 30, 2026, only 16 of the 92 models on Artificial Analysis are open-weights, with a similar skew on Voice Arena. This likely reflects practical factors: adding an API model requires little more than an API key, whereas an open model must be hosted and served by the arena operator, and commercial providers have more reason to seek placement than open-source authors. Another limitation with arena-style evaluation is voter consistency: no arena can ensure that the same voters with the same criteria of “better” can consistently evaluate models over time. Even the preferences of a single person change over time (“A man cannot step into the same river twice” as famously said by Heraclitus).</p>
+<p>To this end, we've built the Open TTS Leaderboard, which uses objective metrics to evaluate models on complementary aspects of performance:</p>
+<p>By relying on objective metrics evaluating a model drops from a couple weeks (for collecting votes) to a couple hours ⚡</p>
+<p>Importantly, the Open TTS Leaderboard does not replace human preference ranking. ASR-based WER provides a proxy for intelligibility, while speaker similarity estimates voice identity preservation. Neither directly measures naturalness, expressiveness, or listener preference. Nevertheless, they can even inform voting-based leaderboards which models to include in their evaluations.</p>
+<p>Our intention with this leaderboard is for it to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. The next few sections give an overview of main features of the Open TTS Leaderboard.</p>
+<p>From the default view of the leaderboard, models are ranked by macro-average WER on the English splits of Seed TTS Eval (paper) and CV3 Eval (zero shot) (paper).</p>
+<p>hexgrad/Kokoro-82M, Supertone/supertonic-3, and fishaudio/s2-pro lead the pack on English WER when averaged on these two splits, while the Pareto plots visualize which models strike a good balance between WER, batched inference (RTFx), and size.</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>k2-fsa/OmniVoice, fishaudio/s2-pro, and FunAudioLLM/Fun-CosyVoice3-0.5B-2512 are strong multilingual models.</p>
+<p>By toggling “Voice cloning”, the models that support this functionality (on the selected languages) can be compared.</p>
+<p>Moreover, a SIM column for speaker similarity now appears in the table, as well as two more Pareto plots for visualizing the tradeoff between SIM, batched inference, and size.</p>
+<p>The average WER of some models, such as bosonai/higgs-tts-3-4b and openbmb/VoxCPM2, improve under voice cloning, namely when a reference audio is provided.</p>
+<p>Numbers only tell part of the story, and as mentioned earlier human preference is the ultimate decider. From the “Listen” tab, you can compare the generated outputs that are behind the metrics, to find which model(s) you prefer!</p>
+<p>Pick the language/dataset you're interested in, whether you want to compare voice cloning, and optionally pick the models or listen to outputs from a random selection.</p>
+<p>The “Listen” tab fills an important gap in existing TTS leaderboards: a space to explore model outputs of various models.</p>
+<p>You can even give feedback on the generated outputs. As we collect more votes from the community, we may include this data on the leaderboard. So vote! But please login with your HF account to help us weed out spam/bots.</p>
+<p>The “Streaming” tab compares the streaming capabilities. Models are ranked by TTFA (time-to-first-audio), which quantifies how long a user waits after probing a model in order to obtain audio that can be played. This is important for voice agents and other interactive apps.</p>
+<p>For streaming models (✅ under “Streaming API”) it's the time until the first audio chunk arrives. For non-streaming models, it's the time until the whole utterance is generated, because playback can't start any earlier. Every model runs one audio at a time (batch size 1), on the same 50 English prompts from CV3-Eval, on the same hardware and in its default voice. We drop the first 3 runs as warm-up and report the median TTFA across the rest.</p>
+<p>The default view compares performance on an H200 GPU. Results are also available for CPU for a small (but growing) set of models!</p>
+<p>kyutai/pocket-tts is a great model for streaming on both GPU and CPU!</p>
+<p>The goal of the Open TTS Leaderboard is not only to keep up with the incredible pace of TTS model releases, but to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. Let us know which datasets, models, and metrics you want to see!</p>
+<p>We will soon open-source the evaluation scripts, much like the Open ASR Leaderboard repo, so that you can directly provide your feedback and suggestions via GitHub Issues and PRs! Let's shape TTS evaluations together 🤗</p>
+<p>Compare two TTS voices and pick the more natural one</p>
+<p>Explore ASR model benchmarks across datasets and languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
+<p>Glad this board splits multilingual TTS quality from voice-cloning identity instead of one aggregate green.</p>
+<p>The check I'd keep reading: whether the ranking still holds when you hold language/domain fixed versus when cloning is the axis. Otherwise teams optimize the easier subscale and still call the result "SOTA TTS."</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has movie box audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>Open TTS Leaderboard is an open evaluation platform designed to make multilingual text-to-speech and voice-cloning models easier to compare at scale. Traditional TTS arenas usually let users listen to outputs from two models and choose the one they prefer. Those votes can then be used to calculate an Elo-style score, often through approaches such as the Bradley–Terry model, giving users a simple way to understand how different systems perform based on human preference.</p>
+<p>Human feedback remains an important part of evaluating speech quality, but relying only on arena-style voting can be difficult as new TTS models are released at a rapid pace. Open-source models can also face practical barriers because they generally need to be hosted and served by the evaluation platform, while API-based commercial models can be added more easily. This can result in open-weight systems being less visible on public leaderboards. Another challenge is consistency: people's preferences and listening criteria can change over time, meaning that votes collected months apart may not always represent exactly the same standards.</p>
+<p>Open TTS Leaderboard aims to address these challenges by providing a scalable and transparent space for evaluating multilingual TTS and voice-cloning systems. The goal is to make comparisons easier to reproduce, expand coverage of open models, and provide useful evaluation signals alongside human preference. By bringing together scalable testing and community feedback, the project can help researchers, developers, and users better understand how speech models perform across different languages, voices, and use cases.</p>
+<p>GitHub repo with the eval scripts is public! https://github.com/huggingface/open-tts-leaderboard</p>
+<p>Compare two TTS voices and pick the more natural one</p>
+<p>Explore ASR model benchmarks across datasets and languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
                 <p style="margin-top: 25px;">
-                    <a href="http://blog.sesse.net/blog/tech/2026-11-13-19-51_solving_the_fox_game.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-tts-leaderboard" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

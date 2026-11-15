@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kildall&#x27;s algorithm</title>
+    <title>Disk encryption on NetBSD achieving secrecy</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9917.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,7 +15,7 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Kildall&#x27;s algorithm</h1>
+        <h1>Disk encryption on NetBSD achieving secrecy</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
@@ -23,73 +23,88 @@
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I got a part time job writing a Lisp compiler, so I’m going to talk about that.</p>
-<p>This post might be hard to understand if you do not program. Or if you do. There’s a fair amount of background required.</p>
-<p>You might be familiar with Lisp in the form of a Scheme interpreter you used for a few semesters in college. You might think things about it like “it’s so elegant, but it’s kind of impractical for day-to-day use”. You might think of it as “an interpreted language” and so don’t understand what I mean by Lisp compiler. If you don’t think these things you can probably skip to the next section.</p>
-<p>In Lisp, in contrast with some languages, the semantics are essentially built around interpretation. When you give a Lisp interpreter some code it goes through it step by step and executes it. This invites careful execution. It’s natural, for example, to expect that a program like</p>
-<p>that defines an addition function and then calls it on a string, will do something nice like pop you into a debugger, rather than return garbage data.</p>
-<p>But it’s also generally slow. The interpreter has to do something on all possible input. It can’t, for instance, very well optimize FOO to accept only one numerical argument in a register, because later FOO might be called with a string.</p>
-<p>So you add a compiler. The compiler is an optimization. It takes code and returns an optimized version that tries to preserve these semantics as much as possible while being much faster. The optimized version is faster partly because it’s probably composed of machine code or JVM bytecode or something else interpretable very quickly, and partly because of higher level optimizations. For example</p>
-<p>here the compiler might note that FOO can only accept numbers, and when it sees a straightforward call to FOO like in the second line that gives it only numbers, it generates code that skips the “is this a number? No? Debugger time” check. An “interpreter stub” retains the whole safest behavior, and can be used in the third line if eval returns FOO.</p>
-<p>This strikes a good balance, for me, between speed and freedom. The optimized code isn’t any less safe, so I can still write things with abandon and watch them fail in the debugger.</p>
-<p>The downside is that the compiler has to be pretty smart to be very effective. Luckily several Lisp implementations with pretty good compilers already exist, like SBCL and CCL. Both can generate fast1 code without too much trouble.</p>
-<p>I work on a new Lisp compiler called Cleavir. Cleavir is the compiler part of Dr. Robert Strandh’s project, SICL. SICL is intended to provide modular, reusable, clean, and more positive adjectives code to other implementations, as well as being an implementation in itself.</p>
-<p>SICL isn’t yet an implementation on its own, but Cleavir is used in another new Lisp implementation, clasp, which is Dr. Christian Schafmeister’s project.</p>
-<p>As far as I know the initial thoughts for Clasp went something like this:</p>
-<p><drmeister> My lab has this new system for designing artificial protein-oids. They’re made of bis-amino acids, which we also invented.</p>
-<p><DoD, etc. shadowy masters> Frikkin’ sweet.</p>
-<p><drmeister> We call them spiroligozymes2. They could have incredible implications for-</p>
-<p><DoD, etc.> Sure great. Here’s an award for being a literal nanotechnologist, named after that physicist everyone likes.</p>
-<p><drmeister> OK so the thing is that this stuff we’re doing involves a lot of computer work.</p>
-<p><drmeister> Right, and we mostly do that in C++. But I like Lisp.</p>
-<p><DoD, etc.> Great. Use it. It’s got an ANSI standard. God bless America.</p>
-<p><drmeister> But we don’t want to lose the C++ code. Lisp can use C functions but C++ doesn’t really have any interoperability.</p>
-<p><drmeister> So I was thinking I’d spend several years making a new Lisp implementation that’s tight with C++ from the ground up.</p>
-<p><DoD, etc.> That sounds hard, and you’re a chemist.</p>
-<p><DoD, etc.> Here is a zillion dollars. Snap to it.</p>
-<p>It must be nice being a respectable scientist, is what I’m saying.</p>
-<p>Clasp ended up being based on Embeddable Common Lisp (ECL), so called because it’s written in C and designed to be called from C programs. ECL provides a lot of the runtime. For compilation, however, Cleavir compiles Lisp programs into its “Mid-level Intermediate Representation”, or MIR; Clasp then compiles this into LLVM-IR, which LLVM than compiles to machine code.</p>
-<p>This is pretty convoluted and presents some problems (LLVM doesn’t really seem to make itself a good target for something with an online compiler and mostly heap allocation, for one). Luckily they are not usually mine, because I mostly limit myself to Cleavir, but it’s nice to know the nature of the gnashing maw you hang over.</p>
-<p>Cleavir’s MIR, and also HIR (“High-level”), are mostly what I work with. Consider this (silly) function:</p>
-<p>flet establishes local closures, and setf assigns. (example anything) will print 19 and then return 350.</p>
-<p>In HIR, after a few transformations, the code looks like this. Here are the basics: white rectangles are “instructions”, and represent basic operations. Ovals and the orange rectangles are “data”. The solid black arrows indicate control flow. Red dashed arrows indicate inputs to instructions, and blue dashed arrows outputs. Functions begin with the instructions called “enter”.</p>
-<p>It’s not really much different from any assembly-type language in form, other than having closures and explicitly separating input and output, but it’s more convenient to represent control flow graphically than with labels.</p>
-<p>A graph of operation nodes is pretty common as an intermediate representation, because it maps closely with the conception of computers as state machines. As such, some optimization techniques are well-trodden.</p>
-<p>In 1973, G. A. Kildall published his paper “A Unified Approach to Global Program Optimization”3. The title is a bit grandiose but actually pretty accurate. Kildall laid out a very general algorithm for associating optimization information of any kind with nodes in an instruction graph of this form. A few weeks ago I implemented it for Cleavir.</p>
-<p>It works like this. First, you establish some domain of optimization information. This domain can be anything you want, as long as it forms a bounded meet-semilattice4. Elements of the domain are called “pools”. Next, you define an “optimization function” which, given an instruction node and its pool, returns another pool.</p>
-<p>The algorithm has a “work set” consisting of instructions paired with pools. The initial contents of the work set are dependent on what you’re doing, but contain at least one instruction. The algorithm returns what I’ve been calling a “dictionary”, which is an association of instructions to pools that is distinct from the work set. Initially the dictionary is empty, i.e. there are no associations.</p>
-<p>The algorithm proceeds by choosing and removing some (instruction, pool) pair from the work set. If the instruction removed has not yet been associated with a pool in the dictionary, or if the associated pool is less than or equal to (an operation established by the definition of meet) the pool from the work set, the instruction becomes associated with a new pool that is the meet of the old association and the pool from the work set. Additionally, the optimization function is called with the instruction and this new pool; the result pool is paired with all instructions immediate succeeding (or preceding, depending on what you’re doing) the instruction in the work set.</p>
-<p>But the paper describes that better. Intuitively, what happens is that if the pool in the work set for an instruction is “better” than the one for that instruction already in the dictionary, in some domain-specific sense, the instruction is reassociated with a “better” pool, and the nearby instructions are put in the work set with new information based on this instruction.</p>
-<p>Nothing makes sense when it’s put that abstractly, right? It’s not just me? I don’t know how mathematicians survive.</p>
-<p>I implemented this algorithm in a general way. The function, kildall, takes an argument called a “specialization” that includes all the domain-specific information for the algorithm. I have a few of these specializations.</p>
-<p>The one I just put into a usable state was escape analysis. Check out the program with getx and setx again. An interpreter, upon seeing the flet, would allocate closures for both functions on the heap, i.e. dynamically, with cleanup being handled by the garbage collector. But if we look at the program, we can see that the closures cannot possibly be returned from this function or otherwise appear outside a strictly delimited context - they do not “escape”. In other words, these closures could be allocated with stack discipline. This is cheaper. An interpreter isn’t smart enough to see this but a compiler ought to be able to.</p>
-<p>To analyze this with Kildall, we can have it track uses of values. A use causes an escape or does not; e.g. returning a value is an escape, but adding it is not. We define a pool as a map from variables to escape indicators. An indicator is true if the variable escapes, and false if it does not. Meet is a union of maps; if a variable appears in both maps, the new map’s indicator for that variable is the logical OR of the two indicators.5 The bound is a map where all variables are known to escape.</p>
-<p>The optimization function does different things depending on the type of instruction. We can do a completely correct, if overly conservative, analysis with the following rules:</p>
-<p>The algorithm can then proceed in the reverse direction of control flow. Here’s the HIR again. We start at the bottom return instruction, with an initial pool of the empty map. The return is not yet associated with any pool, so it takes that one, and passes on a pool up where its input, the “V”, escapes.</p>
-<p>It proceeds upwards in that way and then reaches the funcall to which GETX is input. It’s the first input, i.e. the function called, and we have not seen GETX before, so we put (GETX, false) in the next pool up. The same occurs for the other funcall with GETX, and so once we reach the top instruction, we have that GETX does not escape, and can be stack allocated.</p>
-<p>The beautiful thing here is that all we actually need to have in the code are the definition of the semilattice and the optimization function rules, and the algorithm handles all the control flow. The analysis automatically works just as well around branches and loops. The whole thing is maybe fifty lines.</p>
-<p>Stack allocating closures is nice, but what about those “cell” things? A cell is just a wrapper around a value, with a set and a get, like an ML “reference”. Closures in a language with assignment, like Lisp, have to have something like this; if setx just closed over the value, the assignment to x would not take in the outer function. These cells are implicit in the source code but still have to be allocated.</p>
-<p>Determining that a cell can be stack allocated is more complicated. Naïvely, you might expect that a cell doesn’t escape if every closure it’s put in doesn’t escape. This is basically true, but there’s a nesting problem. Consider:</p>
-<p>This is a function of one argument, which calls a function of zero arguments, which returns a function of no arguments that returns the first function’s argument. So for example if you call this function with x=4, you get back a function that returns 4.</p>
-<p>The HIR looks like so. The outer function allocates a cell for x and a closure for the middle function using it, then calls that function. The middle function fetches the same, identical cell, puts it in a new closure for the innermost function, and then returns it.</p>
-<p>If we use the Kildall specialization described above in the outer function, it will determine, correctly, that the middle closure can be stack-allocated; if used on the middle function it will determine, also correctly, that the inner closure cannot.</p>
-<p>Were we to say that a cell doesn’t escape if everything it’s closed into, the outer function analysis would find, incorrectly, that the cell can be stack allocated - because it doesn’t know anything about the inner functions.</p>
-<p>To determine whether cells can be stack allocated, we need to extend the algorithm to be aware of nested functions, which Kildall did not consider.</p>
-<p>The obvious thing to do is, when the algorithm hits an enclose instruction, it calls for a recursive analysis on the inner function. This analysis can determine that the fetched cell is enclosed in a closure which escapes. Another step converts this analysis into a simplified “info” structure with only the information we need, i.e. whether the cells can escape the inner function. The optimization function for the outer enclose then uses this information to determine that the cell escapes.</p>
-<p>On the getx example, it can determine in this way that the cell for x does not escape, as the functions don’t return their cells or any closures. So the x cell can be stack allocated there.</p>
-<p>That’s as far as I’ve actually implemented.</p>
-<p>Earlier, I mentioned that arguments to a funcall instruction other than the function called are assumed to escape. This is because the analysis does not know anything about the function called, and so cannot assume anything. However, as long as we’re analyzing inner functions, we have a representation for the information we need, the “info” structure. Particularly, we can track whether arguments are returned from functions (which does not inhibit them being stack-allocated in the calling function), or escape more generally. Then in the funcall we can use this information to provide a better analysis.</p>
-<p>The problem is that this information effectively has to be propagated forward from the enclose to the funcall, i.e. in the opposite direction as this analysis. This propagation is not trivial. We could have code like</p>
-<p>baz can be stack-allocated, but knowing this requires knowing that both possibly called functions do not let their argument escape.</p>
-<p>It would be possible to tie in another Kildall specialization, type inference, to do this. Type inference propagates forward, and finds for each variable a set of values that it always contains. In the above, the implicit called-function variable always contains a function that does not let its argument escape.</p>
-<p>This implies that type inference would have to be aware of the escape analysis, and escape analysis of type inference. A principled way to compose different specializations of Kildall’s algorithm together would do it.</p>
-<p>Which “languages” are “faster” is an argument I don’t want to get into. But if I spend comparable amounts of effort writing a program with clang, SBCL, and CPython, the SBCL program will probably be two to ten times as slow as clang’s, and a hundred to a thousand times as fast as CPython’s. ↩</p>
-<p>Check out this incredible title: “Spiroligozymes for Transesterifications: Design and Relationship of Structure to Activity” ↩</p>
-<p>You have a set. You have a binary operation on that set, “meet”, which takes two objects in the set as arguments and returns a third object in the set. The order of arguments to meet is not important (commutativity), and you can also rearrange groupings freely (associativity). If the two objects are the same, their meet is that same object (idempotency). There are examples later. ↩</p>
-<p>The algorithm generally proceeds from an incorrectly optimistic initial state down to harder-to-optimize reality. ↩</p>
-<p>This is not actually true in general: We can define a function like (labels ((foo () #'foo)) ...) that returns itself, or worse. But in HIR, recursive functions are currently implemented by putting the function in a cell (keep reading this post for more on those) which is over by the function. Since the analysis considers being written into a cell an escape, any function that returns itself will be marked as escaping for other reasons. ↩</p>
+                <p>JavaScript must be enabled in your browser to display the table of contents.</p>
+<p>These are two threat models for which disk encryption is the answer:</p>
+<p>The device is stolen or lost and its contents must remain secret.</p>
+<p>The device is tampered with, and all attempts at tampering must render it unusable.</p>
+<p>Right now, we will focus on the first threat model. It is very difficult to build a tamper-proof system, and you need to worry about tamper-proofing your hardware, depending on what kind of actor is a realistic threat.</p>
+<p>If we want to keep data on the system secret, we must first consider which data is worth protecting. On a NetBSD system, our data can be grouped into two broad categories:</p>
+<p>Does the /bin/sh executable downloaded from the NetBSD FTP server contain any sensitive information?</p>
+<p>On a BSD system, due to the separation of the base system and packages, many root file system directories are mostly unmodified outside of upgrades. In a properly configured system, nearly all system daemons and user applications are not going to be running as root, so won’t have permission to modify or create files in /bin.</p>
+<p>We can reasonably assume that /bin/sh is the same binary that every other NetBSD user is running. A user may even opt to make directories containing such system files read-only.</p>
+<p>The operating system needs to be able to load files to boot.[citation needed]
+
+This makes "true" full disk encryption difficult to achieve without specialized hardware, since the user needs some way to enter a password or an encryption key, and can’t do so without some form of software running on their computer. NetBSD also needs to store some amount of metadata about the encrypted partition on the disk, such as information on how to generate a secure 256-bit key from a 24 character password.</p>
+<p>It is common for Unix systems to use shared libraries, which are loaded by programs to access system functionality. If these become unavailable, for example, by /usr/lib going missing, it becomes much harder to use the system. Familiarize yourself with the standard utilities in /rescue which don’t need working shared libraries to be useful.</p>
+<p>The cryptographic algorithms that get standardized by the US government tend to be
+slow when implemented in software.
+This carries a performance penalty. As a result, many modern CPUs include implementations of ciphers like AES in hardware. For those that don’t, there’s alternative ciphers like
+Adiantum.</p>
+<p>And which are necessary for the OS to load?</p>
+<p>On a normal NetBSD system, several directories have a high chance of being modified during system operation:</p>
+<p>/var - log files, system-wide databases (e.g. mail notifications), crash dumps…</p>
+<p>/root - configuration files relevant to the root user account</p>
+<p>/usr/pkg and /usr/local - where third-party software is installed</p>
+<p>/etc - init scripts, system-wide configuration for the base system</p>
+<p>A simple approach might be to encrypt /home. However, this might not be enough for some users. Although the crash directory can be easily changed with
+sysctl,
+a crash dump contains a snapshot of system memory which might be sensitive. If any servers have been run on the system, the log files might be sensitive. Mail sent to users (e.g. about their interrupted vi sessions and associated backups) might reveal sensitive file names.</p>
+<p>Some users opt for the
+cgdroot
+approach, which uses only a small unencrypted ramdisk to pivot to an encrypted file system. However, this modifies the system startup routines significantly and may make certain rescue options harder. So, it’s worth asking whether there’s an approach that is somewhere in the middle, and still uses the standard NetBSD installation and boot process. Many BSD systems use separate file system partitions for /usr and /var, and this is a standard configuration supported by the NetBSD installer.</p>
+<p>/etc is a harder problem to solve, since it contains files necessary to boot the system. However, on a typical desktop system, many files in /etc remain untouched. Passwords in /etc are generally stored only in hash form, except for Wi-Fi access points and certain VPN configurations (although it’s easy to reconfigure wpa_supplicant_flags to use a different configuration file from the default one in /etc). Many configuration files are only loaded much later in the boot process, after /usr is already mounted, and can easily be replaced with symbolic links to files on another file system.</p>
+<p>The NetBSD installer has basic functionality, but gets the job done quickly. In this configuration, we’re going to install NetBSD to a small unencrypted root file system. When you start to ignore the growth that can occur in /usr and /var and /home, even a complete NetBSD installation with development tools included is tiny. 4 GB should be more than enough.</p>
+<p>For example purposes, I am going to use a sparc64 virtual machine, but the process is basically the same for more mainstream CPU architectures like amd64.</p>
+<p>The installer detects that we already have a partitioned disk. We’re going to pick the "e: Delete everything" option so we have a fresh disk to start with:</p>
+<p>Next, we’re going to choose "Set sizes of NetBSD partitions". This will allow us to have a small root, and reserve a large encrypted partition:</p>
+<p>Here, I’ve decided I want a 4096 MB (4 GB) root file system, and a 11263 MB (11 GB) partition allocated for /var. Later, we’ll make /usr and /var share a disk partition, so don’t worry about this too much. Select "Go on".</p>
+<p>On the next screen, I’ve changed the type of the secondary partition to "cgd" (listed under "Other type"), NetBSD’s encrypted device driver. I’ve also set its mount point to "-" so we can reconfigure it later:</p>
+<p>I tell the installer I want to do a Full Installation and it completes as normal, installing everything into the small root partition.</p>
+<p>When we reboot and log in as root, we enter a new world… our 4 GB unencrypted root partition.</p>
+<p>Since I’m on sparc64, the disk is partitioned into disklabels. wd0 is the primary drive, and the disklabel command shows that /dev/wd0d is the partition reserved for our encrypted file system:</p>
+<p>We can go directly ahead with creating a parameters file for the cgd:</p>
+<p>And then load the configuration and set our password:</p>
+<p>Now cgd0 appears to the system as yet another disk, but all attempts to access that disk will be automatically encrypted/decrypted by the kernel.</p>
+<p>The next time we enter our password, we want to be able to verify that the password was correct, to avoid reading or writing invalid data.</p>
+<p>This is done by choosing a verification method based on the contents of the encrypted partition. For flexibility’s sake, we’re going to put another disklabel inside the encrypted partition. This will allow the system to easily verify the password is correct by looking for a valid disklabel, but also gives us flexibility in our choice of file system.</p>
+<p>This opens the interactive editor. We’re going to enter N to set a name for our disklabel (enter something like "cgdlabel"), then enter a to modify the first sub-partition.</p>
+<p>First, it asks for a file system type. Enter ? to display a list of types:</p>
+<p>Since I’m running -current and want to test the Log File System, I’m going to enter "4.4LFS". A more common and well-tested configuration would be "4.2BSD".</p>
+<p>Next is the start offset and partition size:</p>
+<p>Since "a" is the only sub-partition at the moment, the default start of 0 is fine. "$" will use all available space on the cgd.</p>
+<p>Finally, we’ll save our new label and quit the disklabel editor:</p>
+<p>Now change the verify_method in /etc/cgd/wd0d to disklabel,
+and add a line in /etc/cgd/cgd.conf to create the cgd at boot time:</p>
+<p>We can now access this hidden partition as /dev/cgd0a. But for it to be useful, we’ll need to create a file system on it. Once again, here I’m using the Log File System:</p>
+<p>A more normal and well-tested configuration would be FFSv2ea:</p>
+<p>We can now mount and access the encrypted file system:</p>
+<p>Add a new line in /etc/fstab for our encrypted mount point:</p>
+<p>Use "ffs" instead of "lfs" if you aren’t using the Log File System. If using FFS, you may want to use the options rw,log,noatime to enable journaling.</p>
+<p>On a recent amd64 machine, your system probably uses GPT and disk wedges instead of disklabels. Assuming our primary disk is ld0, we can see a list of wedges with dkctl:</p>
+<p>In this case, our partition reserved for our encrypted file system is /dev/dk2, also accessible via the UUID alias NAME=2c4d136a-f7ed-48f8-aae8-38afdd50c661.</p>
+<p>We can go directly ahead with creating a parameters file for the cgd:</p>
+<p>And then load the configuration and set our password:</p>
+<p>Now cgd0 appears to the system as yet another disk, but all attempts to access that disk will be automatically encrypted/decrypted by the kernel.</p>
+<p>The next time we enter our password, we want to be able to verify that the password was correct, to avoid reading or writing invalid data.</p>
+<p>This is done by choosing a verification method based on the contents of the encrypted partition. For flexibility’s sake, we’re going to put another GPT partition table inside the encrypted partition. This will allow the system to easily verify the password is correct by looking for a valid GPT table, but also gives us flexibility in our choice of file system.</p>
+<p>Now change the verify_method in /etc/cgd/maincgd to gpt,
+and add a line in /etc/cgd/cgd.conf to create the cgd at boot time:</p>
+<p>For now, we’ll only create one partition inside the new sub-table. I’m running -current and want to test the Log File System, so I’ll use the "lfs" partition type. A more common and well-tested configuration would be "ffs".</p>
+<p>You should receive a kernel message, readable with the dmesg command, which notes that a new wedge is available, including its number. In this case, it’s dk3.</p>
+<p>For it to be useful, we’ll need to create a file system on it. Once again, here I’m using the Log File System:</p>
+<p>A more normal and well-tested configuration would use FFSv2ea:</p>
+<p>We can now mount and access the encrypted file system:</p>
+<p>Add a new line in /etc/fstab for our encrypted mount point:</p>
+<p>Use "ffs" instead of "lfs" if you aren’t using the Log File System. If using FFS, you may want to use the options rw,log,noatime to enable journaling.</p>
+<p>These are required regardless of whether using disklabel or wedges.</p>
+<p>We’re going to copy our important directories to the new encrypted file system:</p>
+<p>We need to create a symbolic link with ln because the /usr/lib directory contains some relative links to ../../, and it expects the lib directory to be there at the root. This is a hack:</p>
+<p>Then, we move our important directories out of the way and replace them with links to the encrypted ones:</p>
+<p>Finally, we need to add a line to /etc/rc.conf to tell it to mount the encrypted partition early, so that /usr and /var are available during the init process:</p>
+<p>After this process, the NetBSD installer is not aware of the encrypted partition existing during upgrades. Online upgrades must be used, rather than offline upgrades where the installer is booted from removable media. This may be done with a tool like sysupgrade.</p>
+<p>This guide was 100% written by one human and might contain human errors.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://bike.github.io/posts/kildall.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://netbsd.org/~nia/disk-encrypt/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

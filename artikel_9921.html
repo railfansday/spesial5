@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Much Memory Does Your Agent Actually Need?</title>
+    <title>Parsing nested lists in BQN</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9921.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,241 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Much Memory Does Your Agent Actually Need?</h1>
+        <h1>Parsing nested lists in BQN</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our previous post, we compared ALTK-Evolve with ACE and showed that how you deliver an agent's self-distilled guidelines — a few retrieved per task vs. the whole set injected — drives both accuracy and cost. This post steps back to the question that comes before it: how much should you give it?</p>
-<p>Equipping an agent with agentic memory sounds simple: distill lessons from its past work, put them back in context, and more experience should mean better performance. It doesn't always work that way. When we scaled the evaluation to eight models — from a 30B dense model to frontier proprietary systems — one finding stood out:</p>
-<p>Agentic memory is not a feature you switch on. It's a dose you calibrate to the model.</p>
-<p>ALTK-Evolve lets an agent learn from its own past trajectories: distilling reusable guidelines and injecting them back at inference time, with no weight updates and no human annotation.</p>
-<p>The right dose differs by model tier: strong models with headroom want the full guideline set, weaker models do best with a compact core plus per-task retrieval, and saturated models show no measurable gain.</p>
-<p>Curated retrieval can be both the most accurate and the cheapest option: gpt-oss-120b gained +16.1pp task completion at only +5% tokens — and prompt caching keeps even the full guideline set affordable in production.</p>
-<p>Not every model benefits from the same amount of memory. Across eight models spanning the capability spectrum, we saw three recurring patterns:</p>
-<p>Strong models with headroom want the full guideline set — every guideline, including rare edge-case lessons. They have the capacity to absorb and apply all of it. DeepSeek-V3.2 (671B MoE) climbed +9.5 percentage points in task completion when given its full self-mined guideline set.</p>
-<p>Smaller or weaker models get drowned by a large guideline set. For these, a tight, high-confidence core plus a handful of task-relevant guidelines retrieved per task works best. gpt-oss-120b (117B MoE) gained +16.1pp with this selective approach — while the full guideline set gained less and cost ~50% more tokens.</p>
-<p>Already-saturated models show no measurable gain. We call this the saturated pattern — the label describes what we observed, not a proven cause. The model may already have been near its ceiling on these tasks, the guidelines may not have addressed its remaining failures, or it may not have applied the guidance effectively. GLM-5 (745B MoE) sat here in our runs.</p>
-<p>What puts a model into one pattern rather than another isn't simply parameter count. Benchmark headroom, context-window size, architecture, guideline quality, and task distribution all appear to shape where a model lands, and separating those factors is ongoing work. The practical takeaway holds either way: the right dose of memory depends on the model, and we can calibrate it.</p>
-<p>"Memory" here doesn't mean replaying a past transcript. It means a guideline set — strategies that worked, mistakes to avoid, and edge cases — distilled from the agent's own prior trajectories. The loop is straightforward:</p>
-<p>The agent attempts tasks and produces trajectories.</p>
-<p>ALTK-Evolve extracts behavioral guidelines from both its successful and unsuccessful runs.</p>
-<p>It consolidates those guidelines into a reusable set.</p>
-<p>At inference time, the agent receives either the full guideline set or a task-relevant selection of it.</p>
-<p>No model weights are updated. The learning loop changes the guidance available to the agent, not the underlying model — which is exactly why it's cheap to adopt and portable across the eight models we tested.</p>
-<p>We evaluated on AppWorld — 585 multi-step tasks (168 test_normal + 417 test_challenge) across 9 simulated apps (calendars, messaging, payments, and so on). Tasks are scored two ways: whether the agent fully completes each task (TGC — Task Goal Completion) and whether every variant of a scenario passes (SGC — Scenario Goal Completion, a stricter, all-or-nothing bar). Full definitions are in the appendix.</p>
-<p>Because the confusing part of any memory study is what's actually in the context window, we define the configurations up front.</p>
-<p>Both memory configurations draw from the same guideline set, mined once (via the loop above) from AppWorld's training split only. What changes between them is only how that one set is delivered — the full guideline set injects all of it every step, while curated retrieval delivers a selected subset — never how the guidelines were produced, and no test-split data ever goes into building it.</p>
-<p>The number of guidelines a model mines depends on its own capability, so we report configurations by strategy — "full guideline set" vs. "curated retrieval" — rather than by raw counts, which aren't comparable across models.</p>
-<p>Representative models from the eight-model sweep, measured by task completion (TGC) on test_normal:</p>
-<p>Figure 1. Representative models in the three observed patterns. Bars show TGC on AppWorld test_normal for baseline vs. the best-memory configuration; the x-axis begins at 40% to make differences visible. TGC alone understates the larger SGC gains — see the SGC columns in the table below.</p>
-<p>The figure plots TGC to keep it readable; the table adds the stricter SGC metric, where the gains are often larger:</p>
-<p>Reading the SGC column, the stricter metric usually moves more than TGC — DeepSeek's SGC jumps +16.1pp against a +9.5pp TGC gain — because good guidelines especially help an agent clear every variant of a scenario, not just the average case. And the effect doesn't disappear at the top of the range: GPT-5.5 and Opus, both near the ceiling on TGC, still gain +7.2 and +7.1pp SGC respectively. Memory keeps paying off as long as a model has a remaining failure mode to target.</p>
-<p>A practical concern: injecting a full guideline set inflates every ReAct step's input, because the guidelines are re-sent each turn. Here's what we observed:</p>
-<p>Table 1. Average token use per task, accumulated across agent steps, measured against the no-memory baseline.</p>
-<p>Curated retrieval keeps cost near baseline. For weaker models, where selection wins on accuracy, it also wins on cost — the best of both worlds (+16.1pp TGC at only +5% tokens for gpt-oss-120b). Better performance here does not require more inference cost.</p>
-<p>Memory doesn't blow up the reasoning loop. DeepSeek runs about the same number of ReAct steps with memory as without (≈18–19 on average), so the added cost is input-token inflation, not longer trajectories.</p>
-<p>The real efficiency lever in production is prompt caching: the static portion of the guideline set is identical across steps and can be cached, cutting effective cost substantially. Cache-aware prompt design — keeping the shared guideline-set prefix stable so it stays cacheable — is worth engineering for. We also hypothesize that context-window size plays a role: models with larger windows may absorb the full guideline set more effectively, while smaller-context models benefit more from retrieval that keeps injected content compact. We have not yet run controlled experiments isolating this factor.</p>
-<p>The lesson isn't to give an agent everything it has learned. It's to give it the amount of experience it can actually use.</p>
-<p>For weak models, that means a compact core plus a few task-specific lessons — which, conveniently, is also the cheapest option.</p>
-<p>For strong models with headroom, it means preserving the full guideline set, kept affordable in production via prompt caching.</p>
-<p>For saturated models, it means spending no extra context until their remaining failure modes are better understood.</p>
-<p>The gains are real across the board — automatic, leakage-free, and requiring no human annotation — but only when the dose fits the model.</p>
-<p>This is a starting point, not the finish line:</p>
-<p>A learned selector. Our current retrieval ranks guidelines by cosine similarity, which we've shown doesn't perfectly predict which guidelines help a given task. A selector trained on outcome signal is the natural next step.</p>
-<p>Memory for very weak models. Below a minimum capability baseline, self-distillation lacks signal. Teacher-distilled memory for very weak models is a separate problem we're exploring.</p>
-<p>Beyond AppWorld. These results are validated on AppWorld — a rigorous multi-step benchmark, but a single one. Broader agent benchmarks and real-world deployments are in progress.</p>
-<p>Isolating context window. As above, we want controlled experiments that separate context-window size from raw capability.</p>
-<p>Try the ALTK-Evolve library — which includes the extraction, consolidation, and retrieval pipeline used here — or read the full technical report for the complete method and ablations.</p>
-<p>AppWorld tasks are graded by two metrics, both reported as percentages (higher is better):</p>
-<p>TGC — Task Goal Completion. The share of individual tasks the agent completes fully and correctly. This is the headline "did it get the job done" number.</p>
-<p>SGC — Scenario Goal Completion. A stricter, all-or-nothing metric. Each scenario bundles several variants of the same task (the same request with different data, phrasing, or edge conditions). SGC counts a scenario as passing only if the agent succeeds on every variant. It measures reliability — an agent that solves a task most of the time but fails on one variant scores on TGC but not on SGC.</p>
-<p>Really interesting take on agentic memory. The idea that memory needs to be calibrated to the model rather than simply accumulated is especially useful for production systems. Selective retrieval also seems like a practical way to improve reliability without unnecessarily increasing context and inference costs. It makes a strong case for thoughtful custom AI agent development and enterprise AI agent solutions, where memory, performance, and cost all need to be designed together. https://mobisoftinfotech.com/services/ai-agent-development-company</p>
+                <p>Three ways to parse the nested lists from Advent of Code 2022 day 13 in BQN.</p>
+<p>Advent of Code 2022 day 13 requires you to parse nested lists like</p>
+<p>This post covers three different ways to handle the problem:
+1. "Cheating" by using •BQN to do the heavy lifting
+2. Writing a conventional recursive descent parser
+3. Writing an array-style parser</p>
+<p>We'll also do some simple benchmarking to compare the three approaches.</p>
+<p>We'll be using my advent of code input file to test the different approaches on.
+Here's the first six lines:</p>
+<p>The lists come in pairs, with each pair separated by a blank line.
+Since the problem requires you to compare pairs of lists,
+a suitable format for working with the data is to parse it all into one list of pairs of lists.
+Thus we can turn the problem into parsing one giant list.</p>
+<p>The lines come in groups of three: the first list, the second list, and then a blank line.
+The first line of each group needs an opening bracket added to the beginning (to open the pair) and a comma added to the end (to separate the two lists in the pair).
+The second line of each group needs a closing bracket at the end (to close the pair) and a comma after (to separate it from the next pair).
+The blank lines are fine as is.
+Then we join all the lines together and drop the final trailing comma.
+Finally, we need to wrap the whole thing in one more set of brackets, to make it all one big list.</p>
+<p>This approach is undoubtedly the easiest, and it's what I used to solve the problem in December.
+The idea is that the notation is almost valid BQN; we just need to replace the square brackets with angle brackets.
+Then we can use the system function •BQN to "eval" the string into a BQN list.</p>
+<p>Here's the idea behind replacing a character with another character using a small example.
+I've written both an explicit expression and a tacit function.
+We take the difference between the new character and the old character,
+since adding this to the old character changes it into the new one.
+Then we use a mask of old character locations to make sure the addition happens only at those locations.</p>
+<p>Now to write our parser, we just replace both kinds of square brackets with the respective angle brackets and call •BQN.</p>
+<p>Uh oh! Well, here's a strike against this approach.</p>
+<p>I'm not sure what's going on to be honest.
+When I solved the problem in Decemeber I didn't do the "turn it all into one giant list" approach,
+and instead parsed the individual lines.
+So let's do that here.</p>
+<p>This complicated-looking line just works the data into a list of pairs of strings.
+First we append a blank line to the end, to complete the last group of 3 lines.
+Then we use a computed reshape to make an array with 3 columns.
+Finally, on each row of the array we drop the the blank line and enclose the two remaining lines.</p>
+<p>Now we just have to parse each string to get the final result.</p>
+<p>Looks alright!
+Let's do a quick benchmark.</p>
+<p>Around 3/4 of a second for each run. So slow!</p>
+<p>This is not meant to be an introductory tutorial on recursive descent parsing.
+Rather, I want to show that "normal" algorithms are applicable in BQN.
+In fact, Singeli uses a recursive descent parser.</p>
+<p>We assume that the input is error-free and proceed in a classic two-stage tokenize-then-parse fashion.</p>
+<p>The token types are opening brackets, closing brackets, and numbers.
+We get rid of the commas, after we've used them to delimit the numbers.
+The tokenizer is actually array-style, I guess, since we just use ⊔ to split the string up.</p>
+<p>Okay, okay, springing that tacit tokenizer on you is a joke.
+Let's break it down.
+The overall strategy is to create a mask of token starting points.
+Then we're pretty much a sum scan and a group away from success.</p>
+<p>Each opening bracket and closing bracket starts a new group.
+However, a digit starts a new group iff it is not preceded by a digit.</p>
+<p>We start by finding a mask of digits in the string.</p>
+<p>Comparing with the shifted mask lets us check if the preceding character was also a digit.
+The use of < is a little BQN trick.
+For booleans p and q, p<q is true iff p is 0 and q is 1.
+So now we have the start points of the number tokens.</p>
+<p>To get the rest of the token start points, we just ∨ in all the bracket locations.</p>
+<p>Taking a sum scan gives us a different number for each token, but each comma gets lumped in with the previous token.</p>
+<p>Multiplying by a mask of non-commas zeros out the commas.</p>
+<p>We subtract 1 to drop the commas when we group and give the first group index 0.
+Finally, we group and voila!</p>
+<p>Getting from here to my definition of T is just standard tacit refactoring stuff.
+And to be honest T is hard for me to read, so I probably wouldn't write it that way.
+But we already have it, so let's continue to parsing.</p>
+<p>Now it's just standard recursive descent stuff.
+Here's a sketch of the grammar.</p>
+<p>We write one function each for parsing values, lists, and numbers.</p>
+<p>The basic idea is that a value is a list if it starts with "[", otherwise it's a number.
+To parse a number, we just do a standard string-to-number-left-fold thing on the first element,
+and we return that number along with the rest of the tokens.
+To parse a list, we build up a list rslt by repeatedly parsing a value off the front of the list
+until we hit a "]".
+Then we return rslt and the rest of the tokens.
+Gotta be careful to drop the brackets in the right spots and to enclose the value before appending to rslt!</p>
+<p>To parse a list, we tokenize, parse the list, and then take the value from the ⟨value, tokens⟩ pair the parser returns.</p>
+<p>It agrees with the parsing we did earlier using •BQN,</p>
+<p>and works on the "one giant string" approach.</p>
+<p>Not to mention it's around 10x as fast as using •BQN.</p>
+<p>Using array techniques, we can achieve even faster parsing.
+Both the self-hosted compiler and the bqn-libs json parser use an array style.
+The following ideas come from studying the json parser.
+(I haven't looked at the compiler in any depth.)</p>
+<p>The fundamental idea for handling nesting is to reorder the tokens by depth.
+Once we've done that, there's a sense in which we've already mostly parsed the tokens!
+(At least for a simple case like these nested lists.)</p>
+<p>Opening brackets increase depth by 1 at the bracket, and closing brackets decrease depth by 1 at the bracket.</p>
+<p>We can use ⍋ to reorder the tokens according to their depths.</p>
+<p>This is really weird-looking at first, but once you learn how to read it, it's nicer to work with than the original order.</p>
+<p>Each closing bracket is like a nested list waiting to be filled, or an arrow pointing to a sublist.
+Each opening bracket signals the start of a new sublist.
+The list being pointed to by a closing bracket is the next unused sublist.</p>
+<p>If we replace each closing bracket with a ↓ and each opening bracket with a ∘, just for pictorial purposes,
+we can arrange the list into the follow diagram.</p>
+<p>The downward arrows represent sublists, and the circles represent list starting points.
+The numbers in the first column are the depths.
+The first closing bracket is the only token with depth zero, and it points at the whole list.
+The element between 2 and 7 and the last element are each sublists, the first of which has its own sublist.</p>
+<p>We almost have an algorithm that goes something like this:
+for each closing bracket, find the next unused sublist and replace the closing bracket with the sublist.</p>
+<p>For example, we might build the list this way:</p>
+<p>Instead of ordering by depth, we can go further and split by depth.</p>
+<p>And then perhaps we can use some kind of fold to fill in the "gaps" in each list with the lists from the next element.
+Going left to right would build the list "top down" like the example above.
+One snag with this approach is that at each step we have to search at a different depth for the closing brackets.
+Sure, we know exactly what depth to search at, but we can eliminate this complication entirely by going right to left.
+This builds the list bottom up, so at every step we are plugging sublists into a list at the outermost depth.</p>
+<p>Here is the complete idea. We're going to perform a right fold. 
+At each step, the operand to the fold splits up the right argument at the opening brackets
+and then plugs the resulting lists into the closing brackets of the left argument.</p>
+<p>Thus we need two functions: one to split up the right argument on opening brackets and one to plug the lists into the closing brackets.</p>
+<p>It works!
+The whole thing is inside a singleton list because of that left-most closing bracket,
+so we'll need to apply ⊑ at the end.
+Also, we've still got to turn strings into numbers at the end.
+We can write a string to number function and apply it at depth 1,
+but there's one small catch that's not apparent from our example so far:
+if we parse an empty list, then applying our string to number function at depth 1 will apply it to that empty list.
+So we need to check for empty input to the string to number function.</p>
+<p>Other than that, we just need to package this together into a parser.</p>
+<p>Oof! It's twice as slow as the conventional parser!</p>
+<p>That's okay because this was really just a warm-up to get us in the array mood.
+Even though what we have now is slow, the concepts we used will help us write a fast parser.
+And isn't it kind of amazing how we parsed a recursive data structure with just some arithmetic and primitives like ⊔ and folding?
+I think it's cool.</p>
+<p>Anyway, we can make significant improvements.
+First of all, have you been feeling the nagging pain of using lists of strings instead of just a string?
+It's so annoying writing "["⊸≡¨tok instead of just '['=tok, and it's probably slower too.
+Let's try to keep our representations "flatter".</p>
+<p>So the new idea is that the tokenizer will just output a string, meaning that each token is now a single character.
+This leaves no room for the values of the tokens (the numbers themselves), just the token types,
+so actually the tokenizer will output a string and a list of numbers.</p>
+<p>This is the idea behind the part of the tokenizer that extracts the numbers into one flat list.</p>
+<p>Here is the second part of the tokenizer.
+We get the first characters of each token by adding in the brackets to the number starts.
+Then we replace all the numbers with 0.
+The idea is that this string now represents the token types with the brackets standing for themselves
+and the 0s standing for a number type token.
+The numbers themselves are separated out as we showed previously.
+Any character would do to represent the numbers,
+but I chose 0 because it's what the json parser does and it reminds me of a number.</p>
+<p>Now for parsing we're going to build the list from the bottom up again, using the same depth ordering ideas.
+We obviously can't operate only on the token types (the string the tokenizer produces);
+we need to incorporate the token values (the numbers) at some point.
+The way we'll do that is operating on the token types to produce indices that we use to select from a list of values.</p>
+<p>So if we were trying to produce the final result list, which in a depth-based token-types-only representation would look like 00]00],
+we need to somehow say that the first 0 stands for 1, the second 0 for 2, the first closed bracket for the whole list ⟨3,4,⟨5,6⟩⟩,
+the third 0 for 7, the fourth 0 for 8, and the final closed bracket for the whole list ⟨9,10⟩.
+Then we could just grab all the values we mentioned and put them together as ⟨1,2,⟨3,4,⟨5,6⟩⟩,7,8,⟨9,10⟩⟩.</p>
+<p>The way we'll be able to reference a whole sublist like ⟨3,4,⟨5,6⟩⟩ is by building from the bottom up, as previously mentioned,
+so that by the time we need to use a value, we've already built it.
+At the beginning, the values we have are just the numbers themselves.
+We start with the deepest list ⟨5,6⟩, which we can build by indexing into the list of values (which again at this point is just numbers).
+Then we append this to the list of values.
+Now in a future step where we need to build ⟨3,4,⟨5,6⟩⟩, all three elements of this list already reside in our list of values,
+and all we need to do is index into the list of values to assemble them into a new value that gets appended to the end.</p>
+<p>So let's start by trying to organize the tokens so we can build the values in the correct order.</p>
+<p>Here's that same reorder by depth trick we've already discussed,
+but this time it's a little less painful to write since we just have a string instead of a list of strings.</p>
+<p>By taking a sum scan of a mask of opening bracket locations in the depth ordering we can give a number to each sublist of the list.
+This is the order we have to construct values in, with higher numbers going first.
+It's reminiscent of how we split the on opening brackets in our earlier approach.</p>
+<p>Now what we need are indices that tell us where to pull the values from. 
+For example, we start with list 4 (the [00 at the end), so we need to know that those 0s are associated with indices 4 and 5,
+since 4‿5 ⊏ num is the 5‿6 we want.
+Then later when constructing list 2, which looks like [00], we need to know that the 0s are associated with indices 2 and 3,
+and the closing bracket is associated with index 10, since (after appending 5‿6 to a list of values vals at index 10) we have 2‿3‿10 ⊏ vals giving ⟨3,4,⟨5,6⟩⟩.</p>
+<p>Here we filter away the opening brackets, keeping only those tokens that represent values: 0 for numbers and ] for sublists.
+Then we assign each value a number working left to right, but with numbers always coming before sublists.
+That ⍋⍋ is the ordinals pattern, which shows which index the element would end up at if sorted.
+(You can read about that here.)</p>
+<p>This is close to what we want.
+The 0s each have been associated with the proper index.
+However, the closing brackets (representing sublists) have not.</p>
+<p>We need to bring in our previous work r where we numbered the lists.
+But r is in depth ordering and vi is in the original ordering, so we put r back into original ordering and call it l.</p>
+<p>We invert the permutation g with ⍋ to translate from the depth ordering back to the original ordering.
+We call the resulting numbers the "sublist index" here.
+(It's really a pain to name a new idea. I don't wanna name things! That's why I'm a BQN programmer.)</p>
+<p>We can use l to fix vi by finding the sublist index associated with each closing bracket.
+If we just take the sublist index at a closing bracket, we get the sublist index associated with the list containing it.
+So we need the sublist index at the token before the closing bracket to get the index of the sublist itself.</p>
+<p>Here we show c/l and c/»l. The first element of c/l is 2, indicating that the first closing bracket (which closes ⟨5,6⟩) represents a sublist contained in the sublist with index 2 (i.e. ⟨3,4,⟨5,6⟩⟩).
+The first element of c/»l, however, is 4, indicating that the sublist ⟨5,6⟩ is itself sublist number 4.
+That's the number we want.</p>
+<p>Sublist number 4 is the first sublist to be constructed, and after being constructed and appended to the value list it has index 10.
+The arithmetic above adjusts the sublist indices to become indices into the value list.
+We subtract each sublist index from the number of sublists to invert the order, and then add the result to the number of numbers,
+to offset the indices correctly.</p>
+<p>From here, it's not hard to complete the value indices list.
+We append the value indices just calculated for the sublists to the list ↕≠num, which are the value indices for the numbers.
+Since both vi and c»l reference the closing brackets in the original left to right order, indexing into this list with vi pulls everything out in the correct order.</p>
+<p>We group these value indices i using the sublist indices from l and reverse the result to finally complete the task of arranging the value indices.
+We use 1-˜f/l instead of just l because we need to remove the opening brackets and drop the final closing bracket.
+Now we can see the first element contains indices 4 and 5, which correspond to the values 5 and 6.
+The third element contains the indices 2, 3, and 10, which correspond to values 3, 4, and ⟨5,6⟩.
+Etc.</p>
+<p>All that's left to do is the indexing and appending described earlier.</p>
+<p>It works!
+The list of values vals starts off as just the numbers num.
+With each application of the block function we index into vals and append the result to vals.
+The ⋄@ is at the end of the block both to signal that we are using the block for side-effects only
+and to not waste time and space building a list of results.</p>
+<p>We're not quite done yet!
+There is one final wrinkle that our example so far hasn't made clear.
+We need to ensure that the result of (1-˜f/l)⊔i always has as many elements as there are closing brackets
+(even if some or all of them are empty) in order to accomodate empty lists.
+This is roughly because each closing bracket represents a sublist value,
+so we always need to build at least that many values.</p>
+<p>Thus we change 1-˜f/l to (+´c)∾˜1-˜f/l to append the number of closing brackets to the end.
+Group has the option of using a left argument with an extra last element relative to right argument,
+and this last element sets the minimum number of elements of the result.</p>
+<p>It works, and it's really fast! It's also the only parser that's faster on the one big string approach.</p>
+<p>Using •BQN is definitely the easiest, but it is slow and has problems parsing large lists, at least on my machine.</p>
+<p>For a little more effort (at least if you're already familiar with recursive descent) we can get a much more performant parser.
+Probably should be your method of choice if •BQN is too slow.</p>
+<p>A well-written array style parser is the fastest (and coolest obviously), but wow is it confusing to implement!
+For this Advent of Code problem it's certainly not worth the trouble.
+I mean, even just using •BQN works fine honestly.
+If we had to parse way more data, or reuse this parser many times, the array method would start to make sense.
+Also if the lists had very very deep nesting, the recursive parser would hit the maximum recursion limit and fail.</p>
+<p>Here's a little table recapping the time in seconds it took each method to parse my input file.
+Each time is the average of 100 runs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-hmm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://saltysylvi.github.io/blog/parsing-nested-lists-in-bqn.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

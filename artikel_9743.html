@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</title>
+    <title>Microsoft Fixes Nearly 1,100 Security Vulnerabilities</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9743.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,55 +15,63 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</h1>
+        <h1>Microsoft Fixes Nearly 1,100 Security Vulnerabilities</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many ML practitioners have some intuition about how to make models run fast, but fewer know how to analyze why a model is slow. In Part 1 of this series, you will learn how to systematically analyze inference performance and identify where the time is spent.</p>
-<p>This post starts from scratch and assumes no prior profiling experience. The walkthrough uses AWS Trainium, a purpose-built AI chip for deep learning training and inference workloads, and TorchNeuron, its open source native PyTorch backend. TorchNeuron supports standard PyTorch workflows on Trainium, including eager execution, torch.compile, and standard PyTorch APIs, with minimal code changes. Additionally, TorchNeuron integrates with Neuron Kernel Interface (NKI) to enable custom operators and performance optimization for Trainium hardware. By the end, you should know:</p>
-<p>Before you profile a workload, it helps to understand how Neuron integrates with PyTorch.</p>
-<p>The Neuron backend uses PyTorch's PrivateUse1 extension point. This mechanism lets an accelerator integrate with the framework without adding a dedicated dispatch key such as cuda. The torch_neuronx package works with upstream PyTorch to register Neuron as a native backend for PyTorch code. For details about this extension mechanism, see Facilitating New Backend Integration by PrivateUse1.</p>
-<p>You use two objects to profile a Neuron workload:</p>
-<p>The modes parameter selects the data streams to capture, such as device instructions and runtime traces. The capture_enabled_for_nc parameter selects the NeuronCores to trace. Setting correlate_device_time=True propagates device time from the trace into the key_averages() table, where you can compare CPU and Neuron device time. For the complete parameter reference and available ProfileMode values, see the NeuronConfig Profile Modes documentation.</p>
-<p>Neuron Explorer is a browser-based viewer for the system trace, device timeline, and per-engine breakdown. You can access it through an SSH tunnel or the Visual Studio Code extension. In this post, you use Explorer to confirm what key_averages() reports numerically and inspect what happens between dispatches.</p>
-<p>After profiling, the output directory contains the system trace and, when you capture device data, matched .neff and .ntff files. The Neuron Executable File Format (NEFF) contains the compiled Neuron executable, while the matching NTFF contains its hardware instruction trace. The files share a numeric hash that identifies them as a pair. To open the profile in Neuron Explorer, upload the complete output directory for a system or combined profile. For a device-only profile, upload the matching .neff and .ntff files individually. See Step 5: Upload your profile for the UI and command-line instructions.</p>
-<p>For this first analysis, you profile RMSNorm, a small operation with a clear sequence of arithmetic and reduction operations.</p>
-<p>You profile three implementations of the same operation:</p>
-<p>The scripts use the same inputs, profiler configuration, and schedule so the results are directly comparable.</p>
-<p>All scripts to reproduce this work are available in the torch-neuronx examples directory.</p>
-<p>Start by writing RMSNorm with individual PyTorch operations. Each line maps to one or more ATen operations and can create intermediate tensors.</p>
-<p>Call the profiler with two arguments required for the Neuron backend:</p>
-<p>The schedule uses wait=2, warmup=1, and active=1 across four prof.step() calls. This records one warm iteration without including initial setup overhead.</p>
-<p>Call torch.neuron.synchronize() inside the profiler loop. Without this synchronization, the profiler can export before the device finishes and leave the Neuron time column empty.</p>
-<p>After profiling finishes, inspect the key_averages() table. Sort by self_privateuse1_time_total to place the operations with the highest device cost first. The table shown here is filtered to the RMSNorm operations that report Neuron device time. The full key_averages() output also includes CPU-side events such as allocations and host-to-device transfers.</p>
-<p>The key averages table shows that three aten::mul calls account for the largest share of Neuron device time.</p>
-<p>The table shows which ATen operations ran, how often they ran, and how much time they spent on the CPU and Neuron device. aten::mul has the highest total device time because the function performs three multiplications.</p>
-<p>Each row maps directly to the function. aten::mul runs for x * x, x * rms, and the final multiplication by weight. aten::mean reduces the last dimension. aten::add adds the epsilon value and triggers a host-to-device copy because the scalar starts on the CPU. aten::rsqrt computes the reciprocal square root.</p>
-<p>Neuron Explorer follows an aten::mul operation from framework dispatch through runtime scheduling to execution on the Neuron hardware lanes.</p>
-<p>In Explorer, time flows from left to right and the event lifecycle flows from top to bottom. Each ATen operation follows the same pattern: creation in the framework lane, scheduling in the runtime lane as nrta_execute_schedule, and device execution in the hardware lane as nc_exec_running.</p>
-<p>The system trace view organizes events into lanes. In the Default grouping mode, labels follow the pattern instance/PID/subsystem/identifier:</p>
-<p>In eager mode, each operation runs independently. Use the dependency chain viewer to follow aten::mul.Tensor from the framework layer through runtime scheduling to device execution.</p>
-<p>The dependency chain viewer highlights the lifecycle of one operation across the framework, runtime, and hardware lanes.</p>
-<p>Replace the individual operations with PyTorch's built-in rms_norm function. Neuron lowers the operation to one fused kernel:</p>
-<p>The fused RMSNorm appears as one device operation in the key averages table.</p>
-<p>The fused RMSNorm follows one framework-to-hardware path instead of dispatching each arithmetic operation separately.</p>
-<p>In the naive implementation, each operation crosses the dispatch boundary independently and follows its own framework-to-runtime-to-hardware path. In the fused implementation, one Python call covers the complete computation. The trace contains one dispatch and one hardware event, with no gaps between component operations.</p>
-<p>For the final example, compile the original naive RMSNorm function with torch.compile.</p>
-<p>With @torch.compile(backend="neuron"), TorchDynamo captures the Python bytecode as an FX graph and AOTAutograd lowers it to ATen operations. The Neuron backend receives the complete graph instead of dispatching each operation separately. It fuses the operations, optimizes memory access, and compiles the graph into a single NEFF artifact. The artifact runs as one hardware dispatch.</p>
-<p>The compiled function appears as one Torch-Compiled Region in the key averages table.</p>
-<p>The compiled graph follows one path through runtime scheduling and hardware execution.</p>
-<p>The table shows one device execution, as in Profile 2, but the code takes a different path. Instead of calling a purpose-built fused operation, the compiler discovers the fusion from the original Python function. In this run, the Neuron time is comparable to torch.rms_norm, at 375 μs compared with 403 μs.</p>
-<p>Both torch.rms_norm and torch.compile fuse RMSNorm into one kernel dispatch. In these runs, either approach takes about one-sixth of the naive implementation's device time. Fusion removes the gaps between hardware executions and avoids materializing intermediate values such as x_sq and mean_sq between separately dispatched operations.</p>
-<p>key_averages() shows which operations consume device time, while its full output also reveals CPU-side setup and transfers. Explorer provides the corresponding visual trace. You can follow one operation from framework dispatch through runtime scheduling to hardware execution and see the gaps that fusion removes.</p>
-<p>You can use the same workflow on larger models: find a hotspot in the table, verify it in the trace, and then determine whether a fused operation or torch.compile can reduce its cost.</p>
-<p>In Part 2, we will move into the device-level profile. You open the NEFF, inspect the TensorEngine, VectorEngine, and direct memory access (DMA) breakdown, and place the kernel on the roofline to determine whether it is compute-bound or memory-bound.</p>
-<p>Special thanks to Aritra Roy Gosthipaty for the inspiration to begin this series, and to my peers Pinak Panigrahi, Samir Araujo, Akhil Azhikodan, Esha Lakhotia and the rest for reviewing!</p>
+                <p>Microsoft did another four-digit patch drop today, releasing updates to fix almost 1,100 security vulnerabilities in its Windows operating systems and supported software. This month’s Patch Tuesday addresses 63 critical flaws — including a zero-day in Microsoft Outlook — and comes amid important security updates from other software makers, including Adobe, Apple, Google and Mozilla.</p>
+<p>Image: Shutterstock.com. Diorama by @zepp1969.</p>
+<p>November’s patch release from Redmond tackles 1,093 vulnerabilities, fixing 63 “critical” flaws that can be exploited to seize control over a Windows system with little or no help from users. Nearly half of those critical bugs are remote code execution vulnerabilities. Overall, 535 of the flaws addressed this month allow an attacker to elevate their privileges on a vulnerable device.</p>
+<p>This latest round of updates means Microsoft has shipped more than 5,100 security patches so far this year, a staggering number considering that a year ago Microsoft was averaging around 100 patches per month. Microsoft credits advances in artificial intelligence for helping to find (and fix) such a large volume of security bugs in recent months. Last month, Microsoft pushed more than 1,400 fixes.</p>
+<p>According to Redmond, just one of the flaws is already seeing active exploitation: CVE-2026-124194, a spoofing bug in Outlook. The advisory for CVE-2026-124194 says it affects Microsoft 365 Apps for Enterprise and editions of Microsoft Office.</p>
+<p>Several other major software makers pushed security updates this week to fix critical weaknesses in their products. Apple on Monday released out-of-cycle security updates to fix at least nine vulnerabilities in iOS/iPadOS, macOS, watchOS and visionOS. Among the weaknesses reportedly fixed in Apple’s release include an iMessage flaw that could let a remote attacker join a group chat and receive its messages; the updates also fix a separate iMessage flaw that could let someone added to a group access messages sent before they joined.</p>
+<p>Lee Neely, an instructor at the SANS Institute, noted that Apple backported the fix to iOS 18.</p>
+<p>“I take notice when Apple releases fixes to more than two versions,” Neely wrote in a SANS newsletter today. “You really need to get to version 27.2.1 of their OSes and push folks who are holding onto devices which cannot run the current version. The best plan often involves setting an upgrade date for old hardware. Run through all your Apple devices and make sure everything is up to date, don’t assume the fixes went out automatically.”</p>
+<p>Google this week released Chrome version 157.0.8103.50, which resolves nine security holes, including CVE-2026-125350, the sixth zero-day vulnerability this year for Chrome (this bug also is being patched in Chromium-based browsers like Edge). The latest Chrome version follows its November 3 release, which fixed 213 vulnerabilities. A new version of Mozilla Firefox out today (Firefox 160) resolves almost 100 CVEs, about half of them high severity.</p>
+<p>Adobe today released patches for at least 110 vulnerabilities across a range of products, with nearly half of the flaws rated high severity. Adobe said there is no evidence any of the security holes it addressed this month are being actively exploited.</p>
+<p>Chris Goettl, vice president of product management at Ivanti, said it’s easy for security teams at large enterprises to feel overwhelmed by the volume and criticality of patches from Microsoft lately. But he notes that while some 95,000 vulnerabilities have been assigned CVEs this year across all vendors, only 217 have so far this year been added to the Known Exploited Vulnerabilities (KEV) list maintained by the U.S. Cybersecurity and Infrastructure Security Agency (CISA).</p>
+<p>“Roughly four in ten of this year’s exploited vulnerabilities sit in operating systems, endpoint software, browsers, and server platforms, which a continuous patch strategy can close quickly,” Goettl said.”The rest calls for exposure management alongside patching, especially the 44% that sit in edge devices and IT management or remote access tools, the internet-facing systems that hold privileged access. Teams that can quickly identify those assets, confirm exposure and act on confirmed exploitation can focus on the small slice of vulnerabilities attackers are actively using, while the rest stays on the normal patch cadence.”</p>
+<p>Please don’t neglect to back up any important data if you haven’t recently; generally speaking, this is a task best accomplished before applying operating system updates. As ever, if you experience any issues installing this month’s bundle of love from Microsoft, please drop a comment about it in the space below.</p>
+<p>This entry was posted on Tuesday 10th of November 2026 04:55 PM</p>
+<p>Thank you as always.  Your concern and actions for others is very much appreciated by all, including those not aware of it.
+With respect, John Royal</p>
+<p>I wonder whether a goal of a bug-free Windows is mathematically possible, or whether there will always be residual “bugs” in the form of some marginal configurations and conditions that can never be made fully fault-safe.</p>
+<p>I’m sure it’s possible to have bug-free software, but I’ve never seen it in anything but very simple programs.  There are ALWAYS bugs.  (I worked in software QA/testing for 20 years…)</p>
+<p>There WERE always bugs because humans are fallible, easily distracted, of differing skill level, etc..  Machines will eliminate 99.9% of all bugs moving forward.</p>
+<p>How will we know? Will we have to ask the machines?</p>
+<p>well, if that wasn’t sarcastic, Jojo, it should be.  Think of an AI coder as a very fast intern-level coder who copies and pastes a lot.</p>
+<p>Now.  But a year from now, it could be better than any super experienced programmer in the world.  This is what so many making comments like yours misses.</p>
+<p>AI is like a 2 year old baby now.  Next year it may be like a 16 year old.  The year after, like a 40 year old with an IQ of 300.</p>
+<p>Suggested reading:
+The avalanche that hit math is coming for AI development
+Why I now expect superintelligence by 2030
+Dwarkesh Patel
+13 Nov 2026
+https://www.dwarkesh.com/p/rsi</p>
+<p>” it could be better than any super experienced programmer in the world. ”</p>
+<p>On broad-strokes sure, yet (and increasingly I’d imagine, given the theft) specialized knowledge isn’t necessarily going to be shared by the best (*corporately owned and operated, legally speaking) minds in the field, thus the AI LLMs would not necessarily be training on that specific knowledge base by default.  So you’ll get competent general output I’m sure, but the really fine-grained expertise or specific techniques therein?  And you still have to have someone checking the work who knows what it is, you can’t just trust there’s no additional AI slop hallucinated into hidden spiels.  As smart as AI is or even ‘can’ become, you still need someone smart enough to correct it.  Or, you know, doom.</p>
+<p>Excellent reporting, as usual. Thank you BK.</p>
+<p>Well, if nothing else AI has created a mess of monthly updates on many platforms now. Some crazy times for sure.</p>
+<p>I’m waiting for someone to write a story about how closing all these bugs has cut-off ways that the world’s 3-letter spy/security agencies took advantage of and how they are now more constrained at gaining intelligence.</p>
+<p>All these fixes should also make hacking a lot more difficult.</p>
+<p>Nearly eleven hundred vulnerabilities in one Patch Tuesday is a good moment to ask how any IT shop is supposed to prioritize. The teams that cope best treat patching as a budgeting problem – fixed maintenance windows, explicit risk acceptance for the long tail, and surge capacity reserved for the exploited entries – rather than trying to clear the whole list every month. Reading the details of what got fixed matters less than knowing which of your exposed services map to the CVEs that are already being scanned for in the wild.</p>
+<p>Question:  Are all of these “fixes” ONLY in Windows 11 and its associated products?
+Or, are they counting other Windows versions and their associated products?</p>
+<p>I uninstalled Adobe Reader from my computer the other day because it uses AI by default. It was telling me “this document is complex, do you want me to simplify it for you”? How would they know if they hadn’t already read it.</p>
+<p>So, following the principle of removing any app that I am not actually using, and don’t really need, I uninstalled it.</p>
+<p>Now I have an additional reason to be satisfied with that decision.</p>
+<p>I wonder if this has anything to do with the massive Microsoft outage happening right now.  It’s 12:40PM PST.</p>
+<p>‘403 Forbidden’ on most content here when using Proton VPN.</p>
+<p>What’s the likelihood that the O365 CVE patch is causing the global O365 outage?</p>
+<p>Microsoft is almost certainly using AI to fix bugs in their backoffice systems too. Sooner or later, something goes wrong. It turns out it is sooner than one might expect.</p>
+<p>It’s interesting that AI is helping Microsoft uncover vulnerabilities at such a massive scale. But finding bugs faster also creates a new challenge for IT teams that have to test and deploy all these patches. I wonder whether AI-powered vulnerability discovery will eventually outpace organizations’ ability to keep their systems updated.</p>
+<p>Your email address will not be published. Required fields are marked *</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/amazon/profiling-torchneuron-part-1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://krebsonsecurity.com/2026/11/microsoft-fixes-nearly-1100-security-vulnerabilities/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
