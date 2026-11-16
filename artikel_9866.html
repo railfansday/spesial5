@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Making Knowledge Distillation Cheap Enough to Run at Scale</title>
+    <title>AI in Leadership: Managing People, Not Just Work</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9866.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,35 +15,243 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Making Knowledge Distillation Cheap Enough to Run at Scale</h1>
+        <h1>AI in Leadership: Managing People, Not Just Work</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/RIiBoPtpMiRsMKX3dnzl5gb1Urj1-ktg363h.png" alt="AI in Leadership: Managing People, Not Just Work" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/RIiBoPtpMiRsMKX3dnzl5gb1Urj1-ktg363h.png" alt="AI in Leadership: Managing People, Not Just Work" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Knowledge distillation, training a smaller student model to match the performance of a larger teacher, is a well-known technique in Machine Learning. With the recent wave of open-source Large Language Models, such as gpt-oss, Qwen, GLM, or Kimi, it has become a mainstream research topic again. Deploying these very large models is expensive: the recent Kimi-K3 model has 2.8 trillion parameters and needs roughly 3TB of VRAM just to load. Compressing them into smaller models and recovering the original capabilities through knowledge distillation has therefore become standard practice, with companies like Nvidia (Nemotron 3 Puzzle 75B) or Multiverse Computing (Hypernova 60B) recently releasing high-quality compressed models.</p>
-<p>The distillation step is what decides most of the final quality, but it's also usually the most expensive part of the pipeline. Keeping both the teacher and student loaded, and producing a probability distribution over the entire vocabulary for every token, requires enormous amounts of VRAM, typically feasible only with hundreds of GPUs and careful tensor-parallelism strategies. Our latest paper, Efficient Knowledge Distillation for LLMs: Offline Top-K Logits and a Fused Chunked KL Loss, tackles this with two systems changes: caching the teacher's top-K logits once so the teacher never has to sit in memory alongside the student, and a new, memory-efficient KL-divergence loss that avoids ever materializing the full vocabulary-size × sequence-length matrix, cutting VRAM use far below what the default implementations in libraries like PyTorch or NVIDIA Megatron-Bridge achieve. Together, these two changes cut training cost enough to make long-context healing possible on a single GPU, and cheap enough to make large-scale experimentation practical.</p>
-<p>The standard setup, online distillation using the Kullback-Leibler divergence loss (KL loss), keeps both the teacher and the student loaded at the same time. At every training step, the teacher runs a full forward pass to produce its output distribution, and the student is trained to match it. This is the most expressive setup, since the full teacher distribution is available, but it is also the most memory- and compute-intensive: two full-vocabulary tensors have to be held per token position, and the teacher has to be recomputed on every single step even though its behavior does not change across a training run.</p>
-<p>As a practical example, gpt-oss-120b has a vocabulary of 201,088 tokens. At a sequence length of 32K and batch size 4, the teacher-probability tensor alone has shape 4 × 201,088 × 32,768; in bfloat16, that's already about 50GB of VRAM for a single tensor. Add gradients, activations, model weights, and optimizer states, and a single training iteration of distillation can peak at roughly 250GB of VRAM, more than even an H200 or B200 GPU can provide. In this post, we show that reformulating the KL loss to process the data in chunks reduces this cost to almost nothing.</p>
-<p>Dense KL spikes to roughly 250GB, above a single H200's 141GB capacity. The fused chunked loss never forms that spike and peaks at about 128GB. Source: paper Figure 1.</p>
-<p>Offline distillation. Instead of recomputing the teacher at every step, we compute its output once, cache the top-100 most likely tokens per position, and train the student against that cache. The teacher never has to sit in memory during training and does not need to be run again once the cache exists, so the same cache can be reused across many ablations.</p>
-<p>A fused, chunked KL loss. To see why the loss itself is expensive, picture what it actually builds: for every token position in a sequence and every word in the vocabulary, the loss needs a number describing how much the student's prediction disagrees with the teacher's. Laid out as a grid, that's one row per vocabulary entry and one column per sequence position, for a vocabulary of 100K+ words and a long sequence, that grid is enormous, and the default way of computing a KL loss builds the whole thing before it can produce a single number.</p>
-<p>We compare three ways of computing this same loss, all mathematically equivalent:</p>
-<p>The GIF below shows the difference between the dense and fused-chunked approaches: one builds the whole comparison grid and holds onto all of it, the other builds and discards one slice at a time, so memory never grows beyond a single chunk.</p>
-<p>We have open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
-<p>The table below puts all four setups head to head: online distillation, and the three offline loss implementations just described. Comparing them on a single H200 GPU with Llama 3.1 8B Instruct as teacher and a 3.2B Llama model as student at an 8K token context, all four reach near-identical training loss, even though the offline runs train against only the cached top-100 logits per token.</p>
-<p>The loss curves overlap almost exactly across all four methods, confirming offline distillation with top-100 cached logits is lossless relative to online distillation. Source: paper Figure 2. At this sequence length, the fused chunked loss is not yet the fastest option, its extra backward-pass projection costs a bit of speed, but its real advantage only shows up as context length grows, which the next section demonstrates.</p>
-<p>To see the scaling pattern more starkly, we ran an isolated benchmark on a toy output-projection network (no transformer body, just the loss kernel). At 32K tokens, peak memory falls from 85.2 GiB with the dense loss to 5.45 GiB with the fully chunked version, a 15.6× reduction, and the dense loss fails outright from 64K tokens onward. At 256K tokens, the fully chunked loss uses 11.6 GiB against 134.2 GiB for the next-best chunked variant, and is about 3.3× faster per iteration at that length.</p>
-<p>Distilling a GPT-OSS 20B model at a 32,768-token context, the memory freed by the fused loss let the setup shrink from four GPU nodes down to one. Step time fell from 57.0 to 12.23 seconds, about 5× faster, and throughput per GPU rose from 74.2 to 345.7 TFLOP/s.</p>
-<p>The efficient offline setup is what made a large-scale distillation campaign affordable in the first place. The resulting compact student, distilled from Llama 3.1 8B Instruct down to about 3.2B parameters, retains most of the teacher's accuracy on BoolQ and HellaSwag, stays within about nine points of it on MMLU, at less than half the parameter count.</p>
-<p>The student retains most of the teacher's short-context accuracy at less than half the size. Source: paper Figure 6.</p>
-<p>This work is part of Multiverse Computing's ongoing research into making distillation and healing practical to run at scale, not just as a one-off recipe, but as something teams can iterate on cheaply. The paper also covers additional ablations, such as how the choice of loss function and sequence packing affect recovery quality.</p>
-<p>Want the full technical details, including the closed-form gradient behind the fused chunked loss and the complete training configuration? Read the full paper, or get in touch with our team to talk about applying this to your own distillation pipelines.</p>
-<p>We have also open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
+                <p>I’m a sr software engineer specialized in Clean Code, Design and TDD 
+
+Book "Clean Code Cookbook"
+
+500+ articles written</p>
+<p>I’m a sr software engineer specialized in Clean Code, Design and TDD 
+
+Book "Clean Code Cookbook"
+
+500+ articles written</p>
+<p>I’m a sr software engineer specialized in Clean Code, Design and TDD 
+
+Book "Clean Code Cookbook"
+
+500+ articles written</p>
+<p>AI writes your minutes, rehearses your difficult conversations, and spots burnout before you do. How about you?</p>
+<p>TL;DR: AI removes a manager's cognitive limit. Use it for meetings, feedback, and hard conversations.</p>
+<p>This is the second part of the extended article version of my ninth talk at Nerdearla, in September 2026.</p>
+<p>The first part covers the hard skills: managing the work.</p>
+<p>The talk is in Spanish with English subtitles available.</p>
+<p>A quick recap, in case you skipped the first part.</p>
+<p>Your job was to maintain Nerdbuster, a video rental system, in production in the 1990s.</p>
+<p>Today, you maintain Nerdflix, a streaming platform for nerds, in production.</p>
+<p>A manager can't be everywhere at the same time.</p>
+<p>What happens when that cognitive limitation disappears?</p>
+<p>Each section compares Nerdbuster and Nerdflix and uses these markers:</p>
+<p>Everything in the first part was technical.</p>
+<p>Now comes the part they didn't teach me at computer science university.</p>
+<p>I studied exact sciences, where the most emotional moment is a rounding error. I'm not the person with the best soft skills in the industry.</p>
+<p>I had to build them as I became a manager.</p>
+<p>AI matters even more nowadays for soft skills.</p>
+<p>You move from managing the work to managing people.</p>
+<p>In Nerdbuster, meetings were crowded and informal.</p>
+<p>There are plenty of memes about getting nothing done because you spend the whole day in meetings.</p>
+<p>Someone wrote the minutes by hand. Nobody read them.</p>
+<p>The minutes said: "Let's do this, and we'll see how."</p>
+<p>In Nerdflix, only the relevant people must show up.</p>
+<p>You check each attendee's career profile to confirm they can make the decision.</p>
+<p>/meeting-profiles: decides who needs to attend. 🧩</p>
+<p>The AI and the company brain support them.</p>
+<p>With a template, you keep only what matters.</p>
+<p>If you spend five minutes talking about football, the minutes skip it.</p>
+<p>The AI writes down the minutes and the action items: who said what, what to do, and how you track it.</p>
+<p>An architecture decision becomes an architecture decision record (ADR) directly.</p>
+<p>/meeting-minutes: writes the transcript, the minutes, and the action items. 🧩</p>
+<p>/find-timeslot: books the meeting automatically. 🧩</p>
+<p>⚠️ Consent: You tell people when you record them.</p>
+<p>🧭 Human in the loop: A person reviews the minutes before publishing them. Otherwise, someone could say "the AI wrote that action item". No. You did.</p>
+<p>In Nerdbuster, managing up meant guessing.</p>
+<p>You guessed what your boss wanted to hear, and you showed up with the answer before they asked the question.</p>
+<p>The result was a long, detailed report and a weekend lost to bureaucracy.</p>
+<p>In Nerdflix, the AI translates the technical status into business impact.</p>
+<p>/executive-summary: fits the status on one page. 🧩</p>
+<p>You use it in adversarial mode: "I have to say this, and a business person will sit in front of me."</p>
+<p>The AI tells you if your tone and language fit that audience.</p>
+<p>You can ask it to play an aggressive customer who pressures you commercially.</p>
+<p>You train with AI sparring, and you walk in with your answers ready.</p>
+<p>(I wish I had this when I started managing).</p>
+<p>It's communicating well and fast, in the language of the person who decides.</p>
+<p>/translate-to-business-language: turns technical status into business impact. 🧩</p>
+<p>🧭 Human in the loop: Reviewing your commitments is critical. The AI can't promise on your behalf.</p>
+<p>In Nerdbuster, you wrote to a customer on long email.</p>
+<p>You copied half the company, just in case.</p>
+<p>The longer it was, the more serious it looked.</p>
+<p>Email chains grew out of control. "RE: RE: RE:" until you lost count.</p>
+<p>Nobody tracked them, and nobody knew who should answer.</p>
+<p>At some point, the thread faded away. Until someone brought it back.</p>
+<p>There were no clear action items, but plenty of people in copy, each one hoarding the thread.</p>
+<p>In Nerdflix, you write much shorter messages. Straight to the point.</p>
+<p>/summarize-status: summarizes where each thread stands. 🧩</p>
+<p>And there's something new: you don't know if a person or an AI agent reads your message on the other side.</p>
+<p>/adversarial-customer-role: plays a tough customer so you test your message before you send it. 🧩</p>
+<p>The AI summarizes and prioritizes the threads and the alerts, and drafts the replies.</p>
+<p>For routine messages, you can use an agent like OpenClaw or Hermes.</p>
+<p>/triage-inbox: sorts and prioritizes your inbox. 🧩</p>
+<p>🧭 Human in the loop: Every message carries your signature and your tone, not the plastic AI tone.</p>
+<p>⚠️ Governance: Turning on auto-replies and reading confidential information is never your decision alone. It needs explicit approval from your organization governance and the least privilege possible. That makes it a governance decision. These agents aren't approved products in most companies. You should never upload confidential data to an AI your company hasn't approved. It can leak.</p>
+<p>🧭 Human in the loop: The manager decides what gets automated and what doesn't.</p>
+<p>In Nerdbuster, delegating meant handing out tickets at the planning meeting.</p>
+<p>You assigned them to whoever was available.</p>
+<p>Or to whoever had fewer sticky notes on the whiteboard.</p>
+<p>People were treated as interchangeable, fungible resources.</p>
+<p>"I had a programmer. Another programmer arrived. Same thing."</p>
+<p>You know people aren't the same and you should treat them kindly and individually. You should ban the word resource from your Taylorist language.</p>
+<p>In Nerdflix, delegating well is something else.</p>
+<p>You shouldn't say "you have to do this task".</p>
+<p>You say: "This is for a critical customer. It goes to production in a week. We're late. Something else comes after it."</p>
+<p>You explain the why to the AI. You explain it to people too.</p>
+<p>You drop the Taylorist "do this as requested, never mind why".</p>
+<p>Context empowers people. With enough autonomy, they take responsibility.</p>
+<p>The context comes from the company brain.</p>
+<p>/delegate-with-context: pulls the context from the company brain and structures the delegation. 🧩</p>
+<p>I need to organize the next Nerdflix sprint.</p>
+<p>It's vague. It has no context and no constraints. It hands the whole decision over to the AI.</p>
+<p>If you don't want to build a skill, you should at least write structured prompts.</p>
+<p>You don't carry that context in your head.</p>
+<p>It comes from the company brain: the accumulated memory of decisions, post-mortems, and incidents.</p>
+<p>It doesn't appear by magic. You build it, session after session.</p>
+<p>The better you build it, the better you delegate, because you give both the AI and the human the why and not just the what.</p>
+<p>🧭 Human in the loop: The manager decides what goes into the sprint.</p>
+<p>In Nerdbuster, the post-mortem was a tense meeting.</p>
+<p>Everybody looked for a scapegoat. 🐐 The winner was usually whoever missed the meeting.</p>
+<p>The informal notes got lost. Nobody left with clear action items.</p>
+<p>In Nerdflix, the post-mortem is blameless.</p>
+<p>You learn from the process and improve it.</p>
+<p>The AI transcribes the ceremony and extracts concrete action items.</p>
+<p>The action items belong to the team, not to people.</p>
+<p>If a person needs to adjust something, you handle it in private, with journaling.</p>
+<p>Good and bad cases feed the company brain.</p>
+<p>/post-mortem-minutes: transcribes the ceremony and extracts the action items. 🧩</p>
+<p>🧭 Human in the loop: The facilitator cuts the blaming and rephrases it in generic terms, so nothing points at a person. A person reviews each case before it goes into the company brain.</p>
+<p>In Nerdbuster, the stand-up was literally standing up for thirty minutes.</p>
+<p>Someone spent ten minutes explaining they had met with another team the day before. Everybody else was bored.</p>
+<p>The retrospective was a wall of generic sticky notes: "what went well, what went wrong", with no real actions.</p>
+<p>In Nerdflix, the stand-up meeting is async.</p>
+<p>Everybody writes. The AI builds the summary and flags real blockers.</p>
+<p>You don't care what each person is doing.</p>
+<p>/standup-summary: summarizes the async stand-up and flags blockers. 🧩</p>
+<p>Unblocking people is your job. Honestly, it's your only job.</p>
+<p>A bit of informal chat is fine. You're human.</p>
+<p>But if an update brings no action item and no blocker, nobody needs to hear it.</p>
+<p>The AI also finds patterns across retrospectives.</p>
+<p>It tells you, anonymously: "The last six meeting minutes mention that another team doesn't collaborate."</p>
+<p>You don't need to ask. It detects the pattern. That's the agentic side of AI.</p>
+<p>If a complaint repeats three times, it's a pattern, and you write it down so it never repeats again.</p>
+<p>/retro-patterns: groups repeated complaints across sprints, not just the last one. 🧩</p>
+<p>🧭 Human in the loop: The AI groups. The team decides what action to take.</p>
+<p>Job requisitions came with fixed profiles, based on effort estimations.</p>
+<p>"We need a junior Java programmer." That was all you knew.</p>
+<p>You interviewed with a written exam and an algorithm on the whiteboard. That tested memory, not judgment.</p>
+<p>Dynamic programming questions that nobody, the interviewer included, ever used on the job.</p>
+<p>Onboarding meant two months of theory before touching the code.</p>
+<p>"Read these courses, mark them done, fill in the forms. Then we'll see."</p>
+<p>Offboarding was an HR formality: a form, an email, and the knowledge walking out the door.</p>
+<p>Teams are flexible and built around talent and timing.</p>
+<p>You find which skills are missing and look for those profiles inside or outside the company.</p>
+<p>You interview with a fluent conversation and an ambiguous scenario.</p>
+<p>You tell the candidate up front: "You'll be recorded. The AI and I will evaluate you."</p>
+<p>The AI takes the notes and evaluates tone and English proficiency.</p>
+<p>The candidate uses AI for the technical part. You evaluate their judgment and how they supervise the AI.</p>
+<p>/match-positions-to-skills: builds flexible teams based on talent. 🧩</p>
+<p>When someone leaves, you audit agents, skills, and the company brain, not just the laptop.</p>
+<p>/code-review, /spec-review, /process-evaluation: make new people productive from day one. 🧩</p>
+<p>You also guide the newcomer with a flexible journey:</p>
+<p>/junior-mentor: supports juniors while the senior keeps the judgment calls. 🧩</p>
+<p>Letting someone go is also part of the journey:</p>
+<p>/offboarding-audit: revokes access to agents, skills, and the company brain. 🧩</p>
+<p>⚠️ Bias: You supervise the AI for bias in every hiring step.</p>
+<p>⚠️ Law: You get advice on your local labor laws.</p>
+<p>🧭 Human in the loop: The team decides who gets hired, not a score. Onboarding includes mentoring and review.</p>
+<p>In Nerdbuster, you detected overload when deliveries were already failing. Too late.</p>
+<p>Burnout management was reactive and based on gut feeling.</p>
+<p>Feedback happened once a year, in a performance review tied to the bonus.</p>
+<p>You used the feedback sandwich 🥪 and other recipes.</p>
+<p>In Nerdflix, aggregated team patterns, like working hours and commits, suggest a conversation.</p>
+<p>The AI warns you: "Commits are consistently happening outside working hours."</p>
+<p>You don't surveil anyone. You spot a burnout pattern.</p>
+<p>You also read patterns in the ceremonies and in one-on-ones with AI transcripts.</p>
+<p>The AI captures situational notes, so you avoid recency bias in the performance review.</p>
+<p>/one-on-ones: prepares and records your one-on-ones. 🧩</p>
+<p>A review that looks only at the last month is always unfair.</p>
+<p>With notes, you can say: "In March, this didn't go well. Two months later, I saw you learned it."</p>
+<p>You take the notes when things happen. Looking back, the traces are hard to find.</p>
+<p>/journaling: takes notes in every meeting. 🧩</p>
+<p>⚠️ Team signal, not individual surveillance: You look at team patterns, never at one person's activity.</p>
+<p>⚠️ Consent: Transcribing or recording always requires consent.</p>
+<p>🧭 Human in the loop: The manager gives the feedback. The AI detects signals. It doesn't diagnose people.</p>
+<p>In Nerdbuster, you rehearsed for five minutes in the hallway, or you just walked in.</p>
+<p>You imagined the other person's reaction by projecting your own logic.</p>
+<p>The difficult conversation was a Taylorist asymmetry: you informed, you didn't talk.</p>
+<p>In Nerdflix, you practice with the AI in two directions.</p>
+<p>First, the AI plays the difficult counterpart, so you rehearse your answers before the real conversation. It shows you where the person may get defensive.</p>
+<p>Then, "Act as...": the AI becomes that person, so you understand their logic before you talk to them.</p>
+<p>Regular one-on-ones use open questions, always practiced with the AI first.</p>
+<p>You lean on the AI to think before you act.</p>
+<p>🧭 Human in the loop: What to say and how to act is the person's decision.</p>
+<p>In Nerdbuster, the evaluation was a generic form, unrelated to the actual role.</p>
+<p>The improvement plan was an HR formality, the last step before firing someone, with no follow-up.</p>
+<p>The career plan was arbitrary. Seniority or performance?</p>
+<p>You evaluate against a competency specification by role and seniority, with evidence: pull requests, incidents, design decisions, and one-on-one notes.</p>
+<p>"You're here. The next step needs you there. This is the gap."</p>
+<p>/compare-competencies: compares the evidence against the role specification. 🧩</p>
+<p>You don't talk in abstract terms like "work on your autonomy".</p>
+<p>You point to the specific case where autonomy was missing.</p>
+<p>The process improvement plan comes directly from the review gap. It's real support.</p>
+<p>The career plan maps possible transitions against the missing competencies.</p>
+<p>/weekly-check-ins: follows the improvement plan week by week. 🧩</p>
+<p>Promotions are also part of the people journey:</p>
+<p>/promotion-gap: maps career transitions against the missing competencies. 🧩</p>
+<p>🧭 Human in the loop: The manager runs the evaluation and the conversation. Extending, closing, or ending an improvement plan is decided together with Talent. The manager builds the career plan together with the person.</p>
+<p>In Nerdbuster, salaries were an arbitrary one-on-one negotiation.</p>
+<p>How much you asked. How much the company dared to offer. How well you negotiated.</p>
+<p>Hallway gossip about who earns what was the closest thing to a salary survey.</p>
+<p>In Nerdflix, you look at the sysarmy salary survey.</p>
+<p>You compare the profile against a real market sample.</p>
+<p>/calibrate-role: calibrates the salary band for the role. 🧩</p>
+<p>You do it all the time, because the market moves.</p>
+<p>You might learn someone is unhappy this month because the market pays more.</p>
+<p>/salary-benchmark: compares the profile against the market. 🧩</p>
+<p>🧭 Human in the loop: The company makes the final call on the salary band, with the manager's calibration.</p>
+<p>I left out other big topics on the people side:</p>
+<p>Please write new topic ideas for a third article in the comments.</p>
+<p>Managers added value by coordinating people.</p>
+<p>With five, ten, or twenty people, the problem was always the same: you couldn't be everywhere.</p>
+<p>Meetings, reports, dashboards, and objectives and key results (OKRs) all solved the same problem.</p>
+<p>The real limitation was always the manager's cognitive capacity.</p>
+<p>Now there's a machine that reads, summarizes, compares, and challenges decisions.</p>
+<p>That goes beyond automating administrative tasks.</p>
+<p>Human judgment is the most important thing.</p>
+<p>This article is mostly about the third level.</p>
+<p>That level separates the chatbot that summarizes your email from the AI that challenges your management decisions.</p>
+<p>You shouldn't stay at the first or second level. You need to be augmented.</p>
+<p>People ask me where to download my skills.</p>
+<p>You can't. You build your own. They're personal.</p>
+<p>You start by asking the AI: "Create a skill for me." Then you use it, refine it, and let it mature.</p>
+<p>You build all these 🧩 skills by interacting with the AI, and you script the repeatable steps.</p>
+<p>You can take these three concepts back to work.</p>
+<p>But you're as replaceable as any other role.</p>
+<p>This isn't theory. You can apply it right now.</p>
+<p>You keep hearing that "AI won't replace you".</p>
+<p>Not your university, not your company, not YouTube.</p>
+<p>AI Removes the Manager's Cognitive Limit. Use it Wisely</p>
+<p>I’m a sr software engineer specialized in Clean Code, Design and TDD 
+
+Book "Clean Code Cookbook"
+
+500+ articles written</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/MultiverseComputingCAI/efficient-knowledge-distillation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/ai-in-leadership-managing-people-not-just-work?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

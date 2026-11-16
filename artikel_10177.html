@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</title>
+    <title>Hill-Climbing Agent Quality with Agents CLI Evaluation</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10177.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,65 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype</h1>
+        <h1>Hill-Climbing Agent Quality with Agents CLI Evaluation</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/cui_banner_light_1600x900_1791294.2e16d0ba.fill-1200x600.jpg" alt="Building Conversational Commerce with Multi-Agent Swarms on GCP: A Working Prototype" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/1_3.2e16d0ba.fill-1200x600.png" alt="Hill-Climbing Agent Quality with Agents CLI Evaluation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Imagine ordering your weekly groceries as naturally as texting a friend:"Hey, we're out of milk and eggs. Can you also add some snacks for Friday movie night?"</p>
-<p>In our previous post, Building Conversational Commerce with Multi-Agent Swarms on GCP, we shared the architectural blueprint for conversational commerce—proposing a 3-layer decoupled design (Ingress, Memory, and Cognition) to solve messaging timeouts, state tracking, and response reliability.</p>
-<p>While blueprints establish the architecture on paper, production readiness demands working software. In this post, we take that blueprint and bring it to life with a functional prototype called HappyDelivery.</p>
-<p>Using LangGraph, Gemini, FastAPI, and Google Cloud, we'll walk through the code, the state machine, deterministic financial tools, and an automated verification suite that demonstrates how this multi-agent swarm operates in practice.</p>
-<p>To build a reliable commerce swarm, we implemented three decoupled layers that handle the journey of every customer text message:</p>
-<p>Let's examine how each layer functions in code with its own dedicated architecture.</p>
-<p>A frequent question when designing conversational commerce is: how does a message sent by a customer on their smartphone actually land in Layer 1, and can this architecture support messaging platforms beyond WhatsApp?</p>
-<p>End users do not communicate directly with your Google Cloud servers. Instead, customer messages traverse an operator ecosystem before landing on your webhook:</p>
-<p>Every major consumer messaging platform operates on the exact same fundamental contract: an asynchronous HTTPS POST webhook delivery with a strict HTTP acknowledgement timeout:</p>
-<p>While the payload schemas and cryptographic headers differ slightly between platforms, Layer 1 abstracts away all client differences:</p>
-<p>This ensures the rest of your system—Session Store (Layer 2) and Agent Swarm (Layer 3)—operates on clean, normalized data without caring whether the shopper sent their message from an iPhone, an Android RCS chat, or a WhatsApp thread.</p>
-<p>Messaging platforms are completely stateless: every text message arrives as an isolated webhook event. To provide a coherent shopping experience, the system must instantly reconstruct the customer's full context without having to re-read or re-parse days of chat logs on every turn.</p>
-<p>We use Cloud Memorystore (Redis) keyed by the customer's verified phone number (session:{phone_number}) to store active state:</p>
-<p>A common question in conversational commerce is whether state lookups will introduce latency. Here is what the baseline infrastructure supports:</p>
-<p>Key Takeaway: In practice, the Session & Cart Layer will never be the bottleneck—it easily outpaces upstream webhook inference and downstream LLM inference.</p>
-<p>Rather than relying on a single monolithic prompt to handle every task, we separate reasoning into a swarm of specialized agents:</p>
-<p>Now that we have seen the high-level design of the three layers, let's look at the actual Python prototype code that brings each layer to life.</p>
-<p>The goal of this service is simple: verify authenticity across any inbound channel, normalize the payload into a canonical schema, and get off the critical path in < 150ms.</p>
-<p>Here is our implementation showing how multiple messaging channels (WhatsApp, RCS, Apple Messages, SMS) are handled by pluggable adapters:</p>
-<p>By immediately returning an HTTP 200 OK and handing the payload off to Pub/Sub, we completely decouple message intake from downstream AI reasoning time across all messaging ecosystems.</p>
-<p>We benchmarked the live Cloud Run HTTPS webhook intake across warm invocations:</p>
-<p>This empirically proves our architectural claim: the Ingress service validates the cryptographic signature and immediately commits the event to Pub/Sub, freeing the customer chat client without waiting on agentic reasoning.</p>
-<p>We also verified security enforcement against tampered payloads:</p>
-<p>The worker pods pulling from Pub/Sub need to instantly look up who the customer is and what is in their current cart.</p>
-<p>Here is the session store implementation using Cloud Memorystore (Redis):</p>
-<p>Each record contains the customer ID (cust_9821), saved address, dietary restrictions, and current cart items. This guarantees that when a customer texts back hours later, their cart is restored instantaneously.</p>
-<p>Every session lookup executes in 0.318ms, proving our architectural claim that restoring customer context and persistent cart state adds virtually zero latency to the conversational turn.</p>
-<p>With Ingress and Redis handling incoming traffic and memory, all the decision-making lives in the LangGraph multi-agent graph.</p>
-<p>Every turn passes through a typed data structure holding the customer's profile, active cart, and the supervisor's routing decision:</p>
-<p>Next, we define the nodes and conditional edges that allow the Supervisor to dynamically route tasks to the right specialist:</p>
-<p>A core tenet of our blueprint is: delegate arithmetic to deterministic tools. Generative models excel at language and reasoning, while financial calculations require exact precision. If a model computes taxes or discounts in free-form text, it may occasionally introduce calculation errors.</p>
-<p>Instead, we bind deterministic tools to our specialist nodes. For example, the Inventory and Transaction agents use a Python calculation tool rather than computing prices in-prompt:</p>
-<p>Worker containers pull messages asynchronously from Pub/Sub and stream LangGraph node transitions in real time.</p>
-<p>Now that we have all three components—Ingress (Layer 1), Redis Memory (Layer 2), and the LangGraph Swarm (Layer 3)—how do they actually run together as a single unified system?</p>
-<p>Here is the complete end-to-end lifecycle of a customer's message:</p>
-<p>The worker loop that coordinates all three layers is concise, clean, and completely decouples the user-facing webhook from back-office AI reasoning:</p>
-<p>With the entire pipeline wired together, let's look at what happens when we run an actual customer order through it.</p>
-<p>To verify the prototype, we ran an automated simulation of an end-to-end customer order. Here is how the swarm behaves across three natural conversational turns:</p>
-<p>Behind the Scenes: The InventoryAgent mutates the in-memory cart (removing Sprite and adding Coke Zero), executes calculate_cart_totals, and confirms delivery details without losing context.</p>
-<p>We validated all core behaviors—webhook HMAC validation, catalog indexing, deterministic math, and multi-turn state transitions—with automated unit and integration tests:</p>
-<p>A critical question when evaluating multi-agent architectures is token consumption and operational inference cost. In a naive implementation where massive prompts and entire conversation histories are repeatedly re-sent on every step, LLM API bills can quickly eat into e-commerce retail margins.</p>
-<p>Our prototype is engineered specifically to prevent token waste through strict agent specialization, deterministic tools, and externalized Redis state:</p>
-<p>Here is the exact token telemetry measured across the live 3-turn HappyDelivery session:</p>
-<p>Bringing the blueprint into working code revealed several practical realities:</p>
-<p>Building this prototype proved that the decoupled architecture outlined in our blueprint isn't just theoretical—it is practical, reliable, and ready for production on Google Cloud.</p>
-<p>By combining LangGraph for multi-agent workflows, Gemini for natural language reasoning, and GCP for fast ingress and persistent memory, we can build shopping experiences that feel as simple as chatting with a friend while maintaining the enterprise rigor required for commerce.</p>
+                <p>A live walkthrough of the Agents CLI eval loop, from a first run to regression tracking, model-backend experiments, and automated alerting</p>
+<p>Building an agent that works on a demo is a different problem from building an agent that stays working across model upgrades, tool changes, and new conversation shapes. The first takes a weekend; the second takes a loop. A team writes test cases, runs them, grades them, reads what failed, changes the agent, and runs the cases again. If the score goes up, the change was good. If it goes down, revert. Over weeks of this, the agent inches toward the ceiling of what the model, tools, and prompt can do together. The quality-engineering name for this is hill-climbing.</p>
+<p>The Agents CLI eval namespace was built around this loop. The commands are small and framework-agnostic: eval generate runs the agent against a dataset of cases, eval grade scores the generated traces, eval compare diffs two run results side by side, eval analyze clusters failures into themes, and eval optimize runs an automated hill-climbing pass on the agent's prompt.</p>
+<p>Below: baseline → regression → model swap → scheduling and alerting.</p>
+<p>The scaffold used throughout is the LangChain template that ships with Agents CLI v1.8.0. The setup is a single command:</p>
+<p>The scaffold ships with an eval dataset at tests/eval/datasets/basic-dataset.json, a config at tests/eval/eval_config.yaml, and a custom LLM-as-judge metric at tests/eval/response_quality.py. The config declares the metric to run:</p>
+<p>The metric grades each response on a 1-to-5 scale for accuracy, relevance, and clarity, using gemini-3.8-flash as the judge. The default dataset has a single trivial case, which is not enough for a hill-climb. The first thing we do is expand it to four cases that probe different behaviors:</p>
+<p>Four cases: a greeting, a weather question the mock tool handles with the hardcoded foggy response, a weather question for a city the tool defaults on, and an off-topic question that the agent has to decide how to handle. This is a small dataset by design; the hill-climbing loop pays off when the dataset is small enough to run on every change.</p>
+<p>With the dataset in place, we run eval generate to drive the agent against each case, then eval grade to score the resulting traces:</p>
+<p>Mean 4.0 out of 5 across four cases, with a standard deviation of 1.41. That stdev tells us immediately that the cases are not scoring uniformly, which is a healthier starting point than a flat 5.0 across the board. A flat 5.0 either means the agent is perfect (unlikely) or the dataset is too easy to show variation. 4.0 with real spread is a hill to climb.</p>
+<p>To demonstrate the loop, we introduce a realistic regression. A developer working across several agent projects accidentally pastes the wrong system prompt into our weather agent: a chef persona meant for a different codebase. In app/agent.py:</p>
+<p>The change compiles, the agent still runs, and nothing in the pre-eval pipeline (lint, unit tests, type checks) catches it. Re-running the same eval generate plus eval grade sequence produces:</p>
+<p>Mean 2.75, down from 4.0. The judge agrees with our intuition that a chef persona on a weather agent is a worse product than a general-purpose helpful assistant. The stdev also tightened from 1.41 to 0.96, consistent with the chef prompt pushing most cases toward the same mediocre range.</p>
+<p>A 1.25-point drop on a 1-to-5 scale is substantial, and the kind of regression that can slip through code review when the diff looks small ("one string literal changed"). The loop surfaced the change at all, with a specific number attached to it, before the agent reached production.</p>
+<p>Mean scores are a start; the per-case diff is where the hill-climb happens. eval compare reads two result files and produces a structured JSON diff:</p>
+<p>The output lists which keys changed and which stayed the same:</p>
+<p>The differences object has the full per-case breakdown with the baseline and candidate values side by side. For a hill-climbing workflow, we typically pipe the output through jq or a small Python script to extract the signal; the raw JSON is the complete evidence.</p>
+<p>Walking the two result files and lining up the scores per case shows where the regression landed:</p>
+<p>Three cases dropped, one held. The most important of the three is sf_weather: the chef persona pulled the model's attention away from the registered get_weather tool, so the agent stopped calling it and started making up weather values. Unit tests can't catch this: the code runs, the tool is still registered, but the model's behavior around it has shifted. Only an end-to-end eval that scores the response in context surfaces this.</p>
+<p>The mean drop by itself (−1.25) is a clear signal, but the per-case breakdown is what tells the developer where to look. A one-line system-prompt change propagated through three different cases in three different ways: greeting lost a point on tone, sf_weather lost two on tool usage, off_topic lost two on scope creep.</p>
+<p>A common hill-climbing question is whether a cheaper or faster model would do the job acceptably. For the LangChain template, the model is defined in app/agent.py:</p>
+<p>We swap gemini-3.8-flash for gemini-2.5-flash (restoring the helpful system prompt first), re-run eval generate plus eval grade, and compare the two result files. The mean drops from 4.00 to 2.75, the same magnitude as the chef-prompt regression, but the per-case breakdown tells a completely different story:</p>
+<p>The cheaper model matched 3.8-flash exactly on the greeting and rome_weather cases and lost a point on sf_weather (slightly less polished phrasing). The whole visible drop traces to off_topic, where the cheaper model refused with a hedge about the event "not having happened yet" (a training-cutoff artifact), and the judge marked it harshly.</p>
+<p>The lesson is that the summary number is misleading. Look only at the mean and you'd call gemini-2.5-flash as bad as the chef prompt. Look at the per-case breakdown and you'd call it a reasonable swap for most of the agent's workload, with one case (handling out-of-scope questions about recent events) exposing a real limitation. If the production distribution of user questions matches the first three cases more than the fourth, the swap is worth considering. If off_topic-style questions are common, it is not.</p>
+<p>Two caveats on this experiment. First, model swaps interact with the prompt: a prompt tuned for a stronger model often leaks capability when ported to a weaker one, so the right comparison is "weaker model with a prompt tuned for it" versus "stronger model with its own tuned prompt." Second, the Vertex AI Eval Service calls a judge model to grade the traces, and the judge is held constant across the comparison. Changing the judge is a different experiment and should be done separately.</p>
+<p>Agents CLI does not ship a scheduler, but the eval commands are designed to drop into standard infrastructure. The pattern we can use here is a cron job or Cloud Scheduler trigger that runs eval generate plus eval grade on a cadence and writes the results to a persistent location:</p>
+<p>A nightly run against a stable regression dataset catches drift from model updates, data changes in the agent's tools, and dependencies that shift under the agent's feet. For a production agent, the scheduled run also captures the model vendor's quiet upgrades, which can move the agent's behavior without any change on our side. The dataset for the scheduled run is typically larger than the one used in the inner loop (dozens to hundreds of cases rather than a few), since it only runs once a day.</p>
+<p>The scheduled run produces a result file every day, but a file nobody looks at is not an alert. The pattern here can be a wrapper script that compares each new run's mean against a baseline (the previous run, or a committed known-good) and exits non-zero when the drop exceeds a threshold. The non-zero exit is what triggers the alert from the surrounding scheduler.</p>
+<p>Running it against our regression demo (baseline 4.0, candidate 2.75 from the chef-prompt run):</p>
+<p>And against an identical pair (self-compare):</p>
+<p>The non-zero exit code is what a cron job, Cloud Scheduler, or GitHub Actions step picks up to send the alert.</p>
+<p>For ADK projects, eval optimize runs an automated hill-climbing pass on the agent's prompt using the GEPA framework (not currently supported for the LangChain extension). The command takes a dataset and a target metric, proposes prompt variants, grades each one, keeps the variants that improve the metric, and iterates. The output is a set of candidate prompts ranked by their eval score, which a human then reviews and promotes to the agent definition.</p>
+<p>Two things to understand about eval optimize. First, it is scoped to prompt optimization, not to arbitrary agent changes: the agent's tools, structure, and model stay fixed. Second, GEPA sometimes finds genuine improvements and sometimes finds prompt variants that score higher on the specific metric by overfitting to its wording. The reviewer is the control. For projects where the loop applies, the discipline is to run eval optimize on the regression dataset (where improvements are measurable) and to review the candidate prompts carefully before promotion.</p>
+<p>A few patterns and anti-patterns from running this loop ourselves and watching teams do the same.</p>
+<p>Lead with a small, representative dataset, not a comprehensive one. The temptation when starting an eval is to try to cover every edge case the agent will ever see. The result is a dataset that takes an hour to run and that nobody runs on a change. Four cases that run in under a minute, as above, exercise the main behaviors and get run on every change. A regression dataset of three hundred cases that runs for an hour becomes a release gate at best and shelfware at worst.</p>
+<p>Snapshot result files, not scores. The score is a summary; the result file is the evidence. When a regression surfaces three weeks after a prompt change, having the full result JSON from before and after the change (not just the mean score) is what lets eval compare show the specific case that moved. The per-case breakdown in Step 4 above would not have been possible from scores alone.</p>
+<p>Separate the dataset from its expectations. The dataset is the inputs. The eval config is the expectations. They evolve on different cadences: the dataset grows as new real-world cases surface in production, and the config evolves as the team's definition of "good" matures. Keeping them in separate files, both committed to version control, makes it clear which half changed when a score moves.</p>
+<p>Treat summary metrics with suspicion. The model-swap experiment in Step 5 is the clearest example. The mean dropped by half a point, but the per-case breakdown showed the drop was concentrated in one case while the others held or improved. A team that only looked at the mean would have made the wrong call.</p>
+<p>More evals do not automatically lead to more fixes. A recent controlled study we ran found that coding agents using agents-cli run four times as many evals as coding agents without it, but change the agent after an eval about as often as the baseline. The behavior gain comes from what the skills put into the build at the start, not from the inner iteration. Evals are necessary for quality, but the quality comes from acting on what the evals show.</p>
+<p>Scaffold an Agents CLI project and run the first eval loop in a handful of commands:</p>
+<p>The full eval namespace is documented at google.github.io/agents-cli/cli. The source code, including the first-party eval primitives, is at github.com/google/agents-cli.</p>
+<p>Build Generative UI Apps with A2UI & CopilotKit Agents</p>
 <p>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</p>
 <p>Catch Go bugs that fuzzing misses with Gemini and a constraint solver</p>
-<p>On-Device Speech Recognition and Text-to-Speech in Google AI Edge Gallery</p>
+<p>How Agent Anomaly Detection scores on benchmarks we didn't write</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/building-conversational-commerce-with-multi-agent-swarms-on-gcp-a-working-prototype/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/hill-climbing-agent-quality-with-agents-cli-evaluation/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

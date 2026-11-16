@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Direct Preference Optimization Beyond Chatbots</title>
+    <title>Announcing Hegel-clj</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9988.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,7 +15,7 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Direct Preference Optimization Beyond Chatbots</h1>
+        <h1>Announcing Hegel-clj</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
@@ -23,9 +23,43 @@
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>I’ve just released hegel-clj, a Clojure interface for the Hegel generative testing library. You can jump right to the docs, but I thought it might be interesting to explain why I want another testing library.</p>
+<p>I do a lot of generative testing in Clojure with the excellent test.check. However, using test.check can be frustrating! In particular, complex generators can get stuck during shrinking, leaving me trying to prune down a complex data structure by hand. The culprit is usually bind. If you’re not familiar with test.check, Quickcheck, or other libraries in this family, bind is a generator which draws some random value, then uses that to construct a new generator, which in turn is used to draw some other value.</p>
+<p>We can also write this using test.check’s let macro, which expands to a series of nested binds under the hood.</p>
+<p>This leads to the canonical example of poor shrinking in test.check. Let’s try to find a vector containing 42:</p>
+<p>That does contain 42, but this vector is enormous. Why are there all these zeroes? Once test.check found this vector, surely it could have shrunk it to just [42], right?</p>
+<p>The answer has to do with shrink trees. Test.check generators don’t actually return values like 64. Instead they return a lazily evaluated tree of values: the root might be 64, and its children might be [32 48 ... 63], and each of those children has further children: 32 has children [16, 24, ... 31], and so on. Simplifying a bit, here’s how the tree for large integers is defined:</p>
+<p>So, if test.check finds that 64 violates some property we’re testing, it tries the first child of 64, 32. Let’s say that passes the test, so test.check tries the next child of 64: 48. If 48 fails, test.check tries its first child 24, and so on. By performing this depth-first search of the tree, and choosing the branches cleverly, test.check can often quickly shrink an integer to a smaller one that still fails the test.</p>
+<p>A similar strategy applies to fixed-size vectors. The tree for a vector like [2 2] has children like [1 2] and [2 1], based on the trees for each individual element of the vector. This explains why test.check produced a vector like [0 0 0 ... 42 0]: it found something like [91 23 1034543 ... 42 15], then shrank the first element to zero, then the second, and so on. The only element it couldn’t shrink was the one that caused our property to fail: 42. Because our generator (tcg/vector tcg/large-integer size) always used a fixed size, the tree for that vector always contained size elements—in this case, 39.</p>
+<p>Hang on! We didn’t just generate fixed-size vectors. We used bind to draw a size, then built a vector of that size:</p>
+<p>What kind of trees does bind produce? The code involves some gnarly higher-order functions, but in essence bind’s trees can shrink in two ways. They can shrink the outer value (the size returned by tcg/nat), or they can shrink the inner value (the vector returned by (tcg/vector ...).</p>
+<p>Now imagine bind draws a size of 100, then generates a vector of a hundred elements like [15 32 42 ...]. This contains 42, so test.check begins hunting through the shrink tree. One of the branches it can take shrinks the size parameter, starting with [50, 75, ... 99]. But if bind picks any of those sizes, the vector [15 32 42 ...] is useless—it’s the wrong size! So bind calls our function with 50 to construct a generator of 50-element vectors, and generates a single vector from that generator. This vector will have different random elements, like [69, 45, 1, ...].</p>
+<p>If there’s no 42 in the vector of 50 elements, then test.check abandons that branch and moves on to size 75. It draws a new vector of 75 elements like [8 7 42 ...], and since that contains 42, it can continue shrinking. But since 42 is an uncommon integer, and test.check draws new elements for each size, it is very likely that most sizes will not produce a vector with 42, and test.check will get stuck with, say, 39 elements. From there it can shrink each element, producing the comically oversized…</p>
+<p>For this vector it’s fairly obvious what’s wrong. But for nontrivial test.check generators, there might be a dozen nested levels of bind with complex downstream consequences. Every one of them offers a place for test.check to get stuck, and the smallest failing case can be devilishly tricky to understand. Experienced test.check users try to avoid bind and let—but they’re fundamentally inescapable for many problems.</p>
+<p>Over in the Python world, the Hypothesis team took a very different approach to shrinking. Test.check is fundamentally a two-phase system: first it asks a generator to produce a shrink tree. Then, if the root of that tree looks “bad”, it explores the rest of that tree. Instead, Hypothesis generators produce a single value, and if that value looks bad, they re-run the generator and ask it to produce something similar, but smaller. This approach, called internal test-case-reduction, is the foundation of Hegel.</p>
+<p>Hegel is a new cross-platform library for generative testing. It provides deterministic generators which draw random values from an imperative, structured RNG, as well as a rich family of special values and shrinking tactics. Writing these generators and shrinkers is hard. The idea is that Hegel’s core library will do this hard work once, and simpler wrapper libraries will extend the benefits of that hard work across many languages.</p>
+<p>I’ve been working for a few months on hegel-clj, which offers Clojure bindings for Hegel, and I think it’s ready for the folks to try it out. To test something, you call hegel-clj/test!, draw some values from generators, and throw an exception if the test fails. Hegel searches for values that make that body throw, then shrinks them.</p>
+<p>The smallest case Hegel found involved a single draw of the number 1, which caused the assertion (even? 1) to throw.</p>
+<p>Generators are pure, composable structures, just like in test.check. Here’s a few values drawn from a generator of booleans:</p>
+<p>Or a map representing a person, with a name generated by a regular expression and an integer age:</p>
+<p>The higher-order combinators are all there too. You can transform generated values with fmap:</p>
+<p>Or build one generator out of another using bind:</p>
+<p>Like test.check, we offer a let macro which lets you bind both regular values or generators to variables; if the right-hand side is a generator, it draws a random value from it. And unlike test.check, these generators shrink well. Instead of thirty-nine elements, Hegel can find the much-shorter “bad” vector, [42].</p>
+<p>With test.check, if you want to thread multiple values through bind or fmap, you have to build and destructure maps or tuples. Hegel-clj lets you lift arbitrary code into a generator using composite, which makes it easier to build complex generators:</p>
+<p>You can build recursive generators with a promise-style API. The deferred generator provides a blank space for a generator, which can be filled in later:</p>
+<p>And best of all, hegel-clj ships with easy-to-use integration for clojure.test, making generative tests as easy as example-based ones:</p>
+<p>It’s hard to log debugging output with test.check—you’ll have to sift through thousands of test runs with complex inputs, and many of those runs won’t actually trigger the bug you’re searching for. Hegel has the notion of a “final” test case: after it’s found a counterexample, and shrunk it to a smaller version, it comes back and re-runs that case as a part of the final phase. We can use (when (h/final?) ...) to execute some debugging code only during these final cases, or fprn and finfo, which wrap clojure.core/prn and clojure.tools.logging/info respectively. I think there’s a bug in Hegel that causes it to run more final cases than it should, but it’s still a big step up.</p>
+<p>Finally, test.check has been around for a while, and like many Clojure projects it has an exceptionally stable API. That’s great for compatibility, but it means some early choices are now fossilized. It’s (fmap gen f), but (bind f gen). If you want an integer you have to remember the difference between nat, int, pos-int, s-pos-int, small-integer, large-integer, large-integer*, etc. Common generators require keyword arguments, like (large-integer* {:min 0, :max 10}). Some generators like hash-map are only callable with varargs, which makes composition tricky. The properties API feels a tad fussy. And many of the ergonomic features you want, like generating strings from a regular expression, or integration with clojure.test, require an extra library like test.chuck. Test.check is really good, but with the benefit of hindsight and a fresh canvas, I’ve tried to design a more streamlined, consistent, and approachable API.</p>
+<p>I’ve used test.check for over a decade now and it’s one of my favorite things about Clojure. I want to thank Reid Draper, Gary Fredericks, Alex Miller, and everyone else who’s contributed to the library. I’m also indebted to David MacIver, Liam DeVoe, and Esau Rodriguez from the Hegel team at Antithesis. They took time to talk me through Hegel’s design, answered endless questions about the protocol, and helped fix a whole slew of issues that we found. Y’all rock.</p>
+<p>I’m pleased to announce hegel-clj 0.1.1, and I’m starting to use it to test my own projects. I hope it will be useful for you too. ❤️</p>
+<p>Please avoid writing anything here unless you're a computer.
+          Captcha
+
+
+          This is also a trap:
+          Comment</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/Dharma-AI/direct-preference-optimization-beyond-chatbots" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aphyr.com/posts/428-announcing-hegel-clj" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

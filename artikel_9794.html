@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Your Agent Aced the Task. Will It Do It Again?</title>
+    <title>What is the unspoken truth of agentic engineering?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9794.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,111 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Your Agent Aced the Task. Will It Do It Again?</h1>
+        <h1>What is the unspoken truth of agentic engineering?</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frnyp20h9mp2r0adm3em5.png" alt="What is the unspoken truth of agentic engineering?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/dI5J2sSc3TSprk9VB4EVJ.jpeg" alt="Your Agent Aced the Task. Will It Do It Again?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frnyp20h9mp2r0adm3em5.png" alt="What is the unspoken truth of agentic engineering?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Your agent works in rehearsal, but during the live demo, it takes a different path and fails the same task.</p>
-<p>That is embarrassing onstage. In production, it is a reliability problem: a workflow that succeeded once may fail the next time a user makes the same request. For mission-critical work, such as reconciling a financial transaction or checking a contract for an obligation, that can be a showstopper.</p>
-<p>Most benchmarks hide this variability behind an average. On AppWorld, a ReAct agent using GPT-4.1 succeeded on 77.4% of runs across five repetitions. But it succeeded in all five runs for only 53.0% of tasks — a 24.4-point consistency gap.</p>
-<p>Most benchmarks report the first number. We built a way to measure the second — and improve it.</p>
-<p>In an earlier post, we introduced ALTK-Evolve — a system that turns an agent's own past trajectories into reusable guidelines, distilled automatically and injected back at inference time. It measurably improves task success, but those results only asked the average-case question too.  This post introduces consistency guidelines, a new guideline type in altk-evolve built on top of a diagnostic tool we call the Consistency Analyzer, that targets this gap directly.</p>
-<p>Standard agent evaluation reports Mean@k: run a benchmark k times, average the pass rate. Often k=3, sometimes just 1. It's the number on every leaderboard, and it's what "77% accurate" means in practice.</p>
-<p>Mean@k answers "how good is this agent, on average?" It does not answer the question a real user cares about: will it still be good if I ask this exact question again? For that you need Pass^k: the fraction of tasks where the agent succeeds on all k runs.</p>
-<p>⚠️ Pass^k is not Pass@k. The familiar Pass@k is optimistic — it asks whether at least one of k attempts succeeded, the right question when you can verify and retry. Pass^k is its pessimistic mirror image: every attempt must succeed. Same letters, opposite question. Pass^k ≤ Mean@k ≤ Pass@k, always.</p>
-<p>A ReAct agent backed by GPT-4.1 posts a Mean@5 of 77.4% — genuinely strong. But Pass^5 is only 53.0%. Nearly a quarter of the benchmark consists of tasks the agent can sometimes solve and sometimes can't, with nothing about the task changing between runs. We call this gap — Mean@k minus Pass^k — the consistency gap.</p>
-<p>This isn't a capability problem you fix with a bigger model. It's an orthogonal axis: an agent can be capable and inconsistent at the same time.</p>
-<p>Every time an LLM agent decides something — which API to call, what argument to pass, whether to retry — that decision comes out of a probability distribution over next tokens. What matters is the shape of that distribution. A sharp one puts most of its mass on a single token: the runners-up are far behind, and the same choice comes out run after run. A flat one spreads comparable mass across several near-tied tokens, and which one wins is close to a coin flip.</p>
-<p>The shape decides how much noise it takes to change the outcome. Sharp distributions are resilient — GPU floating-point non-associativity, request batching, and other platform-side effects nudge the numbers slightly, but nowhere near enough to reorder a clear winner. Flat distributions are vulnerable to exactly that nudge: near-ties may reorder under small perturbations. And because a trajectory chains dozens of decisions, a small per-step chance of flipping compounds into a large chance that some run goes differently. That's where a 24-point gap comes from.</p>
-<p>This is also why the problem survives your decoding settings. Greedy decoding and a fixed seed both govern how a distribution gets turned into a token — they say nothing about the distribution itself. On a hosted endpoint the probabilities shift slightly from run to run, so the same prompt to the same model at temperature zero can still resolve a near-tie one way today and the other way tomorrow.</p>
-<p>Our setup: the ReAct agent runs at temperature 0.0, so none of the variance above is ordinary sampling.</p>
-<p>Which turns the problem into a search: which steps in a given trajectory were the flat ones — and what do you do about them once you know?</p>
-<p>Consistency guidelines come out of a two-stage pipeline that plugs into ALTK-Evolve's existing machinery — with a new source signal driving what gets written.</p>
-<p>1. Detect — the Consistency Analyzer. 
-Given one recorded trajectory, the analyzer replays each decision step through controlled resampling, measuring how much the model's output actually varies at that point. Concretely, that's one additional model call per decision step, done once offline — issued with the sampling parameter set to draw k completions at once (k=5 by default) — replayed against the already-recorded context, not new tool calls, not new environment interactions, and not a second end-to-end rollout of the task. This yields a consistency score per decision step that is written into a scorecard to pinpoint exactly which decisions are at risk of flipping on the next run. Detection is fully black-box — no logits, no model internals, no instrumentation beyond the trace you already have.</p>
-<p>2. Generate — targeted guidelines.  Every flagged step becomes a candidate consistency guideline in the standard ALTK-Evolve format, so it slots into the existing storage and retrieval pipeline. Here's a real example, generated by GPT-4.1 from a trajectory of the AppWorld task "How many activities are done in my bucket list as per my SimpleNote note?":</p>
-<p>[Guideline 1] When counting checkbox-style markers in note content, use a line-anchored regex match rather than a plain substring count — note titles often repeat the marker symbol in a legend line.</p>
-<p>[Guideline 2] Always verify search results for note queries by checking for multiple matches and confirming the correct note before proceeding.</p>
-<p>Nothing here is task-specific trivia. String-counting bugs and unverified search results are decision points that show up with high uncertainty across many AppWorld tasks. That's the point: the analyzer targets instability, not failure — so it catches steps the agent happened to get right this time but could easily get wrong next time.</p>
-<p>Watch the 2-minute demo — five parallel runs of the agent split 3-2 on this task because of agent uncertainty about the counting strategy, then run again after these guidelines in context: all five agree.</p>
-<p>We evaluated on AppWorld test_normal (168 tasks) with a ReAct agent on GPT-4.1, generating consistency guidelines from a single baseline trajectory per task and testing them on 5 fresh runs.</p>
-<p>Mean@5 (%), aggregate — same scale as Pass^5 above.</p>
-<p>The consistency gap is cut roughly in half. Aggregate Pass^5 rises 53.0% → 69.0% while Mean@5 rises 77.4% → 81.0%, narrowing the gap between "looks capable" and "can be counted on" from 24.4pp to 12.0pp. Nearly a third of previously-inconsistent tasks become tasks the agent passes on every single run.</p>
-<p>The middle and hard tiers gain most. Medium +22.9pp (+44% relative), Hard +14.3pp (+45% relative) — effectively tied in relative terms, with Medium ahead absolutely. Easy gains +12.2pp, having had the least room. This is consistency guidelines doing what they're designed to do: finding and stabilizing the specific decision points where an agent's own uncertainty was leaking into the outcome.</p>
-<p>Mean@5 never drops. Preserving average accuracy was a hard requirement, not a nice-to-have: a system that boosts Pass^5 by trading away Mean@5 would just be shifting unreliability around, not fixing it. Mean accuracy holds or improves at every difficulty level.</p>
-<p>Applied to a different but related task in the same AppWorld scenario — another variant of the scenario the guidelines were mined from — consistency guidelines still lift Pass^5 by +13.0pp, only 3 points below the same-task number. A guideline derived from one run isn't just patching that run; it's capturing something that transfers.</p>
-<p>The sharper evidence comes from a weaker model, gpt-oss-120b. Same-task Pass^5 rose +6.0pp from a much lower baseline (10.1% → 16.1%) — and, interestingly, the similar-task generalization number (+8.7 pp) actually exceeded the same-task gain, suggesting the guidelines were capturing genuinely reusable failure patterns rather than memorizing one trajectory's specifics.</p>
-<p>Try the ALTK-Evolve — the open-source repo now includes the Consistency Analyzer and consistency-guideline generation used in these experiments — or read the technical report on arXiv for the complete methodology.</p>
-<p>If accuracy numbers you can't reproduce on your own tasks sound familiar, we'd like to hear about it — concrete examples of flip-prone behavior in your own agents are exactly the kind of feedback that shapes what we build next. Open an issue or a discussion.</p>
-<p>Great perspective on agent reliability. Measuring consistency alongside accuracy seems especially important as AI agents move into workflows where reproducibility matters. The Consistency Analyzer approach is a fascinating way to identify unstable decisions without requiring full task replays.</p>
-<p>The useful split is the one most dashboards still refuse to print: Mean@k answers “how good is this agent on average?” Pass^k answers “will the same request still succeed if I ask again?”</p>
-<p>Once you’ve watched a trajectory chain dozens of near-tied tool choices, a strong average with a wide consistency gap is exactly the demo that fails live. Capability and consistency are orthogonal — buying a bigger model can lift Mean without closing the gap.</p>
-<p>What I want teams to take from the Consistency Analyzer framing is operational, not the guideline machinery itself: treat flip-prone decision steps as first-class eval targets. One offline resample pass over a recorded trace is a cheaper reliability signal than another end-to-end leaderboard screenshot.</p>
-<p>Practical ask for anyone shipping agents from this: do you report Pass^k (even k=3) next to Mean@k in the release gate, and do you refuse the “stable” label when the consistency gap is still large on your hard tier?</p>
-<p>Reproducible reliability will not remove disagreement about which guidelines to inject. It will make the disagreement about the right metric.</p>
-<p>Thanks, and you've landed on exactly the operational takeaway we hoped for: flip-prone decision steps should be eval targets in their own right. Beyond that, knowing where they are also turns the eval into a diagnostic: a consistency gap tells you that an agent is unreliable, while the flip-prone steps tell you where and why.</p>
-<p>On your release-gate question: we'd strongly encourage it, and k=3 is a sensible default. A few things we'd suggest to anyone adopting Pass^k as a gate:</p>
-<p>I'd like to understand your closing point better. In our experiments, we didn't choose among individual guidelines: for each new task, we injected the guidelines derived from the most similar task. I'm curious where you see the disagreement about which guidelines to inject arising.</p>
-<p>https://huggingface.co/spaces/observantdistressed/minimax-h3</p>
-<p>Loved your space, any plan to set it up again in near future?</p>
+                <p>GitHub was supposed to be the first connector.</p>
+<p>Three hours later, the agent had produced a UI, a backend, database migrations, documentation, deployment work, signed-off commits, and a marketing pitch.</p>
+<p>So I asked whether we could now quickly map Linear events into the same event bus.</p>
+<p>No, apparently. It had built a system around GitHub events. The database stored GitHub events. Linear would need another table and another implementation cycle.</p>
+<p>We already had an event bus. The task was to build an event ingress with a trigger system around it: receive events from external services, map them into the shared system, trigger the appropriate work. GitHub first.</p>
+<p>I showed the agent the specification and plan again. They explained what to build, how, and why.</p>
+<p>The agent acknowledged that this was not what it had built.</p>
+<p>By my accounting, the run had burned millions of tokens and 35% of my weekly allowance. But the real cost was figuring out which code and deployments to discard, rolling back changes, and the two workdays lost by the people receiving this apparently finished work.</p>
+<p>Including the sanity of the engineer who had to assess the damage.</p>
+<p>The “This is fine” meme, except the dog has already updated the release notes.</p>
+<p>There are several obvious explanations for this. I worked through them in a long conversation with an AI assistant. Every time it offered one, I removed it.</p>
+<p>The specification was there. So was the plan. The acceptance criteria and the “What are we building” document were referenced as Markdown files in the prompt.</p>
+<p>This is also why the standard requirements-gathering routine makes me nervous. Ask an agent to plan a whole product, and it returns five questions. You answer them, it starts working, and everybody behaves as though the decisions have been made.</p>
+<p>They haven’t. You have answered the five questions it chose to ask. The other decisions will happen during implementation.</p>
+<p>In this case, one of the most consequential decisions had already been made: use the existing event bus and make GitHub the first integration. The agent was not being asked to discover that architecture. It was being asked to preserve it.</p>
+<p>A frontier model, with reasoning set to xhigh.</p>
+<p>A frontier lab’s own harness—the environment managing the agent’s tools and execution.</p>
+<p>That does not mean the setup was perfect. It does mean this cannot be dismissed as somebody putting a weak model in a loop and being surprised by the result.</p>
+<p>What makes the incident particularly annoying is that the agent could recognise the mistake when shown the documents again. It could distinguish the requested system from the implemented one.</p>
+<p>It just hadn’t maintained that distinction while building.</p>
+<p>Compaction and handovers are places I would investigate. A summary saying “GitHub persistence implemented; continue with integration” can make an earlier deviation sound like an approved decision. The next session works from that. More implementation accumulates. Another summary follows.</p>
+<p>I am not claiming to have isolated the exact internal cause of this run. Having the right instructions available did not keep them authoritative.</p>
+<p>Yes. Better isolation could have reduced the cleanup. That would have been useful.</p>
+<p>But put the entire run in a perfect disposable environment. Nothing touches production. Every change can be thrown away with one click.</p>
+<p>You still have a GitHub-specific application where a general event ingress should be.</p>
+<p>The sandbox cannot tell you that. Somebody still has to notice.</p>
+<p>And the feature does not have to be visibly broken for the implementation to be wrong. GitHub events can arrive and trigger things successfully. That tells you GitHub works. It does not tell you the first connector has been built as a connector.</p>
+<p>Ask that person to repeatedly inspect large agent-generated changes, reconstruct the assumptions, compare them with the original intent, and take responsibility for the result.</p>
+<p>Eventually, something predictable happens.</p>
+<p>Now, the easy objection is that Claude might miss the same mistake. But let’s not take that exit.</p>
+<p>Give Claude the original prompt, specification, and plan. Give it enough context. Assume it reviews properly and immediately flags the problem: this is a GitHub-specific implementation, not the reusable ingress that was requested.</p>
+<p>It writes a good review. The implementing agent follows the instructions. Claude checks again. More corrections follow.</p>
+<p>This part is a thought experiment, not a claim about how we recovered from the original incident.</p>
+<p>And I will grant the strongest possible outcome: eventually, the agents produce a good implementation. Not merely something that satisfies a weak checklist. A genuinely acceptable implementation of the requested system.</p>
+<p>Yes, those review and reimplementation cycles can become expensive. The reviewer reads the requirements and code. The implementer reads the review and changes the code. Then the reviewer reads it again. Previously cached context may no longer be reusable. A correction can require substantial implementation work of its own.</p>
+<p>Assume we do not care how long the agents spend arguing on GitHub. They converge. The implementation is good.</p>
+<p>Potentially a hundred-plus commits, review comments, refactors, reversals, follow-up changes, and pages of discussion explaining why each change was necessary. Lots and lots of “engineering” around what began as a bounded integration task.</p>
+<p>The person who understood the system well enough to specify the change now has to establish what happened to their system.</p>
+<p>No, they do not need to read every abandoned commit. Squash the history. Show them the final diff. That helps.</p>
+<p>It does not automatically make the final change small or understandable.</p>
+<p>If the agents absorb all their own churn and return a clean, limited change that the engineer can readily understand, excellent. That is what we wanted. But when they hand the complexity back to the engineer, the work has not disappeared just because two models agree it is finished.</p>
+<p>The engineer either reconstructs enough understanding to approve it meaningfully, or accepts the agents’ assessment.</p>
+<p>The two-buttons meme: one says “Review 100+ commits.” The other says “Trust the AI reviewer.” The sweating engineer owns the consequences either way.</p>
+<p>DORA’s March 2026 analysis of 1,110 responses from Google engineers describes this transfer of work: faster generation for the author can mean more auditing and cognitive load for the reviewer. The same analysis reports useful applications of AI. The improvement in one part of the workflow can create work elsewhere. DORA</p>
+<p>Someone has to write that prompt against the implementation we actually have, not the one that existed in their head when they wrote the first specification.</p>
+<p>Does the engineer understand the new interfaces? Where the mapping belongs? What the agents decided about persistence? Which behaviour is shared and which is provider-specific?</p>
+<p>Perhaps they do. Perhaps the handover was good.</p>
+<p>Or perhaps they ask an agent to explain what the previous agents built, then use that explanation to instruct the next agent.</p>
+<p>That can work too. I am not claiming the next connector must fail.</p>
+<p>I am asking where the organisation’s understanding of its own system now lives.</p>
+<p>The engineer began this process knowing enough to specify a small architectural change. After implementation, review, reimplementation, approval, and merge, do they still know enough to direct the next one?</p>
+<p>Or have we made them dependent on the same process both to change the system and to tell them what the system is?</p>
+<p>That is what remains after we make the models competent, the reviews good, the tokens free, and the time irrelevant.</p>
+<p>Not a proof that automation is useless. A question about what the organisation has actually acquired.</p>
+<p>And before someone says the engineer should simply write an even more detailed prompt next time: how much of the engineering are we asking them to do in that prompt? Every architectural choice? Every future integration? Every customer requirement that does not exist yet?</p>
+<p>We already had the relevant requirement for GitHub. More foresight would not have repaired a failure to follow it.</p>
+<p>Go back to the original run and change one thing.</p>
+<p>Put the engineer who understood the plan in front of the screen while the agent works.</p>
+<p>They see the first consequential departure and interrupt: why are we building a GitHub-specific system? GitHub is one adapter. We already have the bus.</p>
+<p>Maybe the agent needs another correction later. Maybe the engineer needs to inspect the proposed data flow before allowing it to continue. I cannot prove exactly where that intervention would have happened.</p>
+<p>But it need not involve reviewing a whole application. It can happen before the application grows around the wrong decision.</p>
+<p>In my own work, the attention I give a run, together with how much execution accumulates between checks, has become a useful warning of the possible blast radius. Not a universal formula. Experience with the tool.</p>
+<p>Which makes the comparison uncomfortable.</p>
+<p>Same model. Same reasoning setting. Same harness. Same specification.</p>
+<p>A knowledgeable person remains involved while the decisions are being made.</p>
+<p>That person is not merely an emergency brake. They know which existing capability to reuse, which apparent problem does not require new code, and when the agent is turning an integration into a product.</p>
+<p>The impressive solution might be a small amount of wiring into the existing system. Generating ten thousand lines instead is not evidence that ten thousand lines of work were needed.</p>
+<p>If the useful setup is an experienced engineer actively steering an agent, that is still useful. Potentially very useful.</p>
+<p>It is also a different proposition from an engineer writing a prompt, walking away, and returning to completed engineering.</p>
+<p>And it changes what “scale it to ten agents” means.</p>
+<p>Are we multiplying implementation capacity, or multiplying the decisions one person must stay sufficiently close to understand?</p>
+<p>AWS is useful here because its published guidance does not make that person disappear.</p>
+<p>Its July 2026 framework recommends reviewed specifications, scoped tools, automated checks, a separate AI reviewer checking the implementation against the specification, and human approval proportionate to the risk. That is remarkably close to the improved workflow we just walked through. This is public AWS guidance, not a claim that every Amazon team has one identical internal policy. AWS Security Blog</p>
+<p>The framework also warns that routing every change to a human invites approval fatigue: people begin approving by reflex. It retains developer accountability rather than treating the agent as the new owner of the consequences. AWS Security Blog</p>
+<p>In October, Amazon’s engineering leadership published a memo accompanying revised developer-role guidance. It warned that using token consumption and code volume as targets could increase cost and complexity, and emphasised long-term outcomes. Amazon News</p>
+<p>If your work does not benefit from current AI tooling, that is a finding, not a failing.</p>
+<p>This was in a memo strongly encouraging AI adoption, not abandoning it. Amazon was asking engineers to exercise judgment about where the tools help. Amazon News</p>
+<p>So no, I do not think I have discovered something nobody else knows.</p>
+<p>I think people doing this work are encountering a condition that gets omitted from the simpler business story: somebody still needs to understand what is happening, and keeping them informed is part of the work.</p>
+<p>This is not a convenient finding for me. I would love to be able to sell the uncomplicated version.</p>
+<p>But I cannot watch an agent build the wrong architecture from a correct specification, spend two days dealing with the consequences, and call it a prompting lesson.</p>
+<p>Nor can I solve the business problem by adding another agent to every place a human used to think, then quietly keeping an experienced engineer at the end of the chain to accept responsibility.</p>
+<p>That engineer’s attention has to appear in the calculation.</p>
+<p>So does the effort needed to keep their understanding current. So does the recovery work. So does the next feature.</p>
+<p>An AI-first organisation may end up needing a higher concentration of senior judgment, not a lower one. If the humans are mainly handling ambiguity, architecture, intervention, and acceptance, we have concentrated the difficult work in those humans. Buying more execution does not settle how that work scales.</p>
+<p>None of this means using AI to code is bad. It means replacing handwritten code with generated code is not, by itself, evidence of a competitive advantage.</p>
+<p>Show the advantage across the work the business actually needs done.</p>
+<p>For a disposable clone whose job is to get attention on Reddit once, the calculation may be completely different. Ship the thing. See whether anybody cares. There is nothing wrong with that objective.</p>
+<p>Yet for production software that should run for years, evolve, and carry an organisation, getting the first screen working is not the whole assignment.</p>
+<p>The unspoken truth of agentic engineering: it still needs a human in the seat. You can’t simply “scale by throwing tokens at the problem.”</p>
+<p>With that person involved, the agent may be an excellent tool.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-consistency" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/js402/what-is-the-unspoken-truth-of-agentic-engineering-2e6b" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
