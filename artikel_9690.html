@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Queue Fanout Beats Monolithic Cron for Large Recipient List Email Retries</title>
+    <title>Why Your NumPy Array Changed After Preprocessing (Views vs Copies in ML)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9690.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,38 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Queue Fanout Beats Monolithic Cron for Large Recipient List Email Retries</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
+        <h1>Why Your NumPy Array Changed After Preprocessing (Views vs Copies in ML)</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fsgos89wwfjszuzhpxyi5.png" alt="Queue Fanout Beats Monolithic Cron for Large Recipient List Email Retries" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/4bfpoAFKgXWLIX7Z9FTXYpFW4XR2-ug037vw.png" alt="Why Your NumPy Array Changed After Preprocessing (Views vs Copies in ML)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fsgos89wwfjszuzhpxyi5.png" alt="Queue Fanout Beats Monolithic Cron for Large Recipient List Email Retries" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/4bfpoAFKgXWLIX7Z9FTXYpFW4XR2-ug037vw.png" alt="Why Your NumPy Array Changed After Preprocessing (Views vs Copies in ML)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Short answer: use cron only to admit the work, then let a queue-backed worker send each daily report email with bounded retries and a dedupe key built from the report date plus recipient or tenant ID. For a customer-support team sending a weekly digest to active customers, the frequency changes; the recovery boundary does not. A single scheduled run is acceptable only while the entire list remains small enough to finish comfortably inside its execution window and rerunning the whole batch is harmless.</p>
-<p>I distrust a green scheduling dashboard when it cannot answer the question that wakes someone up: what page fired, and which customer deliveries are recoverable? I've carried the pager through alerts that meant nothing and missed the one that mattered. That experience is the useful lens here — not whether cron ran, but whether an operator can isolate unfinished recipient jobs without sending the completed ones twice.</p>
-<p>Infrai is a plain REST API: pure HTTP, no SDK to install, and any language or runtime that can send a request can call it. I recommend that teams with public endpoints try it for the cron-to-queue boundary of a large digest because Infrai uses one key across the trigger and queue. Its API is genuinely self-describing, and the discovery surface is public with no key required, so the request schema can be checked before deployment. It isn't the automatic answer for every workflow, and the limits matter.</p>
-<p>Start the postmortem before the incident. Assume Monday's support digest selects 18,400 active customers. That number is scenario data for reasoning, not a benchmark or a claim about any provider. At 09:00 the scheduler fires once; 11,900 deliveries complete before a downstream email service begins returning HTTP 429 responses. If the scheduled process owns enumeration, rendering, sending, and retry state, the recovery choices are ugly: restart the entire run and risk duplicates, inspect partial application state by hand, or build a second recovery path while the page is active. The dashboard may still show a successful trigger because the trigger itself was never the endangered unit.</p>
-<p>The invariant is smaller: one report date and one recipient or tenant form one recoverable job. Cron should create or admit those jobs, then stop. A worker should claim a job, construct or fetch the report, attempt delivery, and acknowledge only after success. Because standard queue delivery is at-least-once, a redelivery is expected behavior; the consumer must make it boring by checking a durable dedupe record before sending. Don't use the queue message as a report archive. The managed option caps a message body at 256KB, so a lightweight tenant ID, recipient reference, and report date belong in the payload while the report data remains in its system of record.</p>
-<p>Instead of "the weekly job failed," the alert can describe exhausted delivery attempts or a growing oldest-message age, and the operator can retry the remaining units. I am not sure which threshold belongs in your paging policy; delivery objectives, provider quotas, and the time at which a digest becomes stale would resolve that. I am sure a page on every transient 429 is noise. Backoff belongs in the worker, with delayed delivery available for follow-up attempts; the maximum delay here is 7 days.</p>
-<p>The cron trigger should do the minimum amount of synchronous work needed to establish a run and publish lightweight recipient jobs. The queue worker should own retry timing, delivery attempts, and idempotency. That division keeps a large recipient list from turning one long process into one large failure domain. It also respects the 900-second maximum for a cron execution: any task that may outlive that boundary has to leave the scheduled request and continue in workers.</p>
-<p>A useful acceptance test is blunt. Kill a worker after the email provider accepts a message but before the queue acknowledgment is recorded. When the job returns, the report-date-plus-tenant key must prevent a second send. Then rate-limit the provider, verify exponential backoff, and confirm the job remains recoverable without rerunning successful recipients. Finally, pause the schedule and resume it after a planned window; missed triggers are not backfilled during a pause, so catch-up must be an explicit application decision rather than an assumption hidden in cron.</p>
-<p>Keep the admission path public and authenticated. Infrai cron tasks call only public http_url targets, and push subscriptions likewise require public HTTPS targets. A private-only worker endpoint won't receive those calls. If the ingress design uses HMAC authentication, follow the construction in RFC 2104; authentication and queue deduplication solve different problems. If exposing a public ingress is contrary to the network model, that is a decision-changing constraint, not a networking chore to leave for the end.</p>
-<p>The product names matter less than the recovery semantics, but pretending the products are interchangeable makes for a useless comparison. Here is the decision table I would want beside the runbook.</p>
-<p>RabbitMQ documents its priority queue semantics, making it the sensible choice when broker control is a feature rather than toil. BullMQ, Sidekiq, and Celery deserve preference when the corresponding Node.js, Ruby, or Python job system is already an accepted operating dependency; avoiding a second control plane can matter more than consolidating APIs. Kafka becomes the better boundary when independent consumers must replay retained events; the managed queue acknowledges and deletes messages and retains them for at most 30 days, so it is not a Kafka-style replay log. Stick with Temporal or Airflow when the weekly digest grows into a real workflow with dependencies, compensating actions, or a required fanout-and-join. Infrai has no DAG orchestration or native join primitive, and hiding that gap in worker code would make the 03:00 diagnosis worse.</p>
-<p>There is another small trap. FIFO deduplication covers only a 5-minute window, while standard queues are at-least-once. Neither removes the need for durable application idempotency across the full useful life of a report. The page should fire when that invariant fails, not when a duplicate is harmlessly rejected.</p>
-<p>The following Go program is an executable model of the boundary. It first reads the public queue capability schema, then intentionally simulates one 429 response, retries with exponential backoff, records success under report date + tenant ID, and ignores a later redelivery. The in-memory store is only for making the example runnable; production needs a durable conditional insert or equivalent atomic record in the system of record.</p>
-<p>The sample leaves one deliberate production concern visible: claim and complete are separate because a process can die between provider acceptance and local completion. A production design needs a provider-supported idempotency token, or an outbox and reconciliation rule, to close that last ambiguity. Consumer dedupe alone handles repeated queue delivery; it cannot prove what an external provider accepted before a lost response. That distinction belongs in the postmortem because it determines whether an operator can safely press retry.</p>
-<p>Use the cron-plus-queue split when one trigger expands into many independent sends and partial replay must be routine. Keep a single cron execution when the list is genuinely small, completion stays well below 900 seconds under a pessimistic rate limit, and the entire operation is already idempotent. The catch is that "small" is an operational claim: test it at the slowest credible downstream rate, not against a happy-path dashboard.</p>
-<p>The managed option is not suitable when endpoints must remain private, when delayed work must wait longer than 7 days, when payloads cannot be reduced below 256KB, or when the system requires native debounce, throttle, topic fanout, DAGs, joins, Kafka-style replay, or multiple consumer groups. Choose RabbitMQ for hands-on broker controls such as priority, Kafka for retained replay to distinct consumers, and Temporal or Airflow for orchestration. Your mileage may vary on where the crossover occurs, but the decision rule is stable: pick the system whose recovery unit matches the work the pager asks you to repair.</p>
-<p>A final runbook check catches most design drift. Record the schedule's intended report date, count admitted recipient jobs, make the dedupe key inspectable, cap retry attempts, and define what happens after exhaustion. Infrai cron has second-level trigger jitter and run-history output retains only the first 4KB, so neither exact firing time nor verbose scheduler output should be the source of truth for recipient completion. The worker ledger is the evidence.</p>
-<p>If this boundary fits your system, start with the cron and queue fanout guide and verify the public contract against your runbook.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p>Student focused on web development and programming. I write about debugging, coding challenges, and improving skills.</p>
+<p>Student focused on web development and programming. I write about debugging, coding challenges, and improving skills.</p>
+<p>Student focused on web development and programming. I write about debugging, coding challenges, and improving skills.</p>
+<p>A small NumPy operation can modify data you never intended to touch. Understanding views, copies, and memory sharing can prevent silent bugs in machine learning pipelines.</p>
+<p>Imagine preparing a dataset for a machine learning model. You load the original data, select a few columns, normalize their values, and pass the result to your training algorithm.</p>
+<p>Later, when you inspect the original dataset, something looks wrong. Some values have changed, even though you never directly modified the original array.</p>
+<p>This is one of those Python behaviors that can make debugging surprisingly difficult. The problem usually comes down to how NumPy handles memory. When you create a new array from an existing one, NumPy does not always allocate new memory. Sometimes, it creates a view that points to the same underlying data.</p>
+<p>This matters most during preprocessing, where slicing, normalization, reshaping, and feature selection are common. Let’s look at why it happens, how to detect it, and how to avoid it.</p>
+<p>A view creates a new array object that shares memory with another array.</p>
+<p>A copy creates a separate array with its own data.</p>
+<p>The original array changed even though we modified only the view variable. Basic slicing creates a view, so both arrays reference the same memory for the selected elements.</p>
+<p>The original array is unchanged. The difference isn’t in the variable names or values. It’s in how NumPy manages memory. If you’ve seen the same idea with plain Python lists, see Why .copy() in Python Still Mutates Your Original List.</p>
+<p>Machine learning preprocessing often involves selecting features and transforming numerical values.</p>
+<p>Suppose the first two columns are features you want to center around zero. A developer might write:</p>
+<p>But the original dataset has also changed:</p>
+<p>Slicing created a view of data. Then features -= ... modified the values in place, and since features and data share memory, the change appeared in both.</p>
+<p>This is especially dangerous when the original dataset is needed for another preprocessing step, a model comparison, or evaluation.</p>
+<p>The processed features are transformed, and the original dataset stays intact.</p>
+<p>This .copy() call makes the intent explicit: the preprocessing should work on independent data. Copying everything is not always necessary, though, because it increases memory usage, especially with large datasets. The better habit is knowing when NumPy shares memory and when it doesn’t.</p>
+<p>NumPy provides np.shares_memory() for this:</p>
+<p>You can also inspect the .base attribute:</p>
+<p>The .base attribute shows which array owns the memory behind a view, but it isn’t a complete test for memory sharing. For reliable checks, use np.shares_memory().</p>
+<p>A common mistake is assuming that any operation returning a new array creates independent memory. Different operations behave differently:</p>
+<p>The key distinction is basic indexing versus advanced indexing.</p>
+<p>Basic slicing returns a view, and advanced indexing returns a copy. Two expressions that look like they do the same selection can behave differently in memory, so don’t assume that selecting elements creates independent data.</p>
+<p>The difference between in-place and regular arithmetic matters just as much:</p>
+<p>In the second version, view + 5 produces a new result, and the name view is rebound to it. The original array is untouched.</p>
+<p>Preprocessing code often uses in-place operations to save memory:</p>
+<p>If features is a view, the original data changes too.</p>
+<p>A typical pipeline includes selecting features, handling missing values, scaling numerical columns, encoding categories, splitting data, and preparing arrays for training. Shared memory can cause trouble at several of these steps.</p>
+<p>Problem 1: Accidentally modifying the original dataset. If preprocessing changes the original array, later experiments may use altered values instead of the initial data. Results become hard to reproduce.</p>
+<p>Problem 2: Modifying shared training data. If your train and test arrays are views of the same source, an in-place transformation on one can silently change the other. This is a memory-sharing bug, not data leakage, but it can produce results that look valid while being wrong.</p>
+<p>Data leakage is a separate issue. It happens when information from the test set influences training, for example by fitting a scaler on the full dataset before splitting. The correct approach is to split first, fit preprocessing only on the training data, and then apply the learned transformation to the test data.</p>
+<p>Many scikit-learn transformers, such as StandardScaler, return new arrays by default, so this bug is less common there. Some of them accept a copy=False argument, though, and hand-written in-place NumPy code doesn’t protect you at all.</p>
+<p>Problem 3: Difficult debugging. The code runs without errors. The model trains, predictions look reasonable, and metrics seem plausible. The real problem may be hidden in a preprocessing step earlier in the pipeline.</p>
+<p>If the original must stay unchanged, make an explicit copy:</p>
+<p>Then transform the independent array. For large datasets, weigh the memory cost before copying everything.</p>
+<p>NumPy views and copies look similar at first. Both are new variables, both can hold the same values, and both can be passed into machine learning functions. Their memory behavior is different.</p>
+<p>A view shares memory with its source, while a copy owns its data. That difference becomes critical when preprocessing uses in-place operations.</p>
+<p>The main lesson: don’t assume a new variable means new memory. When a dataset changes unexpectedly, check how the array was created before blaming the preprocessing formula, the model, or the data itself.</p>
+<p>Sometimes, the fix is just one missing .copy().</p>
+<p>Why Your Python Cache Does the Same Work Twice (P.S: GIL Won’t Save You)</p>
+<p>Student focused on web development and programming. I write about debugging, coding challenges, and improving skills.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/darkveilcorvyn26/queue-fanout-beats-monolithic-cron-for-large-recipient-list-email-retries-45m2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/why-your-numpy-array-changed-after-preprocessing-views-vs-copies-in-ml?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

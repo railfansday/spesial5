@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Talyn</title>
+    <title>Your EC2 Bill is an Architecture Problem, Not an Accounting One</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9611.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,47 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Talyn</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
+        <h1>Your EC2 Bill is an Architecture Problem, Not an Accounting One</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/fBi0fwDbCmgqTfdYrts7XHewnJF2-p6a3bw1.png" alt="Your EC2 Bill is an Architecture Problem, Not an Accounting One" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/fBi0fwDbCmgqTfdYrts7XHewnJF2-p6a3bw1.png" alt="Your EC2 Bill is an Architecture Problem, Not an Accounting One" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Run Claude Code and Codex in parallel cloud sandboxes
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/talyn?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1313926?app_id=339">Link</a>
-          </p></p>
+                <p>Co-Founder at Munchkins AI - SAAS company building AI agents for healthcare and MSCS Student at Georgia Tech</p>
+<p>Co-Founder at Munchkins AI - SAAS company building AI agents for healthcare and MSCS Student at Georgia Tech</p>
+<p>Co-Founder at Munchkins AI - SAAS company building AI agents for healthcare and MSCS Student at Georgia Tech</p>
+<p>Compute is usually the biggest line on the AWS bill. It’s also the part nobody designs on purpose. Someone picks an x86 On-Demand instance during the first sprint, sizes it “with some headroom,” and that choice quietly sticks around for 2 years.</p>
+<p>You can’t fix that from the billing dashboard. Cost is decided much earlier:</p>
+<p>The above four things decide compute spend and system resilience. This post walks through each one and ends with a working AWS CDK stack that puts it all together.</p>
+<p>AWS names instances like m5.2xlarge, where m is the class, 5 is the generation, and 2xlarge is the size. Class is the part that matters most, because it sets the ratio of vCPU to memory.</p>
+<p>If your service is CPU-bound, running it on M instances means paying for memory you never touch. If it’s memory-bound, C instances will force you to over-scale. Profile first, then pick.</p>
+<p>EC2 gives you several ways to pay for the same hardware:</p>
+<p>Don't run everything On-Demand. Don't run user-facing APIs 100% on Spot either. The pattern that holds up in production is:</p>
+<p>A lot of people still think of Spot as an auction where someone outbids you and your instance dies. That isn't how it works anymore. Prices now move slowly based on long-term supply and demand. You can still set a max price (it defaults to the On-Demand price), but most interruptions happen because AWS needs the hardware back for On-Demand or Reserved customers in that AZ, not because the price jumped.</p>
+<p>A Spot capacity pool is one instance type in one Availability Zone. c8g.large in us-east-1a is a different pool from c8g.large in us-east-1b, and both are different from c7g.large in us-east-1a.</p>
+<p>If your Auto Scaling Group or Spot Fleet only allows one instance type, you're depending on just a few pools. When those get squeezed, your whole tier goes down at once. So list several families and sizes that your service can run on.</p>
+<p>When you give AWS a list of pools, the allocation strategy decides which ones it pulls from:</p>
+<p>With Spot in the mix, nodes will vanish. Users won’t notice if you handle two things well: draining traffic and storing data.</p>
+<p>AWS warns you twice before taking a Spot node back:</p>
+<p>Set ECS_ENABLE_SPOT_INSTANCE_DRAINING=true. When the two-minute notice arrives, ECS moves the node’s tasks to healthy nodes. The ALB stops sending new requests to that node and lets the open ones finish.</p>
+<p>The catch is that the ALB waits 300 seconds by default, but Spot only gives you 120. If you leave the default, the node dies mid-drain, and users get 502s. Set the deregistration delay and stopTimeout to 60–90 seconds.</p>
+<p>Also use awsvpc mode. Each task gets its own IP, so the ALB sends traffic straight to the task.</p>
+<p>Anything written to the node’s own disk is lost when the node goes away. You have three choices:</p>
+<p>an ECS cluster on a mixed-instance ASG using Graviton families</p>
+<p>one On-Demand base node plus an 80/20 Spot/On-Demand split above it, using PRICE_CAPACITY_OPTIMIZED,</p>
+<p>an ALB with a deregistration delay that fits inside the Spot window,</p>
+<p>an encrypted EFS volume mounted into the tasks.</p>
+<p>A couple of things worth calling out. spotInstanceDraining: true is the CDK way to set the agent flag, so you don't have to append it to /etc/ecs/ecs.config yourself. And the nodes run in private subnets, so the ALB is the only thing with a public IP.</p>
+<p>Even with the right instances and purchase mix, a few networking line items can take back a big chunk of what you saved.</p>
+<p>Cross-AZ traffic and NAT. Data crossing AZs costs $0.01/GB each way. With one NAT Gateway in us-east-1a and nodes spread across three AZs, about two-thirds of your outbound traffic pays that cross-AZ fee on top of the NAT's $0.045/GB processing charge. For real production traffic, run a NAT per AZ. Always add the free gateway endpoints for S3 and DynamoDB so that traffic never touches a NAT.</p>
+<p>Public IPv4 addresses. AWS charges $0.005 per hour (about $3.65 a month) for every public IPv4 address, attached or not. Keep cluster nodes in private subnets and clean up unattached Elastic IPs.</p>
+<p>The draining mismatch. This one is worth repeating because it's the most common one I see. The ALB's default deregistration delay is 300 seconds. A Spot interruption gives you 120. Leave the default and your users get 502s every time AWS reclaims a node. Set both the deregistration delay and stopTimeout to 60–90 seconds.</p>
+<p>None of this is complicated on its own. The savings come from treating these choices as design decisions: right-size the instance family, default to ARM, cover your baseline with a Savings Plan, run peaks on diversified Spot, drain cleanly, and keep state off the host. Do that, and the bill goes down, and the system gets better at handling failure at the same time.</p>
+<p>Co-Founder at Munchkins AI - SAAS company building AI agents for healthcare and MSCS Student at Georgia Tech</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/talyn" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/your-ec2-bill-is-an-architecture-problem-not-an-accounting-one?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Spiik</title>
+    <title>User Avatar Upload Backend: Database Storage or Local Disk for US/EU Receipt Retention</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9608.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Spiik</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-15</p>
+        <h1>User Avatar Upload Backend: Database Storage or Local Disk for US/EU Receipt Retention</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxhlpmhujo17i7prrp0th.png" alt="User Avatar Upload Backend: Database Storage or Local Disk for US/EU Receipt Retention" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxhlpmhujo17i7prrp0th.png" alt="User Avatar Upload Backend: Database Storage or Local Disk for US/EU Receipt Retention" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            AI note taker for meetings & lectures. No bot on your calls.
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/spiik?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1307607?app_id=339">Link</a>
-          </p></p>
+                <p>Short answer: for a user avatar upload backend, keep the original property receipt in private object storage, keep its key and audit metadata in the database, and make deletion a recorded workflow rather than an incidental file operation. For a small US or EU property-management app, that arrangement usually gives the cleanest boundary between transactional data and retained evidence.</p>
+<p>The important word is original. A thumbnail is a useful interface asset; it is not the file that proves what was submitted. The upload path should preserve the source bytes, identify the tenant or property record, and make the retention decision explicit before anyone adds image processing or a second region.</p>
+<p>This is a storage decision, but it is also a records decision. I build RAG and agent features in Python, so I want an eval harness around this workflow early. I don't want a prompt to summarize a receipt and quietly become the only place where the original exists.</p>
+<p>Start with two records: a database row describing the receipt and an object containing the original bytes. The row can carry property_id, submitted_by, object_key, content_type, byte_count, sha256, region, retention_until, and timestamps. The object key should be opaque enough that a user cannot choose another user's path. The database is the index and policy record; the object store is the file cabinet.</p>
+<p>That division makes a later audit answerable. Which property owns this receipt? Who submitted it? Which exact bytes were retained? When is deletion allowed, and did it happen? A checksum helps detect an accidental content change, while a retention date gives a scheduled worker something concrete to evaluate.</p>
+<p>The table is a decision aid, not a ranking. Retention and recovery decide the boundary before monthly price does.</p>
+<p>Database blobs are still valid in a narrow case: the file set is genuinely tiny, the database backup and restore plan includes the bytes, and the receipt must be committed or deleted in the same transaction as its business row. The trade-off is that binary data now shares database I/O, backup volume, and restore time with ordinary application records.</p>
+<p>Local disk is simpler for a one-process prototype. It becomes a poor source of truth after a second process, a replacement host, or a restore enters the picture. A disk path in a database does not make the disk shared. That distinction has caused more upload bugs than the choice of object-store brand.</p>
+<p>Use a write-then-record sequence. Validate the request, calculate the digest while reading the stream, write the original under a new key, and commit the metadata row only after the write succeeds. If the database commit fails, a retryable reconciliation job can find the orphaned object. If the object write fails, no row should claim that a receipt exists.</p>
+<p>Replacement needs the same discipline. Write the new object first, commit the new key, and delete the old object only after the new row is durable. Never reuse a key for a different receipt. This leaves a clear recovery boundary when a worker stops between steps, and it avoids confusing a cached or downloaded old file with the current record.</p>
+<p>Here is the small part I would put behind an application-specific object-storage adapter. It deliberately does not pretend that a generic example can define a provider's upload protocol. The adapter owns that detail; the retention state machine does not.</p>
+<p>The example reads the whole file for clarity. A production adapter should stream large uploads, enforce a byte limit before storage, and use the provider's documented atomicity and retry semantics. The domain contract stays the same: an object key is not evidence of a completed metadata commit, and a deletion request is not proof that the object has disappeared.</p>
+<p>There is a deliberately uncomfortable edge here. If deletion succeeds and the database update fails, the system must reconcile that state instead of silently inventing success. Record an intent such as deletion_requested, retry the object operation safely, and retain an audit event for the final result. Imagine a property manager asking for the original receipt on the same afternoon that its retention deadline arrives: a worker may have picked up the deletion task, the application may still show the metadata row, and an audit export may be running at the same time. The answer cannot depend on which request happened to finish first. Keep the metadata state explicit, make the deletion job idempotent, and let the export path distinguish an active object from one awaiting deletion. A short reconciliation report should identify an object with no row, a row with no object, and a deletion intent with no completion event. That report is the practical bridge between storage mechanics and a defensible retention policy.</p>
+<p>Retention is a state machine, not a finally block.</p>
+<p>Pick the region from the data-residency requirement, then test the complete path in that region. Keep the selected region beside the object key rather than deriving it from a mutable user profile. A receipt may outlive a user's current address, and a later profile edit should not move an existing record by accident.</p>
+<p>For a small app, separate US and EU containers or buckets can be easier to reason about than a clever global layout. The routing rule belongs in the application, where it can be tested against the property and account policy. The database row should tell an operator where the object is, so a deletion or export job does not have to guess.</p>
+<p>The catch is operational ownership. A private object store brings another credential, backup policy, access policy, and recovery test. It is not suitable when the team cannot monitor that dependency or cannot meet its deletion and export obligations. Use a database blob when transactional coupling is the overriding requirement and the team has verified the resulting backup size. Use local disk only for a single-host prototype with an explicit migration date.</p>
+<p>I am not sure a single-region design is enough for every property manager; the answer depends on the contract, residency interpretation, and disaster-recovery target. Your mileage may vary. Write those assumptions down and have the person responsible for compliance review them before the first real receipt is accepted.</p>
+<p>Build the eval harness around failures, not just a happy-path upload. One test should upload a known receipt and verify its checksum after retrieval. Another should interrupt the metadata commit and assert that reconciliation can identify the orphan. A third should replace an existing receipt and prove that the new row points to the new key before the old key is deleted.</p>
+<p>Include retention boundaries: one receipt before its deadline, one exactly at the deadline, and one already expired. Test a duplicate submission, an empty body, an oversized body, a misleading content type, and an object-store timeout. The test data should include both a US property and an EU property, because residency logic that is not in the fixture set is easy to break.</p>
+<p>For observability, log receipt IDs and operation IDs, never the receipt bytes or a public download URL. Measure orphan age, deletion retry count, and the gap between deletion_requested and completion. Those signals are more useful than a single upload success rate because they expose the retention promises an auditor will actually ask about.</p>
+<p>Keep prompt costs in the same conversation. If an agent extracts merchant, amount, or date, store those derived fields separately from the original and make the extraction rerunnable. An evaluation should compare extracted values with labelled examples, while the retained file remains the source for review. The model can be wrong. The record must still be there.</p>
+<p>The HTTP Content-Disposition reference explains how download responses can distinguish inline display from attachment handling.</p>
+<p>AWS's object lifecycle documentation describes lifecycle management as a storage policy mechanism; it is useful background for comparing provider-managed expiry with an application audit record.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/spiik" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/jensencole5829/user-avatar-upload-backend-database-storage-or-local-disk-for-useu-receipt-retention-1kb1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
