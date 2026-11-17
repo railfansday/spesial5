@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Blomma for Organizations</title>
+    <title>Production Logged Zero Errors. Every Call Was Refused First.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9707.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Blomma for Organizations</h1>
+        <h1>Production Logged Zero Errors. Every Call Was Refused First.</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F5ra4ip8vk9xipatfwvx9.png" alt="Production Logged Zero Errors. Every Call Was Refused First." style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F5ra4ip8vk9xipatfwvx9.png" alt="Production Logged Zero Errors. Every Call Was Refused First." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Scale your people at the speed of your business
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/blomma?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1315749?app_id=339">Link</a>
-          </p></p>
+                <p>On the morning of November 13, nine calls to our server failed in a row. Our logs for that morning had zero errors in them. No 5xx all day.</p>
+<p>Both of those things were true at once, and it took us most of that day to understand how.</p>
+<p>I build Since, which tracks the packages, AI models, APIs and runtimes your code depends on, tells you and your coding agent what changed and when it breaks, and opens the fix pull request. One way people use it is as a connector inside an AI assistant: the assistant calls Since's tools (check_code, whats_changed) over MCP, the protocol assistants use to call tools. This is the story of that connector going quiet for two and a half hours, and of what "no errors" turned out to mean.</p>
+<p>Every morning a job of ours uses the connector to check open source repositories for code that is about to break. On November 13, from 6:14 to about 8:50 AM MST, every signed-in call through the connector failed. Nine tries, none answered.</p>
+<p>The client showed us a small zoo of messages:</p>
+<p>This is the part that made it hard. While the connector was failing, the job checked everything around it:</p>
+<p>Then, at 8:54 AM, a call worked. Every call after it worked too. Nobody had changed anything.</p>
+<p>An outage that heals itself and leaves no error is the worst kind. You can't fix what you can't see, and it's very tempting to write "transient" in the notes and move on.</p>
+<p>The job that hit this can't read production logs, so it wrote down what it saw and said plainly what it didn't know: "whether the fault is in Since's signed-in MCP path or in the client's connection to it."</p>
+<p>My first instinct was the second one. It's the client's side. Our health check is green, our other endpoints answer, the unsigned path answers instantly. The server is fine.</p>
+<p>That instinct was built entirely on the error log being empty. And the error log was empty because of what we had decided counts as an error.</p>
+<p>When I stopped searching for errors and just counted every status line on that path, the pattern was right there.</p>
+<p>Every call from that assistant's connector went like this:</p>
+<p>Every single one. Refused first, then accepted. Not only during the bad stretch: all day, before 8:54 and after it.</p>
+<p>A 400 isn't an error in most logging setups. It's the client's fault by definition, so it gets logged at info level and nobody looks at it. Which is how our server was refusing every first attempt from a client we very much want to work, and our monitoring called that a clean day.</p>
+<p>Here's the kind of count that would have found it in a minute. The log below is made up, in the shape of ours:</p>
+<p>Half the calls on one path are refusals, and every success follows one. No error anywhere.</p>
+<p>MCP has dated protocol revisions. Our server spoke two of them, 2025-06-18 and 2025-11-25, both of which open with a handshake. The connector spoke a newer one, 2026-07-28, which is stateless and skips the handshake.</p>
+<p>So every call arrived in a revision our server didn't speak. The server said 400, the client fell back to an older revision, and the second try worked. Every call depended on the client being polite enough to retry.</p>
+<p>The part I'm least proud of: this wasn't an accident. We had decided not to build that revision yet. We even had a test that pinned it as unsupported. The test passed every day. It was checking that we refused, which we did, perfectly.</p>
+<p>And when we refused, we did it badly. The refusal wasn't in the shape that revision defines, a discovery method it expects was missing, and nothing logged why a request was refused. So the only trace was a bare 400 in an info line.</p>
+<p>Once I was reading status lines instead of error lines, a second pattern showed up: 192 failed health checks in 7 days. Every one of them happened during a public scan.</p>
+<p>A scan read a repository's files in one long stretch on the server's main thread. Locally, that stretch took 6.9 seconds for one repository. In production one call held it for 23 seconds. The health check has 5 seconds to answer. While it fails, connections get dropped for every caller, not just the one scanning.</p>
+<p>"Connection closed." "Timed out waiting for server response." Two of our five words for "no".</p>
+<p>Here's the honest bit. I don't know for certain which of the two caused that morning.</p>
+<p>The refusal-then-fallback was there all day, including the hours after 8:54 when every call worked. The dropped connections were there during scans, and our morning job runs scans. Either one alone could produce some of those nine failures. Both together explain them better than either does.</p>
+<p>I'd love to give you a clean root cause. What I have is two real defects that the error log hid, found in the same hour by reading the same lines differently. So we fixed both, the same day:</p>
+<p>Released November 13 at 5:40 PM MST. Within the hour, the connector's calls in the log went from 400 then 200 to 200 and 200. No refusal.</p>
+<p>Three things, and none of them is a tool.</p>
+<p>A refusal is a failure you've agreed to call normal. Some 400s really are the client's fault. Some are your server refusing a client you care about, every time, and depending on it to recover. You can't tell them apart if you never count them.</p>
+<p>Count statuses by path, over the bad window and over a normal one. The bad morning and a good afternoon looked the same in our error log. They didn't look the same in a count of every status on every path. That comparison takes minutes, and it's now the first step when something fails quietly.</p>
+<p>Look at what comes right before each success. A 200 that always follows a 400 isn't a success. It's a retry that happens to work today.</p>
+<p>And one thing about protocols: a dependency's protocol moves just like a model or a package does. We decided to defer a revision, which was fine. What we didn't do was write down what would tell us it was now needed. The answer was "a client we care about starts speaking it", and that signal was sitting in our logs as a bare 400.</p>
+<p>"No errors logged" is a statement about your logging, not about your system. When something fails and the error log is empty, don't conclude the problem is on the other side. Go read the lines you decided weren't worth reading.</p>
+<p>What's the longest a problem has hidden from you in a log level you'd stopped looking at?</p>
+<p>I'm Nabil. I build Since, which tracks what your code depends on and tells you before it breaks.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/blomma" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/nabil_since_dev/production-logged-zero-errors-every-call-was-refused-first-14do" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

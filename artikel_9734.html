@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kafkador</title>
+    <title>How I Built an iPhone App That Unlocks Screen Time With Exercise</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9734.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Kafkador</h1>
+        <h1>How I Built an iPhone App That Unlocks Screen Time With Exercise</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/QXRlFsnMrvUfd4ExS6XHBEGXM5p2-0d83mk8.png" alt="How I Built an iPhone App That Unlocks Screen Time With Exercise" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/QXRlFsnMrvUfd4ExS6XHBEGXM5p2-0d83mk8.png" alt="How I Built an iPhone App That Unlocks Screen Time With Exercise" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            A console for to manage, observe & play Apache Kafka
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/kafkador?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1315778?app_id=339">Link</a>
-          </p></p>
+                <p>Solo iOS and Flutter developer. I build small iPhone apps (sourdough planning, trading card scanning, pet records, Screen Time blockers) and write a</p>
+<p>Solo iOS and Flutter developer. I build small iPhone apps (sourdough planning, trading card scanning, pet records, Screen Time blockers) and write a</p>
+<p>Solo iOS and Flutter developer. I build small iPhone apps (sourdough planning, trading card scanning, pet records, Screen Time blockers) and write a</p>
+<p>Pull to Refresh is my iPhone app that locks the apps you choose and unlocks them for exercise reps counted by the camera (App Store). This is the developer side: counting reps from Vision joint positions, what Apple's Screen Time API lets a third-party app do, and the bugs that taught me both. What the app does for its users is in the user-facing post.</p>
+<p>VNDetectHumanBodyPoseRequest runs on every frame of a 1280×720 front-camera feed. I keep joints with a confidence of 0.3 or more and drop the frame; nothing is recorded.</p>
+<p>What kept the counter small: every exercise reduces a pose to one Double, oriented so that low means contracted and high means extended. Push-ups, squats and sit-ups use a joint angle, averaged over both sides of the body when both are visible. Pull-ups and jumping jacks use the nose's height against the wrists, divided by torso length, so standing further back doesn't change the number.</p>
+<p>One state machine then scores all five; each exercise supplies two thresholds and a speed limit:</p>
+<p>The gap between the thresholds is the hysteresis: the phase flips to .contracted below contracted, and a rep counts only on the way back above extended:</p>
+<p>The raw value is smoothed first (smoothed + 0.35 * (raw - smoothed)), because joints jitter between frames. A third line, 35% of the way down, catches half-reps: dip past it and come back without reaching depth, and you get a hint to go deeper instead of silence. Up to eight frames of missing joints pass before the screen says it can't see you.</p>
+<p>The tests drive the counter with synthetic geometry: a pose builder that produces an exact elbow angle, swept through a cosine at 30 fps. Ten clean push-ups must give 10, half-reps 0 and a hint, and twenty 0.2-second cycles, someone shaking the phone, at most 4. Not zero: smoothing and the speed floor limit how fast reps pay, but nothing recognises shaking as such.</p>
+<p>One dead end. I saw zero reps on a screenshot from the start of a squat set, decided a knee angle can't be read head-on and moved squats to a side view. Later frames of that set were counting fine. I reverted it the same day and fixed the setup hint instead, which had been asking people to stand side-on in front of the selfie camera. Now every exercise opens on the front camera, so the person doing the reps can see the count.</p>
+<p>Screen Time work is split across processes that can't call each other. The app picks apps with FamilyActivityPicker and gets opaque tokens, never names. A DeviceActivityMonitor extension wakes when an interval starts or ends or a usage threshold is crossed. Two shield extensions draw the lock screen and handle its buttons. A DeviceActivityReport extension is the only process that sees per-app usage, and it can only render a SwiftUI view: the app shows a "minutes left" card without ever learning the numbers.</p>
+<p>They share state through App Group UserDefaults, plus a Darwin notification to tell a running app something changed. Each rule has its own named ManagedSettingsStore, so rules shield and lift independently. The monitor is handed nothing but an activity name, so the name carries the context:</p>
+<p>Two documented limits shape everything: an app and its extensions can monitor twenty activities, and an interval can't be shorter than fifteen minutes. Schedules repeat daily, not hourly, so "five minutes an hour" costs one registration per hour of its window. Windows are capped at 16 hours, and one slot always stays free for unlocks.</p>
+<p>Up to 1.4 the code did the obvious thing: intervalDidStart lifts the shield, the threshold puts it back. The docs for startMonitoring say callbacks may arrive as soon as you call it if the interval is running. Saving a rule re-registered every budget, the registration echoed intervalDidStart, and the shield came down. And unless an event opts into counting past activity, which needs iOS 17.4, it counts usage only from the moment it's registered, so a save handed a spent allowance back in full. Stopping an activity echoes intervalDidEnd, so switching a schedule off mid-lock shielded the rule I'd just been told was off.</p>
+<p>The fix was to let no callback decide. Each one hands the rule, as it is now, to one apply, which asks a pure policy function whether it should be open:</p>
+<p>That works because of a record: when a threshold fires, the monitor writes down that the allowance is spent for the current day or hour, so an echo finds the rule spent and keeps it shut. A save now registers only the rule saved, and only when something iOS enforces changed. From iOS 17.4, budgets pass includesPastActivity: true and count the whole day or hour however late they're registered.</p>
+<p>Earned time is a one-shot activity whose event threshold is the time bought. The threshold counts use of those apps, so putting the phone down doesn't burn paid minutes. The interval end is a backstop: four times the unlock, between 30 minutes and 22 hours. It's registered before anything is stored or lifted; 1.4 did it the other way round, so a refusal at the twenty-activity limit left the rule open with nothing to close it. And unlock records once lived in one array that three processes read and wrote whole, so one could resurrect an unlock another had just ended. Each record has its own key now.</p>
+<p>The shield's button belongs to the shield action extension, and for years it couldn't launch its containing app. The only way back was a local notification, easy to miss with a Focus on. My first version posted it and returned .close in the same breath; closing the shield lets iOS terminate the extension, and the notification sometimes went with it.</p>
+<p>iOS 26.5 added ShieldActionResponse.openParentalControlsApp. Both paths:</p>
+<p>The pending unlock goes into the App Group first, so the app opens on the workout screen and spends the next set on that rule. With a minute already banked, the button just spends it. The new case needs the iOS 26.5 SDK, so CI moved to macOS 26 runners. On older iOS with notifications off there's no way back, and the app warns about it.</p>
+<p>None of it ships without com.apple.developer.family-controls. The development entitlement comes without asking and TestFlight worked with it; distribution is by request, and Apple's page says to file the same request for every Screen Time extension.</p>
+<p>A clean rep earns 10 seconds for a jumping jack, 20 for a squat or sit-up, 30 for a push-up and 90 for a pull-up. Steps move the rate (×1.15, ×1.3, ×1.6 at 3,000, 8,000 and 15,000), each streak day adds 0.05 up to eight, and the total caps at ×2. The rate locks when a set starts.</p>
+<p>I started with "only reps buy time", and a test asserts no number of steps pays a second without a rep. Then a user asked for a way in for people who can't do a push-up today, so an opt-in mode now lets 1,000 steps buy 3 minutes, up to 30 a day, with steps dropped from the multiplier so one walk is paid once. HealthKit reports a running total, so what today already paid is subtracted, and a total that drops never takes minutes back.</p>
+<p>Steps typed into Health by hand don't count. My first predicate for that summed to zero for everyone:</p>
+<p>A not-equal match only considers samples that carry the key, and step samples from an iPhone or Watch don't.</p>
+<p>None of this is unbreakable: deleting the app removes every lock, and a camera can be fooled.</p>
+<p>What the app does for the people who use it: App blocker you unlock with push-ups: Pull to Refresh.</p>
+<p>Yes. VNDetectHumanBodyPoseRequest returns shoulder, elbow and wrist positions per frame, and the elbow angle follows from them. Pull to Refresh counts a push-up, on the device, when the angle drops below 100° and comes back above 150°, with smoothing and at least 0.7 seconds between reps.</p>
+<p>From iOS 26.5, yes: a ShieldActionDelegate can answer with ShieldActionResponse.openParentalControlsApp. Before that, the fallback is a local notification, and the extension should wait until the request is added before calling its completion handler, or iOS may end it first.</p>
+<p>Twenty, across the app and its extensions; past that, startMonitoring throws excessiveActivities. Each interval must last at least fifteen minutes, and since schedules repeat daily, an hourly allowance needs one activity per hour.</p>
+<p>Not directly. Per-app usage goes only to a DeviceActivityReport extension, which can render a SwiftUI view from it but can't pass the numbers back. Apps arrive as opaque tokens, not names.</p>
+<p>No. FamilyControls, ManagedSettings and DeviceActivity have no Simulator implementation, so authorization fails and no shield appears. You need a physical iPhone.</p>
+<p>Yes. Apple's documentation says to submit the same distribution request for each Screen Time extension: Device Activity Monitor, Device Activity Report, Shield Action and Shield Configuration.</p>
+<p>How I Built an On-Device Trading Card Scanner With Apple Vision</p>
+<p>Solo iOS and Flutter developer. I build small iPhone apps (sourdough planning, trading card scanning, pet records, Screen Time blockers) and write a</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/kafkador" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-i-built-an-iphone-app-that-unlocks-screen-time-with-exercise?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

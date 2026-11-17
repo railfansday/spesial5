@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>funkycache: a Python library to cache functions in SQLite</title>
+    <title>Test your applications against AWS locally with AWS Emulator</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10008.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,62 +15,55 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>funkycache: a Python library to cache functions in SQLite</h1>
+        <h1>Test your applications against AWS locally with AWS Emulator</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
-            <img src="https://alexwlchan.net/images/cards/2026/funkycache.png" alt="funkycache: a Python library to cache functions in SQLite" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/11/11/Header-A-dark-gradient-1-1260x630.png" alt="Test your applications against AWS locally with AWS Emulator" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://alexwlchan.net/images/cards/2026/funkycache.png" alt="funkycache: a Python library to cache functions in SQLite" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/11/11/Header-A-dark-gradient-1-1260x630.png" alt="Test your applications against AWS locally with AWS Emulator" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Six months ago, I wrote an SQLite-backed cache to speed up the build system for this site. A static site generator is an ideal candidate for caching, because there are lots of steps that have deterministic behaviour and no side effects. On a site with hundreds of pages, even a few milliseconds per step adds up to a meaningful improvement.</p>
-<p>That first cache was fairly basic. It supported getting and setting strings, with a namespace for different functions, and not much else:</p>
-<p>This showed the value of a cache, but it provided cache storage, not cache logic. If I wanted to cache a function, I had to write per-function logic for saving values to the cache and retrieving them later. A lot of that code was tricky to test, and broken in subtle ways. I was so unsure of this code that I deleted the cache whenever I built the site for publication.</p>
-<p>I wanted something better, so last week I wrote funkycache, a new library that encapsulates all of my caching logic, and is much easier to use and test. It can store arbitrary Python objects as both inputs and outputs, and the interface is much simpler for the caller.</p>
-<p>To cache a function, you create a FunkyCache instance and add a decorator to your function:</p>
-<p>This is modelled after functools.cache in the standard library. The output of the expensive function is written to an SQLite database, so it’s available after the Python process exits.</p>
-<p>The cache tries to be smart about invalidations. If the source file containing expensive_function changes, the cache for that function is invalidated and will be rebuilt on the next call.</p>
-<p>You can also specify a dependency on other files and static values, changes to which will also trigger a cache invalidation:</p>
-<p>When writing funkycache, I wanted to spend a week thinking hard about caching logic, test it thoroughly, then not think about it again for months. You should be able to use funkycache without understanding how it works – but if you’d like to, that’s what I’ll explain in the rest of this post.</p>
-<p>If you’d like to try it yourself, funkycache is on PyPI, and the source code is on this website.</p>
-<p>The cache is meant for functions which always produce the same output for a given input, so the inputs are the cache key. When we decorate a function, we can see the arguments passed on each call:</p>
-<p>This doesn’t account for different styles of calling the same function – for example, positional versus keyword arguments, or omitting or overriding default arguments.</p>
-<p>To get a complete, consistent set of arguments, I use the inspect module:</p>
-<p>This gives me a Python dictionary of the complete set of arguments to the function, which is the same regardless of the calling style.</p>
-<p>Python dictionaries aren’t hashable, so they can’t be used as the keys in dictionaries, nor can they be used as keys in SQLite databases. We need to serialise them as a string or byte sequence.</p>
-<p>I considered two options for this serialisation: pickle and JSON. In my limited testing, JSON was faster than pickle, so that’s what I chose. Using JSON also gave me more flexibility for speeding up the serialisation.</p>
-<p>My initial serialisation was a naive json.dumps call, with a couple of options to ensure consistent ordering and handle types that the standard library doesn’t know how to encode:</p>
-<p>When I started using funkycache, this encoding step quickly emerged as the slowest part, so I started “reducing” the arguments to make this step faster. This reduction included:</p>
-<p>These are all lossy transformations, but that’s fine for a cache key – we never need to retrieve the original value. It’s theoretically possible for different values to get a colliding hash key, but at my scale it’s unlikely. (A clean build of my site only uses 32,000 keys.)</p>
-<p>The functions in my static site generator are processing things like the content of articles, so individual function arguments might be kilobytes in size. You can use multi-kilobytes keys with SQLite, but you probably shouldn’t – you take a performance hit for larger keys.</p>
-<p>I wrote a small benchmark to compare three approaches: storing the JSON-encoded arguments directly, hashing them with MD5, and hashing them with XXH64. The results are a wash for small key sizes, but for larger keys XXH64 is significantly faster, and MD5 is slower than storing the keys directly in SQLite:</p>
-<p>Based on this benchmark, funkycache hashes the JSON cache key with XXH64 before inserting it into SQLite.</p>
-<p>The xxHash class of hashing algorithms was a pleasant discovery for me during this project. They are explicitly designed to be fast, not cryptographically secure. Previously I’d used MD5 for this purpose, because it’s widely available and I conflated “weak” with “fast”. Actually running a benchmark revealed my mistake.</p>
-<p>Serialising cache keys can be a one-way operation, but cached values need to be retrievable. For this, I’m using the inspect module to get the return type from the cached function, then handing the serialisation to Pydantic.</p>
-<p>I use type hints and type annotations for all of my Python, so this information is guaranteed to be present. This wouldn’t work with untyped Python, but it’s good enough for me.</p>
-<p>The alternative is using pickle, which can store arbitrary Python objects. I wouldn’t have to worry about the security risks because I’d only ever be pickling and unpickling trusted data, but I continued with JSON because I’m already using it for cache keys, and it’s easier to debug.</p>
-<p>One of the functions I wanted to cache is a lazy generator, which was a little trickier.</p>
-<p>Using functools.cache will cache the generator object, so every call gets the same generator instance, and they all step together. This strikes me as potentially confusing:</p>
-<p>funkycache takes a different approach: it materialises the generator into a list, and stores that list. When it’s retrieved, the list is converted back into a generator by wrapping it with iter.</p>
-<p>To protect against unbounded memory use from a large or infinite generator, there’s a soft memory budget. If the materialised list exceeds this budget, I stop gathering the output in the list and don’t save anything to the cache. The list and any subsequently generated items are passed directly from the original function to the caller.</p>
-<p>Some of the functions in my static site generator depend on the contents of template files. When those files change, I want to invalidate the cache and rebuild the pages that use those templates.</p>
-<p>When you register a function with funkycache, you can specify a list of files or folders that it depends on:</p>
-<p>funkycache will read the contents of each of those files, and include them in the cache key. When a file changes, it re-evaluates the list of files and decides whether to keep or invalidate the cache.</p>
-<p>I decided not to put any file change tracking in funkycache itself. I already have code for that, and I wanted to keep this project small and focused.</p>
-<p>A function’s cache can also be based on static values. I use this to include the version of important libraries, so the cache gets invalidated when I update the library. Here’s a short example:</p>
-<p>This project started because I was thinking about reactive programming.</p>
-<p>Reactive programming is a bit like using a spreadsheet. You have input cells where you enter data, and other cells that read that data and automatically update when the inputs change. Those cells can be inputs to other cells, and so on.</p>
-<p>Imagine building a static site: your Markdown files act as input cells, and your rendered HTML pages are the dependent cells. Your tasks form a directed acyclic graph (DAG), and updates propagate through the graph.</p>
-<p>For example, in the diagram above, when article1.md changes, the system knows it needs to rebuild article1.html and ripples that update to list_of_articles.html. But because there’s been no change in their inputs, the tasks to render articles 2 and 3 don’t run at all.</p>
-<p>When done correctly, this can be a very efficient style of programming, because steps only ever run if there’s been a change in their inputs.</p>
-<p>There are tools that will do this for you, like Apache Airflow, but I wanted to build my own. My website is a sandbox where I like building things myself as a learning exercise, rather than using somebody else’s library.</p>
-<p>I spent several weeks trying to design an API, but I couldn’t come up with something satisfactory. However, I experimented with a decorator-based API, and that led me to build funkycache, which delivers a lot of the benefits with less fo the complexity.</p>
-<p>Building my website with a warm cache now takes about half a second, and a significant chunk of that time is spent traversing the file system for Markdown files. I have ideas for speeding up that step as well, but that’s a task for another day.</p>
-<p>funkycache is only a few hundred lines of code, including tests. If this problem sounds interesting, I encourage you to read it, even if it’s not a library you expect to use.</p>
-<p>This site is made with ❤︎ by Alex Chan (they/she).</p>
-<p>It’s licensed under CC BY 4.0 – you can use, share, and adapt what you’ve read, as long as you link back to me. If you like the site, please consider making a donation.</p>
+                <p>AWS is the world's most comprehensive cloud, enabling organizations to accelerate innovation, reduce costs, and scale more efficiently</p>
+<p>Migrate to modernize → Modernize to unlock data → unlock data to run AI</p>
+<p>Get started with one of these featured services or browse all</p>
+<p>From startups to enterprises, find AWS solutions scaled to your needs. Access tailored resources, pricing models, and support levels.</p>
+<p>Today we’re announcing AWS Emulator, a local emulator for Amazon Web Services (AWS) that you run on your machine. The AWS Command Line Interface (AWS CLI), the AWS SDKs, and your coding agents speak to it over a local HTTPS endpoint using the same AWS APIs they would use in the cloud, from your laptop. AWS Emulator has no additional service fee. You pay only for AWS resources when you deploy on AWS. Its source is on GitHub. You install it from an RPM or Debian package on Linux, and on macOS and Windows you run it in Docker.</p>
+<p>How it works
+         You install the emulator, start it, and point your tools at the local endpoint. When AWS Emulator starts, it generates its own credentials, a config file, and a certificate, and writes them to ~/.aws/emulator/9297/. You set environment variables so the AWS SDK talks to your laptop instead of AWS, and your application code stays unchanged.</p>
+<p>From there, your existing tests, CLI scripts, and coding agents keep working the way they already do. A unit test that creates an Amazon DynamoDB table, writes an item, and reads it back is the same test, and it runs on your machine without a deployment. A coding agent can create resources, check the result, and iterate again without waiting on a deployment in a Region.</p>
+<p>The emulator is implemented in Rust so that it stays light on CPU and memory on a laptop. It supports the APIs of AWS services that have an API model in the AWS API models repository on GitHub, and because it’s built from those models, the same ones the AWS SDKs use, your requests and the errors you get back have the same shape as on AWS.</p>
+<p>If you are a developer, especially one working with coding agents such as Kiro or Claude Code, you can use that loop to test AWS interactions of real complexity locally.</p>
+<p>Let’s try it out
+         To get started, I installed the package on Amazon Linux 2023. The package adds the aws-emulator command to /usr/bin/, so it’s on the path.</p>
+<p>On macOS and Windows, you build a Docker image from the short Dockerfile in the documentation and run the emulator in a container. We don’t publish a ready-made image.</p>
+<p>I started the emulator with aws-emulator. It serves HTTPS on 127.0.0.1:9297, so only my own computer can reach it, and it writes its log as JSON lines that show the address, the config file, and the certificate file.</p>
+<p>In another terminal, I set the environment variables that point the AWS CLI at the emulator, and unset any variables that could supply real AWS credentials.</p>
+<p>The emulator generates new keys each time it starts. Its access key IDs start with EMULATOR, so you can’t mistake them for real AWS keys, and it rejects requests signed with any other keys. To confirm that my shell was talking to the emulator, I checked the health endpoint and the caller identity. The emulator uses a single account, 000000000000.</p>
+<p>Then I created a bucket, copied in a small object, and listed it.</p>
+<p>With the AWS CLI pointed at my laptop, I had the same commands I already use and a local endpoint that answered them.</p>
+<p>Next I wanted to see it the way I actually work now, so with the emulator still running I opened Kiro and asked it to create an Amazon DynamoDB table, write an item, and read it back, all against AWS Emulator rather than my AWS account.</p>
+<p>To use the same setup with an existing test suite, I would start the emulator, set the same environment variables in the script that runs the tests, and run them as usual.</p>
+<p>Using the emulator in process
+         Running the emulator as a local process gives you an HTTPS endpoint that works with the AWS CLI and the AWS SDKs through environment variables. Some SDKs need an extra setting to trust the emulator certificate, for example a trust store for the AWS SDK for Java. For tests, there is a second option. AWS Emulator ships an embedded mode that you instantiate directly inside your test process and wire into the SDK through its HTTP client, rather than talking to a separate server over the network. Each embedded instance keeps its own state, so tests do not share buckets, tables, or queues, and you can run many of them in parallel. Embedded mode is available for the AWS SDK for Rust. You add the aws-emulator-embedded crate from GitHub to the [dev-dependencies] section of your Cargo.toml file. The following example creates an Amazon DynamoDB table, writes an item, and reads it back, entirely in process.</p>
+<p>When it runs as a local process, the emulator requires every request to be signed with Signature Version 4 (SigV4), the same way AWS does, and it exposes a /__admin/health endpoint on the same port so a script or a container can wait until it is ready before running tests. By default it also sends anonymous usage and error data, and you can turn it off.</p>
+<p>How we measure fidelity
+         An emulator is only useful if a test that passes against it would also pass against AWS, so we measure that directly with fidelity tests. A fidelity test is a short program that uses an AWS SDK to run a workflow, such as storing an object and then reading and deleting it, and asserts how AWS behaves. We verify each fidelity test against real AWS. A fidelity test passes only if the emulator matches AWS on the response to every call, including the status code, the body, and the exact error code and message, and on the resources and data that the workflow creates.</p>
+<p>With each release, we publish how many fidelity tests pass for each service, as k of n. For example, 40 of 50 means that 40 of the service’s 50 fidelity tests pass. The set of fidelity tests is public in the aws-emulator-evaluation-suite repository on GitHub, including the ones that don’t pass yet, so you can see what we verified and run the fidelity tests yourself. Read a score as a snapshot of a product that’s improving. When we add fidelity tests, a score can go down even while the emulator gets better.</p>
+<p>If the emulator doesn’t implement an operation yet, it returns HTTP 501 (Not Implemented), so your tests fail right away. If the emulator acts differently from AWS, you can tell us by opening an issue in the AWS Emulator repository on GitHub.</p>
+<p>How the emulator is built
+         AWS Emulator is built and maintained by agents from the AWS API models using Amazon Bedrock AgentCore Runtime Instances, AWS CodePipeline, and AWS CodeCommit, so it stays current with AWS as those models change.</p>
+<p>One group of agents looks for gaps, both by comparing emulator responses against real AWS and by statically comparing the emulator’s code against the published Smithy models, and files an issue for each gap it finds. Another group picks up an issue, writes tests, implements the behavior, and reviews the change for correctness, performance, and security. When the change is ready, it is pushed to a source repository, and that push triggers an AWS CodePipeline run that runs the fidelity tests before the change is published to the public GitHub repository.</p>
+<p>How we keep it secure
+         Because the code is written by agents, an independent security agent reviews changes adversarially, both while the fix is being made and again in the release pipeline as a final check before anything ships.</p>
+<p>Security of your own use remains a shared responsibility. We build the emulator to run safely on your machine: it listens only on your own computer by default and rejects requests that aren’t signed with its own keys. You decide where it runs, what data you put in it, and how you test before production. Don’t use the emulator to test whether your application is secure. It doesn’t evaluate AWS Identity and Access Management (IAM) policies and resource-based policies the way AWS does, so a request that AWS denies might succeed in the emulator. Keep real credentials out of the environment of your test jobs, and test your security settings and your whole application on AWS before you go to production.</p>
+<p>Now available
+         AWS Emulator is generally available today. It has no additional service fee. You pay only for AWS resources when you deploy on AWS. You can install it from RPM or Debian packages on Linux, run it in Docker on macOS and Windows, or build from source, and it works with the AWS SDKs and the AWS CLI once you set environment variables. At launch, it has some limits. It doesn’t evaluate IAM policies the way AWS does, and each emulator acts as a single account, with no cross-account or cross-Region behavior. How closely it matches AWS varies by service and feature. To see how well the emulator covers the services that you use, check the fidelity scores in the AWS Emulator documentation.</p>
+<p>If you want to check regional availability, visit the AWS Capabilities by Region page in AWS Builder Center. If you want to call APIs, search documentation, find regional availability, and check troubleshooting about this new feature, try using the AWS MCP Server and plugins with your preferred AI tool.</p>
+<p>To get started, visit the AWS Emulator repository on GitHub and see the AWS Emulator documentation.</p>
+<p>Updated on November 12, 2026: Added links to the AWS Emulator repository on GitHub.</p>
+<p>Daniel Abib is a senior specialist solutions architect at AWS, focused on generative AI and Amazon Bedrock — and passionate about serverless. He helps startups and enterprises build AI-powered applications and modernize with cloud-native architectures. A three-time Ironman finisher and four-time re:Invent speaker, he brings the same endurance mindset to building cloud solutions.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://alexwlchan.net/2026/funkycache/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aws.amazon.com/blogs/aws/test-your-applications-against-aws-locally-with-aws-emulator/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
