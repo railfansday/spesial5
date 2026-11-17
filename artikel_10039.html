@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Please Implement A Quorum Database</title>
+    <title>ULA Vulcan Rocket Failure Destroys 40 Amazon Leo Satellites</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10039.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,175 +15,175 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Please Implement A Quorum Database</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
+        <h1>ULA Vulcan Rocket Failure Destroys 40 Amazon Leo Satellites</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
+            <img src="https://a.fsdn.com/sd/topics/space_64.png" alt="ULA Vulcan Rocket Failure Destroys 40 Amazon Leo Satellites" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/space_64.png" alt="ULA Vulcan Rocket Failure Destroys 40 Amazon Leo Satellites" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted 2026-11-1518 minute reading timeMandatory Legal Disclaimer:Opinions expressed are solelymy own and do not express theviews or opinions of my employer.</p>
-<p>I return with part two of the replication rants series.  This talk was given at HPTS'26 and fleshes out the argument for quorum-based replication in Enough With All The Raft, and continues to build off of the work that went into writing Data Replication Design Spectrum.</p>
-<p>I think we tend to view quorum replication as generally impractical for production use.</p>
-<p>If you want the links to papers, find the corresponding slide below.</p>
-<p>This is a replication talk that I gave at HPTS 2026.</p>
-<p>I once did a survey of what type of replication algorithm databases in production are using, and the result looks like this.
-Raft is the giant pacman, eating the primary-backup and quorum slices.
-The Quorum slice is small enough that we can just fully enumerate it right now.</p>
-<p>Upper left are OSS majority quorum databases.
-Upper right are proprietary ones that used or are using it for data replication.
-Bottom left are proprietary ones using consensus for a log.
-Bottom right are technically true but carry caveats.</p>
-<p>If we filter that list by how they’re doing now:</p>
-<p>Voldemort is so dead all that all of you forgot it existed until the previous slide.</p>
-<p>InfluxDB and Grafana Mimir had previous iterations which used quorums, and then they re-architected.</p>
-<p>Weviate does quorum for data and raft for metadata, and I won’t be shocked if they re-architected too.</p>
-<p>Tencent PaxosStore is super internal in chinese bigtech, so I have no idea.</p>
-<p>CouchDB was more meant for eventual consistency but has a clustered mode, and I have no idea who uses it other than cloudant?</p>
-<p>OG Dynamo, which someone here can tell me about, but I’m assuming is/has been phased out?</p>
-<p>Note: the HPTS audience head shaking agreed with my assessment of Dynamo.</p>
-<p>Which leaves me with this awkward feeling that if I say implement a quorum database, the only good example I have to point to is Cassandra?!?</p>
-<p>HPTS says submit your spicy takes, so brace yourself:  I think we should be credibly building more than one good example of a quorum database.</p>
-<p>Which we are!  I’m holding out 3 very recent examples on you.</p>
-<p>But first, for the next 16 minutes I will be CEO and utterly delusional founder of CashDB, because I need a running example for this talk.
-CashDB is a database specialized for whatever your splitting-the-bill-with-friends app that you use.</p>
-<p>First, it only supports a very limited set of operations:</p>
-<p>The second constraint is that I told a coding agent to make CashDB as reliable as possible and now it has my AWS keys, is rebooting one of my VMs once a minute in the name of chaos testing, and has replicated itself.  I cannot stop it.  We must now design CashDB around this.  I need a replicated CashDB.</p>
-<p>If I use a reconfiguration-based replication protocol that does a view change on every failure, my users are going to see latency spikes every minute and I will have to answer uncomfortable questions.</p>
-<p>If I use raft, then expected value is that they see a latency spike every five minutes when the leader is affected, but the other failures get masked.</p>
-<p>This is the motivation I’m pitching for being leaderless.  You should get better latency,</p>
-<p>I’m not saying availability, because availability is just a latency SLO.</p>
-<p>So, what if we try to build CashDB in the style of our long-established examples?</p>
-<p>First we have everything that came out of the ABD paper doing standard majority quorums.</p>
-<p>Hagit Attiya, Amotz Bar-Noy, and Danny Dolev. 1995. Sharing memory robustly in message-passing systems. Journal of the ACM 42, 1 (January 1995), 124–142. [scholar]</p>
-<p>Think OG cassandra.  We get a nice 1 or 2 RTT writes.  We get 1-2 RTT reads.  Life is great.</p>
-<p>It implements only distributed read/write register, thus the implicit atomic read-modify-write for account debit/credit operations doesn’t work.
-Append to transaction log would also be a struggle.</p>
-<p>I think we view majority quorums slightly worse than it deserves because it came from the eventual consistency era read repair + LWW + anti-entropy gives a lot of opportunities to resurrect failed writes.</p>
-<p>But, unless you very knowingly fit the register model with linearizable-but-sujectively-worse consistency, I do not think majority quorums are the path forward.</p>
-<p>Let us instead consider if building a system like Megastore would work.</p>
-<p>Jason Baker, Chris Bond, James C. Corbett, JJ Furman, Andrey Khorlin, James Larson, Jean-Michel Leon, Yawei Li, Alexander Lloyd, and Vadim Yushprakh. 2011. Megastore: Providing Scalable, Highly Available Storage for Interactive Services. In Proceedings of the Conference on Innovative Data system Research (CIDR), 223–234. [scholar]</p>
-<p>Megastore replicates a log per entity group, and a proposer targets the next available slot in the log with its proposal. This is just multi-paxos without the time-based leader election.
-Consensus gives us State Machine Replication, and thus we can model debits and credits as increments and decrements, and log appends as appends.  That’s great.</p>
-<p>It will fail because of latency. Paxos has a liveness problem: two duelling proposers can easily prevent eachothers' progress.  The log-centric model only helps to funnel proposers into conflict.</p>
-<p>Megastore optimization: if you commit to slot N, you’re automatically the "leader" for slot N+1.</p>
-<p>PaxosStore: time-based exclusion for a log slot once you hear a proposal for it (also geographic closeness).</p>
-<p>However, it’s nice that replica catchup is easy because there’s one log with one ordering to replicate, and one can easily describe a snapshot of data by just the log offset.  But, the latency spikes worse than leader election timeouts removes the motivation for using quorums in the first place.</p>
-<p>What if we built CashDB using some E-Paxos ideas?</p>
-<p>Iulian Moraru, David G. Andersen, and Michael Kaminsky. 2013. There is more consensus in Egalitarian parliaments. In Proceedings of the Twenty-Fourth ACM Symposium on Operating Systems Principles (SOSP '13), ACM, 358–372. [scholar]</p>
-<p>Egalitarian Paxos introduces doing consensus where one agrees upon an order only for the exactly necessary dependencies.  This naively results in a sparse, potentially disconnected, graph of operations.  This graph frees us from having the One Big Log causing unnecessary contention.  The closest that E-Paxos gives to any hint on how to do replica catchup is something that looks very much like Cassandra Enhancement Proposal 45 Mutation Tracking if you squint at it.</p>
-<p>Our almost production example comes from Cassandra again.  There’s an old 50k line un-merged patch which gives Lightweight Transactions an overhaul onto a new E-Paxos implementation.</p>
-<p>It’s not clearly better or worse than a log here…​</p>
-<p>E-Paxos also was noted to have a huge latency cliff under contention, which again ruins our latency desires. There’s actually an infinite tail latency theoretical result for this.</p>
-<p>E-Paxos doesn’t give any great way to define a snapshot other than commit a dependency on everything.</p>
-<p>Cassandra’s EPaxos already had anti-entropy and so they had a paxos repair that ran every 5min to fix up lost proposals.  It still benchmarked better than LWT though.</p>
-<p>For things that have a good history in production, that’s it.  It doesn’t seem great.</p>
-<p>From looking at what pieces were good and bad, we can put together the missing feature wishlist for leaderless replication:</p>
-<p>We need to survive contention because we cannot have latency climb incredulously as contention increases.  We desire quorums for low latency.  If there’s an easy trap that causes concerningly high latency, then we might as well use Raft.</p>
-<p>Consistent local snapshots would be nice. If you need to do a quorum read and merge for a table scan while executing SQL, you’re going to lose tremendously to a system which doesn’t.  We need some way to define a consistent snapshot locally.</p>
-<p>Lastly, If a node has missed proposals, catching up (to get to a snapshot) should be O(missed work) and not O(total data).</p>
-<p>So let’s do another pass, and now look at some very recent approaches instead.</p>
-<p>If we look back at consensus over logs, the thing we need to fix is the latency under contention.  How can we do that?</p>
-<p>SOSP'23 had a paper on QuePaxa.  QuePaxa gives us leaderless consensus that offers much better bounded latency under contention. Proposers collaborate instead of conflict. Consensus will take somewhere from 1 to 7RTT.  But you’re unlikely to go over 7RTT.</p>
-<p>Pasindu Tennage, Cristina Basescu, Lefteris Kokoris-Kogias, Ewa Syta, Philipp Jovanovic, Vero Estrada-Galinanes, and Bryan Ford. 2023. QuePaxa: Escaping the tyranny of timeouts in consensus. In Proceedings of the 29th Symposium on Operating Systems Principles (SOSP '23), ACM, 281–297. DOI:https://doi.org/10.1145/3600006.3613150 [scholar]</p>
-<p>Every proposal gets a priority value, priority equals value for sake of diagram simplicity.</p>
-<p>The algorithm proceeds with proposers walking in lockstep through phases across the acceptors.</p>
-<p>If you fall off the lockstep bandwagon, you can get back on with some other valid proposer’s state.</p>
-<p>Phase 1 only records the first proposal it hears.</p>
-<p>From then on there is a fixed number of proposals, and the consensus intuition is:</p>
-<p>I define a phase as "read from a quorum of phase N and write the max priority proposal to a quorum to begin phase N+1", if I repeat that enough times, everyone should eventually become aware of the best proposal.</p>
-<p>You can replace paxos in a megastore-style system with QuePaxa.</p>
-<p>QuePaxa’s 1RTT fastpath comes from a spiritually similar Megastore optimization where winning round N gives you an ability to do a 1RTT commit to round N+1.</p>
-<p>I’m nearly certain some of those 7RTT cases can be trimmed down.  Superficially, pipelining isn’t discussed, and so getting good throughput seems hard.  QuePaxa needs like 5 more optimization papers, and then it’s very worth revisiting.</p>
-<p>Note: I had received a question about the jump from E-Paxos to QuePaxa, and what QuePaxa was trying to solve.  The intended comparison is mostly just Megastore to QuePaxa, and I think the chance of you regretting putting Megastore into production is much higher than the chance of you regretting putting QuePaxa (+ Optimizations) into production.</p>
-<p>Cloudflare is working on pushing QuePaxa into production, and so I hope they’ll also do a lot of that needed optimization work.  I highly look forward to their results.</p>
-<p>If we look back at consensus over graphs, we need to fix…​ everything.  Which sounds hard, but we actually have two great examples here.</p>
-<p>SIGMOD'26 gave us Neo4J doing a very graph-centric leaderless consensus protocol.</p>
-<p>Jim Webber, Georgios Theodorakis, Hugo Firth, and Natacha Crooks. 2026. RIOT: Replicated Independently-Ordered Transactions. In Companion of the International Conference on Management of Data (SIGMOD Companion '26), Association for Computing Machinery, New York, NY, USA, 464–476. [scholar]</p>
-<p>Note: Jim Webber was at HPTS'26 and came up to say hello after this talk.  He is a very nice person, and it was really cool to get to meet him.</p>
-<p>RIOT builds a DAG where each transaction is a node, and the current snapshot is defined as the set of nodes with no parents, the “Leading Edge”.
-Nodes gain a dependency when they conflict, or have a time ordering.</p>
-<p>Add yourself as a node with the snapshot as your parents.
-You are now the leading edge.</p>
-<p>Each node becomes a new part of the "leading edge".</p>
-<p>And RIOT is centered around the leading edge.
-Transactions are committed when a quorum accepts a new node into the transaction graph, and that’s sent with a leading edge.
-If you hear about a node you don’t know about from another replica, you get caught up on it, and all its parents you don’t know about.
-RIOT tells us you can do DAG replication by keeping our DAGs connected, and keep them tall and narrow.</p>
-<p>Their results show…​ it’s like, pretty okay at low-ish concurrency: 300txn/partition/second.
-And that’s fine for neo4j usage, and they have production stats that justify that the tradeoffs in RIOT match their production usage well, which is really all I want to see when picking a replication algorithm.</p>
-<p>It’s just not an amazing fit for CashDB.  CashDB would do lots of small transactions.  RIOT happens better for fewer and larger transactions.  It’s a super cool paper either way. it’s the only thing I’ve seen that answers how to do pure DAG replication like this well, and it gave Neo4J lower latency than their Raft implementation.</p>
-<p>Our second system to examine is, you won’t believe it, but it’s Cassandra again, because we can’t stop talking about Cassandra in every part of this talk.  CEP-15 introduces Accord, which is an E-Paxos style protocol.</p>
-<p>Benedict Elliott Smith, Tony Zhang, Blake Eggleston, and Scott Andreas. 2021. CEP-15: Fast general purpose transactions. Retrieved from https://cwiki.apache.org/confluence/spaces/CASSANDRA/pages/188744725/CEP-15+General+Purpose+Transactions</p>
-<p>Its closest direct relative is the tempo paper, but accord does physical timestamps instead of logical timestamps.</p>
-<p>Vitor Enes, Carlos Baquero, Alexey Gotsman, and Pierre Sutra. 2021. Efficient replication via timestamp stability. In Proceedings of the Sixteenth European Conference on Computer Systems (EuroSys '21), ACM, 178–193. [scholar]</p>
-<p>Accord provides a 1RTT fast path.  It takes up to 3RTT in the slowest case.
-It borrows the ordered broadcast optimization from E-Paxos Revisited, which means you’ll end up on the fast path more often</p>
-<p>It collects agreement on what timestamp to execute a transaction at, such that the timestamp is after all of its dependencies.  The same epaxos-like logic applies for dependency collection, but, the reliance on the timestamp stability work dodges the e-paxos infinite tail latency theoretical result.</p>
-<p>Timestamp ordered execution linearizes proposals which gives it an easy way to support consistent local snapshots and incremental replica catch-up.</p>
-<p>CashDB would be only small OLTP transactions. It doesn’t need interactivity. You would have to commit a debit/credit, and then execute it and find out if it was valid or not as like a durable OCC, but that’s not the worst.</p>
-<p>I like Accord a lot and think you should read about it.</p>
-<p>And I wanted to take an extra quick moment to highlight that epaxos revisited ordered broadcast primitive.</p>
-<p>The difficult part of leaderless consensus is agreeing upon ordering.  Leaders are great at ordering!
-Wouldn’t it be great if everything could just be ordered upon arrival?</p>
-<p>Client generated timestamps.  Make up your order on your client, broadcast it with your message.
-Variants of this idea show up in papers often.</p>
-<p>What if you process messages only on or after their deadline?</p>
-<p>Sarah Tollman, Seo Jin Park, and John Ousterhout. 2021. EPaxos Revisited. In 18th USENIX Symposium on Networked Systems Design and Implementation (NSDI 21), USENIX Association, 613–632. [scholar]</p>
-<p>What if you also drop out-of-order messages?</p>
-<p>Jinkun Geng, Anirudh Sivaraman, Balaji Prabhakar, and Mendel Rosenblum. 2022. Nezha: Deployable and High-Performance Consensus Using Synchronized Clocks. Proceedings of the VLDB Endowment 16, 4 (December 2022), 629–642. [scholar]</p>
-<p>What if the network provides best effort ordering?</p>
-<p>Dan R. K. Ports, Jialin Li, Vincent Liu, Naveen Kr. Sharma, and Arvind Krishnamurthy. 2015. Designing Distributed Systems Using Approximate Synchrony in Data Center Networks. In 12th USENIX Symposium on Networked Systems Design and Implementation (NSDI 15), USENIX Association, Oakland, CA, 43–57. [scholar]</p>
-<p>Rida Bazzi and Maurice Herlihy. 2022. Clairvoyant state machine replication. Information and Computation 285, (May 2022), 104701. [scholar]</p>
-<p>No details for time, and we’re ending on TAPIR so I can mention System #3 that I think SurrealDB is putting TAPIR into production which is pretty cool.</p>
-<p>Irene Zhang, Naveen Kr. Sharma, Adriana Szekeres, Arvind Krishnamurthy, and Dan R. K. Ports. 2017. Building Consistent Transactions with Inconsistent Replication. ACM Transactions on Computer Systems 35, 4 (November 2017), 1–37. [scholar]</p>
-<p>Our last bag of tricks are a few very related ideas because applying any one of them, gives you the same high level architecture.</p>
-<p>There’s a cloud of unordered commutative operations from which you pull a log out of afterwards with some great-at-ordering leadered consensus.
-You can do a 1RTT quorum write into the unordered pool, and remember that  Linearizable Quorum Reads says you can do a 1RTT read from a quorum of non-leaders, so you’re left only stalling read-after-writes.</p>
-<p>CURP is a really nice introduction to this idea, and hides a description of how to apply it to raft in the appendix</p>
-<p>Seo Jin Park and John Ousterhout. 2019. Exploiting Commutativity For Practical Fast Replication. In 16th USENIX Symposium on Networked Systems Design and Implementation (NSDI 19), USENIX Association, Boston, MA, 47–64. [scholar]</p>
-<p>It was then later generalized to work on more consensus algorithms and fixed in Jetpack</p>
-<p>Ze Tang, Zihao Zhang, Weihai Shen, Jicheng Shi, and Shuai Mu. 2026. Jetpack: Consensus Made Generally Fast. In 20th USENIX Symposium on Operating Systems Design and Implementation (OSDI 26), USENIX Association, Seattle, WA, 1299–1323. [scholar]</p>
-<p>Both stop at defining “commutative” operations as those that affect two different keys.
-Pulling this diagram from CURP, they accepted a quorum write to Y and to Z, but another write to Y would be forced to stall while the leader works on propagating Y into the log.</p>
-<p>CURP almost got a production implementation in {uri-cncn-xline}[CNCF Xline], but they went straight from Beta to Archived.</p>
-<p>To take these ideas one step further, you need the Skyros paper introducing Nil-Externality.</p>
-<p>Aishwarya Ganesan, Ramnatthan Alagappan, Andrea C. Arpaci-Dusseau, and Remzi H. Arpaci-Dusseau. 2021. Exploiting Nil-Externality for Fast Replicated Storage. In Proceedings of the ACM SIGOPS 28th Symposium on Operating Systems Principles (SOSP '21), ACM, 440–456. [scholar]</p>
-<p>Nil-externality is a generalization of blind writes to all operations that don’t return any state about the system.
-Skyros lets you just keep quorum writing nil-external operations to the same key.
-Each replica remembers its local order, and a leadered consensus can pull back out a correct linearizable order later.</p>
-<p>Nil-Externality has no direct implementation in industry, but we’ve been doing similar logic on the concurrency control side by not checking conflicts between blind writes in serializable MVCC databases for a long time.</p>
-<p>Skyros tacks on commutative operations like increments but doesn’t discuss it much.</p>
-<p>I’ll give MDCC credit as the other paper I know of which directly took on commutative updates under a leaderless generalized paxos model</p>
-<p>Tim Kraska, Gene Pang, Michael J. Franklin, Samuel Madden, and Alan Fekete. 2013. MDCC: multi-data center consistency. In Proceedings of the 8th ACM European Conference on Computer Systems (EuroSys '13), ACM, 113–126. DOI:https://doi.org/10.1145/2465351.2465363 [scholar]</p>
-<p>and 1986 Escrow transactions let you extend that commutative logic to …​ almost commutative operations.</p>
-<p>Patrick E. O’Neil. 1986. The Escrow transactional method. ACM Transactions on Database Systems 11, 4 (December 1986), 405–430. [scholar]</p>
-<p>Escrow says: let increments and decrements commute as long as it’s impossible for your constraint to be violated.  If in the absolute worst case where all the increments abort, and all decrements succeed, then the value still remains above 0, then what do you care just treat them all as commutative.</p>
-<p>Escrow has only one implementation I’m aware of, Oracle 23c introduced it under the name “lockfree reservations”, but, Oracle is not a quorum database</p>
-<p>To apply this to quorum systems, you need the 1992 paper: High Throughput Escrow Algorithms for Replicated Databases
-which tells you that in the standard 3 of 5 quorum setup, the worst case value needs to stay above 40% of the current account value instead of 0. It’s not a terribly hard fix.</p>
-<p>Narayanan Krishnakumar and Arthur J. Bernstein. 1992. High Throughput Escrow Algorithms for Replicated Databases. In Proceedings of the 18th International Conference on Very Large Data Bases (VLDB '92), Morgan Kaufmann Publishers Inc., San Francisco, CA, USA, 175–186. [scholar]</p>
-<p>So if we squish all these ideas together…​</p>
-<p>CashDB only supports an escrow-able account transfer operation and a nil-external log append.  I obviously designed CashDB for this argument.
-In isolation this async leader trick is not 100% leaderless, but I include it because it’s a great step towards better latency.</p>
-<p>I’m also mentioning it because leveraging blind and commutative operations makes EVERY OTHER ALGORITHM BETTER and we never do it.
-In Consensus over Logs, Nil-Externality and Escrow would help guide us as to what operations are safe to pipeline with a leaderless log.
-In Consensus over Graphs, it means we get to reduce the dependencies tracked, and thus end up on the fast path more often.</p>
-<p>Increments are the best operation ever because you can treat them as commutative OR a nil-external fused together read-modify-write that returns nothing, and we still basically never special case them?!? We just execute them under exclusive locks, it saddens me.</p>
-<p>Alright, I’m out of time and out of content, so:</p>
-<p>We have very recently gotten much better algorithms for leaderless replication</p>
-<p>We have very recently gotten much better production-or-almost-there examples of how to write good quorum databases.</p>
-<p>There are still more good ideas we have yet to apply to their full extent.</p>
-<p>I do not think we will see a proliferation of quorum databases until we have good production examples to copy from.</p>
-<p>So I implore you.  Choose something different.  Choose something with better latency.
-Choose something that lets you drop a "why quorums are better" blog post every time your competitor has an outage.</p>
-<p>See discussion of this page on
-      Reddit,
-      Hacker News, and
-      Lobsters.</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>Not really. Amazon is still trying to build a constellation of similar capacity to the one that SpaceX is already sunsetting. Besides, SpaceX already had a much bigger boon yesterday. Strangely the media appears to be downplaying it, despite the fact that it's yet another historic event in spaceflight. A very big one at that.</p>
+<p>Even slashdot only mentioned "spaces falls short" with a claim that the booster malfunctioned. Only, it actually didn't, it autonomously did exactly what it was supposed to do if its co</p>
+<p>Starlink could do with some competition. They recently introduced limits on their unlimited service due to over-subscription in some areas.</p>
+<p>The Starship catch was interesting but people are rightly sceptical of Musk's bullshit these days, particularly his claimed cost to orbit. SpaceX isn't the only game in town, the other US launch companies will get there, and the Chinese are making rapid progress.</p>
+<p>There is the race back to the moon, but again Starship still has a lot of work to do. It's looking like they will ned 20+ launches just to get the fuel they need into orbit, and they need to develop in-orbit refuelling which is far from trivial. It's 50/50 at best who NASA uses for the first landing, and probably 50/50 it if happens before China lands, and the political landscape in the US is adding uncertainty too.</p>
+<p>It's impressive engineering, but it's a milestone towards the real goals which are still far off.</p>
+<p>It's literally the only game in town. Everyone else is order(s) of magnitude more expensive per ton.</p>
+<p>As for "but it's not impressive" left wing Musk Derangement Syndrome messaging, it's very telling that when booster for Starship 42 failed to land successfully, failure was attributed to "Musk's SpaceX" in media. However success of landing the Starship itself is attributed to "SpaceX" by the same media.</p>
+<p>Tactic as old as time to generate image of failure out of being a highly successful individual. All his fail</p>
+<p>What part of "It's impressive engineering" made you think I said it wasn't impressive?</p>
+<p>As for them being the only game in town, they are the furthest along but there are at least two Chinese companies with credible re-usable heavy lift vehicles in advanced stages of development. They have some interesting ways to catch the returning vehicles too.</p>
+<p>Realistically SpaceX is going to have a few years where Starship has the best capability. Cost is yet to be determined but should be low (by space standards). There</p>
+<p>What part of "It's impressive engineering" made you think I said it wasn't impressive?As for them being the only game in town, they are the furthest along but there are at least two Chinese companies with credible re-usable heavy lift vehicles in advanced stages of development. Well - it is good to know that the most important aspect of rocketry is re-useability.</p>
+<p>What part of "It's impressive engineering" made you think I said it wasn't impressive?</p>
+<p>As for them being the only game in town, they are the furthest along but there are at least two Chinese companies with credible re-usable heavy lift vehicles in advanced stages of development.</p>
+<p>Well - it is good to know that the most important aspect of rocketry is re-useability.</p>
+<p>It's literally the only game in town.The reason NASA is contracting any of this stuff out is to make the game, the commercial market for space services. There is already little point in a commercial market for moon landing services, something only the government asked for. There is no point for a "market" of one vendor for government services.</p>
+<p>The reason NASA is contracting any of this stuff out is to make the game, the commercial market for space services. There is already little point in a commercial market for moon landing services, something only the government asked for. There is no point for a "market" of one vendor for government services.</p>
+<p>So you're claiming the "media" says "Musk's SpaceX" when something fails, and just "SpaceX" when something succeeds.</p>
+<p>Yeah, you'll have to prove that. Otherwise I'm going to assume you'd just like to think it's true.</p>
+<p>Google stories and contrast. Alternatively ask your favorite AI if this is true at a scale.</p>
+<p>Google stories and contrast. Alternatively ask your favorite AI if this is true at a scale.I just did. Gemini says "There is no formal linguistic study proving this exact headline pattern, though it is a widely debated observation among spaceflight enthusiasts, media critics, and Elon Musk himself."So, "widely debated." But proved? Doesn't look like it.</p>
+<p>Google stories and contrast. Alternatively ask your favorite AI if this is true at a scale.</p>
+<p>I just did. Gemini says "There is no formal linguistic study proving this exact headline pattern, though it is a widely debated observation among spaceflight enthusiasts, media critics, and Elon Musk himself."</p>
+<p>So, "widely debated." But proved? Doesn't look like it.</p>
+<p>That sounds like a wishy washy bullshit answer from AI. And lazy too. Maybe a better prompt is in order. Something along the lines of, "go read all the articles about Musk and SpaceX. Now analyze how many times Musk is blamed for failure and analyze how many times SpaceX is credited with success."</p>
+<p>The answer is not actually important enough to go though, but there is most certainly an observable bias in media to do precisely what is being suggested, aka, Musk gets all the blame but no credit because he stopp</p>
+<p>Starlink could do with some competition. They recently introduced limits on their unlimited service due to over-subscription in some areas.The Starship catch was interesting but people are rightly sceptical of Musk's bullshit these days, particularly his claimed cost to orbit. I predicted years ago that he is going to be a 21st Century version of Howard Hughes. I've seen nothing to refute that so far.
+Who is going to build the "catchers" on Mars when the fully staged, ready to be refueled Starships Land on Mars? I mean 2050 is getting closer and we need bodies on Mars, to reach the 1 Million people there by that time.
+
+We are right to look at this as a party trick like the "flying" car. 
+
+And since reusability is the apparent ultimate goal, I find it ironic that Musk is discardin</p>
+<p>Starlink could do with some competition. They recently introduced limits on their unlimited service due to over-subscription in some areas.</p>
+<p>The Starship catch was interesting but people are rightly sceptical of Musk's bullshit these days, particularly his claimed cost to orbit.</p>
+<p>I predicted years ago that he is going to be a 21st Century version of Howard Hughes. I've seen nothing to refute that so far.</p>
+<p>Who is going to build the "catchers" on Mars when the fully staged, ready to be refueled Starships Land on Mars? I mean 2050 is getting closer and we need bodies on Mars, to reach the 1 Million people there by that time.</p>
+<p>We are right to look at this as a party trick like the "flying" car.</p>
+<p>And since reusability is the apparent ultimate goal, I find it ironic that Musk is discardin</p>
+<p>Do you know what starship's primary payload was?</p>
+<p>Do you know what starship's primary payload was?Some think that it is going to Mars. In the real world, it is more for launching Starlink Sats.
+
+However, according to Spacex ,StarShip is:
+"A CITY ON MARS   
+Establishing a self-sufficient city on Mars will require upwards of one million people and millions of tonnes of cargo to be delivered to the Red planet. By launching more than 10 times per day to maximize transfer windows that open up every approximately 26 months, several thousand Starships will ultimately transfer crew and equipment to build a lasting</p>
+<p>Do you know what starship's primary payload was?</p>
+<p>Some think that it is going to Mars. In the real world, it is more for launching Starlink Sats.
+
+However, according to Spacex ,StarShip is:</p>
+<p>Establishing a self-sufficient city on Mars will require upwards of one million people and millions of tonnes of cargo to be delivered to the Red planet. By launching more than 10 times per day to maximize transfer windows that open up every approximately 26 months, several thousand Starships will ultimately transfer crew and equipment to build a lasting</p>
+<p>I find it ironic that Musk is discarding StarLink Sats like garbage every day.Why would they stay in orbit when they're obsolete? Starship has already gone through a few generations of birds, increasing aggregate bandwidth each time.Besides, I don't believe you understand how orbital mechanics work. You seem to be under the impression that refueling a bird in LEO orbit is just as easy or easier than GEO orbit.</p>
+<p>I find it ironic that Musk is discarding StarLink Sats like garbage every day.</p>
+<p>Why would they stay in orbit when they're obsolete? Starship has already gone through a few generations of birds, increasing aggregate bandwidth each time.</p>
+<p>Besides, I don't believe you understand how orbital mechanics work. You seem to be under the impression that refueling a bird in LEO orbit is just as easy or easier than GEO orbit.</p>
+<p>They recently introduced limits on their unlimited service due to over-subscription in some areas.</p>
+<p>I'm not sure more ground stations would help. There is only so much bandwidth available on the radio spectrum they have been allocated. It's not like they can just lay another cable. Bandwidth over fibre is increasing faster than it is over the air too, and Starlink terminals are a lot more expensive to replace than the PON transceivers that fibre broadband uses.</p>
+<p>When you have two or more satellites pointing to the same ground station or relying on satellite to satellite links, there is still room to expand within the same spectrum.</p>
+<p>Starlink could do with some competition. They recently introduced limits on their unlimited service due to over-subscription in some areas.While I realize you're pinning all of your hopes for a better future on China given their human rights record, do you have any idea what starship delivered to orbit?</p>
+<p>Starlink could do with some competition. They recently introduced limits on their unlimited service due to over-subscription in some areas.</p>
+<p>While I realize you're pinning all of your hopes for a better future on China given their human rights record, do you have any idea what starship delivered to orbit?</p>
+<p>The limit on the number of users is down to the spectrum they are allowed to use, mostly. More satellites won't increase the bandwidth available in a given area.</p>
+<p>Oh you sweet summer child...this is purely wishful thinking on you part. it's definitely not limited by spectrum, and even if it was, there's plenty more spectrum nobody is using that can be used. There's still a ways to go with antennas alone (which is yet another thing only SpaceX can do right now) that can improve the use of existing spectrum while making higher frequency (and higher bandwidth) practical. In fact, for each cell, the current aggregate bandwidth is being raised by 10x what it currently is</p>
+<p>Oh yeah, there's loads of free spectrum, it's not like that's a limited resource that companies pay billions for little slices of.</p>
+<p>American journalism is a bit like a world class team goes to the Olympics, and returns with a bronze medal for each member and the trainer and coaches ...</p>
+<p>Everyone in the world would party about that success, but in US of Awesomeness, they get blamed for not brining gold home.</p>
+<p>Just as if the other teams did not exist ... and weren't objectively better: in winning silver and gold.</p>
+<p>The entire point of journalism is to bring us the news in an unbiased way.That is ignorant nonsense. There are many potential purposes of journalism.I wish they would return to the ethics of their profession.You clearly know nothing about their profession, or ethics.</p>
+<p>The entire point of journalism is to bring us the news in an unbiased way.</p>
+<p>That is ignorant nonsense. There are many potential purposes of journalism.</p>
+<p>I wish they would return to the ethics of their profession.You clearly know nothing about their profession, or ethics.</p>
+<p>I wish they would return to the ethics of their profession.</p>
+<p>You clearly know nothing about their profession, or ethics.</p>
+<p>I don't trust the media because they won't call a rapist a rapist.</p>
+<p>What are you talking about, the same media writing about ULA writes about starship the same way. I checked, yes there is an Engadget article. Since this post is not about that, did Elons dealings get hurt, is that your deal?</p>
+<p>Everyone complaining about "media" can't fucking read. It's become a pattern. You all keep proving me right, and managing Elon's feelings makes it extra weird.</p>
+<p>Where is Bezos' back yard? We've got to de-orbit this crap somewhere.</p>
+<p>There's more than enough junk in orbit just so a few billionaires can add even more point values to their fortunes. At least that'll be 40 less for a while.Just so?  Yeah, that's the only value on a ubiquitous comms constellation.Well.Other than the tens of millions using it every day for their primary Internet access.  The many using it for communication in isolated dead zones where no terrestrial cell signal reaches.  The millions of third world schoolhouses now connected to the wider world.  The aircraft and ships that remain in contact.    Dozens of instances every quarter where it provides the primary communications in major disaster zones.Other than that</p>
+<p>There's more than enough junk in orbit just so a few billionaires can add even more point values to their fortunes. At least that'll be 40 less for a while.</p>
+<p>Just so?  Yeah, that's the only value on a ubiquitous comms constellation.</p>
+<p>Other than the tens of millions using it every day for their primary Internet access.  The many using it for communication in isolated dead zones where no terrestrial cell signal reaches.  The millions of third world schoolhouses now connected to the wider world.  The aircraft and ships that remain in contact.    Dozens of instances every quarter where it provides the primary communications in major disaster zones.</p>
+<p>Whether it happens sooner or later, either way future generations won't thank us for this as they'll somehow have to clear up the mess of whatever junk doesn't re-enter if they want any kind of orbital safety.</p>
+<p>The environmental risk is significant too. Thousands of satellites burning up in the upper atmosphere every year, and that's just SpaceX. Europe needs its own constellation, Chinese companies are building their own.</p>
+<p>European program is dead. French arrogance killed it. In early 2010s, one of Arianespace bosses was asked on camera what he thought of Musk's ideas, and he mocked them for being impossible. Literal laughter about it on camera. That was when Arianespace was in the lead in commercial launches.</p>
+<p>A decade later it only god EU and European government subsidized contracts any more, because no one else could afford those insane launch prices when SpaceX will cost less than half. The laughter has long stopped. The co</p>
+<p>Ariane Next is the reusable rocket programme, in cooperation with Japan. It's late and won't be particularly exciting, but the point has always been to ensure that the EU has independent launch capability.</p>
+<p>For building a Starlink style constellation they could use other commercial launch platforms if needed. It's defence related so cost isn't really the issue.</p>
+<p>It's late and won't be particularly exciting, but the point has always been to ensure that the EU has independent launch capability.Then that's a point poorly made for two reasons:- By the time it comes in a few years, it will already be obsolete and outclassed by two others that are both proven, and have a much higher per-launch cost than the older platform it was trying to copy.- It's not even being launched in the EU, rather it's being launched in a European/French colony. Feel free to try to argue that it's not a colony when it bears all of the hallmarks of one.</p>
+<p>It's late and won't be particularly exciting, but the point has always been to ensure that the EU has independent launch capability.</p>
+<p>Then that's a point poorly made for two reasons:</p>
+<p>- By the time it comes in a few years, it will already be obsolete and outclassed by two others that are both proven, and have a much higher per-launch cost than the older platform it was trying to copy.</p>
+<p>- It's not even being launched in the EU, rather it's being launched in a European/French colony. Feel free to try to argue that it's not a colony when it bears all of the hallmarks of one.</p>
+<p>No, the point is that they don't care if it costs more. They have to have it so that they aren't reliant on anyone else, if it comes down to it. And also because they want to launch super secret stuff sometimes.</p>
+<p>Launching from French territory is because it's more convenient, but I bet they have a backup plan if that becomes impossible. More fuel needed to get to the desired orbit, lower lift capacity, but not impossible.</p>
+<p>Commercial users will of course use cheaper options.</p>
+<p>No, the point is that they don't care if it costs more. They have to have it so that they aren't reliant on anyone else, if it comes down to it. And also because they want to launch super secret stuff sometimes.This is just as naive an argument as calling that French territory: They've already got another platform with a higher lift capacity. They're going to run into the same economic reality that caused NASA to abandon the idea.</p>
+<p>No, the point is that they don't care if it costs more. They have to have it so that they aren't reliant on anyone else, if it comes down to it. And also because they want to launch super secret stuff sometimes.</p>
+<p>This is just as naive an argument as calling that French territory: They've already got another platform with a higher lift capacity. They're going to run into the same economic reality that caused NASA to abandon the idea.</p>
+<p>With all of these satellites from multiple countries being sent up with seemingly no regard for making sure space junk doesn't get out of hand, are we just doomed to hit the Kessler syndrome sooner rather than later?A rogue state that can put a payload in orbit can make it happen much sooner. Bags of loose sand or little ball bearings in retrograde could make LEO a real mess for quite a while.</p>
+<p>With all of these satellites from multiple countries being sent up with seemingly no regard for making sure space junk doesn't get out of hand, are we just doomed to hit the Kessler syndrome sooner rather than later?</p>
+<p>A rogue state that can put a payload in orbit can make it happen much sooner. Bags of loose sand or little ball bearings in retrograde could make LEO a real mess for quite a while.</p>
+<p>That state would need to be more than "rogue." They'd need to be insane. Or fanatically anti-technology, in which case I can't imagine them succeeding at launching a rocket in the first place.</p>
+<p>Sorry to strain the metaphor, but screwing up LEO for everyone for decades, or even centuries or longer, is an "earth" you don't want to "scorch" no matter who you are.</p>
+<p>That state would need to be more than "rogue." They'd need to be insane. Or fanatically anti-technology, in which case I can't imagine them succeeding at launching a rocket in the first place.Sorry to strain the metaphor, but screwing up LEO for everyone for decades, or even centuries or longer, is an "earth" you don't want to "scorch" no matter who you are.If I might disagree, perhaps we should look at what happened when Saddam Hussain was losing. Torched his oil wells. It made no tactical sense at all. 
+Or Japan and Germany's end games in WW2. 
+
+So if say North Korea decided to pee in our Wheaties it wouldn't be all that  far fetched. And nations faced with losing wars sometimes do seemingly insane things. Even Russia right now has satellites of unknown purpose tailing other sats. At the same time, there are many in here who simply don't believe in a Kessler</p>
+<p>That state would need to be more than "rogue." They'd need to be insane. Or fanatically anti-technology, in which case I can't imagine them succeeding at launching a rocket in the first place.</p>
+<p>Sorry to strain the metaphor, but screwing up LEO for everyone for decades, or even centuries or longer, is an "earth" you don't want to "scorch" no matter who you are.</p>
+<p>If I might disagree, perhaps we should look at what happened when Saddam Hussain was losing. Torched his oil wells. It made no tactical sense at all.</p>
+<p>So if say North Korea decided to pee in our Wheaties it wouldn't be all that  far fetched. And nations faced with losing wars sometimes do seemingly insane things. Even Russia right now has satellites of unknown purpose tailing other sats. At the same time, there are many in here who simply don't believe in a Kessler</p>
+<p>I don't think you're considering the magnitude of a catastrophe Kessler Syndrome would be. It would ruin space as a resource for everyone, for up to centuries or possibly longer. That's a good deal more significant than Dear Leader Kim pissing in your Wheaties.</p>
+<p>A country that triggered Kessler Synrome would be dooming humanity, including themselves, to many, many generations of a pre-spacefaring existence. Saddam Hussein might very well have been insane, but not that insane. He certainly wasn't stupid.</p>
+<p>With all of these satellites from multiple countries being sent up with seemingly no regard for making sure space junk doesn't get out of hand, are we just doomed to hit the Kessler syndrome sooner rather than later?Who cares about the future? There's money to be made right now!</p>
+<p>With all of these satellites from multiple countries being sent up with seemingly no regard for making sure space junk doesn't get out of hand, are we just doomed to hit the Kessler syndrome sooner rather than later?</p>
+<p>Who cares about the future? There's money to be made right now!</p>
+<p>Seemingly is carrying a lot of personal weight here.</p>
+<p>Shift  to lower and more draggy orbits.  Building deliberately for deorbit operations.  Regulators reducing disposal timeline mandates.  Active deorbit of spent upper stages as well as second stage recovery. Upgrade traffic monitoring and avoidance systems and cooperation via info sharing and mutual agreements on maneuvers.  At least two companies now progressing to active orbital cleanup of cold war era leftovers.  More sats being fitted from the get go w</p>
+<p>Starlink satellites reenter and burn up at end of life.  Hopefully Amazon, too, but I haven't heard one way or the other.  China and Russia's constellations?  I don't have high expectations on that.</p>
+<p>It uses two BE-4 engines from Blue Origin. The same engine that on Blue's New Glenn rocket destroyed the rocket and LC36 launch facility in May. Max payload to LEO for Vulcan is 23 tons. For New Glenn, 50 tons. Vulcan is designed fully expendable. New Glenn first stage reusable.</p>
+<p>Things aren't going well for either launch provider. They can't launch at all now for months and then they have to prove their rockets can make orbit before they take paying cargo. Several proof of flight trips will be required for national security launches. Amazon doesn't have a route into orbit for their LEO Internet constellation before the FCC starts getting pushy. SpaceX will probably be forced to take some national security launches on their half-reusable Falcon rocket, but they want to retire it and have quit accepting commercial flights on it.</p>
+<p>Meanwhile SpaceX landed their 52m fully reusable space freighter back on the tower it launched from, just the day before, having lifted 26 of their latest satellites into a nominal orbit. 54 metric tons of payload, and the rocket back. SpaceX did ditch the booster in the gulf but that was an easily correctable flight profile issue (low fuel) not a vehicle functionality problem. Once orbital refuelling is proven Starship will be able to target most of the Solar system.</p>
+<p>If Blue gets a working rocket that would be amazing for US spaceflight. But neither company has any hope of being competitive on price or cadence with their partially or fully expendable rocket.</p>
+<p>It uses two BE-4 engines from Blue Origin.Wait! What? When did we stop using the Soviet-era RD-108s?</p>
+<p>It uses two BE-4 engines from Blue Origin.</p>
+<p>Wait! What? When did we stop using the Soviet-era RD-108s?</p>
+<p>Crimea takeover started the process, and sanctions during the current war finished it. Russians already stopped deliveries due to sanctions.</p>
+<p>Freedom of Access and Use: All countries have the right to freely explore and use orbit for peaceful purposes, provided their activities benefit all humankind.</p>
+<p>If we fill orbit with so much crap , we start to interfere with critical systems like weather and comms, that feels averse to all humankind?</p>
+<p>Starlink enabled drones, certainly are averse.</p>
+<p>"Starlink enabled drones, certainly are averse." Only if you are Russian, Comrade.</p>
+<p>What? Of course every commercial flight generates data for the people doing the launching and teaches them something. It's how we improve things.</p>
+<p>It's the same for everyone else. ULA, Roskosmos, Arianespace, etc.</p>
+<p>Heck, it's the same for basically all manufacturing. Errors happen in commercial production, we learn from them and we improve things based on those lessons. Do you think car manufacturers don't learn from problems that lead to recalls? Or drill manufacturers don't learn if one batch has a lot of fai</p>
+<p>OP's point is not that commercial flights don't teach you something, it's that while you can shrug off catastrophic failures with "At least we learned something," you can't do that with commercial flights.  Commercial flights have to work, or people won't pay you for them.</p>
+<p>Car manufacturers and drill manufacturers, being human, have failures.  And if they're good, they learn from them.  But if they're frequent and severe enough to cause substantial loss, they don't learn from them.  They go out of business.</p>
+<p>Of course you can. That's what damage claims, insurance, etc are for.</p>
+<p>Failure is a norm, and it's eliminated through experiencing it and learn from it. Ergo, mechanisms to address issues that rise from failures, including those mentioned above are well established.</p>
+<p>You appear to be under the impression that insurance is a) always available and b) available at a price you can pay.  Neither of those things are true if the insurer decides you're too big a risk.  And damage claims, if they run high enough, have forced companies into bankruptcy and will do so again.  And neither of the things will persuade customers that have decided you are too unreliable or too dangerous.  "The insurer always paid off" and "The court awarded full damages, which we paid" are not ringing e</p>
+<p>Yeah they're not supposed to be in the trial and error stage. They've only launched the Vulcan 5 times, and 3 of those times had significant anomalies or failures. This 5th flight failed in the second stage, so at least it wasn't another first stage main engine or SRB failure this time. The fact they have to strap on 6 SRBs is not a good look either. 2027's schedule is unrealistic and must be putting a lot of people on edge.</p>
+<p>ULA can't afford to launch rockets with no payloads and crash them the way SpaceX do</p>
+<p>That's what you get for having to write ten billion lines of code to triangulate.</p>
+<p>I think you're in the wrong discussion. What do a launch failure and spaceborne internet service have to do with a parallel-programming API?</p>
+<p>The Federal Communications Commission required Amazon Leo to have 1,600 satellites in orbit by July 31, 2026, but so far it only has around 390 in service.</p>
+<p>I think that the word "required" is working too hard here, since there's clearly no penalty to missing the requirement.</p>
+<p>The penalty is that they give the reserved frequency spectrum for these satellites to somebody else who will actually use it.</p>
+<p>The Federal Communications Commission required Amazon Leo to have 1,600 satellites in orbit by July 31, 2026, but so far it only has around 390 in service.I think that the word "required" is working too hard here, since there's clearly no penalty to missing the requirement.No, the FCC did in fact require Amazon to launch half of its fleet (about 1,616 satellites) by July 30 (not 31) of this year. The reason is so that Amazon couldn't just "hoard" the spectrum and orbital slots without using them.Amazon missed the deadline and petitioned the FCC for an extension. The FCC waived the deadline, but imposed requirements on Amazon: (1) they do not have priority on the spectrum until they meet the milestone of 50% deployment; and (2) the deadline for 100% deployment (3,232 satellite</p>
+<p>The Federal Communications Commission required Amazon Leo to have 1,600 satellites in orbit by July 31, 2026, but so far it only has around 390 in service.</p>
+<p>I think that the word "required" is working too hard here, since there's clearly no penalty to missing the requirement.</p>
+<p>No, the FCC did in fact require Amazon to launch half of its fleet (about 1,616 satellites) by July 30 (not 31) of this year. The reason is so that Amazon couldn't just "hoard" the spectrum and orbital slots without using them.</p>
+<p>Amazon missed the deadline and petitioned the FCC for an extension. The FCC waived the deadline, but imposed requirements on Amazon: (1) they do not have priority on the spectrum until they meet the milestone of 50% deployment; and (2) the deadline for 100% deployment (3,232 satellite</p>
+<p>Negative perigee for a satellite is normal until it reaches orbit. Perigee is measured from the earth's surface, so a negative value just means it will re-enter and crash without additional boost.</p>
+<p>But yeah lol, "express elevator to hell."</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Purism Announces 'Librem 5 v2' Linux Phone with RISC-V SoC</p>
+<p>AI-Generated Books Confront Publishing Industry With Big Questions</p>
+<p>Steve Jobs said two years ago that X is brain-damaged and it will be
+gone in two years.  He was half right.
+		-- Dennis Ritchie</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://transactional.blog/talk/please-implement-a-quorum-database" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://science.slashdot.org/story/26/11/16/0550239/ula-vulcan-rocket-failure-destroys-40-amazon-leo-satellites?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

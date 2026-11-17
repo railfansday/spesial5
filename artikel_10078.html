@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</title>
+    <title>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10078.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,69 +15,57 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
+        <h1>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/blog-banner.2e16d0ba.fill-1200x600.png" alt="Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/blog-banner.2e16d0ba.fill-1200x600.png" alt="Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>3 months ago, we started a revival of Papers with Code (see also the announcement tweet). Its goal is to make open AI research accessible and digestible, so that people can easily find the artifacts related to a paper, find state-of-the-art (SOTA) across the various domains of AI, share interesting research and build on top of each other's work. In other words, its goal is to power the wave of research that leads to the next Transformer.</p>
-<p>Of course, making AI research accessible requires a powerful search engine, so that humans and agents can quickly find relevant and related work, either through the website or the pwc search CLI command, which agents can use via the Skill.</p>
-<p>It's important to note that searching for research is not quite the same as searching for regular text. A useful paper search engine should find an exact title or arXiv identifier, but it should also understand a query such as “small language models for code generation” even when those words do not appear together in a paper. It needs to recognize that “the original BERT paper” is a navigational request, tolerate an incomplete title or typos, and still respond quickly when a model service is cold or temporarily unavailable.</p>
-<p>For Papers with Code, we built this as a hybrid search system. This is also based on our prior experience at ML6, where we developed RAG-based systems for clients. It turned out that hybrid search typically outperforms keyword- and vector-based search systems, as it combines the best of both worlds (see also this blog for more info). Keyword search finds exact mentions, whereas vector search finds more fuzzy, semantically similar terms. Note that rerankers (also called cross-encoders) can further improve the results, although they also come with additional overhead and latency.</p>
-<p>Papers with Code relies on a PostgreSQL database, hence its full-text search capabilities provide a fast lexical baseline. For dense embeddings, pgvector is used to add semantic recall, and the reciprocal rank fusion (RRF) algorithm combines the two. Three Hugging Face services are used for the dense embeddings:</p>
-<p>Today, the system maintains embeddings for more than 110,000 current papers sourced from arXiv and Daily Papers. This post explains the architecture, the design decisions behind it, and the lessons we learned while taking it to production.</p>
-<p>We deliberately split search into an offline corpus build and an online search service:</p>
-<p>The expensive, throughput-oriented work runs as Jobs. Durable artifacts live in a Bucket. Only the small query-embedding step sits on the request path, behind a protected Inference Endpoint, to power the online search. If that endpoint is cold, busy, or unhealthy, search immediately falls back to full-text retrieval. This separation makes the system both powerful and fast.</p>
-<p>Embedding pipelines often fail in subtle ways: a model revision changes, query and document prompts are mixed up, vectors are truncated differently, or an updated abstract no longer matches its stored vector.</p>
-<p>We avoid this by treating the embedding format as a versioned API. Every paper is encoded as:</p>
-<p>Our production generation uses Qwen/Qwen3-Embedding-0.6B, pinned to an exact revision, with 256-dimensional L2-normalized vectors. We selected the model with help from the MTEB leaderboard, the go-to benchmark for comparing embedding models. Note that newer embedding models like Qwen3 allow for 2 new features:</p>
-<p>This contract follows an embedding from export, through GPU inference, into PostgreSQL, and finally into online retrieval.</p>
-<p>Full-corpus embedding is a classic batch workload. It needs a GPU for a relatively short period, benefits from high throughput, and should not consume resources between runs. Hugging Face Jobs fits that shape well: a Job is defined by a command, a hardware flavor, and optionally a Docker image, and can run uv scripts with their dependencies declared inline.</p>
-<p>Our corpus build starts by exporting the latest version of every paper from a repeatable-read PostgreSQL snapshot. The exporter streams rows rather than loading the catalog into memory, writes bounded JSONL shards, and creates a manifest containing row counts and SHA-256 checksums.</p>
-<p>We sync that immutable run directory to a private Storage Bucket and mount the Bucket directly (using hf-mount) into an l4x1 Job (an NVIDIA L4 GPU, which has 24GB of VRAM). From the worker's perspective it is simply a filesystem:</p>
-<p>Each completed shard has its own marker, so a restarted Job can skip verified work. This is useful for a large corpus: retrying should just resume work rather than overwriting existing embeddings.</p>
-<p>In our 5,000-paper pilot, the Qwen Job encoded about 75 papers per second at 1024 dimensions on an L4 GPU. The same pass could be deterministically materialized at 512 and 256 dimensions, so we could compare the storage and retrieval trade-offs without paying for more inference.</p>
-<p>Storage Buckets are mutable, S3-like object storage on the Hub, optimized for AI workloads. They can be accessed through hf://buckets/... paths and mounted read-write in Jobs without building a separate storage integration.</p>
-<p>For us, the Bucket is more than a place to put vectors. It is the boundary between three systems with different lifecycles:</p>
-<p>We organize artifacts under immutable run prefixes:</p>
-<p>Buckets themselves are intentionally mutable, so immutability is an application-level rule: a run ID is never overwritten, and every artifact is covered by a manifest and checksum.</p>
-<p>Only after the importer rechecks schemas, checksums, dimensions, normalization, unique paper IDs, and current content hashes do we load the vectors into PostgreSQL. We then build a separate HNSW index for the new generation and atomically mark it active only when every eligible current paper is covered (HNSW is the graph-based algorithm that enables fast vector search).</p>
-<p>Batch embeddings solve the document side of retrieval. A user query still needs to be embedded at request time using the same model contract.</p>
-<p>We deploy the pinned model as an authenticated Inference Endpoint backed by Text Embeddings Inference (TEI). The endpoint accepts the query text and returns a normalized 256-dimensional vector using the model's query prompt. Note that one could also leverage vLLM or SGLang here.</p>
-<p>The API then performs a cosine-distance search over the active pgvector generation:</p>
-<p>The HNSW index keeps this lookup fast. On our 5,000-paper pilot, the 256-dimensional Qwen index achieved 0.9955 Recall@20 against exact search, with 1.31 ms p50 and 2.21 ms p95 HNSW lookup latency. Its table and index used about 27% of the storage of the 1024-dimensional version while retaining essentially the same ANN recall in that test.</p>
-<p>The Endpoint is configured with a maximum of one replica and can scale to zero when idle. That is a useful cost lever, as this means you're not paying when there's no usage. However, this also means cold starts must be part of the application design rather than treated as an exceptional event, as it takes some time for the endpoint to spin up and serve traffic.</p>
-<p>Our query client therefore has deliberately strict behavior:</p>
-<p>If the endpoint is scaling up, times out, returns a malformed vector, or has no concurrency available, we skip the semantic branch immediately. Users still receive lexical results instead of waiting for an unreliable dependency.</p>
-<p>Inference Endpoints works really reliably, and includes a nice dashboard so you can quickly see key analytics.</p>
-<p>For every query, the lexical branch retrieves up to 50 candidates using weighted PostgreSQL full-text search. The semantic branch retrieves up to 50 candidates from pgvector.</p>
-<p>We combine their ranks using weighted reciprocal rank fusion (RRF):</p>
-<p>score(d)=∑r ∈ {lexical, semantic}wrk+rankr(d)
-\text{score}(d) = \sum_{r \,\in\, \{\text{lexical},\, \text{semantic}\}} \frac{w_r}{k + \text{rank}_r(d)}
-score(d)=r∈{lexical,semantic}∑​k+rankr​(d)wr​​</p>
-<p>RRF is simple and robust, because it combines ranks rather than scores from two systems with different scales. Basically, if a paper is ranked high both by the lexical branch and the semantic branch, it has a higher chance of being ranked high by the hybrid search. We currently use equal branch weights and (k=60) (k is the "rank constant", a hyperparameter of the RRF algorithm).</p>
-<p>Dense retrieval improves recall for conceptual queries. Full-text retrieval remains excellent for exact terminology, identifiers, and rare names. We also preserve deterministic identity behavior on top of the fused ranking:</p>
-<p>Note: hybrid search isn't always the best option, it is recommended to start with keyword search as a cheap and fast baseline, and only adding semantic and/or hybrid search when it turns out those give a reasonable boost in retrieval quality. One could further improve the search by adding a reranker after keyword/semantic/hybrid retrieval, using a model like Qwen3-Reranker.</p>
-<p>The large initial corpus is embedded with Jobs, but Papers with Code changes continuously. New papers arrive, abstracts are corrected, and new arXiv versions become current.</p>
-<p>Launching a GPU Job for a handful of changed rows would add unnecessary startup and orchestration overhead. Instead, an hourly incremental process selects missing or content-changed papers and sends a bounded delta to the same TEI Endpoint, this time with the document prompt.</p>
-<p>Each run processes at most 500 papers in batches of 16. Before an embedding is written, the source row is locked and its content hash is checked again. If a paper changed during inference, that vector is discarded and picked up by the next run.</p>
-<p>This gives us a useful division of labor:</p>
-<p>The hourly path keeps the active index close to the live catalog without turning an online endpoint into an unbounded batch processor.</p>
-<p>The same document embeddings also power related-paper recommendations on each paper page.</p>
-<p>Because the source paper already has a stored vector, related-paper retrieval requires no model call at request time. It is a single nearest-neighbor query over the active generation. If a vector is temporarily missing, the application can use a previous arXiv version or fill results from the existing task- and citation-based fallback. We fetch citation data through the Semantic Scholar API and also built s2-cli, a command-line interface for querying its citation graph. The latter is used by the agent at https://paperswithcode.co/chat.</p>
-<p>Corpus embedding and query embedding use the same model, but they are different infrastructure problems. Jobs optimize for throughput and bounded cost; Inference Endpoints optimize for availability and request latency.</p>
-<p>Buckets provide an explicit handoff between compute and production. Checksummed artifacts create a reviewable boundary before data enters the production index.</p>
-<p>The revision, dimension, prompt, normalization, and input formatter all affect retrieval. Store them together and validate them everywhere.</p>
-<p>Scale-to-zero is valuable when traffic is intermittent, but only if the product has a fast fallback. Hybrid search gave us that fallback naturally: lexical search is always useful on its own.</p>
-<p>Matryoshka embeddings let us evaluate quality, memory, index size, and latency as one trade-off. In our pilot, 256 dimensions preserved ANN recall while materially shrinking storage compared with 1024 dimensions.</p>
-<p>New generations are imported beside the current one, indexed independently, checked for complete and current coverage, and then activated atomically. Rollback is a configuration change, not an emergency recomputation.</p>
-<p>Feel free to try out the search at https://paperswithcode.co or the chat interface at https://paperswithcode.co/chat, and let us know any feedback!</p>
-<p>The lexical fallback for scale-to-zero and the separate index activation boundary are useful production details. One question for the hybrid setup: do you measure relevance and latency separately when dense search is cold versus warm, so fallback quality is visible rather than hidden in an overall average? We examined lexical-first retrieval and semantic reranking on a smaller workload here: https://huggingface.co/blog/ironbcc/bm25-seb-rag-retrieval (I'm an author). That benchmark doesn't establish behavior on a paper-scale corpus.</p>
+                <p>As highlighted in our announcement post, we said that each new model generation lets agents do more on their own. However, the more an agent can reach, the more one bad decision can cost. You've probably seen a few of these in the news lately:</p>
+<p>Because these events produced no system crashes or logging errors, the teams behind these agents had no way to know until the damage occurred.</p>
+<p>Agent Anomaly Detection on the Gemini Platform watches for exactly these issues. It reads the traces and logs your agents already produce and flags sessions where an agent goes outside the job it was built for.</p>
+<p>Before you point it at your production agents, you'll probably want to see it work in a test environment. In this hands-on guide, we’ll walk you step-by-step through setting up Agent Anomaly Detection and using it to capture your very first agent behavior anomaly. By the end of this post, you'll have:</p>
+<p>To get started, open the companion notebook Detect anomalous agent behavior with Agent Anomaly Detection in a separate tab (available on Google Colab or GitHub). As you read through this guide, it will prompt you when to execute notebook cells or interact directly with the Google Cloud console.</p>
+<p>If a step can be done in the UI console, this post shows that path, with screenshots. The notebook does the same thing through the Agent Anomaly Detection API, so by the end you'll also have the code to automate enablement and pull findings into your own tooling.</p>
+<p>2. A place to run the notebook: Google Colab, Colab Enterprise, or a local Jupyter environment. The notebook installs the latest ADK for Python itself. Agent Anomaly Detection is compatible with agents running ADK 1.2+, though ADK 2.0+ is preferred for best results.</p>
+<p>3. A Cloud Logging bucket and an Observability dataset in either US or EU multi-region. (Both resources need to be in the same multi-region)</p>
+<p>4. In the notebook: run the Get started cells. They install the packages, authenticate you, take your project ID, and turn on the four APIs that Agent Anomaly Detection needs.</p>
+<p>First, let’s create a Customer Support Agent called “anomaly-detection-refund-demo”. Our example agent is responsible for helping customers check their order history and request refunds. However, it has a deliberate flaw: the agent has access to an overprivileged fetch_records tool which can read any table, including a `payroll` table containing sensitive employee data. All three parts of the lethal trifecta are here: the agent can read private data, it takes input from people it can't vet, and it sends what it finds back in its reply. Tool permissions and guardrails should stop most of this, but they only block what someone thought to write down. Agent Anomaly Detection flags the sessions that get past them, usually within a few minutes.</p>
+<p>The notebook has the full agent. The part that matters is the tool, which never checks the table name against an allowlist:</p>
+<p>All data is canned and in memory, so nothing real is read or refunded. This tool is intended to be over-permissive to illustrate AAD functionality. Don't copy this tool into production.</p>
+<p>The Step 1 cells deploy the agent to Agent Runtime. Two details in the deploy cell are what make the agent visible to Agent Anomaly Detection. First, it sets three environment variables on the deployment, which turn on telemetry and write prompt and response content to Cloud Logging, where detection looks for it:</p>
+<p>Second, it sends the agent one test message right after deploying. Agent Anomaly Detection discovers agents through their telemetry, so an agent that has never served a request does not appear under Monitored agents.</p>
+<p>The deployment takes about 5 to 10 minutes and prints the agent's resource name and the reply to the test message:</p>
+<p>For more information on how to create and deploy an agent, take a look at these guides: Creating an Agent and Deploying an Agent.</p>
+<p>In the console: The sample code we provide already enables logging and telemetry when deploying the agent. Verify this by navigating to the Agent Deployments page (Gemini Platform > Agents > Deployments) and clicking “Configure” next to the recently created anomaly-detection-refund-demo agent to open the Observability Service Configuration.</p>
+<p>Great! You now have a working agent that is successfully configured and ready to be monitored by Agent Anomaly Detection.</p>
+<p>Now let’s set up Agent Anomaly Detection to monitor your agent’s traffic.</p>
+<p>In the console: navigate to the Agent Platform > Agents > Audit page and click “Enable”.</p>
+<p>Choose your agent’s Logging Bucket and Observability Dataset, making sure they are in the same region (us-multi-region or eu-multi-region) enable “Automatically monitor new agents”, then click “Agree and continue” and Agent Anomaly Detection will be set up in your project.</p>
+<p>If you'd rather do this in code, the first Step 2 cell in the notebook creates the same configuration through the API, using the default _Default bucket and _Trace dataset with automatic monitoring on.</p>
+<p>Setup takes around 30 minutes. Once it’s done loading you’re ready to proceed to the next step! Because you enabled automatic monitoring and the agent already served a request in Step 1, setup picks it up right away. Check that it shows as Active under Settings > Monitored agents before you continue; sessions that start earlier aren't analyzed.</p>
+<p>Now that the agent is being monitored, let's see Agent Anomaly Detection in action! The Step 3 cells send one normal conversation and one anomalous conversation, each in its own session. The normal conversation is a customer listing their orders and getting a refund for a broken lamp. The anomalous conversation simulates a user who finds the fetch_records flaw and uses it to pull payroll data:</p>
+<p>Notice that the user brings almost nothing: a customer ID and one first name. Asking for a table that doesn't exist makes the agent reveal the existing tables, which is how they learn there is a payroll table within reach.</p>
+<p>The notebook prints both transcripts with the agent's tool calls, and the session IDs you'll look up next.</p>
+<p>Anomaly Detection will scan the sessions within 5 minutes. In the landing page, you should see that a couple sessions have been processed and one anomalous session detected.</p>
+<p>Let’s take a look at the anomalous session in more detail. Click the session id to open the detail view or paste the anomalous session id into the search bar.</p>
+<p>In our run, the top finding was Tool misuse at High severity, with 95% probability. Your detectors and severities may differ, because the models behind the analysis are non-deterministic. The recommended solution is to restrict the `fetch_records` tool to read from specific tables.</p>
+<p>Click an invocation in the Session pane to see its analysis in Details. Each invocation is Medium on its own, but together they make the session High.</p>
+<p>To stay informed without watching the console, connect Agent Anomaly Detection to your existing alerting workflows.</p>
+<p>In Cloud Monitoring: Agent Anomaly Detection publishes two metrics: Detected events, which counts anomalies by detector and severity, and Monitored agents, which tracks your detection coverage. To view these metrics, click the arrow next to "View in Cloud Monitoring" on the Anomaly detection page and select a metric to open it in Metrics Explorer.</p>
+<p>To be notified of new anomalies, go to Monitoring > Alerting, click "Create policy", and select the Detected events metric. Leave the filters empty so the alert covers every anomaly, including the demo's, then set the rolling window to 5 minutes with the delta function, and set the threshold to above 0. Once you know what's normal for your agents, add a severity filter (for example High or Critical) so you're only alerted on the findings that matter. A metric-absence policy on Monitored agents will also alert you if monitoring stops.</p>
+<p>In Security Command Center: Each anomaly is also published as an AGENT_SESSION_ANOMALY finding in the Security Command Center if it is enabled for your organization. Click "View in Security Command Center" to triage these findings alongside your other threats, use "Set security marks" to tag and track them, and set up notifications for high-severity findings.</p>
+<p>You’ve now seen Agent Anomaly Detection in action: it successfully flagged the session where our agent went off-script to read payroll records, while evaluating the benign session, and correctly not flagging an anomaly. The finding told you why it was flagged and how to fix the underlying issue, and alerts in Cloud Monitoring and Security Command Center ensure you are notified of future anomalies.</p>
+<p>When you're ready to secure your own production workloads, follow this rollout plan:</p>
+<p>To review the complete list of prerequisites or to request Private Preview access for your project, head over to the Agent Anomaly Detection documentation.</p>
+<p>TPU Model Design Considerations and Optimization Guide</p>
+<p>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</p>
+<p>Agents are sessions, not requests: size GKE node pools for AI agent sessions</p>
+<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/pwc-search" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/securing-your-agents-a-hands-on-guide-to-agent-anomaly-detection/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

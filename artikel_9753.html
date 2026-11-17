@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>OffiAI</title>
+    <title>Telegram Bots and Mini Apps on Localhost: setWebhook, the Secret-Token Header, and the New Origin Check</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9753.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,76 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>OffiAI</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-16</p>
+        <h1>Telegram Bots and Mini Apps on Localhost: setWebhook, the Secret-Token Header, and the New Origin Check</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fzd9njrqzywxs3u2duu1l.png" alt="Telegram Bots and Mini Apps on Localhost: setWebhook, the Secret-Token Header, and the New Origin Check" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fzd9njrqzywxs3u2duu1l.png" alt="Telegram Bots and Mini Apps on Localhost: setWebhook, the Secret-Token Header, and the New Origin Check" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Office, with its last two letters swapped for AI.
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/offiai?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1299547?app_id=339">Link</a>
-          </p></p>
+                <p>Posted on Nov 17
+•
+Originally published at instatunnel.my 
+•
+
+
+
+
+Fully Autonomous</p>
+<p>Telegram can only deliver updates to a public HTTPS address, and localhost is not one. Since July 20, 2026, Mini Apps have a second constraint. Telegram now blocks Mini App methods when they are called from a different origin than the Mini App’s own domain. Together, these two facts make your tunnel URL a first-class piece of configuration, not a throwaway detail.</p>
+<p>This guide covers developing a Telegram bot and Mini App against a local machine:</p>
+<p>Telegram released Bot API 10.2 on July 14, 2026. According to the official changelog, that release also hardened Mini App security by disallowing Mini App methods from origins different from the original Mini App domain. The protection was enabled automatically for all Mini Apps on July 20, 2026. Bots can opt out through the BotFather Mini App. Opting out means taking responsibility for ensuring the Mini App has no links to untrusted sites. Telegram’s BotNews channel announced the change as a warning: external websites opened from links inside a Mini App can no longer use Mini App methods by default.</p>
+<p>Other 10.2 additions are worth knowing about, because they show up in your webhook payloads:</p>
+<p>None of the 10.2–10.4 announcements change how setWebhook or the secret-token header work. The Update object keeps gaining top-level fields, which is why Step 3 matters.</p>
+<p>A webhook is an outgoing HTTPS POST from Telegram’s servers to your URL. Telegram cannot reach http://localhost:3000, so you need a public HTTPS endpoint that forwards to your machine. Telegram’s documented requirements:</p>
+<p>A tunnel satisfies all of this at once. It gives you a public hostname with a valid certificate on port 443 and forwards traffic to a local port such as 3000.</p>
+<p>There is one exception for the bot side only. If you run the open-source telegram-bot-api server locally, Telegram documents that your bot can use an HTTP webhook URL, any local IP address and any port. That removes the tunnel for webhook delivery. It does not make a Mini App reachable from a phone, because the Telegram client still has to load the Mini App URL.</p>
+<p>Each bot has exactly one webhook URL. Calling setWebhook again replaces it. Use a separate development bot, created through BotFather, so your experiments never redirect production traffic.</p>
+<p>Start your local server, start your tunnel, then register the public URL:</p>
+<p>An allowed_updates change does not apply to updates that were created before the call, so a few unwanted updates can still arrive.</p>
+<p>To return to polling, call deleteWebhook.</p>
+<p>If you pass secret_token to setWebhook, Telegram includes it in every webhook request in the X-Telegram-Bot-Api-Secret-Token header. The token must be 1 to 256 characters, using only A-Z, a-z, 0-9, _ and -.</p>
+<p>This matters because your tunnel URL is public. Without a secret, anyone who discovers the URL can POST forged updates, and nothing in the request identifies Telegram. If you set no token, Telegram sends no header at all.</p>
+<p>The mechanism is a shared secret, not a signature. Nothing is computed over the body, so a leaked secret lets an attacker forge requests until you rotate it. Rotation is simple: call setWebhook again with a new value. Hookdeck’s guide also lists Telegram’s published source ranges (149.154.160.0/20 and 91.108.4.0/22) as an optional second layer, and notes that they may change.</p>
+<p>Telegram does not publish a response timeout, so don’t let delivery depend on slow work. Persist or queue the update first, return 200, then process. If you return 200 and then crash, the update is gone, so store it before you acknowledge.</p>
+<p>Telegram treats any response other than a 2xx as a failed delivery. It repeats the request and gives up after what it calls a “reasonable amount of attempts”, without publishing a schedule. That has a sharp consequence for strict parsers. If your handler rejects an update because it contains a field you do not recognize, Telegram keeps resending it, and your logs fill with the same failure.</p>
+<p>An Update contains update_id plus at most one other field, and the set of those fields keeps growing: managed_bot, guest_message, subscription, stopped_message_generation and, in 10.4, widget queries. A decoder that fails on unexpected keys can start returning errors even though nothing is wrong with your bot. Practical rules:</p>
+<p>Use allowed_updates as a second layer. Subscribing only to the types you handle keeps unrelated events from arriving at all.</p>
+<p>A Mini App is a web page that runs inside Telegram’s in-app browser and talks to the client through window.Telegram.WebApp. In development you point it at your tunnel URL:</p>
+<p>Keep the hostname identical everywhere it appears. The origin check below makes that more than tidiness.</p>
+<p>Production Mini Apps are served over HTTPS, which any tunnel provides. Telegram’s separate test environment is the exception. It uses its own account and its own bot, and its docs allow plain HTTP Mini App links there. You call it through https://api.telegram.org/bot<token>/test/METHOD_NAME.</p>
+<p>Two framework gotchas come up repeatedly:</p>
+<p>To debug inside the Telegram client, Telegram documents these options:</p>
+<p>When the Mini App opens, window.Telegram.WebApp.initData contains a signed query string. It is empty if the Mini App was launched from a keyboard button or from inline mode. Never trust initDataUnsafe or any user object on the client. Send the raw string to your backend and verify it with Telegram’s documented algorithm:</p>
+<p>Telegram only says to check auth_date to avoid outdated data. The one-hour window is your choice. If a third party needs to validate the data without your bot token, Telegram provides an Ed25519 signature flow that uses your bot’s numeric ID and Telegram’s public keys.</p>
+<p>Before July 20, 2026, any page opened inside your Mini App’s webview could call Telegram.WebApp.* methods such as close(), expand(), the main button or sendData(). Now those calls are allowed only from the Mini App’s own domain. Telegram’s changelog calls it the “original Mini App domain”. Third-party documentation describes it as the domain registered in BotFather.</p>
+<p>What this means in practice, per Leadgram’s write-up of the change:</p>
+<p>The rule is about hostnames. These consequences follow from it:</p>
+<p>A debugging checklist for when a Mini App method suddenly stops working in development:</p>
+<p>If a foreign page only calls close() or openLink(), Leadgram’s suggested fix is replacing the call with an ordinary https://t.me/... link or a redirect.</p>
+<p>The BotFather Mini App lets you disable the protection, but Telegram’s wording is a warning: by doing so you take responsibility for ensuring the Mini App links to no untrusted sites. Opting out restores the old behavior, where any page inside the webview can drive the app, which is exactly the hole Telegram closed. Opting out to make a development setup work is the wrong fix when the real problem is an origin mismatch. Fix the mismatch, keep the protection on, and reserve opt-out for cases where you fully control every page the Mini App can navigate to.</p>
+<p>Every piece of Telegram configuration in this article is keyed to a URL: the webhook endpoint, the Mini App domain, and the origin Telegram compares against when a page calls a Mini App method. When the URL changes on every restart, you re-register all three each time. One forgotten update produces confusing symptoms, such as silent webhooks or Mini App methods that worked yesterday failing today.</p>
+<p>What the documented free options give you:</p>
+<p>Mind the ngrok interstitial. On the free tier, ngrok shows an interstitial page in front of all HTML browser traffic. ngrok says this does not affect API or programmatic access, so webhook deliveries should be unaffected. A Mini App page loaded in Telegram’s webview is HTML browser traffic, so users may see the warning page. ngrok documents two ways to remove it: upgrade to any paid plan, or have the client send a skip header or a non-standard User-Agent. The header route is awkward for a page that Telegram’s webview loads.</p>
+<p>Other tunneling services offer stable subdomains on free or paid tiers. Check your provider’s current terms for subdomain persistence, session length and browser-warning pages before you depend on them.</p>
+<p>Which ports can Telegram send webhooks to?
+443, 80, 88 and 8443. A tunnel exposes port 443 and forwards to whatever local port you use.</p>
+<p>What happens if my webhook returns an error?
+Telegram treats non-2xx responses as failures and retries, giving up after “a reasonable amount of attempts”. An endpoint that errors on unexpected input can cause repeated deliveries.</p>
+<p>Can I skip the tunnel and use getUpdates?
+For bot logic, yes, as long as no webhook is set. A Mini App still needs a URL the Telegram client can load, so it needs a public HTTPS hostname. The exceptions are the test environment and a local Bot API server, which only covers the bot side.</p>
+<p>Is the secret token mandatory?
+No, but without it nothing in a request identifies Telegram, and anyone who finds your tunnel URL can send forged updates.</p>
+<p>Is Bot API 10.2 the latest version?
+No. Bot API 10.3 (August 24, 2026) and 10.4 (November 9, 2026) have been released since. The webhook and Mini App origin behavior described here still applies.</p>
+<p>Originally published at https://instatunnel.my/blog/telegram-bots-and-mini-apps-on-localhost-setwebhook-the-secret-token-header-and-the-new-origin-check</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/offiai" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/instatunnel/telegram-bots-and-mini-apps-on-localhost-setwebhook-the-secret-token-header-and-the-new-origin-p8g" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
