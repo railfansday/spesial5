@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Apple Slab Pie with Maple Icing</title>
+    <title>Architecting for Zero-Server Architecture: How I Handled Geofencing Without Tracking</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9541.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,20 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Apple Slab Pie with Maple Icing</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-17</p>
+        <h1>Architecting for Zero-Server Architecture: How I Handled Geofencing Without Tracking</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F209cxyfosf8fbus6gqwk.png" alt="Architecting for Zero-Server Architecture: How I Handled Geofencing Without Tracking" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F209cxyfosf8fbus6gqwk.png" alt="Architecting for Zero-Server Architecture: How I Handled Geofencing Without Tracking" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><h2><a href="https://sallysbakingaddiction.com/apple-slab-pie-maple-icing/">Apple Slab Pie with Maple Icing</a></h2>
-<div style="text-align: center;"><img alt="apple slab pie sliced into squares and topped with a drizzle of maple icing." class="attachment-post-thumbnail size-post-thumbnail wp-image-168761 wp-post-image" height="1800" src="https://sallysbakingaddiction.com/wp-content/uploads/2016/07/apple-slab-pie-butter-crust.jpg" width="1200" /></div>
-<p>With a homemade buttery double crust, spiced apple filling, and a drizzle of maple icing, apple slab pie is always a crowd pleaser. Follow my step-by-step photos below for slab pie success!</p>
-<p>The post <a href="https://sallysbakingaddiction.com/apple-slab-pie-maple-icing/">Apple Slab Pie with Maple Icing</a> appeared first on <a href="https://sallysbakingaddiction.com">Sally&#039;s Baking</a>.</p></p>
+                <p>It happened during a Friday prayer service. The hall was perfectly still, the kind of silence that feels heavy and respectful. Just as the imam began the sermon, my pocket erupted. It wasn't just a ringtone; it was a high-pitched, upbeat pop song that seemed to echo against every brick in the building. I fumbled for my phone, my face burning with the heat of a thousand stares, trying to silence the noise. I had forgotten to flip that tiny side-switch again. That moment of absolute, crushing embarrassment was the catalyst for Muffle.</p>
+<p>We live in an era of hyper-connectivity, yet our devices remain remarkably unintelligent when it comes to context. We attend meetings, lectures, and religious services where silence is expected, yet we rely on human memory to toggle sound profiles. Human memory is fallible. We get distracted, we rush into rooms, or we simply forget. The existing solutions were either bloated with data-harvesting features or required complex cloud setups that felt like overkill for a simple task.</p>
+<p>To achieve this without a server, I leaned heavily into the Android GeofencingClient API. Instead of tracking the user's movement in real-time—which drains battery and necessitates a backend for data processing—I define a radius (a geofence) and hand that information over to the system’s location services. The operating system handles the heavy lifting. When the device enters or exits the defined perimeter, the OS sends an intent to my app’s BroadcastReceiver.</p>
+<p>This architecture is fundamentally different from a tracking app. My app doesn't 'watch' where you are; the Android kernel notifies the app only when a state change occurs at a specific boundary. This allows for zero-server interaction. All the logic for triggering a Silent or Vibrate state stays local. Here is the simplified implementation of how I register these triggers within my AlarmManager and GeofencingClient setup:</p>
+<p>kotlin
+val geofencingRequest = GeofencingRequest.Builder().apply {
+    addGeofence(geofence)
+    setInitialTrigger(GeofencingRequest.INITIAL_TRIGGER_ENTER)
+}.build()</p>
+<p>geofencingClient.addGeofences(geofencingRequest, geofencePendingIntent)?.run {
+    addOnSuccessListener { /* Logged locally to activity log / }
+    addOnFailureListener { / Handle registration error */ }
+}</p>
+<p>By using PendingIntent, I keep the app process lean. The app doesn't need to be running in the foreground to listen for these transitions. The AudioManager then executes the requested volume change based on the internal Routine priority system. This approach also sidesteps the complexity of maintaining a backend. If the app is uninstalled, no data is orphaned on a server because none ever existed there to begin with. It is a closed-loop system that relies entirely on hardware-level hooks provided by the Android SDK.</p>
+<p>I initially assumed that geofencing would be a 'set it and forget it' feature. I was wrong. The biggest surprise was how aggressively Android’s power management (Doze Mode) interacts with location services. In my early tests, I found that if the phone was stationary for too long, the location updates became inconsistent. The system would throttle location checks to save battery, meaning the geofence wouldn't trigger until the user had been inside the location for several minutes.</p>
+<p>I had to pivot to using a ForegroundService with a persistent notification to ensure the system treated Muffle as a high-priority task. This was an honest trade-off: in exchange for absolute reliability in silencing the phone, I had to accept that the user would see a persistent icon in the status bar. I also learned that GPS signals inside large concrete buildings (like mosques or office blocks) suffer from multi-path interference. Relying solely on GPS was not enough. I had to implement a fallback mechanism where the app cross-references the GPS trigger with an internal TimeSchedule buffer to ensure that even if the geofence signal flickers, the routine remains active until the user explicitly leaves the area or the schedule ends. If I were starting over, I would have integrated a Wi-Fi-based trigger much earlier, as it provides a much more stable boundary indoors compared to raw GPS.</p>
+<p>Focus on how the hardware can do the work for you. The Android framework is packed with powerful, underutilized services that are designed to handle background tasks gracefully. When you build with these primitives, your app becomes faster, more reliable, and inherently more private. Muffle was my experiment in pushing these boundaries, and it has taught me that the best software is often the kind that is invisible to the user until it saves them from an awkward moment. You can see how I implemented these principles at https://play.google.com/store/apps/details?id=com.muffle.app.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://sallysbakingaddiction.com/apple-slab-pie-maple-icing/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/haseebthedev0/architecting-for-zero-server-architecture-how-i-handled-geofencing-without-tracking-4fp8" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
