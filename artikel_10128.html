@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Running an AI Agent on a Local LLM: What I Measured on One GPU</title>
+    <title>Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10128.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,56 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Running an AI Agent on a Local LLM: What I Measured on One GPU</h1>
+        <h1>Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_2e992995c4.jpg" alt="Running an AI Agent on a Local LLM: What I Measured on One GPU" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/08/07/Image-2-2_1-no-footer-1260x630.png" alt="Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_2e992995c4.jpg" alt="Running an AI Agent on a Local LLM: What I Measured on One GPU" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/08/07/Image-2-2_1-no-footer-1260x630.png" alt="Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Running an AI agent on your own GPU sounds simple: point it at Ollama and stop paying per token. I set up OpenClaw, an open-source AI assistant, with a 9B model in Ollama on one RTX 3090 and connected it to Discord. Then I read the Ollama log for every request.</p>
-<p>The agent worked. The numbers were not what I expected, though. A one-line question turned into a prompt of more than 18,000 tokens, the first reply took over a minute, and the small model sometimes guessed instead of using its tools.</p>
-<p>This article covers what I measured and what each number means if you plan to run an agent on local hardware.</p>
-<p>OpenClaw ran in Docker and reached Ollama on the host at http://host.docker.internal:11434. Discord was the chat interface, and OpenClaw's web panel showed the sessions and context use.</p>
-<p>This article is about the results, not the installation. The full step-by-step setup is in a separate guide to running OpenClaw in Docker with Ollama and Discord. That guide covers the Compose file, the Discord bot and how to keep the ports off your network.</p>
-<p>All timings below come from the Ollama log on the test machine. Ollama loaded the model with a 32,768-token context.</p>
-<p>My first message in Discord was short: "Which model are you running on, and what is 17 * 23?" The bot answered correctly: it ran on ollama/qwen3.5:9b, and 17 × 23 is 391.</p>
-<p>The Ollama log showed what that question cost. The model processed 18,415 prompt tokens and generated 33 tokens.</p>
-<p>The extra tokens come from the agent itself. With every request, OpenClaw sends:</p>
-<p>On the RTX 3090, reading that prompt took 10 seconds at 1,838 tokens per second. A slower GPU, or a CPU, needs much longer to read the same prompt.</p>
-<p>Prompt tokens per model call, from the Ollama log. Only the first message had to process the whole prompt.</p>
-<p>OpenClaw counts tokens with its own estimate, which was higher than the Ollama count. The gateway log estimated the prompt at 24,608 tokens, against a prompt budget of 24,576 tokens for this model. By OpenClaw's own count, the base prompt alone used up the budget before any conversation history.</p>
-<p>The web panel showed a similar figure: 68 to 69 percent of the context window was in use for the Discord sessions after only a few messages.</p>
-<p>The first message arrived while the model was not loaded in GPU memory. That reply took 1 min 10 s:</p>
-<p>Reply times on the test machine. Loading the model took most of the first reply.</p>
-<p>The speed-up comes from prompt caching. The system prompt, tool definitions and workspace files at the start of the prompt stay the same between requests. Ollama kept that part cached and processed only the new tokens. The model wrote at 91 to 96 tokens per second in every test.</p>
-<p>Ollama's documentation says models stay in memory for 5 minutes by default before they are unloaded. After that, the next message pays the load time again. You can change this with the OLLAMA_KEEP_ALIVE environment variable on the Ollama server, or with the keep_alive parameter per request. A negative value, such as -1, keeps the model loaded. I did not change this setting in the test.</p>
-<p>If you run Ollama in Docker, pass the variable with -e OLLAMA_KEEP_ALIVE=-1 or in the environment: section of your Compose file.</p>
-<p>Two things used the GPU besides my chat messages.</p>
-<p>A heartbeat. OpenClaw's web panel listed one scheduled automation, heartbeat-main, which runs every 30 minutes. The agent wakes on that schedule, so the model gets called even when nobody chats. With Ollama's 5-minute default, the model is unloaded between heartbeats unless someone chatted recently, so a heartbeat most likely starts with a model load. I did not measure this.</p>
-<p>An embedding model. During the first message, OpenClaw also called Ollama's /api/embed endpoint twice to index its memory. It used qwen3-embedding:4b, which was already installed on the Ollama server. I did not set OpenClaw to use that model; it picked it on its own.</p>
-<p>The two models took this much GPU memory:</p>
-<p>That is 11.4 GB for the models alone, almost half of the RTX 3090's 24 GB.</p>
-<p>What this means for you: plan GPU memory for the chat model, the embedding model and the context, not the chat model alone. If the GPU also runs other models, the heartbeat can compete with them.</p>
-<p>The first two tests in Discord: a question, then a file written with a tool. The user name is blurred.</p>
-<p>The mistakes showed up when the model had to check something:</p>
-<p>After the restart, the bot claimed it had lost the earlier session. When asked to use its read tool, it read the file correctly.</p>
-<p>The fix for the first problem was simple. When I wrote "use your read tool to open homelab-test.md", the model opened the file and listed all three points correctly. Naming the tool made it check instead of guess.</p>
-<p>The model listed four files and missed the test file and a folder, because it answered from its prompt.</p>
-<p>Based on this test, a local 9B model on one consumer GPU works for:</p>
-<p>If you need better answers, OpenClaw also works with hosted models, but then your prompts leave your machine.</p>
-<p>In this test, qwen3.5:9b used 6.3 GB and the qwen3-embedding:4b memory model used 5.1 GB. Together the two models needed 11.4 GB.</p>
-<p>The model had to load into GPU memory first, which took 59 seconds of the 70-second reply. Ollama keeps a model loaded for 5 minutes by default, and the OLLAMA_KEEP_ALIVE setting changes that.</p>
-<p>Every request includes OpenClaw's system prompt, its tool definitions and its workspace files. A one-line question became an 18,415-token prompt in this test.</p>
-<p>Yes. A heartbeat automation runs every 30 minutes and calls the model even when nobody sends a message.</p>
-<p>It handled questions, arithmetic and file creation correctly in this test. It sometimes answered from its prompt instead of using its tools. When it wrongly said its memory was lost, asking it to use its read tool made it check the file and answer correctly.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>AWS is the world's most comprehensive cloud, enabling organizations to accelerate innovation, reduce costs, and scale more efficiently</p>
+<p>Migrate to modernize → Modernize to unlock data → unlock data to run AI</p>
+<p>Get started with one of these featured services or browse all</p>
+<p>From startups to enterprises, find AWS solutions scaled to your needs. Access tailored resources, pricing models, and support levels.</p>
+<p>Today, we’re announcing the public preview of AWS Well-Architected Agent, an AI-powered service that analyzes your AWS environment to deliver targeted, contextual recommendations for improving your applications’ cost, security, performance, and resilience. The AWS Well-Architected Agent analyzes your infrastructure, understands unique business goals, and delivers contextual recommendations with ready-to-implement fixes. It delivers context-aware optimization without relying on manual audits or generic checklists.</p>
+<p>The agent evaluates your environment as an experienced cloud architect would. It automatically correlates utilization metrics, resource configurations, and application topology, and analyzes against Well-Architected best practices across 65+ AWS services. It generates recommendations aligned to your declared business goals, delivers implementation packages with every finding, and surfaces cross-pillar trade-offs making it simpler to remediate the findings.</p>
+<p>Here are the three main features of this service:</p>
+<p>AWS Well-Architected Agent in action
+         To get started, create an agent profile to define the scope of what Well-Architected Agent can access and provide recommendations on, complete the IAM role setup to access resources, conduct architecture review, and remediate recommendations.</p>
+<p>Create an agent profile
+         In the AWS Well-Architected console, choose Get started with Well-Architected Agent. You can define an agent profile that specifies which AWS accounts and applications to monitor, which optimization pillars to focus on, and the permissions required.</p>
+<p>You can choose AWS accounts or AWS Regions to monitor and optimization pillars that matter most to your business. You can also set goals for each pillar: cost optimization, performance, resilience, and security.</p>
+<p>To give access to the agent for your AWS environment, provision customer-managed IAM roles the agent uses to read resource configurations, utilization metrics, and application topology. To learn more, visit the IAM prerequisite for AWS Well-Architected Agent.</p>
+<p>When you choose Get Started, the agent creates your agent profile. Resource and application recommendations will be generated within 24 hours after profile creation.</p>
+<p>You can conduct an architecture review on pre-deployment workloads by uploading an IaC project in Terraform, AWS CloudFormation, or AWS Cloud Development Kit (CDK) to be analyzed. Choose Conduct architecture review in the dashboard, upload a.zip file containing IaC project or repository file, and select which Well-Architected lens to use for reviewing your infrastructure.</p>
+<p>You can define your applications to add context which will enhance the relevancy and further contextualize recommendations. Choose Add application context in the dashboard, add your applications with AWS accounts, AWS Regions, AWS services, tags if you want to narrow the scope to specific resources, and the details of applications.</p>
+<p>Review prioritized recommendations and start remediating
+         Now you can see generated prioritized recommendations generated by the agent across your resources and applications, selected pillars, ranked against your declared goals, with automation-ready remediation included.</p>
+<p>When you choose the specific recommendation, you can see the details, insights into why the agent are suggesting the recommendation, impacts and trade-off, and recommended fixes across affected AWS resources.</p>
+<p>Choose Start remediation to address recommended fixes. You can choose the console, updated IaC template, CLI commands to remediate by the resolution type. It provides detailed step-by-step instructions and you can roll out this instruction and verify the result.</p>
+<p>When you choose Using updated IaC template, the agent provides the code changes needed to update your existing IaC templates such as the CDK function shown above which you can copy directly into your codebase.</p>
+<p>You can also configure API access to integrate recommendations directly into your existing development and operations workflows. To interact with the agent programmatically, including calling APIs and searching documentation, try the AWS MCP Server and plugins with your preferred AI coding tool. To learn more, visit the AWS Well-Architected Agent documentation.</p>
+<p>Things to know
+         Here are some things that you should know about the Well-Architected Agent.</p>
+<p>You can still use existing AWS Well-Architected Tool to manually evaluate your cloud architecture with user-defined lenses that measure your workload using your own best practices.</p>
+<p>Join the preview
+         Access to the AWS Well-Architected Agent and its recommendations is available in US East (N. Virginia), US East (Ohio), and US West (Oregon). You can onboard workloads from any AWS commercial Region. AWS Well-Architected Agent is delivered by AWS Support and available to AWS customers with an AWS Support plan.</p>
+<p>Give it a try today in the AWS Well-Architected console and send feedback through your usual AWS Support contacts.</p>
+<p>Channy is a Lead Blogger of AWS News Blog and Principal Developer Advocate for AWS Cloud. As an open web enthusiast and blogger at heart, he loves community-driven learning and sharing of technology.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/running-an-ai-agent-on-a-local-llm-what-i-measured-on-one-gpu/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aws.amazon.com/blogs/aws/announcing-aws-well-architected-agent-an-ai-powered-intelligence-to-optimize-your-cloud-environment-preview/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

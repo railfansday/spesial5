@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>DeepSeek-V4: a million-token context that agents can actually use</title>
+    <title>jQuery 4.1.0 Released</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10023.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>DeepSeek-V4: a million-token context that agents can actually use</h1>
+        <h1>jQuery 4.1.0 Released</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/deepseekv4/thumbnail.png" alt="DeepSeek-V4: a million-token context that agents can actually use" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/deepseekv4/thumbnail.png" alt="DeepSeek-V4: a million-token context that agents can actually use" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>DeepSeek released V4 today. Two MoE checkpoints are on the Hub: DeepSeek-V4-Pro at 1.6T total parameters with 49B active, and DeepSeek-V4-Flash at 284B total with 13B active. Both have a 1M-token context window. The benchmark numbers are competitive, but not SOTA. It doesn't matter. The real innovation is how DeepSeek v4 is designed for efficient large context length support, and hence as one of the best candidates for agentic tasks.</p>
-<p>Focusing on long running agentic workloads. Running a frontier open model as an agent today breaks in predictable ways. The model stops. You reprompt. The trace blows past the context budget, or the KV cache fills the GPU, or tool-call round trips degrade halfway through a long task. V4 is built to fix these known failures, and point the way for the community to follow.</p>
-<p>This post covers three things: what the architecture does differently to make long-context inference cheap, the agent-specific post-training decisions that compound on top of it, and some takeaways from the paper that help reason about these changes.</p>
-<p>A 1M context window is just capacity, not performance. Whether you can use it depends on the cost of every forward pass at that depth. For an agent running a long tool-use trajectory (a SWE-bench task, a multi-step browse session, a terminal session with hundreds of commands), every tool result is appended to the context, and every subsequent token pays the full attention cost against everything that came before.</p>
-<p>Two numbers matter: single-token inference FLOPs and KV cache size. Both grow with sequence length. At 1M tokens, DeepSeek-V4-Pro requires 27% of single-token inference FLOPs compared with DeepSeek-V3.2, so it runs faster on the same hardware. It also uses 10% of the KV cache memory. V4-Flash drops these numbers even further: 10% of the FLOPs and 7% of the KV cache.</p>
-<p>If we compare the KV cache memory against a established architecture like grouped query attention with 8 heads, stored in the usual bfloat16 format, DeepSeek v4 requires roughly 2% the cache size. This makes it much easier to deploy for very large context handling.</p>
-<p>Figure 1: benchmark comparison (left), per-token FLOPs and accumulated KV cache against sequence length (right).</p>
-<p>The efficiency gain comes from splitting attention into two mechanisms and interleaving them across layers.</p>
-<p>Compressed Sparse Attention (CSA) compresses KV entries by 4x along the sequence dimension using softmax-gated pooling with a learned positional bias. A lightning indexer (FP4, ReLU-scored multi-head dot product) picks the top-k compressed blocks per query. It inherits the sparse-selection idea from DeepSeek Sparse Attention in V3.2, but runs it over blocks that are already 4x shorter than the original sequence. The indexer's search space shrinks with it.</p>
-<p>Figure 3: CSA. The compressor collapses every 4 tokens into one compressed KV entry. The lightning indexer picks the top-k compressed blocks per query. A sliding-window branch handles the most recent uncompressed tokens.</p>
-<p>Heavily Compressed Attention (HCA) compresses KV entries by 128x and drops the sparse selection. Every query attends densely to every compressed block. The compressed sequence is short enough that dense attention is cheap.</p>
-<p>Figure 4: HCA. A heavier compressor (128x vs. 4x) followed by dense attention over the compressed stream, with the same sliding-window branch for recency.</p>
-<p>The layers alternate between CSA and HCA. Different layers carry different attention patterns, and forcing one mechanism across all of them wastes capacity. In V4-Pro's 61-layer stack, layers 0–1 are HCA, layers 2–60 alternate CSA and HCA, and the MTP block at the end runs sliding-window only.</p>
-<p>Both paths use FP8 storage for most KV entries and BF16 only for the RoPE dimensions. The lightning indexer inside CSA runs in FP4. These storage choices compound with the compression ratios to produce the 2% KV cache figure.</p>
-<p>Figure 2: overall architecture. Attention layers alternate between CSA and HCA. Feed-forward layers use DeepSeekMoE. Residual connections are replaced with manifold-constrained hyper-connections (mHC).</p>
-<p>Efficient long-context attention is necessary for agent workflows but not sufficient. The paper describes three post-training and infrastructure choices that target agent use cases directly.</p>
-<p>V3.2 kept reasoning traces across tool-result rounds but discarded them whenever a new user message arrived. For an agent handling a single user turn, this was fine. For multi-turn agentic workflows, where the user sends a follow-up after the agent has already chained several tool calls, the model lost its accumulated reasoning and had to reconstruct state.</p>
-<p>V4 preserves reasoning content across user message boundaries when the conversation contains tool calls. The model retains the complete reasoning history across all rounds, including across user turns. This allows a coherent, cumulative chain of thought over long-horizon agent tasks. For conversational use without tools, the old behavior is preserved: reasoning is flushed on each turn to keep context concise.</p>
-<p>Figure 7: thinking with tools (top) preserves reasoning across all turns. Thinking without tools (bottom) discards reasoning at each new user message.</p>
-<p>V4 introduces a |DSML| special token and an XML-based tool-call format. The XML format reduces escaping failures compared to JSON-in-string tool calls, a common failure mode when models emit nested quoted content.</p>
-<p>The schema separates string parameters (passed as-is with string="true") from structured parameters (passed as JSON with string="false"). This removes a class of parsing errors around numbers and booleans that JSON tool-call formats routinely hit.</p>
-<p>The agent behavior was trained with RL against real tool environments. The paper describes the sandbox infrastructure built for that purpose. DeepSeek Elastic Compute (DSec) is a Rust platform that exposes four execution substrates behind one Python SDK: function calls, containers, microVMs (Firecracker), and full VMs (QEMU). A single cluster runs hundreds of thousands of concurrent sandboxes.</p>
-<p>Three DSec features matter for agent training: fast image loading via layered 3FS storage (so RL rollouts do not wait on container startup), preemption-safe trajectory replay (so interrupted training steps resume without re-running tool calls), and a uniform API across substrates (so training harnesses target function calls or full VMs without rewriting). These infrastructure decisions underpin the agent benchmark scores.</p>
-<p>The knowledge and reasoning numbers are competitive but not leading. The agent numbers are where V4-Pro-Max separates from the field.</p>
-<p>Specific numbers from the agent section of Table 6:</p>
-<p>In the paper's internal R&D coding benchmark, 30 curated tasks across PyTorch, CUDA, Rust, and C++, V4-Pro-Max hits 67% pass rate, versus 47% for Sonnet 4.5 and 70% for Opus 4.5. In a survey of 85 DeepSeek developers using V4-Pro as their daily driver, 52% said it was ready to replace their current primary coding model and 39% leaned toward yes.</p>
-<p>The long-context retrieval numbers are in Figure 9. MRCR 8-needle accuracy stays above 0.82 through 256K tokens and holds at 0.59 at 1M.</p>
-<p>Figure 9: MRCR 8-needle retrieval. V4-Pro-Max stays above 0.82 through 256K and holds at 0.59 at 1M.</p>
-<p>Four checkpoints are on the Hub. The instruct models use FP4 for MoE expert weights and FP8 for everything else. The base models are FP8 throughout.</p>
-<p>Both instruct models support three reasoning modes: Non-think (fast, no chain of thought), Think High (explicit reasoning in <think> blocks), and Think Max (maximum reasoning effort with a dedicated system prompt). Think Max requires a context window of at least 384K tokens. The recommended sampling parameters across all modes are temperature=1.0, top_p=1.0.</p>
-<p>The V4-Pro numbers on SWE Verified, MCPAtlas, and the internal R&D benchmark put it at parity with frontier closed models on agent tasks. The open question is how the community's tool harnesses adapt to the |DSML| schema and whether the interleaved thinking gains transfer to out-of-domain agent frameworks.</p>
-<p>Figures in this blog post are from the technical report at DeepSeek_V4.pdf.</p>
-<p>According to my personal tests DeepSeek V4 Flash (Non-thinking mode) passed the Needle-in-a-Haystack retrieval test on both 32k and 435k actual prompt tokens with a 100% result across depths of 0-100%. In no-needle negative control with the NOT_FOUND instruction, the model also returned 100% correct failures, reducing the risk of contamination and false positives.</p>
-<p>So thinking mode may degrade behaviour in some tests.</p>
-<p>https://huggingface.co/deepseek-ai/DeepSeek-V4-Pro/blob/d2b624a83795ae3c77a4af70189ad084cf8fa90b/DeepSeek_V4.pdf</p>
+                <p>jQuery 4.1.0 has arrived! And it brought a friend. Alongside the first minor release of the 4.x line, we're also releasing jQuery 3.8.0. A word of caution: 3.8.0 exists to release the fixes and improvements that have been pending on the 3.x-stable branch for the past few years, some of which you may recognize from the jQuery 4.0.0 release. It is a send-off, not a comeback. Going forward, the 3.x branch will only receive critical security and bug fixes. If you haven't yet made the jump to 4.x, we encourage you to do so — we have an upgrade guide and the jQuery Migrate plugin ready to help, and most users will be able to upgrade with minimal changes.</p>
+<p>As usual, the releases are available on our CDN and the npm package manager. Other third party CDNs will probably have them available soon as well, but remember that we don't control their release schedules and they will need some time. Here are the highlights.</p>
+<p>A few changes landed on both branches, so you get these no matter which version you're on.</p>
+<p>Custom AJAX transports have long received a completeCallback with positional arguments:</p>
+<p>Transports can now instead invoke the callback with a single object:</p>
+<p>This makes it possible for us to add new parameters in the future without relying on their order, and for transports to provide them selectively. In fact, 4.1.0 already takes advantage of it — see responseURL below.</p>
+<p>The regular expression jQuery uses to match identifiers in selectors was vulnerable to catastrophic backtracking; a long chain of hex escapes followed by an invalid character — for example, in an attribute selector — could hang the page. The production now explicitly excludes digits & hex characters where the spec says it should, bringing us closer to spec and eliminating the ReDoS.</p>
+<p>IE & Edge Legacy sometimes throw on strict document comparisons (===) but not on loose ones (==). We switched most of these comparisons years ago, but a few leftovers remained in the selector code. They've now all been converted, avoiding some rare crashes in those browsers.</p>
+<p>jqXHR objects now expose responseURL — the final URL of the request after any redirects followed by the browser. Following the existing responseText/responseXML/responseJSON pattern, it is only set when the transport can report it: modern-browser XHR provides it, while IE 11 and the script & JSONP transports do not.</p>
+<p>Form-associated custom elements — custom elements registered with formAssociated = true — now serialize correctly with .serialize() and .serializeArray(). Elements that appear in form.elements are trusted to be submittable rather than being filtered out by a tag name check.</p>
+<p>In non-XHTML XML documents, such as XSLT-transformed documents, elements created with document.createElement land in the XML namespace and have no style property, which broke jQuery's CSS support tests. jQuery now uses createElementNS with the XHTML namespace internally, so .css() and friends behave in these documents.</p>
+<p>jQuery no longer uses getElementsByTagName or getElementsByClassName internally, relying on querySelectorAll instead. In today's browsers, qSA is on par with or faster than the old methods, and returns a static list rather than a live collection that we had to snapshot. The switch also fixes some long-standing bugs, including MathML elements not being found by lowercase tag names on cloned nodes in IE 11, selectors with leading combinators not working on document fragments, and selection by tag names containing less common symbols such as dots.</p>
+<p>Related selector work makes the quick selection paths stricter about what counts as a simple tag or class selector — with a fallback to regular selection when qSA throws — and invalid escape sequences in selectors are now decoded to U+FFFD, the replacement character, as the CSS specification requires.</p>
+<p>jQuery.uniqueSort removes duplicates with a single-pass, two-pointer compaction instead of repeated splices, taking the duplicate removal from O(N²) time and O(N) extra space to O(N) time and constant space. Behavior and ordering are unchanged; large disconnected sets just get there faster.</p>
+<p>Again, most of what's in 3.8.0 has been sitting on the branch for a while, and much of it will look familiar if you read the jQuery 4.0.0 release post. But there are a few things specific to 3.x.</p>
+<p>The hidden attribute used to be a boolean attribute, but it has since gained the until-found value. jQuery 3.x normalized boolean attributes in a way that clobbered that value; .attr( "hidden", "until-found" ) now sets it as-is. jQuery 4.x changed how boolean attributes are handled precisely to avoid this class of problem, so no change was needed there.</p>
+<p>Two sets of APIs that were removed in jQuery 4.0.0 are now formally deprecated in 3.x, which means the jQuery Migrate plugin can warn you about them before you upgrade:</p>
+<p>3.8.0 also picks up a number of fixes that already shipped in jQuery 4.0.0, including support for self-removing scripts passed to .html(), a fix for jQuery.cleanData skipping elements during cleanup, correct dimensions for table <col> elements, more robust native event handling in leverageNative, and support test fixes for pages under CSS zoom and initially hidden iframes.</p>
+<p>You can get the files from the jQuery CDN, or link to them directly:</p>
+<p>https://code.jquery.com/jquery-4.1.0.min.js</p>
+<p>https://code.jquery.com/jquery-3.8.0.min.js</p>
+<p>https://code.jquery.com/jquery-4.1.0.slim.js</p>
+<p>https://code.jquery.com/jquery-4.1.0.slim.min.js</p>
+<p>https://code.jquery.com/jquery-3.8.0.slim.js</p>
+<p>https://code.jquery.com/jquery-3.8.0.slim.min.js</p>
+<p>Information on all the ways to get jQuery is available at https://jquery.com/download/.</p>
+<p>One more time for the folks in the back: jQuery 3.8.0 is the last planned feature release on the 3.x branch. From here on, 3.x will only receive critical fixes. jQuery 4.x is where active development happens, and it's ready for you.</p>
+<p>Thank you to all of you who participated in these releases by submitting patches, reporting bugs, or testing, including ac-mmi, Apoorv Darshan, Richard Gibson, Michał Gołębiowski-Owczarek, J.Son, Naveed Khan, metsw24-max, neogy-akash, orbisai0security, Stephen Sigwart, studystill, Timo Tijhof, TomTensor, 서울민트초코, and the whole jQuery team.</p>
+<p>Web hosting by Digital Ocean | CDN by Fastly | Powered by WordPress</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/deepseekv4" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://blog.jquery.com/2026/11/17/jquery-4-1-0-and-3-8-0-released-passing-the-torch/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

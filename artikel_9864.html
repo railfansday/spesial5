@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Making Games in Go: Entity Component System (ECS)</title>
+    <title>MPS in PyTorch 2.15</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9864.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,191 +15,47 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Making Games in Go: Entity Component System (ECS)</h1>
+        <h1>MPS in PyTorch 2.15</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
         
         <div class="article-body">
-            <img src="https://threedots.tech/images/covers/making-games-in-go-ecs-social.png" alt="Making Games in Go: Entity Component System (ECS)" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://threedots.tech/images/covers/making-games-in-go-ecs-social.png" alt="Making Games in Go: Entity Component System (ECS)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/mps-pytorch-2-15/thumbnail.png" alt="MPS in PyTorch 2.15" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Twice a year, we run an online hands-on training on Event-Driven patterns in Go. The time has come! Learn more.</p>
-<p>MiÅosz SmÃ³ÅkaCo-founder of Three Dots Labs.
-Creator of Watermill.
-Author of Go With The Domain.</p>
-<p>I started my last post on making games by saying gamedev is a great hobby for when you don’t do as much coding day-to-day. A few years later, many of us see even less code, so it feels like a good time to give it another shot. This time I talk about ECS, a data-oriented way to structure games. I show it on a small game you can play right in this post.</p>
-<p>But first, the elephant in the room: Don’t AI agents one-shot full games now?</p>
-<p>Sure. Why would that stop you from learning something new?</p>
-<p>Just for fun, focus on the process instead of the outcome. Make a game your way.
-It’ll make you want to scream “LOOK WHAT I HAVE CREATED!” like Tom Hanks in Cast Away. (Note: there’s no audience in that scene, which is very accurate.)</p>
-<p>I find making games fun for at least two reasons:</p>
-<p>Using AI takes the fun out of tinkering with the code (reason #1). But it lets you see the results quicker and try bigger projects (reason #2). There’s no wrong way to have fun, so pick whatever fits your mood.</p>
-<p>Even if you use AI, it’s still worth learning the foundations. I found it easier to steer agents when they work on a project where I had already put the scaffolding in place. They’re much better at imitation than coming up with something new. (I share the patterns I give agents at the end.)</p>
-<p>Learning software concepts isn’t only about the code. It also changes how you think about projects. You know what systems are in place, how the elements interact, and what a good solution would be. I care more than ever about keeping my mental models sharp now that AI can produce infinite output that’s worthless unless someone decides otherwise.</p>
-<p>The usual disclaimer: I’m a hobbyist making tiny 2D games. I do it for fun, and have never shipped a professional game. I write about what has worked for me, and it could be something dumb. (If that’s the case, let me know in the comments!)</p>
-<p>Previously, I described a simple approach to working with game objects. Each object is a struct and has its own Update() and Draw() methods. In the game loop, we iterate over all the objects and call their methods.</p>
-<p>This is a good start. It’s easy to follow how the game works and to add new objects. But as the game becomes more complex, it gets messy. The Update methods get long. You need to pass many references around, because objects don’t know about other objects. Some logic doesn’t clearly belong to any one object.</p>
-<p>Another challenge in many games is that objects have similar traits, but aren’t quite the same thing. For example, a player character, an NPC, and an enemy are very similar objects, but also completely different gameplay-wise. They all have health points, move in the game world, collide with the terrain, and so on. But one is controlled by the player, one you can talk to to accept a quest, and one attacks you on sight.</p>
-<p>One way to approach this is with some kind of inheritance (or embedding in Go). You create a basic Object with all common traits, then extend it with more specific entities.</p>
-<p>But what if you want an NPC to turn hostile after an interaction? Or if you want the player to sometimes talk to the enemy? Or if you want to briefly take control over any of them? The inheritance model stops working, and you need workarounds that can get ugly.</p>
-<p>I’ve been trying to figure this out, and I discovered the Entity Component System (ECS) architecture. It became my go-to approach for making games. I’m using the Donburi ECS library in Go together with the Ebitengine 2D game engine. Both are super fun to work with.</p>
-<p>You may see ECS mentioned for performance reasons (storing components of one type together in memory makes iterating over them fast), but for me, the best part is the mental model shift. You split the game into small building blocks with clear responsibilities, so it’s easier to think about how it works. Keeping the data separate from the behavior is also an interesting idea that can help you approach other software projects.</p>
-<p>If you want to follow along, I recommend reading the previous post first, where I explain the basics of Ebitengine.</p>
-<p>In ECS, you split your game into three parts:</p>
-<p>It’s like an extreme take on the Single Responsibility Principle. You clearly separate identity, data, and behavior in the code.</p>
-<p>Let’s consider a trivial example to see how it works. We’ll display a grid of colorful tiles on the screen.</p>
-<p>Each tile is an entity. An entity has no attributes by itself. Our game has 240 tiles. To give them meaning, we need to add components to them.</p>
-<p>Let’s think of a minimal set of components the entity needs to appear as a tile on the screen.</p>
-<p>Without a doubt, it needs a position in the game world, a pair of X and Y coordinates:</p>
-<p>The other thing is the tile’s color. That’s a separate component:</p>
-<p>Now, it would be natural to represent the tile like this:</p>
-<p>But this isn’t what we want. As strange as it sounds, our game shouldn’t have a Tile struct. In ECS, there’s no place for a dedicated Tile type. Instead, we have generic entities made of components.</p>
-<p>Let’s start working with Donburi primitives.</p>
-<p>The structs we created above (PositionData and ColorData) hold the components’ data. We need to register component types as well. These are global variables:</p>
-<p>To create an entity, we first have to create a world. It’s where Donburi tracks entities. Our game will have a single world with all entities living inside.</p>
-<p>We create an entity for the tile with two components:</p>
-<p>The entity lives inside the world from now on. We don’t need to keep track of it. Create returns an integer, because the entity is just an ID.</p>
-<p>If we want to interact with the entity, we need to get its entry from the world:</p>
-<p>The entry is a regular Go pointer, and it lets you do something useful with the entity, like reading or setting its component data.</p>
-<p>At this point, the entity has two components attached: Position and Color (because we passed them to world.Create()). They hold zero values of their data structs.</p>
-<p>We can read their data with the component’s Get method. This may be a bit unusual at first, since we call a method on the global component type, not directly on the entry.</p>
-<p>To set a value, we can use SetValue like this:</p>
-<p>Or by changing the struct in place, since Get returns a pointer:</p>
-<p>We can also add or remove components and check if they exist:</p>
-<p>The last part we need is systems. They are similar to regular Update functions.</p>
-<p>As a reminder, here’s a minimal Ebitengine game (I’m skipping the Layout method, which isn’t relevant). Update is called every tick, usually 60 times per second, and Draw is called every frame.</p>
-<p>In ECS, we move all the code from Update() and Draw() into systems. While Donburi has an experimental systems feature, I’ll stick to a manual but simpler approach here.</p>
-<p>A system is an Update function that works within a given world.</p>
-<p>We keep the world and a slice of systems in the Game struct. Then, we iterate over the systems in the Update method. Each tick, we update every system in the game.</p>
-<p>We’ll also keep systems for drawing on the screen. I’ll call this kind of a system a Drawer, following the Go convention:</p>
-<p>Note that a single system could expose both the Update and Draw methods.</p>
-<p>What makes systems interesting is that each works on a subset of entities with specific components. A single system handles some particular logic relevant only to some entities.</p>
-<p>For example, let’s say we want the color on our tiles to change continuously. So we add a system that iterates over all entities with the Color component and updates the Color value.</p>
-<p>The key here is that, as far as the systems are aware, there’s no such thing as a tile. There are just entities with components on them. Often, systems are generic and work on a small number of components, without broader context of the entire game. This is unusual at first, but it gives you some interesting ways to design the game.</p>
-<p>The first system we’ll add is the rendering system. It takes entities with Color and Position components and draws them on the screen. In this example, the tile size is constant, so that’s all the data we need from each entity.</p>
-<p>To see where we’re heading, here’s the game with a debug inspector enabled. Hover over or tap a tile to see its data.</p>
-<p>Let’s implement the rendering system. Systems fetch entities with Donburi queries. A query defines which components an entity must have and lets you iterate over the matches.</p>
-<p>We create the query in the constructor and keep it as a field of the system struct, to avoid needless allocations every tick. The heavy lifting happens in Update or Draw.</p>
-<p>Every frame, for each entity with a Position and a Color, the rendering system tints the white tile image with the entity’s color
-and draws it on the screen at the entity’s position.</p>
-<p>Now we only need to create tiles with the correct positions and random colors while creating the world.</p>
-<p>This example is trivial, of course. The rendering system is not that universal if all it can do is draw tiles. We’re moving to a more complex project soon, but first, let’s add two more systems to this example.</p>
-<p>To make the tiles a bit less boring, let’s add a way to break them: when you click a tile, it should fall down the screen.</p>
-<p>We’ll add a VelocitySystem, making the entities move. It’s a good example of a universal system in action. It updates the position and rotation of entities by the set values. We can forget it exists and set velocity on an entity we need to move.</p>
-<p>Now, we need a system for detecting clicks on the tiles. First, let’s somehow mark the entities that can be clicked, so it’s more explicit. We’ll create a Clickable component.</p>
-<p>This component has no data. We use it only to mark that the entity supports clicking on it. For components without data like this, we can use a shortcut from Donburi: a tag.</p>
-<p>We need to include this tag along with the new components when creating an entity:</p>
-<p>So once a mouse button is clicked (or the screen is tapped), we iterate over all clickable entities and check if they intersect with the pressed point. If so, we set a random velocity and rotation for the tile. That’s enough to get it moving, since the velocity system picks it up from there.</p>
-<p>Finally, we remove the Clickable component, so that it’s not possible to click a falling tile again.</p>
-<p>I also updated the rendering system to take rotation into account. You can see the full source on GitHub.</p>
-<p>Hopefully you got a general idea of how Donburi works so far, but such a simple project doesn’t show the benefits of ECS well. Let’s look at another project.</p>
-<p>We’ll simulate an aquarium, with the player controlling a friendly pufferfish. It grows by collecting bubbles and needs to avoid other fish around it. The player scores points for the bubbles and loses points by eliminating the poor fish.</p>
-<p>Try it yourself (control the pufferfish with WASD; no mobile controls, sorry!).</p>
-<p>I won’t describe the entire game step by step, but will mention new patterns I introduced there. The full source is on GitHub.</p>
-<p>For a game this size, it makes sense to split it into packages. One level of packages should be enough.</p>
-<p>game is the entry point, including the Game struct and the initial Donburi world.</p>
-<p>component and system packages keep components and systems as described so far.</p>
-<p>I like to keep the names singular, so later I get self-explanatory component.Velocity and system.Rendering types.</p>
-<p>assets keeps the assets loaded with go:embed for easier distribution. It’s a trivial one in this case, just loading all of them on import. For bigger games, it makes sense to add an asynchronous loader here.</p>
-<p>In the engine package, I keep common helper functions that don’t belong anywhere. Things like Timer{}, RandomDuration(), Rect{}, etc. Because they are universal (never specific to the game), it’s easy to copy-paste this package when starting a new game and use them right away.</p>
-<p>We’ll get to archetype, domain, and event soon.</p>
-<p>The order of imports goes something like this. A package can’t import anything above it.</p>
-<p>Donburi comes with the Transform component, which most entities need. It includes the basic data each object in 2D space has: position, rotation, and scale. We no longer need to define them ourselves, as we did in the tiles example.</p>
-<p>The 2D vector (math.Vec2) also comes from Donburi, and it’s just a pair of (X, Y) values. I described working with position, rotation, and scale in detail in the previous post.</p>
-<p>Working with components can get verbose, so I use a high-level API to simplify it. I keep it in the archetype package.</p>
-<p>The API uses the builder pattern. New() creates a new entry with the Transform component, and With() adds more components.</p>
-<p>For common objects that can be created in a few places, I also create constructors in the archetype package:</p>
-<p>Now, creating a new fish is as simple as:</p>
-<p>For some common components like Sprite, I extend the builder so the API is even easier to use. For example, the WithTimeToLive method adds the TimeToLive component and sets its timer to the given duration. It’s easy to extend the API, thanks to keeping it part of the game instead of a generic library.</p>
-<p>Transform supports parent-child relationships, which is super handy. When you make an entity a child of another entity, it’s easy to calculate its position, rotation, and scale, taking entities in the hierarchy into account. In other words, you can make it “follow” the parent.</p>
-<p>The transform package exposes an API for this:</p>
-<p>Have you noticed that Transform uses LocalPosition, LocalRotation, and LocalScale? If the entity has no parent, its local position is the same as its world position. But once it has one, the local position is the position relative to the parent. That’s what the false argument to AppendChild and SetParent controls: with true, Donburi recalculates the local position so the child doesn’t move in the world.</p>
-<p>To read the world values, the transform package has functions that return the world position, rotation, and scale. “World” in this context means “Local value plus parent and all grandparents”.</p>
-<p>In practice, this means every time we attach an entity as a child to another entity, we only need to worry about setting its local position. All systems using the world position will treat it as being attached to the parent.</p>
-<p>We use parent-child relationships when spawning a new bubble. We have a couple of spawner entities in the game world. They are invisible and create new bubbles around them.</p>
-<p>When a new bubble appears on a timer, we set its local position:</p>
-<p>Because the spawner is set as the parent, we can just get a random distance between -200 and 200, and the bubble will appear within that distance of the spawn point. If we move the spawners, the bubbles will follow them.</p>
-<p>The rendering system is more universal now. The key element is the Sprite component, representing an image we draw:</p>
-<p>We support layers. The lower layers get drawn first on the screen, so higher layers end up on top. The Order() method makes sprites work with Donburi’s ordered queries, which iterate over entities sorted by layer.</p>
-<p>Layers are just arbitrary numbers, but we define a few constants. We’ll have all fish in the background, the player on top of them, and the bubbles above everything else.</p>
-<p>We use a single camera that follows the player. We draw the entire game world on the offscreen image in memory. Then, we paint a portion of it onto the actual screen, offset by the camera position.</p>
-<p>Rendering text is similar to rendering sprites, but simpler. We use a new component:</p>
-<p>We draw entities with this component the same way we draw sprites, but with text instead. This could be improved by extending the component data with things like text color, font size, alignment, etc.</p>
-<p>Because of the order of drawers, text will always appear on top of the sprites. For our use case, that’s good enough.</p>
-<p>Here’s a comparison of some of the entities and components we use:</p>
-<p>Components aren’t just buckets for data, but they should give you a clear idea of what can happen with the entity. Try to find names that clearly describe what the component represents.</p>
-<p>We use a similar Velocity system to the one in the previous example.</p>
-<p>I wanted to make controls feel a bit like swimming, so there’s also the Drag system. It reduces the velocity of entities with the Drag component over time. This way, after you press a movement button, the player moves for a bit and gradually stops.</p>
-<p>Drag also works on other fish, but not on bubbles, which have constant upward velocity. This is an example of how you can control which entities a system handles, and which it doesn’t. Drag is a tag, so it enables or disables the behavior for the chosen entities. We could also dynamically add or remove it.</p>
-<p>We use the same mechanism to limit the camera, player, and fish positions, so they never leave the world edges.</p>
-<p>For the camera, we adjust the limit based on the screen dimensions:</p>
-<p>Note how the limit system works the same for entities as different as the camera and the player, with a slight adjustment of the boundaries.
-We don’t add the PositionLimit component to the bubbles, because they can escape upwards.</p>
-<p>I thought it would be fun to give each fish color a different behavior, like ghosts in Pac-Man:</p>
-<p>Each type needs a different state (timers and other data). Instead of using a single component, I decided to go with four, one for each AI type. But there’s still one system. I used a query that combines any of the components:</p>
-<p>Four systems would work just as well. I chose a bit less boilerplate.</p>
-<p>Bounds is a component that represents the entity’s boundaries in the game world. For example, we use it to check collisions. It’s the entity’s 2D dimensions.</p>
-<p>The simplest way is to use the image size as bounds. But we create a separate component to have more control over the dimensions.</p>
-<p>We make the bounds a bit smaller than the image. This reduces the collision area. Otherwise, the player would collide with the fish by touching the transparent parts, which would be unintuitive and annoying.</p>
-<p>We create a Rect() method that returns a struct filled with the entity’s position together with the bounds, taking scale into account.</p>
-<p>Taking scale into account matters because we’ll use different scales for the fish, and the player’s scale will change during gameplay. All logic related to the boundaries needs to consider this.</p>
-<p>Calling this method is a bit unusual because of how components work. The BoundsData struct keeps only the dimensions, so we also need to pass the entry to Rect to get the current position.</p>
-<p>There’s a trivial Debug system that flips a boolean debug flag. When the flag is on, the rendering system draws the bounds around the sprites.</p>
-<p>Donburi supports events. It’s a simple mechanism, as we still have one game loop running. We don’t do any asynchronous processing.</p>
-<p>I like working with events because they let you decouple concepts in the game. Many game elements are connected, and over time the logic becomes full of calls to different parts, which is hard to follow.</p>
-<p>Let’s consider the Kill system from our game. We look for intersections between a killer (the player object) and a killable (other fish). Once they intersect, we destroy the fish and reduce the player’s points.</p>
-<p>The thing is, adding scoring logic here feels beyond the responsibility of this system. It would work just fine, but note how generic the system is now. It doesn’t know anything about fish or the player. It just makes sure that a killer destroys a killable it intersects with.</p>
-<p>So we define a Killed event in the event package:</p>
-<p>To remove an entity from the world, you can call entry.Remove(). But another system down the stack might still have a leftover reference to it, and then your game will crash. You can check if the entity is valid with entry.Valid(), but it adds a lot of noise to the logic code.</p>
-<p>I kept running into this issue over and over, and finally changed the approach.</p>
-<p>Instead of removing the entities, we mark them as destroyed with a tag. We can use a helper method:</p>
-<p>The Destroy system cleans up the destroyed entities, like a garbage collector. RemoveRecursive also removes all children in the hierarchy.</p>
-<p>The order of systems usually doesn’t matter, but here it’s important. Destroy is the last system in the stack, to give other systems a chance to process the entity before it’s removed for good.
-Note the Remains system, which leaves a skeleton where a fish died. It queries destroyed entities and needs to run before they are removed for good.</p>
-<p>For a while, I looked for a good place to keep some of the game’s constants, like the movement speed, initial health points, etc. When you hardcode these values in systems, updating them is annoying.</p>
-<p>Similarly, there is often some logic inside systems that’s more related to the inherent game rules than how it works in Ebitengine or Donburi. For example, how some effects stack or how damage is calculated.</p>
-<p>I keep this kind of code in the domain package. I took the name from DDD because it felt the most natural to me. The key is that it’s separate, doesn’t import any other game packages, and it’s easy to change and test.</p>
-<p>For example, we use the domain rule that “big fish swim slower” in a few spots in the fish AI system. If we wanted to change how it’s calculated, or what else it depends on, we’d change it in one place.</p>
-<p>The domain package is a great place for all kinds of testing, since it’s pure logic and doesn’t need the rest of the game engine to work.</p>
-<p>You could also build a way to change the domain constants live during gameplay for easier playtesting. Choosing these values is often key to making the game fun to play.</p>
-<p>Sometimes, you need a single copy of an object to track data. For example, I keep the screen size and debug toggle in the Settings component. There’s always a single instance of it in the world, and I use a dedicated MustFindSettings() function to get it.</p>
-<p>An alternative would be to use a global variable. But I like to stick to the ECS primitives because the world is already passed everywhere, and it’s easy to query what you need from it.</p>
-<p>We could also cache these singletons inside systems instead of fetching them every tick. The problems start once you do something unusual, like restarting the level, loading a game, or testing with multiple world instances. I prefer to keep the systems completely stateless, so that the world you pass to Update() keeps the entire game state.</p>
-<p>Don’t overuse singletons. We have a single camera and player instance now, but it could take the game in an interesting direction if we added more. ECS works best when you don’t treat the entities as unique snowflakes.</p>
-<p>Here’s an example of how the game can change with a few lines of code. Controlling the player works thanks to the Input component. Try adding it to the fish on collision, instead of destroying them:</p>
-<p>The fish now start following the player’s moves. But they keep their AI, too, so we need to keep moving to keep them close. Maybe that’s an interesting mechanic? I didn’t plan it beforehand, but I came across it while experimenting with the components. Note we didn’t have to touch the systems at all, because they are generic enough to work with many component configurations.</p>
-<p>As much as I like working with ECS, it’s not a silver bullet.
-It works great in games that simulate many objects with similar behaviors, as we’ve seen so far.</p>
-<p>But for many projects, it can feel like too much boilerplate and code scattered with no benefit.</p>
-<p>You can’t open the entity’s code and read through its logic, because it’s spread across systems.</p>
-<p>It can be difficult to track bugs that happen when systems interact with each other. Not all logic can be captured as an elegant, standalone Update function.</p>
-<p>I sometimes choose a hybrid approach for entities that are an exception.
-A simple Script component with a custom Update function can work fine. I’ll just code the custom logic for the specific entity instead of forcing multiple systems to make it work.</p>
-<p>You can also run custom logic in Ebitengine’s Update() and Draw() methods next to the systems. Donburi is easy to plug in where you need it, so you don’t need to go all in. For example, you could keep the game’s UI out of it.</p>
-<p>What I described above isn’t an up-front design I made up, but what I ended up with after making games with this architecture and tweaking the approach as I went. Don’t treat it as a definitive guide, but rather as a starting point, and take it from here.</p>
-<p>I like how polishing the approach made the next games easier. (Obviously, starting projects is way more fun than finishing them. ð) It freed me from the constant “how to model this?” questions. Instead, I have some familiar ground to start with.</p>
-<p>Specifically, it’s easy to copy components and systems between games. Many, like rendering, are universal and can be slightly adjusted, so you never start from zero.</p>
-<p>I’m experimenting a lot these days. I also tried making games with agents while keeping the architecture I’m used to. It’s a lot of fun to describe what you have in mind and have quite a polished version in front of you in minutes.</p>
-<p>But working this way makes you less involved in the project. As the game gets more complex, you no longer have a clear idea of how everything ties together. That may also be true with old-school typing, but I feel it happens sooner when using AI.</p>
-<p>Another downside is that it’s much more tempting to create new features (because it’s so quick) than to polish existing ones and playtest the game so it’s fun to play. Not a big deal if you’re just having fun. But I think there’s value in going through the whole process yourself, although I can’t yet name it precisely.</p>
-<p>Gamedev can get ridiculously complex, but many parts work the same way across games. To keep the games built by agents in a familiar structure, I boiled down the approach from my earlier Ebitengine and Donburi games into patterns: Markdown files that agents can follow.</p>
-<p>A couple of thoughts before you see the patterns:</p>
-<p>You’ll find the files in the patterns directory.</p>
-<p>You can find the full source for both games on GitHub.</p>
-<p>If you want to see the code for bigger projects, here are some (unfinished ð¥´) games I built with the same approach:</p>
-<p>Thanks for reading and have fun making your own games! If you found it useful or would like to read more about some topic, let me know in the comments.</p>
-<p>We work on a lot of new useful content.
-We can let you know when a new post appears.
-Your e-mail will be safe and not shared with anyone. ðYou will also receive a free "Go With The Domain" e-book!</p>
-<p>In the previous post, I looked into running transactions in a layered architecture. Now, let’s consider transactions that need to span more than one service.
-If you work with microservices, a time may come when you need a transaction running across them. Especially if the way they are split was an afterthought (the unfortunate but likely scenario). Service A calls service B, which calls service C, and if something goes wrong at the end, the system becomes inconsistent.</p>
-<p>Here’s a rant I often see in developer communities:
-I used to love programming because I like building stuff. But my full-time job killed my passion. I spend more time in meetings, fighting over deadlines, and arguing in reviews than working with code. Am I burned out? Is there hope, or do I need a new hobby?
-Sounds familiar? No wonder we keep looking forward to using a new framework or database â we’re bored.</p>
-<p>We are a bootstrapped company.
-By supporting us, you support independent creators.</p>
+                <p>If you run models on your Mac or use MPS as your primary acceleration tool for computing, there's plenty to look forward to in PyTorch 2.15! FP8 arrives on MPS, language-model decoding gets faster paths through linear layers and softmax and new Metal kernels tackle some surprisingly expensive parts of audio, video and training workloads.</p>
+<p>A quick word about who we are: we're the PyTorch team at Hugging Face. We contribute across PyTorch, and one of our focus areas is the MPS backend, where the goal is to make your Mac a first-class place to run and train PyTorch models. At the start of 2026, running even small models on MPS often meant working around unsupported operations, performance cliffs and unexpected memory growth. So we run real models from the Hugging Face Hub across language, image and video, find where MPS falls short and fix it upstream in PyTorch, more and more often by replacing MPSGraph with dedicated Metal kernels. Much of this post is the result of that work, done together with the PyTorch maintainers and community contributors.</p>
+<p>If you run models on a Mac with transformers, diffusers or tools like ComfyUI, here's what 2.15 changes in practice:</p>
+<p>You'll need an Apple silicon Mac with macOS 15 or later and Python 3.11 or later (see the 2.15 compatibility matrix). If your OS is too old or no Metal GPU is available, the MPS availability check now tells you why.</p>
+<p>To try the release candidate in a separate environment:</p>
+<p>FP8 gives you another way to save memory on your Mac. PyTorch 2.15 adds torch.float8_e4m3fn tensors on MPS: one byte per value, half the storage of FP16 or BF16.</p>
+<p>You can multiply these tensors with F.scaled_mm, which supports both tensorwise and rowwise scaling. Here's a small example with one scale per tensor:</p>
+<p>Every LLM has a prefill phase and a decode phase. During decode, each new token goes through the model as a single row, so the big matrix multiplications turn into matrix-vector products. PyTorch 2.15 speeds up both kinds of layers that dominate this step: dense linear layers and mixture-of-experts layers.</p>
+<p>MPS has had GEMV kernels for torch.mm since 2.14, but F.linear still went through MPSGraph. PyTorch 2.15 connects them to F.linear, so the common [1, 1, hidden_size] decoding input uses them directly, with eligible bias additions fused in. Across 96 BF16 layer shapes from real models, that's a 1.23× geometric-mean speedup. The biggest wins land on small projections, such as the gates in MoE models, where the old path left most of the memory bandwidth unused. Large layers and LM heads were already close to bandwidth-bound, so they stay near 1×.</p>
+<p>A mixture-of-experts layer sends different numbers of tokens to each expert. Grouped matmul handles those uneven groups in a single operation, and 2.15 gives MPS a native implementation.</p>
+<p>In 2.14, grouped matmul copied the group offsets to the CPU and looped over the groups. The new Metal kernels read the offsets directly on the GPU, using Metal Performance Primitives where available and a separate Metal path elsewhere. Small groups, the common case during decoding, get their own kernel as well.</p>
+<p>For example, 64 tokens can be split into groups of 16, 32, and 16:</p>
+<p>The decoding kernel shows up directly in token throughput. On an M3 Ultra with torch.compile, MoE models generate about 1.3× more tokens per second:</p>
+<p>Working with complex tensors gets easier. complex64 LU factorization, LU solve and triangular solve now run on MPS, which also unlocks the operations and gradients built on them, such as complex determinants. Here's a small system solved directly on the GPU:</p>
+<p>Small matrices get fast kernels too. For camera geometry and image transformations, batches of FP32 matrices up to 4 × 4 are inverted in a single Metal kernel that combines factorization and solving. Larger problems get attention as well: QR uses blocked updates, and triangular solves turn much of their work into efficient matrix multiplication.</p>
+<p>Gated DeltaNet workloads get a dedicated fast path for batches of 16 × 16, 32 × 32 and 64 × 64 FP32 triangular systems with at least eight right-hand sides.</p>
+<p>SVD is also more robust at numerical extremes. It now correctly handles very small singular values, very large or very small input magnitudes and basis completion with full_matrices=True, which in turn makes pseudoinverse and least-squares results more reliable.</p>
+<p>Audio models, video decoders and training loops have their own expensive operations. This release gives several of them new paths through Metal:</p>
+<p>Token sampling gets faster in 2.15 as well. softmax and log_softmax now run on dedicated Metal kernels, and large vocabularies benefit the most: an FP32 softmax over a [1, 128256] row of logits drops from 57 µs to 7 µs, about 8× faster than the MPSGraph version. The speedup holds across other common vocabulary sizes:</p>
+<p>One of the most striking results in this release comes from the constant-padding change. The VAE decode in Wan-AI/Wan2.2-TI2V-5B-Diffusers makes 8,764 padding calls over a full 28-tile decode. With padding on Metal, peak driver memory drops from about 270 GiB to 8 GiB:</p>
+<p>You can now pick which MPS stream runs your work, directly from Python. torch.mps.Stream and the torch.mps.stream context manager provide the interface, and Tensor.record_stream lets the allocator track a tensor's use on another stream.</p>
+<p>Here's a small example that sends work to a separate stream and synchronizes before reading the result:</p>
+<p>Several more operations now run on MPS: torch.frexp, torch.logspace, torch.take and Tensor.put_, torch.heaviside, torch.special.laguerre_polynomial_l and unsigned-integer comparisons. logspace doesn't yet support integer or boolean outputs with more than one element.</p>
+<p>Attention gets a correctness fix too: the MPS math implementation of scaled dot-product attention now handles batch and head broadcasting correctly.</p>
+<p>Work on 2.16 is already well underway. Some of the changes below have landed on main and are available in the nightlies; others are still in review, so details may change before the release.</p>
+<p>Once a model's decode path no longer contains any MPSGraph ops, the GPU only starts on a token after the CPU has finished encoding all of its kernels. PyTorch 2.16 commits the command buffer every 16 kernels, so the GPU gets to work while the CPU is still encoding the rest. For compiled BF16 decoding at a 2048-token context:</p>
+<p>Scaled dot-product attention is dropping MPSGraph completely: every shape will run on Metal kernels, with dedicated vector kernels for decoding and Metal Performance Primitives for half-precision prefill on newer macOS versions. The shapes that used to fall back to MPSGraph benefit the most. On an M5 Pro, decoding with grouped-query attention (32 query heads, 8 KV heads, head dim 80, 4K context) drops from 465 µs to 65 µs, and a 4K × 4K prefill with head dim 40 goes from 42 ms to 6 ms.</p>
+<p>The move away from MPSGraph continues. Batch norm forward and backward are in progress, while MSE loss (up to 12× faster on small inputs), std_mean and var_mean (up to 4× faster) and bincount have already landed. bincount is the most dramatic: when most values fall into a single bin, counting 4 million integers used to take 6.8 seconds and now takes half a millisecond.</p>
+<p>Bundled shaders will build for Metal 3.1 by default, with Metal 4 versions compiled only for the kernels that need them. That shrinks libtorch_cpu.dylib by about 25%, from 384 MiB to 287 MiB, and lays the groundwork for Metal 4.1 shaders with faster matmuls and native FP8 matrix multiplication.</p>
+<p>PyTorch 2.15 brings FP8 to the Mac, faster LLM decoding for dense and MoE models, more linear algebra on the GPU and a long list of operations moved from MPSGraph to dedicated Metal kernels. Give the release candidate a try!</p>
+<p>A big thank you to Nikita Shulga, Kurt Mohler and Aaron Gokaslan for reviewing much of this work, and to everyone who contributed to MPS in this release.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://threedots.tech/post/making-games-in-go-ecs/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/mps-pytorch-2-15" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

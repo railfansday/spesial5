@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Logging AI Prompts and Responses in Java Without Leaking Sensitive Data</title>
+    <title>TPU Model Design Considerations and Optimization Guide</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10105.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,109 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Logging AI Prompts and Responses in Java Without Leaking Sensitive Data</h1>
+        <h1>TPU Model Design Considerations and Optimization Guide</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_java_ai_logging_cover_d6521dce3f.png" alt="Logging AI Prompts and Responses in Java Without Leaking Sensitive Data" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/header_image_image.2e16d0ba.fill-1200x600.jpg" alt="TPU Model Design Considerations and Optimization Guide" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_java_ai_logging_cover_d6521dce3f.png" alt="Logging AI Prompts and Responses in Java Without Leaking Sensitive Data" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/header_image_image.2e16d0ba.fill-1200x600.jpg" alt="TPU Model Design Considerations and Optimization Guide" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>Picture this. A customer writes to your support chatbot: "Hi, I'm Asha, my card ending 4111 was charged twice, call me on 98400 12345." Your Java service wraps that message in a prompt, sends it to a model, and logs the whole thing so you can debug it later. Congratulations, you now have a customer's name, phone number and card details sitting in a plain text log file that half the engineering team can open.</p>
-<p>This happens more often than people admit. Logging AI calls is genuinely useful, but prompts and responses are some of the most personal text your application ever touches. Here's how to keep the usefulness and drop the risk.</p>
-<p>A regular web request is easy to log: URL, status code, time taken. AI calls are messier.</p>
-<p>The output changes from run to run. If a user says "your bot gave me a wrong answer yesterday", the only proof of what happened is what you sent and what came back at that moment. You can't just replay it and expect the same result.</p>
-<p>Prompts are also built, not typed. The final text is usually a template, a few retrieved document chunks, some chat history and the user's message stitched together. When something looks off, the bug could be in any of those pieces, and only the assembled prompt shows you which one.</p>
-<p>Then there's cost. You pay by the token, so without per-call records you can't say which feature is burning money. And quality drifts over time as models get upgraded and templates get edited. Old logs are your only baseline.</p>
-<p>So yes, you need these logs. The real question is what goes into them.</p>
-<p>Before writing any masking code, agree on what counts as sensitive. In most business apps that means:</p>
-<p>Names, emails, phone numbers and home addresses</p>
-<p>Card numbers, bank details and government ID numbers</p>
-<p>Health, legal or job-related details people mention in free text</p>
-<p>Internal material like contract wording, pricing rules or source code</p>
-<p>The first three groups follow patterns, so they're easy to catch. The last two don't, and that's where most teams get caught out. Keep that in mind, because it shapes the design below.</p>
-<p>The safest sensitive value is the one that never reaches the log. So split what you record into two buckets.</p>
-<p>The first is metadata: a request ID, a hashed user or tenant ID, model name, prompt template name and version, token counts, latency, retry count, error type and estimated cost. None of this is personal, and it answers most day-to-day questions.</p>
-<p>The second is content, meaning the actual prompt and response text. You only need this when you're investigating quality, and even then you rarely need all of it. A sensible default is to log metadata for every call and masked content for a small sample, maybe five percent, plus every failed call.</p>
-<p>Here's a mistake that's easy to make: letting the log appender clean things up afterwards. By then the raw text may already be in a buffer, an async queue or a crash dump. Mask first, then log.</p>
-<p>The cleanest way is one small component that every AI log call has to pass through:</p>
-<p>public interface PiiMasker {
-    String mask(String input);
-}</p>
-<p>Nothing else is allowed to write raw prompts. One chokepoint is much easier to review and test than masking sprinkled across fifty classes.</p>
-<p>For structured data like emails, cards and tokens, regular expressions do the job well:</p>
-<p>public class RegexPiiMasker implements PiiMasker {
-
-    private static final Map<Pattern, String> RULES = new LinkedHashMap<>();
-
-    static {
-        RULES.put(Pattern.compile("[A-Za-z0-9.%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}"), "[EMAIL]");
-        RULES.put(Pattern.compile("\b(?:\d[ -]?){13,19}\b"), "[CARD]");
-        RULES.put(Pattern.compile("\b(?:\+?\d{1,3}[ -]?)?\d{10}\b"), "[PHONE]");
-        RULES.put(Pattern.compile("(?i)bearer\s+[A-Za-z0-9.~+/=-]+"), "Bearer [TOKEN]");
-    }
-
-    @Override
-    public String mask(String input) {
-        if (input == null || input.isBlank()) return input;
-        String result = input;
-        for (var rule : RULES.entrySet()) {
-            result = rule.getKey().matcher(result).replaceAll(rule.getValue());
-        }
-        return result;
-    }
-}</p>
-<p>A few small choices matter here. The patterns are compiled once, not on every call. The order is fixed, because a card number can otherwise get half eaten by the phone rule. And the replacement labels such as [EMAIL] keep the sentence readable, so whoever debugs it later can still follow what the user was asking.</p>
-<p>Regex won't catch a name like "Asha Raman" or an address buried mid-sentence. For those you have a few options, and they work best together.</p>
-<p>You can run a named-entity recognition model that tags people, places and organisations, then mask anything above a confidence threshold. You can do exact replacement of values you already know, such as the customer's name from the current session. Or, best of all, you can mask at the field level while building the prompt. If your code knows that customer.getEmail() is going into the template, swap in a placeholder right there instead of trying to spot it afterwards. Knowing beats guessing every time.</p>
-<p>Plain redaction can remove too much. If the same email shows up five times in a conversation, five identical [EMAIL] tags hide the fact that it was one person.</p>
-<p>The fix is consistent pseudonyms. Turn each real value into a short token using a keyed hash, so the same email always becomes something like EMAIL_7f3a. You can still follow the thread, but nobody can read the original from the log. Use an HMAC with a secret from your secrets manager. A plain unkeyed hash of a phone number can be brute-forced in minutes, because there just aren't that many phone numbers.</p>
-<p>One warning: if you also store a lookup table to reverse the tokens, that table is now sensitive data too. Most teams are better off with one-way tokens.</p>
-<p>Free-text log lines are hard to search and easy to leak through. Write one JSON record per AI call with clearly separate fields:</p>
-<p>log.info("ai_call",
-    kv("requestId", requestId),
-    kv("model", model),
-    kv("promptVersion", "support-reply-v4"),
-    kv("inputTokens", usage.inputTokens()),
-    kv("outputTokens", usage.outputTokens()),
-    kv("latencyMs", elapsed),
-    kv("promptMasked", masker.mask(prompt)),
-    kv("responseMasked", masker.mask(response)));</p>
-<p>Now dashboards for cost and latency never need to touch the text fields at all. You can also keep the two kinds of data for different lengths of time: metadata for a year, masked content for a couple of weeks. Put the request ID into your logging framework's MDC so every line belonging to one call, including retries and tool calls, carries the same ID.</p>
-<p>Streaming trips people up. Tokens arrive in tiny pieces, and a card number can be split across two chunks, which means masking each chunk on its own will miss it. Collect the full response in a buffer, mask it once the stream ends, and log that. If the stream dies halfway, run the partial buffer through the same masker.</p>
-<p>Tool calls are the other trap. When the model calls one of your Java methods, the arguments and return values are often the most sensitive thing in the whole exchange: order details, account balances, addresses. Treat them as part of the prompt and response. Log the tool name, duration and outcome by default, and log arguments only after masking.</p>
-<p>Masking lowers the risk but never removes it, so surround it with some ordinary discipline:</p>
-<p>Give content fields a short retention period. Old prompt archives are liabilities.</p>
-<p>Limit who can read AI logs. Debugging a model doesn't mean someone needs to read customer messages.</p>
-<p>Encrypt log storage and the pipeline that feeds it.</p>
-<p>Log the hashed user ID so you can find and delete one person's records when they ask.</p>
-<p>Allow verbose logging in development with fake data, and enforce strict settings in production through configuration, not through people remembering.</p>
-<p>A masker that quietly stops working is worse than having none, because everyone assumes the logs are clean. Write tests for it:</p>
-<p>@Test
-void masksEmailAndCardNumber() {
-    String raw = "Contact me at asha@example.com, card 4111 1111 1111 1111";
-    String safe = new RegexPiiMasker().mask(raw);
-
-    assertFalse(safe.contains("asha@example.com"));
-    assertFalse(safe.contains("4111"));
-    assertTrue(safe.contains("[EMAIL]"));
-    assertTrue(safe.contains("[CARD]"));
-}</p>
-<p>Build a small set of messy, realistic samples: numbers with odd spacing, mixed languages, addresses inside sentences, text pasted from spreadsheets. Run them in your CI pipeline, and add a new case every time a leak turns up. A scheduled job that scans stored logs for patterns that should never appear makes a good safety net too.</p>
-<p>A few I'd watch for. Logging raw text at debug level and assuming production never enables it; debug flags get switched on during incidents, so mask at every level. Masking only the user's message while forgetting retrieved documents, system prompts and tool results. Letting SDK exceptions carry the full request body into the logs. Leaving wire-level HTTP logging on in production, which bypasses your masker completely. And treating masking as finished once it ships, when every new prompt template can bring new kinds of data.</p>
-<p>Every AI call writes a structured metadata record with a request ID</p>
-<p>All prompt and response text goes through a single masker first</p>
-<p>Streams are masked after assembly, and tool arguments are masked too</p>
-<p>Content logging is sampled, short-lived and access-controlled</p>
-<p>Tests cover the masker, with a regression case for every past leak</p>
-<p>Client libraries aren't dumping raw payloads into the logs</p>
-<p>Good logs turn an AI feature from a black box into something you can actually debug, price and improve. The same logs can also expose the people who trusted you with their details. The way through is fairly plain: record metadata for every call, push all content through one well-tested masker, use pseudonyms when you need to follow a conversation, handle streams and tools carefully, and keep retention short. Set that up before launch, not after the first incident, and you get visibility without regret.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Google designed TPUs from the ground up to be exceptionally efficient for machine learning workloads, delivering top-tier performance per total cost of ownership (TCO). Because TPUs trade general-purpose hardware scheduling for wide systolic arrays, dedicated SparseCore engines, and custom interconnect fabrics, adhering to specific architectural best practices is essential to achieve maximum performance. To help developers get the most out of TPUs, we are launching the open-source AI-Hypercomputer/tpu-codesign guide. This post highlights its key principles—spanning shape alignment, architectural choices like LatentMoE, and parallelism strategies—to accelerate LLMs, Mixture-of-Experts (MoE) models, and other hardware-intensive workloads on TPUs.</p>
+<p>Performance tuning starts with model definition. Architectural choices made before the first training step set permanent ceilings on MFU (Model FLOP Utilization), cost, and serving latency. This guide gives concrete, hardware-grounded design rules for teams building or adapting models for TPUs, organized into three groups:</p>
+<p>How to use this guide. The shape rules apply to anyone designing a new model. If you are adapting an existing model rather than designing one, the Expressing Parallelism section applies without touching the checkpoint. The general rules hold for any large-matmul architecture (dense LLMs, multimodal, and world models), and the companion AI-Hypercomputer/tpu-codesign repository grows model- and workload-specific sections over time.</p>
+<p>Eighth-generation TPUs. These principles carry forward to TPU 8t and TPU 8i and to the newly announced TPU 8tx and TPU 8i Max. The reasoning stays the same and the thresholds move with the hardware. TPU 8t and TPU 8i both add native FP4. For training, TPU 8t also brings more balanced Vector Processing Unit (VPU) scaling. For serving, TPU 8i adds the Boardfly topology, a Collectives Acceleration Engine (CAE), and 3x more on-chip SRAM. We note the effects inline in Principles 5–8, and follow-up posts will cover eighth-generation designs in depth.</p>
+<p>Measured evidence. Alongside the published sources, notes marked Measured carry results from our own Ironwood profiling program: open 20–30B MoEs (a Qwen3-30B-derived LatentMoE variant; GPT-OSS-20B) plus dense controls, single slice (except for the 512-chip TPU v7x and 1,024-chip TPU v4 ablations in Principle 4), BF16, training shapes up to 32K sequence, all against tuned-systems baselines. Treat the trends and rankings as transferable, the exact percentages as config-specific.</p>
+<p>TPUs are purpose-built custom ML ASICs designed from the ground up to deliver state-of-the-art performance per total cost of ownership (TCO). While their architectural choices—such as wide 256×256 systolic arrays, software-managed VMEM, dedicated SparseCore engines, and direct multi-dimensional ICI fabrics—enable exceptional efficiency, they inherently create specific structural constraints and programming patterns that must be carefully followed to unlock maximal performance. Reaching peak efficiency requires aligning model shapes, routing, and parallelism directly with these underlying hardware characteristics:</p>
+<p>Make d_model, FFN and expert intermediate widths (d_ff), latent widths, attention projections, and padded vocabulary sizes (used as contracting or output dimensions) multiples of 256 to match the 256×256 MXU systolic array. Token/batch axes and counts such as heads, layers, and experts are exempt. The most frequently missed dimension is head_dim: at 64 or 128, flash-attention QK products leave the MXU ≥ 50% idle. Reshape to head_dim = 256 with proportionally fewer Q and KV heads, preserving total projection widths and logical KV cache bytes (iso-quality in our ablations).</p>
+<p>Measured: Reshaping Qwen3-30B MoE attention from 32 × 128 to 16 × 256 (identical parameters and FLOPs) sped up end-to-end training, with gains widening at longer context:</p>
+<p>These rules apply for non-quadratic attention as well, notably GDN ablations from Yang et al. 2025 also noted at par or better quality for head dimension 256 for their Gated DeltaNet Attention.</p>
+<p>XLA compiles each program for exact tensor shapes, so every buffer has a fixed address and every loop a known trip count, and a new shape means a recompilation and a host stall. What about dynamic shapes? Dynamic workloads fit this model: the trick is to separate the shape of a buffer from the extent of the data inside it.</p>
+<p>Instead of padding to the largest group or the longest sequence, we keep the buffers at fixed shapes (tokens sorted by expert and padded only at the tail, the KV cache as a fixed pool of pages) and describe the ragged structure with a few small integer arrays (group sizes and offsets; KV lengths, the page table, cumulative query lengths). Pallas copies these into the TensorCore's scalar memory before the grid starts (PrefetchScalarGridSpec), and the kernel reads them to choose the next tile and bound its loops, with a mask covering a tile that straddles a group boundary or a partly filled last page. The data dependence becomes an address and a trip count instead of a shape, so the compiled program is the same for every routing and every batch composition and the kernel runs at the unpadded FLOP count.</p>
+<p>Standard EP dispatches every routed token at full d_model width, making EP + FSDP slower than plain FSDP in our Ironwood benchmarks. LatentMoE projects routed tokens from d_model down to latent width ℓ (d/ℓ ≈ 2–4×) before dispatch, executes experts in latent space, and projects back up after combine (introduced by Nemotron 3 and adopted by 962B MAI-Base-1 and 2.8T Kimi K3):</p>
+<p>Measured: On a 30B / 128-expert MoE, an ℓ = 768 (2.67×) LatentMoE cut on-device permute time 2.8×, lifted end-to-end training throughput +14% tokens/s (322 vs 270 TFLOP/s/chip, or +19%, since the latent projections add ~5% FLOPs per token; tokens stay ℓ-wide past the down-projection, so on-device permute and combine shrink alongside EP all-to-all), and freed ~25 GB/device of activation HBM when remat checkpoints were anchored on the compressed latent. While current MoE recipes in tpu-recipes run FSDP (+ TP), LatentMoE + FP8 dispatch makes EP roofline-viable when per-device batch is too small to hide FSDP weight all-gathers. Under both FSDP and EP, avoid over-fragmenting experts: small tokens × K / N group sizes starve MXU tiles.</p>
+<p>When candidate MoE layouts match on quality, pick the one with higher compute intensity at a similar active-parameter budget. A larger shared expert (wider d_shared) shifts work into dense, communication-free GEMMs that overlap EP dispatch/combine in training and amortize weight reads across the decode batch. Fewer, wider routed experts (halving N and K while doubling d_ff at fixed sparsity K/N) cut dispatch traffic in half and double per-expert GEMM fill. Optimal (N, K) grows with model size, and over-coarsening hurts routing diversity. Ablate expert granularity and the shared-to-routed split at your target scale rather than copying GPU co-designed models, since the TPU optimum is more shared-heavy.</p>
+<p>Measured: On a 63B LatentMoE (ℓ = 768, K/N = 1/32, 8K context, 512 TPU v7x chips at EP = 128), halving (N, K) from (512, 16) to (256, 8) while doubling d_ff and the shared expert lifted training throughput +57% tok/s and held lower loss across 120.8B tokens:</p>
+<p>Low-concurrency decode streams model weights every token (~300 concurrent tokens per weight shard are needed in dense FP8 to reach compute roofline). Combine two architectural levers with explicit concurrency sizing:</p>
+<p>Norms, activations, masking, routing math and quantization scale applies run on the Vector Processing Unit (VPU), which is roughly two orders of magnitude below the MXU in throughput and executes in sequence with the matmuls unless XLA fuses it into an adjacent GEMM or we move it off the TensorCore. Therefore we drop reshapes and transposes that carry no quality, standardize on fusable RMSNorm and SwiGLU so the elementwise work folds into the neighbouring GEMM, and offload the MoE sort, gather and scatter to the SparseCore.</p>
+<p>Note that fused VPU work is free only while its cycle count fits inside the MXU window it is fused into. A quick illustration of this concept is block-scaled fp8 GEMM.</p>
+<p>With a scale per block of B elements along the contraction axis, the MXU emits one partial sum per output element per block and the VPU rescales each one (about three vector ops), so per output element the MXU does 2K flops and the VPU does 3·ceil(K/B) ops. The rescale hides when B ≥ 1.5 × r_mxu / r_vpu, which on v7x (fp8 peak 4,614 TFLOPS against a 19.2 TFLOPS vector peak, a ratio near 240) puts the threshold near 340. In simulation on a DeepSeek-V3 expert shape, block 512 runs at the per-tensor time, block 256 is VPU-bound at 1.2x and block 128 at 2.4x. Achieved MXU efficiency is lower than peak, which lowers the effective ratio and can make the smaller blocks workable; the way to decide is to measure the GEMM at each block instead of using peak ratio. This threshold is specific to Ironwood. TPU 8t is designed with specialized support for scaling so quantization for MXFP4 and MXFP8 formats has no overhead. Re-measure the block-size threshold there instead of reusing 340. The rule itself carries forward: keep vector work hidden inside a matmul window.</p>
+<p>For workloads dominated by BF16-sensitive matmuls (most notably long-context quadratic attention where direct FP8 degrades accuracy), native single-pass BF16 leaves MXU capacity unused whenever hardware low-precision MXU throughput exceeds native BF16 throughput by more than the pass count. Use the multi-pass BF16 algorithm to execute BF16-accurate matmuls via multiple passes over the higher-throughput lower-precision MXU pipeline without losing numerical fidelity. This matters more as low-precision throughput pulls ahead of BF16. TPU 8t adds native FP4, which doubles MXU throughput. On Ironwood the FP8 to BF16 ratio is exactly 2:1, so two or more passes cannot beat native BF16.</p>
+<p>Assign communication-heavy parallel axes to the fastest physical links and keep logical mesh factors aligned with torus dimensions:</p>
+<p>Minimum-degree CP matched to kernel trade-offs: All-gather CP is simplest (though its all-gathers can sit exposed) when paired with zigzag load balancing (context_parallel_load_balance in MaxText) so causal masking does not idle tail ranks; Ring CP overlaps collectives but trades off SplashAttention chunk efficiency; Ulysses A2A CP avoids causal skew but exposes all-to-alls and caps at head count.</p>
+<p>Start every project with the quality-safe foundation: 256-aligned dimensions (1), static shapes with dropless routing (2), one parallelism plan mapped to physical links (8), wall-clock ablations on a tuned stack, and published reference targets (both in Measuring what matters below). For MoEs, add LatentMoE (3) after an ablation to cut routing/dispatch traffic and decode weight reads. Then prioritize by bottleneck regime:</p>
+<p>Google engineered TPUs from the ground up as custom ML ASICs to deliver top-tier performance per total cost of ownership (TCO). Unlocking that potential requires bridging the gap between hardware architecture and model design. By standardizing on 256-aligned shapes, leveraging LatentMoE, and mapping parallel axes directly to physical links, engineering teams can maximize TPU efficiency across both training and serving workloads.</p>
+<p>A reference blueprint is only as good as the loop used to validate it. Always evaluate architectural changes in wall-clock time on a tuned software stack rather than paper FLOPs: in our Ironwood benchmarks, pure systems tuning (SparseCore offload, MXU-aligned tiles, and remat tuning) lifted an open 30B MoE from 12% to 23% MFU before any model change, and published Ironwood baselines show 256-aligned MoEs (DeepSeek-V3, Qwen3-235B at 608–630 BF16 TFLOP/s/chip) running at roughly 2× the throughput of unaligned GPT-OSS-120B (330 TFLOP/s/chip). For the 6-signal XProf (profiler=xplane) triage checklist, roofline and HBM budgeting rules, wall-clock ablation methodology, published Ironwood reference targets, and ongoing updates as new TPU generations and kernels land, explore the living diagnostics guide and companion patterns in the open-source AI-Hypercomputer/tpu-codesign repository.</p>
+<p>Accelerating development for massive Git repositories</p>
+<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
+<p>Gemini 4 Hydrogen: a faster model for general purpose robotics</p>
+<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/logging-ai-prompts-and-responses-in-java-without-leaking-sensitive-data/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/tpu-model-design-considerations-and-optimization-guide/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
