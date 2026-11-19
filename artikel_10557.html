@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</title>
+    <title>Physicists discover “astonishing” property of light that defies expectations</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10557.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
+        <h1>Physicists discover “astonishing” property of light that defies expectations</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.sciencedaily.com/images/1920/multidimensional-quantum-light-data-communications.webp" alt="Physicists discover “astonishing” property of light that defies expectations" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.sciencedaily.com/images/1920/multidimensional-quantum-light-data-communications.webp" alt="Physicists discover “astonishing” property of light that defies expectations" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>We sent 1,000 streaming calls at the same moment through three self-hosted LLM gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each gateway was limited to 2 CPUs. As shipped, Langfuse finished 261 of the 1,000 streams and LiteLLM finished 403. Neither failure came from the gateway's own code.</p>
-<p>Langfuse's failures came from Linux's open-file limit, which Docker sets to 1,024 by default. LiteLLM had that problem too, plus a second one: an empty key cache sent hundreds of database lookups at once, and the ones that waited longer than 10 seconds were rejected. This article shows how each failure looked, how we traced it to its cause, and the settings that fixed it.</p>
-<p>This benchmark measured the resource consumption of three LLM gateways under scaling concurrent streaming loads.</p>
-<p>Full latency, memory, and feature results are available in the Langfuse vs LiteLLM vs AcruxCore benchmark.</p>
-<p>First-token times are medians of the streams that succeeded. Up to 250 streams, every gateway succeeded. Then the errors started, and they did not look alike:</p>
-<p>A 502 and a 503 point at different layers, so we expected two different causes. Two of the three turned out to share one cause.</p>
-<p>Linux counts every network connection as an open file, and it caps how many open files one process may hold. The cap has two values. The soft limit is the cap that is in force now. The hard limit is the ceiling: a process may raise its own soft limit up to that value, and no further.</p>
-<p>A streaming gateway holds two connections for each stream: one from the client, and one to the model provider. That makes about 1,000 open files at 500 streams, and about 2,000 at 1,000 streams. A gateway also needs a few more files for its database, its logs and its own libraries.</p>
-<p>Docker on our machine gave every container a soft limit of 1,024 and a hard limit of 524,288. All three gateways received the same two numbers. What differed was how each program treats them when it starts:</p>
-<p>Node.js raises its own soft limit to the hard limit at startup. The Rust and Python services keep 1,024, and neither project's Compose file sets a higher value. So the two gateways ran out of open files near 500 streams, which is the point where the errors started.</p>
-<p>The out-of-files error appeared as a failed connection, not as a clear message. The Langfuse gateway's logs showed failed connections to OpenAI, and also failed connections to Langfuse's own web service, which the gateway asks to check each key. Both come from one cause: a process that cannot open another file cannot open another socket. Its client then receives a 502.</p>
-<p>Read the limit the process actually has, not the one you think Docker gave it. Process 1 is usually the main process in a container:</p>
-<p>If the gateway runs under a supervisor or several workers, check each worker's process ID instead of process 1. To see how close a process is to its limit under load, count its open file descriptors:</p>
-<p>Raise the limit for the gateway service in its Compose file. We used 65,536 for all three gateways:</p>
-<p>The same ulimits block works on the LiteLLM service. On Kubernetes or another platform, check /proc/<pid>/limits inside a running container rather than assuming a value.</p>
-<p>With the open-file limit raised, the Langfuse gateway finished all 1,000 streams. LiteLLM still returned 503 errors. To separate the two causes, we ran LiteLLM with one worker and only the open-file limit raised. All 500 streams succeeded in that ladder, but 595 of 1,000 failed with 503.</p>
-<p>The 503 message names the authentication database, so we read LiteLLM's logs and its source. The log gave the same reason for all 840 failed streams in these runs, 595 in that ladder and 245 in the cold-cache runs below:</p>
-<p>When 500 calls arrive while the key is not in the cache, each call looks the key up in Postgres. All of those lookups queue for 10 connections. The worker was also using its whole CPU allowance at this point, which slows every query it sends and receives. We infer that this CPU load lengthens the queue, but we did not measure it separately. Whatever the share of each, the lookups at the back of the queue miss the 10-second deadline.</p>
-<p>If that explanation is right, the failures should depend on whether the key is already in the cache. So we ran 500 streams four more times. Three runs started after 75 seconds with no calls, which is longer than the 60-second cache. One run started right after a single warm-up call:</p>
-<p>The warm run had no failures. The cold runs failed by different amounts, 161, 84 and 0, because the result depends on how many lookups miss the deadline, and that changes from run to run. This probably explains why the earlier ladder succeeded at 500 and failed at 1,000. A run is a race between the lookup queue and the deadline, so a single ladder does not show where the limit is.</p>
-<p>The warm-up result is the one we measured. Send one call with each virtual key after LiteLLM starts, and avoid quiet periods longer than 60 seconds before a traffic spike. A steady flow of traffic keeps the key in the cache.</p>
-<p>LiteLLM also exposes three settings that act on this path. We did not test them, so treat them as places to look rather than proven fixes:</p>
-<p>We raised the open-file limit to 65,536 for all three gateways and gave LiteLLM 2 workers, one per CPU, as its production guide recommends for a single machine. Then we ran the full ladder again:</p>
-<p>The open-file errors were gone for every gateway, and the Langfuse gateway gave the fastest first token of the three. LiteLLM still returned 120 × 503 at 500. That level started about 60 seconds after the first call of the ladder, so the cached key had probably just expired. All 1,000 succeeded at the next level, which started within 60 seconds of the 500 level.</p>
-<p>Once nothing failed, CPU decided the first-token times. LiteLLM used its whole 2-CPU allowance from 100 streams on, and its median first token took 19.2 seconds at 1,000 streams. AcruxCore also used both CPUs from 100 streams on, and its first token at 1,000 streams was 3.8 s at the median and 9.7 s at p95. The Langfuse gateway peaked at 1.65 CPUs and 168 MiB, with a first token of 1.7 s at the median and 9.6 s at p95.</p>
-<p>Each gateway also needs the rest of its stack, and that stack uses CPU too. While the Langfuse gateway served 500 streams, its whole stack used up to 3.1 CPUs, because the web service checked keys and the worker and ClickHouse stored usage. AcruxCore's whole stack peaked at 4.0 CPUs, because its API writes a trace for every call to Postgres. Size the stack around the gateway, not only the gateway container.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems at talhaanwar.com.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Scientists have discovered a surprising ability of light that allows it to develop spinning patterns as it moves through empty space, without relying on special lenses, mirrors, or materials. The finding reveals that light possesses a hidden geometric structure that can influence its behavior in ways researchers previously thought were difficult to achieve.</p>
+<p>The discovery comes from an international team led by researchers at the University of East Anglia (UEA) in the United Kingdom, working with scientists in South Africa. Their experiments demonstrate that carefully prepared light can be controlled through its own internal geometry, offering a new approach to manipulating how light spins and twists.</p>
+<p>The findings challenge long-standing assumptions about how different properties of light interact. They could eventually lead to more sensitive medical tests, faster and more secure communications, and advanced quantum technologies that use light to transmit and protect information.</p>
+<p>Why the Direction of Light's Spin Matters</p>
+<p>One of the most intriguing aspects of the discovery involves chirality, a scientific term describing the difference between left-handed and right-handed structures.</p>
+<p>Human hands provide a familiar example. Although they are mirror images of each other, a left hand cannot be perfectly superimposed on a right hand. Many molecules have a similar property, including compounds used in medicines. Two versions of the same molecule can have nearly identical chemical structures yet produce very different effects in the body.</p>
+<p>Scientists can distinguish these molecular forms by studying how they interact with light that has a particular rotational behavior. Traditionally, producing and controlling such light has often involved specialized materials, carefully designed surfaces, or powerful lenses that focus beams extremely tightly.</p>
+<p>The research demonstrates that appropriately prepared light can develop this behavior naturally as it travels, without requiring those additional optical components.</p>
+<p>"Our work shows that light can naturally develop this handed behavior all on its own," said Dr. Kayn Forbes from UEA's School of Chemistry, Pharmacy and Pharmacology.</p>
+<p>"You just have to prepare it in the right way.</p>
+<p>"Most people think of light as traveling in straight lines. But scientists can also create structured light -- light whose brightness, shape, and direction are carefully arranged.</p>
+<p>"One extreme example is light that twists as it travels, forming a corkscrew shape known as an optical vortex. Each twist can carry information, making this kind of light valuable for high-speed internet, secure communications, and advanced sensors.</p>
+<p>"Light can also spin as it travels, depending on how it is polarized. This spin can be left-handed or right-handed -- another form of chirality."</p>
+<p>Scientists Discover How Light Develops a Hidden Spin</p>
+<p>Light can exhibit different kinds of rotational behavior. An optical vortex, for example, has a wave pattern that twists around its direction of travel, much like a corkscrew. Light also has a property known as polarization, which describes how its electric field oscillates. Certain polarization patterns produce a form of rotation called spin.</p>
+<p>Physicists have long studied the relationship between these two properties. However, the interactions responsible for the newly observed effect were generally considered extremely weak and difficult to detect without specialized experimental conditions.</p>
+<p>The researchers found that the situation changes when a beam of light is prepared in a particular balanced configuration.</p>
+<p>Under those conditions, the beam can initially have no spin, yet distinct regions with spinning behavior emerge as it travels through free space. The effect does not require the light to pass through engineered materials or additional optical devices.</p>
+<p>"It starts off with no spin at all," explained MSc student Light Mkhumbuza, who carried out key experiments. "But as the beam travels forward, spinning regions appear and separate out -- almost as if the spin was hiding and then revealed itself."</p>
+<p>Rather than creating spin through an external optical component, the researchers demonstrated how the beam's existing internal structure can determine where spinning regions develop during propagation.</p>
+<p>To explain this unexpected behavior, the researchers turned to topology, a mathematical field concerned with properties that remain unchanged when objects are continuously stretched, bent, or reshaped.</p>
+<p>Dr. Isaac Nape, from the University of the Witwatersrand in Johannesburg, South Africa, offered a simple way to understand the concept.</p>
+<p>"To explain it, imagine a mug and a doughnut," he said. "You can morph one into the other without tearing it, because they both have one hole. That hole is a topological feature."</p>
+<p>The researchers found that structured light possesses its own topological characteristics, encoded in the arrangement of its polarization.</p>
+<p>This underlying pattern acts like a mathematical fingerprint. Even as the light beam changes shape while traveling, its topological structure remains, influencing how different regions of the beam evolve.</p>
+<p>As a result, the arrangement of the light itself can determine where its left-handed and right-handed spinning patterns become visible.</p>
+<p>The discovery gives scientists a way to guide this behavior by designing the beam's initial structure, rather than depending on specialized materials to produce the desired effect.</p>
+<p>"This gives us a completely new tuning knob for light. By adjusting its topology, we can decide how and where chirality appears," said Dr. Nape.</p>
+<p>Potential Breakthroughs in Medicine and Communications</p>
+<p>The ability to control light through its geometry could eventually make several important optical technologies simpler, more affordable, and more versatile.</p>
+<p>One particularly promising application involves medical diagnostics and pharmaceutical research. Because many biologically important molecules have left-handed and right-handed forms, carefully structured light could help scientists identify these differences with greater sensitivity. Such tools could be valuable for evaluating drug safety and detecting biological markers associated with disease.</p>
+<p>The same principles could support smaller optical sensors capable of identifying chemicals or biological substances without requiring large, sophisticated laboratory instruments.</p>
+<p>Communications technology could also benefit. By encoding information into different twisting and spinning patterns, researchers may be able to increase the amount of data carried by individual light beams. This could contribute to faster optical communications, improved information security, and future quantum networks.</p>
+<p>Other potential uses include manipulating microscopic particles, cells, and molecules with light, as well as developing more resilient quantum systems. Topological properties may help protect delicate quantum information against certain forms of noise and interference.</p>
+<p>"The implications are wide-ranging," said Dr. Forbes. "This work could lead to simpler and more sensitive medical tests, especially in drug development.</p>
+<p>"It could also be used to pack more information into laser beams -- boosting data capacity for communications, including future quantum networks.</p>
+<p>"And because the effect doesn't rely on fragile materials or precision-engineered surfaces, it could be easier and cheaper to use in real-world technologies.</p>
+<p>"This research could lay the foundations for a new generation of light-based technologies, by showing that light's behavior can be controlled using its own internal geometry," he added.</p>
+<p>These applications remain possibilities for future development, but the underlying discovery provides researchers with another way to design and control the behavior of light.</p>
+<p>A Hidden Property of Light Finally Revealed</p>
+<p>For decades, scientists have relied on increasingly sophisticated optical equipment to produce and manipulate unusual forms of light. The findings suggest that some of these behaviors can instead arise from carefully designed structures already encoded within a light beam.</p>
+<p>By showing how topology governs the emergence of spinning regions during propagation, the team has revealed a previously underappreciated connection between light's geometry and its physical behavior.</p>
+<p>The discovery also illustrates how much remains to be learned about something as familiar and extensively studied as light.</p>
+<p>"For something so familiar, light is proving to be far richer, stranger and more powerful than anyone imagined," said Dr. Forbes.</p>
+<p>"And astonishingly, this new behavior has been there all along -- just waiting to be seen."</p>
+<p>The research, 'Topological Control of Chirality and Spin with Structured Light', was published in the journal Light: Science & Applications.</p>
+<p>Materials provided by University of East Anglia. Note: Content may be edited for style and length.</p>
+<p>Astronomers Discover a Chilling Preview of Our Solar Systemâs Future</p>
+<p>Scientists Discover Alarming Signs of Extinction Risk Deep Beneath the Ocean</p>
+<p>Scientists Discover a Disturbing Link Between Cannabis Use and Earlier Psychosis</p>
+<p>Scientists Discover a Bizarre Quantum State That Exists at Room Temperature</p>
+<p>Stay informed with ScienceDaily's free email newsletter, updated daily and weekly. Or view our many newsfeeds in your RSS reader:</p>
+<p>Keep up to date with the latest news from ScienceDaily via social networks:</p>
+<p>Tell us what you think of ScienceDaily -- we welcome both positive and negative comments. Have any problems using the site? Questions?</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/what-breaks-when-a-self-hosted-llm-gateway-hits-1-000-concurrent-streams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sciencedaily.com/releases/2026/10/261011211615.htm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>UI Verify</title>
+    <title>How to update one dynamic zone block in Strapi 5 (without deleting the others)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9714.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,50 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>UI Verify</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-18</p>
+        <h1>How to update one dynamic zone block in Strapi 5 (without deleting the others)</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fnsh9qqf9fsx828j3m1o5.png" alt="How to update one dynamic zone block in Strapi 5 (without deleting the others)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fnsh9qqf9fsx828j3m1o5.png" alt="How to update one dynamic zone block in Strapi 5 (without deleting the others)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Visual testing for coding agents
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/ui-verify?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1320860?app_id=339">Link</a>
-          </p></p>
+                <p>You have a Strapi 5 page built from a dynamic zone: a hero, a feature grid and a call to action. You want to change the hero's heading and nothing else. So you send an update with the hero block, and the feature grid and the call to action are gone.</p>
+<p>That is how Strapi 5 writes lists. A dynamic zone, a repeatable component or a rich-text blocks field is replaced as a whole: the array you send becomes the new list, and anything you left out is deleted. The REST API works this way, and so does the update_<type> tool in Strapi's built-in MCP server. With one writer, that is a matter of sending the right array. With two writers, it is a race: each one sends a list built from its own read, the second write wins, and the first writer's block disappears with a 200 and no error.</p>
+<p>People keep running into this. One GitHub issue reads, "found that I cannot update component". A docs issue is blunter: "Updating dynamic zones via REST API does not work." It does work. It just doesn't work the way most of us assume the first time.</p>
+<p>Below are three routes, in order of how much control you have over the writer.</p>
+<p>Disclosure up front: the third route uses writesafe, a plugin my company, IsoKron, built and maintains. It's free and MIT-licensed. Routes 1 and 2 need nothing but Strapi.</p>
+<p>In Strapi v4 you could send a component's id and update that one row. The v4-to-v5 breaking changes document two things about that in Strapi 5:</p>
+<p>The reporter of the issue above, on 5.32.0, got a 400 Invalid key id for sending id in a REST body at all. On 5.62.0 the server has moved on from the first point. A REST GET returns an id on every block, and if you read the draft (?status=draft) and send those ids back, the PUT returns 200 and updates the rows in place. Published ids still get a 400: "Some of the provided components in sections are not related to the entity".</p>
+<p>None of which saves you. An id only decides whether Strapi updates a row or recreates it. The list is still replaced as a whole: a block you leave out is deleted, id or no id, and nothing in the request says which version you read.</p>
+<p>Strapi's documented pattern for REST is still to leave ids out, so that is Route 1. I wouldn't build on undocumented id handling that changed between 5.32 and 5.62. The Document Service, which reads and writes the draft by default, accepts draft component ids by design; that is Route 2.</p>
+<p>Strapi's recommended pattern for Content API clients is to omit component ids and send the complete list you want. Their docs put it in one line: "Include every component you want to keep."</p>
+<p>Read the draft with the zone populated. For dynamic zones, Strapi 5's docs use on fragments, one per component; list every component the zone allows:</p>
+<p>Then change the one block and send the whole zone back, every entry with its __component and without id:</p>
+<p>This route is correct for one writer. It has no version check, so if an editor adds a testimonial block between your GET and your PUT, your PUT removes it. Nothing in the response tells you.</p>
+<p>If the write happens in your own Strapi code (a controller, a cron job, a migration script), you can do what the REST docs say not to count on: load the draft with its component ids and update one entry in place. This is the second workaround in Strapi's breaking-change note. Wrapping it in a transaction keeps the read and the write together:</p>
+<p>Strapi 5 ships an MCP server, which is how a growing number of pages now get edited: an agent connected at /mcp, sometimes while a person is in the admin panel. The built-in update_<type> tool behaves like REST. It replaces each list it is sent, it can't send component ids, and it has no version check.</p>
+<p>We measured that during development on Strapi 5.62.0 with SQLite. An agent writing from a stale read while a colleague added a block deleted the colleague's block in 12 of 12 trials, for each of dynamic zones, repeatable components and blocks fields. None of 233 responses carried a conflict signal.</p>
+<p>writesafe adds ws_* tools to that same /mcp endpoint through Strapi's plugin API (strapi.ai.mcp.registerTool), with the same admin tokens and permissions. Two of them do the work here.</p>
+<p>ws_get returns the draft with a version token and a _key on every row of each top-level list. Over plain HTTP it's a JSON-RPC tools/call; the server is stateless, so no initialize is needed first:</p>
+<p>Abridged, the part you care about looks like this (version and keys shortened; yours will differ):</p>
+<p>Row ops (add, update, remove, move) apply to the current list inside the write transaction, under a row lock, not to the list as the agent last saw it. So a block a colleague added a minute ago survives, and the rows you didn't name keep their database ids. Row ops need no version, because a key is bound to the row's content: if someone changed the hero since your read, the call is refused with stale_row_key; if the hero is gone, row_not_found. Either way the agent reads again. It doesn't guess.</p>
+<p>Sometimes you really do mean to replace the whole list. That's a set, and a set needs the version you read:</p>
+<p>If the draft changed since that read, nothing is written. The reply is version_conflict with the current version, the current document and a retry hint telling the agent to re-apply only its own change.</p>
+<p>In the same trials as above: with row ops, 0 of 36 colleague rows were lost and no ids were recreated. With a stale whole-list set, 36 of 36 writes were refused with version_conflict, and 36 of 36 landed after one re-read and retry. The table and conditions are in the reference.</p>
+<p>To be plain about scope: this only applies to MCP tool calls. writesafe adds no REST routes and does not change what PUT /api/pages/:id does. Any HTTP client can make the calls above, not only an AI agent, but they go to /mcp, not /api. If your writers are REST clients, Routes 1 and 2 are your options.</p>
+<p>By default (builtinUpdates: 'guard') the plugin also makes Strapi's built-in update_<type> refuse list and component writes and point the agent at ws_patch, so an agent can't take the old path by accident.</p>
+<p>Then npm run build (the plugin adds a jobs page and a settings page to the admin) and restart. Create an admin token with Read and Update on your content type; tools/list on /mcp should now show the ws_* tools. Client setup for Claude Code, Cursor and others is in docs/clients.md.</p>
+<p>None of this is a Strapi bug. Whole-list replacement is a reasonable contract for a REST API, and Strapi documents it. It just assumes one writer, and that assumption got quieter and less true once agents started editing content. If you only have one writer, send the full list and move on. If you have several, give each one a way to say which row it means and which version it read.</p>
+<p>writesafe is on npm, in the Strapi Marketplace and on GitHub. If you hit a list edit the row ops don't cover, open an issue. The general idea behind it is written up in Send the change, not the object.</p>
+<p>IsoKron built and maintains writesafe. I'm IsoKron's founder.</p>
+<p>IsoKron tests whether writes made through MCP servers actually land. Our audits of the GitHub, Grafana, PostHog and Kubernetes MCP servers are public, with every upstream fix tracked live.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/ui-verify" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/isokron/how-to-update-one-dynamic-zone-block-in-strapi-5-without-deleting-the-others-mag" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
