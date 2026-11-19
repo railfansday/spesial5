@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</title>
+    <title>AMD attacks Nvidia&#x27;s FP64 emulation at SC26, touts native double-precision on Instinct MI430X</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10584.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</h1>
+        <h1>AMD attacks Nvidia&#x27;s FP64 emulation at SC26, touts native double-precision on Instinct MI430X</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn.mos.cms.futurecdn.net/rC8NqLkskVmV5tJuWUcr2g-1920-80.jpg" alt="AMD attacks Nvidia&#x27;s FP64 emulation at SC26, touts native double-precision on Instinct MI430X" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn.mos.cms.futurecdn.net/rC8NqLkskVmV5tJuWUcr2g-1920-80.jpg" alt="AMD attacks Nvidia's FP64 emulation at SC26, touts native double-precision on Instinct MI430X" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Have 30-200 Employees? Make $50k-$500k selling your data for AI Training.</p>
-<p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>We sent 1,000 streaming calls at the same moment through three self-hosted LLM gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each gateway was limited to 2 CPUs. As shipped, Langfuse finished 261 of the 1,000 streams and LiteLLM finished 403. Neither failure came from the gateway's own code.</p>
-<p>Langfuse's failures came from Linux's open-file limit, which Docker sets to 1,024 by default. LiteLLM had that problem too, plus a second one: an empty key cache sent hundreds of database lookups at once, and the ones that waited longer than 10 seconds were rejected. This article shows how each failure looked, how we traced it to its cause, and the settings that fixed it.</p>
-<p>This benchmark measured the resource consumption of three LLM gateways under scaling concurrent streaming loads.</p>
-<p>Full latency, memory, and feature results are available in the Langfuse vs LiteLLM vs AcruxCore benchmark.</p>
-<p>First-token times are medians of the streams that succeeded. Up to 250 streams, every gateway succeeded. Then the errors started, and they did not look alike:</p>
-<p>A 502 and a 503 point at different layers, so we expected two different causes. Two of the three turned out to share one cause.</p>
-<p>Linux counts every network connection as an open file, and it caps how many open files one process may hold. The cap has two values. The soft limit is the cap that is in force now. The hard limit is the ceiling: a process may raise its own soft limit up to that value, and no further.</p>
-<p>A streaming gateway holds two connections for each stream: one from the client, and one to the model provider. That makes about 1,000 open files at 500 streams, and about 2,000 at 1,000 streams. A gateway also needs a few more files for its database, its logs and its own libraries.</p>
-<p>Docker on our machine gave every container a soft limit of 1,024 and a hard limit of 524,288. All three gateways received the same two numbers. What differed was how each program treats them when it starts:</p>
-<p>Node.js raises its own soft limit to the hard limit at startup. The Rust and Python services keep 1,024, and neither project's Compose file sets a higher value. So the two gateways ran out of open files near 500 streams, which is the point where the errors started.</p>
-<p>The out-of-files error appeared as a failed connection, not as a clear message. The Langfuse gateway's logs showed failed connections to OpenAI, and also failed connections to Langfuse's own web service, which the gateway asks to check each key. Both come from one cause: a process that cannot open another file cannot open another socket. Its client then receives a 502.</p>
-<p>Read the limit the process actually has, not the one you think Docker gave it. Process 1 is usually the main process in a container:</p>
-<p>If the gateway runs under a supervisor or several workers, check each worker's process ID instead of process 1. To see how close a process is to its limit under load, count its open file descriptors:</p>
-<p>Raise the limit for the gateway service in its Compose file. We used 65,536 for all three gateways:</p>
-<p>The same ulimits block works on the LiteLLM service. On Kubernetes or another platform, check /proc/<pid>/limits inside a running container rather than assuming a value.</p>
-<p>With the open-file limit raised, the Langfuse gateway finished all 1,000 streams. LiteLLM still returned 503 errors. To separate the two causes, we ran LiteLLM with one worker and only the open-file limit raised. All 500 streams succeeded in that ladder, but 595 of 1,000 failed with 503.</p>
-<p>The 503 message names the authentication database, so we read LiteLLM's logs and its source. The log gave the same reason for all 840 failed streams in these runs, 595 in that ladder and 245 in the cold-cache runs below:</p>
-<p>When 500 calls arrive while the key is not in the cache, each call looks the key up in Postgres. All of those lookups queue for 10 connections. The worker was also using its whole CPU allowance at this point, which slows every query it sends and receives. We infer that this CPU load lengthens the queue, but we did not measure it separately. Whatever the share of each, the lookups at the back of the queue miss the 10-second deadline.</p>
-<p>If that explanation is right, the failures should depend on whether the key is already in the cache. So we ran 500 streams four more times. Three runs started after 75 seconds with no calls, which is longer than the 60-second cache. One run started right after a single warm-up call:</p>
-<p>The warm run had no failures. The cold runs failed by different amounts, 161, 84 and 0, because the result depends on how many lookups miss the deadline, and that changes from run to run. This probably explains why the earlier ladder succeeded at 500 and failed at 1,000. A run is a race between the lookup queue and the deadline, so a single ladder does not show where the limit is.</p>
-<p>The warm-up result is the one we measured. Send one call with each virtual key after LiteLLM starts, and avoid quiet periods longer than 60 seconds before a traffic spike. A steady flow of traffic keeps the key in the cache.</p>
-<p>LiteLLM also exposes three settings that act on this path. We did not test them, so treat them as places to look rather than proven fixes:</p>
-<p>We raised the open-file limit to 65,536 for all three gateways and gave LiteLLM 2 workers, one per CPU, as its production guide recommends for a single machine. Then we ran the full ladder again:</p>
-<p>The open-file errors were gone for every gateway, and the Langfuse gateway gave the fastest first token of the three. LiteLLM still returned 120 × 503 at 500. That level started about 60 seconds after the first call of the ladder, so the cached key had probably just expired. All 1,000 succeeded at the next level, which started within 60 seconds of the 500 level.</p>
-<p>Once nothing failed, CPU decided the first-token times. LiteLLM used its whole 2-CPU allowance from 100 streams on, and its median first token took 19.2 seconds at 1,000 streams. AcruxCore also used both CPUs from 100 streams on, and its first token at 1,000 streams was 3.8 s at the median and 9.7 s at p95. The Langfuse gateway peaked at 1.65 CPUs and 168 MiB, with a first token of 1.7 s at the median and 9.6 s at p95.</p>
-<p>Each gateway also needs the rest of its stack, and that stack uses CPU too. While the Langfuse gateway served 500 streams, its whole stack used up to 3.1 CPUs, because the web service checked keys and the worker and ClickHouse stored usage. AcruxCore's whole stack peaked at 4.0 CPUs, because its API writes a trace for every call to Postgres. Size the stack around the gateway, not only the gateway container.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems at talhaanwar.com.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Keep exploring and earning more as a member.</p>
+<p>Reviews, benchmarks, and updates on current GPUs.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Unlock instant access to exclusive member features.</p>
+<p>Get full access to premium articles, exclusive features and a growing list of member rewards.</p>
+<p>AMD says Ozaki FP64 emulation is no replacement for the real thing when it's needed.</p>
+<p>When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works.</p>
+<p>As Supercomputing 2026 (SC26) opens in Chicago this week, AMD is indirectly needling Nvidia about the lack of native FP64 data type support in its data center GPU products. FP64, or double-precision floating-point math, is widely used in the high-performance scientific computing and simulation fields that are the focus of SC26. For those customers, AMD is trumpeting the value of its latest Instinct MI430X accelerator for customers that still need native FP64, like national laboratories and supercomputing centers.</p>
+<p>Over the past few years, Nvidia has reallocated die area on its data center GPUs to favor the lower-precision matrix math that boosts the operations needed for much of modern AI inference. That reallocation only makes business sense, as the total addressable market for AI compute has exploded while the demand for double-precision math in large supercomputing installations has remained flat by comparison.</p>
+<p>To make up for the lack of native FP64 support, Nvidia has turned to techniques that allow it to emulate FP64 operations using methods like the Ozaki schemes. But AMD claims this kind of emulation is nowhere close to a replacement for native double-precision processing for a few reasons—hence continued development of specialized products like the MI430X.</p>
+<p>For one, AMD notes that Ozaki emulation assumes that the workload in question resembles a dense general matrix multiply (GEMM). In its own application profiling, the company says "less than 10%" of HPC workloads perform dense GEMM operations, so this emulation is a good replacement for native compute. Dense linear algebra is the one common workload for which AMD says Ozaki emulation is a natural fit.</p>
+<p>For workloads like sparse iterative linear algebra, stencils and hydrodynamics, high-order finite element analysis, Monte Carlo and particle transport, and classical molecular dynamics, AMD says developers still need strong FP64 vector performance for the best results.</p>
+<p>Furthermore, even for workloads that map well onto GEMM operations, AMD says matrix sizes must be large in order to achieve the best performance, and that might also not be a given for every operation. The operands of those matrices also have to be sized well to the hardware, as incorrectly scaled operands can reduce performance. The FP64 vector math capabilities of the MI430X are insensitive to those operand sizing issues.</p>
+<p>Beyond those stumbling blocks, AMD also notes that using Ozaki emulation methods can cause the memory footprint of an application to balloon, requiring up to three times more capacity than native FP64 would.</p>
+<p>Since HBM capacity is directly tied to GPUs in modern supercomputing installations, fitting a workload to a machine that can only emulate FP64 operations could have cascading effects on the number of GPUs and compute nodes required, causing knock-on challenges for the floor area, power, and cooling required to support the system.</p>
+<p>AMD says the high 432GB of HBM4 memory capacity per MI430X node allows its customers to provision fewer GPUs and compute nodes in a system, saving on networking, power, and floor space.</p>
+<p>In addition to its FP64 HPC performance, AMD positions an MI430X-powered supercomputer as an AI inference platform for developing workloads that utilize those models as part of the research process. But there are some key differences between those systems and the Helios rack-scale accelerator powered by MI455X GPUs from the same CDNA 5 architectural family.</p>
+<p>Each MI430X GPU offers 9.2 PFLOPS of theoretical FP4 compute performance for inference, but that should be understood in the context of the whopping 40.3 PFLOPS of FP4 compute from each AI-focused MI455X accelerator.</p>
+<p>Beyond raw performance, the native scale-up domain size of four MI430Xs over AMD’s Infinity Fabric interconnect when coupled with a sixth-generation EPYC host CPU pales in comparison to the domain size of 72 MI455X accelerators in a Helios rack. AMD says this interconnect is optimized more for latency-sensitive operations rather than a massive scale-up domain.</p>
+<p>Of course, every customer and user of such a system will have different requirements, and institutional supercomputing installations usually aren’t trying to do double duty as cloud inference providers.</p>
+<p>For scientists and engineers whose AI models of choice work well within the 1.72 TB of aggregate HBM4 capacity and 93.2 TB/s of memory bandwidth offered by four MI430X's working together across the 12.3 Tbps of scale-up bandwidth available within such a node, the inference performance of each node is likely more than up to the task of the kinds of AI applications that need to be run alongside double-precision compute workloads.</p>
+<p>In any event, the MI430X can already count several supercomputing design wins in its corner. The upcoming Discovery supercomputer at Oak Ridge National Laboratory, the Alice Recoque installation in France, the LUMI-AI system at Finland’s CSC, and the Herder system in Germany will all take advantage of the native FP64 support offered by the MI430X.</p>
+<p>AMD’s continued support for native FP64, even as Nvidia retreats from that capability in its products, will doubtless be a point of pride for its architects and engineers, even as those institutional supercomputers will be dwarfed by both AMD and Nvidia-powered AI inference installations the world over. The company's semi-custom silicon design chops and chiplet experience give it the flexibility needed to tailor products like the MI430X to these specialized markets instead of pursuing a one-size-fits-all approach.</p>
+<p>As the Senior Analyst, Graphics at Tom's Hardware, Jeff Kampman covers everything that has to do with graphics cards, gaming performance, and more. From integrated graphics processors to discrete graphics cards to the hyperscale installations powering our AI future, if it's got a GPU in it, Jeff is on it.</p>
+<p>Tom's Hardware is part of Future US Inc, an international media group and leading digital publisher. Visit our corporate site.</p>
+<p>©
+Future US, Inc. Full 7th Floor, 130 West 42nd Street,
+New York,
+NY 10036.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/what-breaks-when-a-self-hosted-llm-gateway-hits-1-000-concurrent-streams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.tomshardware.com/pc-components/gpus/amd-attacks-nvidias-fp64-emulation-at-sc26-touts-native-double-precision-on-instinct-mi430x-says-ozaki-schemes-fit-less-than-10-percent-of-hpc-workloads-and-triple-memory-use-and-emulated-fp64-is-a-poor-fit-for-many-hpc-workloads" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Xet is on the Hub</title>
+    <title>Tiny flaws in diamonds could unlock a quantum computing revolution</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10684.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,46 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Xet is on the Hub</h1>
+        <h1>Tiny flaws in diamonds could unlock a quantum computing revolution</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/xet-on-the-hub/thumbnail.png" alt="Xet is on the Hub" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.sciencedaily.com/images/1920/pink-diamond.webp" alt="Tiny flaws in diamonds could unlock a quantum computing revolution" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/xet-on-the-hub/thumbnail.png" alt="Xet is on the Hub" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.sciencedaily.com/images/1920/pink-diamond.webp" alt="Tiny flaws in diamonds could unlock a quantum computing revolution" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Click here to read about joining the Xet waitlist (or head over to join immediately).</p>
-<p>Over the past few weeks, Hugging Face’s Xet Team took a major step forward by migrating the first Model and Dataset repositories off LFS and to Xet storage.</p>
-<p>This marks one of many steps to fulfill Hugging Face’s vision for the Hub by empowering AI builders to build, iterate, and collaborate more effectively on massive models and datasets. If you're interested in deeper dives on the technology itself, check out the following posts:</p>
-<p>But this post isn't about the core technology. It's a behind-the-scenes view of getting Xet on the Hub; taking you through our proof-of-concept to the first migration of repositories.</p>
-<p>The migration shifted ~6% of the Hub’s download traffic onto Xet infrastructure, validating several integral components and testing integrations with the myriad of ways repositories are accessed (e.g., via local development environments, different libraries, CI systems, cloud platforms, etc.). With nearly two million developers working on over two million public repositories, it’s real-world usage that’s the ultimate proving ground. Engineering a complex system like Xet storage is a balancing act. You plan for scale, performance, and reliability, but once bytes start moving, challenges emerge. The trick is knowing when to move from design and theory to practice.</p>
-<p>LFS, the storage system behind repositories today, stores large files in a separate object storage outside of the repository. LFS deduplicates at the file level. Even tiny edits create a new revision to upload in full; painful for the multi-gigabyte files found in many Hub repositories.</p>
-<p>In contrast, Xet storage uses content-defined chunking (CDC), to deduplicate at the level of bytes (~64KB chunks of data). If you edit one row in a Parquet file or tweak a small piece of metadata in a GGUF model, only those changed chunks are sent over the wire.</p>
-<p>This provides significant benefits to large file transfers. For example, the Xet team keeps an internal ~5 GB SQLite database that powers a metrics dashboard.  With LFS, appending 1 MB (around the average update currently) requires re-uploading the entire 5 GB file. With Xet storage, we push only the new data.</p>
-<p>This means uploads for the dashboard take a tenth of a second (at 50Mb/s) instead of the 13 minutes if the database were backed by LFS.</p>
-<p>Making this work requires coordination between the following components:</p>
-<p>Before moving to production, the system was launched into an ephemeral environment, where we built a steel thread of functionality to enable uploading and downloading via the huggingface_hub. The video below shows our progress one month in:</p>
-<p>On February 20th at 10 a.m., it was all hands on deck. In the weeks prior the team had built the internal tooling to migrate files from LFS to Xet and, just as importantly, roll back a repository to LFS if necessary. Now it was time to put it to the test. Grafana and Kibana lit up with new logs and metrics, showing the load shift in real time.</p>
-<p>The picture is the same in Kibana, only here you can tell when we took a lunch break:</p>
-<p>By the end of the day, we had successfully migrated all target repositories for a total of 4.5 TB into Xet storage. Downloads from each repository were now served by our infrastructure.</p>
-<p>No launch is without its lessons. The system handled the load smoothly and migrations went off without any major disruptions, but as the bytes flowed through various components we began to see some trends.</p>
-<p>Reviewing network throughput post-migration, we saw that CAS was downloading four times more data than it was returning to clients:</p>
-<p>Upon further investigation we found the vast majority of requests to CAS were for 10MB ranges of data within files. These requests come from users that are using hf_transfer to accelerate their downloads of large files. The requested ranges do not align on block boundaries and the block format doesn’t provide uncompressed chunk lengths to facilitate skipping directly to the data within the block. Instead, CAS streams the block starting at the beginning and reads until it finds the requested data.</p>
-<p>Given a block with an average size of 60MB and multiple partial requests to ranges within that block, the overhead accumulates. CAS reads 210MB for just 60MB delivered, a ratio of 3.5 bytes downloaded : 1 byte sent to the client. At scale across blocks of irregular sizes and ranges that can span several blocks, the 4 bytes downloaded : 1 byte sent ratio is matched.</p>
-<p>As usual, an image is worth a thousand words:</p>
-<p>To fix this, we updated the block format to store chunk-length metadata, enabling CAS to download only what each request actually needs. This format change required coordinated updates across:</p>
-<p>All of which were undertaken without downtime. Not only did this result in a balanced ratio in CAS downloads to returned data, but also reduced GET latency by ~35% across the board.</p>
-<p>At the same time, we also saw an unexpected load imbalance across our CAS cluster. One pod would spike to hundreds of active uploads while other pods chugged along at single digits. Swapping the load balancer’s routing algorithm (from round-robin to least outstanding requests) and adding more nodes made little difference in the moment.</p>
-<p>Digging deeper we realized that during uploads, CAS writes to a temporary file for validation before uploading without calling fsync, allowing the OS to buffer writes in the page cache. When a spike of uploads comes in, the unflushed page cache leads to increased memory pressure.</p>
-<p>As the OS tries to flush the page cache to disk, the pod experiences throughput throttling from block storage, causing increased latency on uploads. While uploads slowly process, new requests continue to come in, pushing more to the disk. This creates a vicious cycle, leading to a backlog of uploads and the imbalance that we saw during the migration:</p>
-<p>To keep a pod from getting in this state, we put a limit to the number of concurrent uploads each machine accepts before rejecting requests that, when reached, pushes requests on to other pods in the cluster. If all pods in the cluster get in this state, then our autoscaling policies kick in. Longer-term solutions might include forcing disk syncs, removing the on-disk buffering, or switching to ephemeral storage with better throughput.</p>
-<p>These two issues led to important architectural improvements, but they weren’t the only challenges the team tackled in the weeks following the migration. We also addressed other performance issues, a memory leak (which we fixed but still can't definitively root cause), and on advice from AWS to migrate the LFS Bridge from an Application Load Balancer (ALB) to a Network Load Balancer (NLB) to improve scalability during bursts of traffic.</p>
-<p>In short, real-world load was essential for exposing these challenges, and incremental migrations let us tackle them safely. That’s how we’re ensuring Xet-backed repositories scale reliably for the entire Hugging Face community with faster uploads, fewer bottlenecks, and minimal disruption all the way.</p>
-<p>With the initial migration complete, Xet is now on the Hugging Face Hub.</p>
-<p>We’re finalizing an official integration with the huggingface_hub that will mean you get the benefits of Xet without any significant changes to your current workflow. To get going:</p>
-<p>If you have any questions, drop us a line in the comments 👇 or open a discussion on the Xet team page. And stay tuned as we roll out more pieces (faster web uploads, faster Git workflows), bringing faster big-file collaboration to every AI builder on Hugging Face!</p>
+                <p>A new computational technique could accelerate the search for diamond materials capable of powering future quantum computers and highly sensitive sensors. Developed by a researcher at the U.S. Department of Energy's (DOE) Princeton Plasma Physics Laboratory (PPPL), the method makes it much easier to identify promising materials for quantum technology, potentially opening the door to advances across many areas of science.</p>
+<p>The approach has already revealed new candidates for quantum computing and sensing applications. The findings were recently published in ACS Central Science and have attracted attention from other researchers in the field.</p>
+<p>One of the biggest challenges in developing quantum technology is finding materials that can maintain delicate quantum states under practical conditions. Many candidates require extremely low temperatures to function reliably. Diamond materials stand out because certain quantum properties can remain useful even at room temperature.</p>
+<p>This capability could help advance technologies that are important to national research priorities and the development of next-generation computing. Quantum sensors promise levels of sensitivity and precision beyond those of conventional instruments, while quantum computers could eventually solve certain extraordinarily complex problems much faster than today's most powerful supercomputers.</p>
+<p>Why Imperfect Diamonds Could Be the Key to Quantum Computing</p>
+<p>Although diamonds are made of carbon atoms, a flawless diamond crystal is not enough to create a useful quantum computing system. The key lies in tiny irregularities within the crystal structure.</p>
+<p>These imperfections, known as defects, can occur when a carbon atom is absent from its normal position, when another element replaces a carbon atom, or when both changes occur together. The atoms surrounding these defects can form qubits, the basic units used to store and process quantum information in quantum computers and sensors.</p>
+<p>Finding the most useful defects, however, has been difficult. Accurately modeling their quantum behavior traditionally requires enormous computational resources, making it challenging to evaluate large numbers of possible candidates.</p>
+<p>A Simpler Way to Discover Better Diamond Qubits</p>
+<p>Mark Martirez, a staff research scientist at PPPL, developed a way to dramatically reduce the complexity of these calculations. Instead of simulating a much larger diamond structure, he isolates a small region containing just 16 to 30 atoms around a defect.</p>
+<p>By "carving out" this tiny atomic cluster and treating it like a separate molecule, Martirez can use powerful computational methods that chemists have spent decades refining. These established techniques make it possible to analyze the quantum properties of diamond defects much more efficiently without sacrificing the high level of accuracy needed for the calculations.</p>
+<p>"Because we're treating the qubits as molecules, the cost of calculating these defects is equivalent to the cost of just modeling a simple molecule," Martirez said. "This method really opened the floodgates" in terms of how qubits can be assessed.</p>
+<p>The new technique allows researchers to calculate how different qubits respond to laser light and microwave pulses far more quickly than before. Using this approach, the team identified promising defects involving boron and oxygen that could serve as new types of qubits.</p>
+<p>New Diamond Defects Reveal a Spectrum of Quantum Colors</p>
+<p>Light plays an important role in how scientists interact with diamond qubits. Researchers use lasers and microwave pulses to manipulate their quantum states and retrieve stored information.</p>
+<p>Much of the previous work in this area has centered on a defect known as the nitrogen-vacancy center. This structure forms when a nitrogen atom takes the place of a carbon atom in a diamond crystal, while an adjacent position that would normally contain another carbon atom remains empty.</p>
+<p>Under laser illumination, this type of defect can emit red light when it occupies a particular quantum state.</p>
+<p>The newly investigated defects offer different optical properties. Oxygen defects can produce blue light, while those involving boron emit ultraviolet light.</p>
+<p>These differences could make it possible to combine several types of qubits within a single quantum device. Because each type responds differently to light, researchers might be able to interact with one group of qubits without disturbing another.</p>
+<p>"One could imagine, then, combining different qubits of different responses, so you can basically probe one qubit but not the other," Martirez said.</p>
+<p>Beyond identifying new candidates, the findings suggest a broader change in how researchers approach quantum technology. Diamond qubits have traditionally been studied primarily through physics, but understanding their underlying chemistry could provide additional ways to design them.</p>
+<p>Martirez believes that researchers could eventually engineer qubits for particular functions using principles similar to those applied when chemists create specialized molecules, including compounds designed for new medications.</p>
+<p>How Quantum Chemistry Could Transform Future Research</p>
+<p>The potential benefits extend well beyond the development of quantum computers themselves. Martirez sees an intriguing possibility in which advances made possible by quantum chemistry eventually lead to quantum technologies that help improve the field of chemistry.</p>
+<p>In other words, quantum chemistry could develop the very tools needed to "enrich itself" in the coming decades.</p>
+<p>A practical quantum system containing multiple qubits could make molecular calculations substantially more accurate. That would allow scientists to study increasingly complex chemical structures, including large biological molecules and proteins, with a level of detail that is difficult to achieve using conventional methods.</p>
+<p>"We could describe larger molecules, biomolecules, proteins and everything like that in a more accurate way, and that could improve all the chemical-adjacent industries, such as pharmaceutical science and materials science. Even our fundamental understanding of molecular systems could be enriched."</p>
+<p>Such improvements could have far-reaching implications for pharmaceutical development, materials research, and the fundamental study of how molecules behave.</p>
+<p>Martirez also hopes the research will encourage more chemists to explore solid-state physics. Although building advanced quantum computers is often viewed as a challenge primarily for physicists, he argues that chemistry offers valuable expertise that could help accelerate progress.</p>
+<p>"At this moment in time, there's a great emphasis on building the first state-of-the-art qubit computer," he said. "But it's not just physicists who should be participating in this research. Chemists have decades of developed intuition about chemical systems that could be easily translated into understanding defects in solids as well."</p>
+<p>By bringing these disciplines together, scientists may be able to develop more effective ways to discover, understand, and eventually engineer the quantum materials needed for future technologies.</p>
+<p>The research was funded through PPPL's Laboratory Directed Research and Development program under prime contract number DE-AC02-09CH11466, with additional support from the DOE Office of Science, Office of Fusion Energy Sciences.</p>
+<p>Materials provided by Princeton University. Note: Content may be edited for style and length.</p>
+<p>Scientists Uncover a Natural Molecule That Makes Muscles Stronger and More Resistant to Fatigue</p>
+<p>Scientists Find That Mice, Not Deer, Hold a Major Clue to Lyme Disease Risk</p>
+<p>What Is a Thought Made Of? Scientists Reveal Why Human Consciousness May Be Beyond the Reach of AI</p>
+<p>Scientists Discover Mysterious Toxic Chemicals Floating in the Air Above America</p>
+<p>Stay informed with ScienceDaily's free email newsletter, updated daily and weekly. Or view our many newsfeeds in your RSS reader:</p>
+<p>Keep up to date with the latest news from ScienceDaily via social networks:</p>
+<p>Tell us what you think of ScienceDaily -- we welcome both positive and negative comments. Have any problems using the site? Questions?</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/xet-on-the-hub" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sciencedaily.com/releases/2026/11/261111005855.htm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

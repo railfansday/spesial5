@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How AI Agents Become a Tool for Attackers, and How to Stop It</title>
+    <title>Testing Unauthorized Process Manipulation in OpenPLC</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9776.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,18 +15,85 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How AI Agents Become a Tool for Attackers, and How to Stop It</h1>
+        <h1>Testing Unauthorized Process Manipulation in OpenPLC</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/PMUKGjUIQmgkJbHTCnFk64jn7ds1-pdd2b3r.png" alt="Testing Unauthorized Process Manipulation in OpenPLC" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/PMUKGjUIQmgkJbHTCnFk64jn7ds1-pdd2b3r.png" alt="Testing Unauthorized Process Manipulation in OpenPLC" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>Managing Security When You’re Deploying AI, Part 1: Compromised credentials, salaries inferred from budgets, and doctored documents show why agents need permission checks before the model ever sees the data.</p>
-<p>The post <a href="https://towardsdatascience.com/how-ai-agents-become-a-tool-for-attackers-and-how-to-stop-it/">How AI Agents Become a Tool for Attackers, and How to Stop It</a> appeared first on <a href="https://towardsdatascience.com">Towards Data Science</a>.</p></p>
+                <p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
+<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
+<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
+<p>I've been spending quite some time exploring software PLCs, trying to understand how they work and, more importantly, where their security boundaries actually are.</p>
+<p>One thing that kept my attention was the relationship between a running control application and the industrial protocols used to interact with it. PLCs expose process variables so other systems can read information and, depending on the configuration, make changes. That's perfectly normal in an industrial environment. But it raises an interesting question. What happens when a client outside the control environment starts writing values it probably shouldn't be changing?</p>
+<p>I wanted to explore that question in practice.</p>
+<p>For this investigation, I set up an OpenPLC v3 runtime with a small simulated tank-control application. It wasn't a particularly complicated process, but it had enough going on to make things interesting: operating setpoints, a tank-level variable, a pump output, and an alarm condition. The idea was to examine the Modbus TCP interface, work out which process variables were exposed, and see what happened when I tried changing the setpoints from an external client.</p>
+<p>I was particularly interested in what happened after the write. A server accepting a Modbus request is one thing. Seeing how the running control application responds is another.</p>
+<p>So I built the lab, started examining the interface, and followed the traffic.</p>
+<p>I used OpenPLC v3 running on an Ubuntu 24.04.5 virtual machine as the target. The research client operated from a separate machine, communicating with the runtime over Modbus TCP on port 502.</p>
+<p>For the process itself, I wrote a small Structured Text application called TankControl.st. It simulates a tank with a filling pump, configurable high and low setpoints, and a high-level alarm condition.</p>
+<p>The control logic is deliberately straightforward. When the system is enabled, the pump operates according to the tank level and the configured thresholds. Manual override can force the pump on, while disabling the system forces it off. The simulated tank level increases while the pump is running and gradually decreases when it isn't.</p>
+<p>There's also a 500 ms timer driving the level changes, while the PLC task executes at a 50 ms interval.</p>
+<p>This is the part of the application that matters most to the experiment. The setpoints influence the pump's automatic operating behavior, so changing them gives us something observable to investigate.</p>
+<p>Of course, this is a simulated process. There are no physical pumps, valves, or industrial equipment involved. That distinction matters, especially when discussing the potential consequences of manipulating control values.</p>
+<p>With the application running, I had a working process to examine. The next step was finding out what the Modbus interface actually exposed.</p>
+<p>Before touching any process values, I wanted to know what I was dealing with. I started with a few active probes against the Modbus TCP service.</p>
+<p>Port 502 was reachable, and the runtime responded to a basic holding-register read. I then tested several unit identifiers, along with the four standard read functions: Read Coils (FC01), Read Discrete Inputs (FC02), Read Holding Registers (FC03), and Read Input Registers (FC04).</p>
+<p>The tested requests received valid responses. That was useful, although there's a small distinction worth making here: getting responses for several unit identifiers does not establish that several independent devices exist behind the endpoint. It only tells us that the tested requests were answered.</p>
+<p>I also tried a Modbus device-identification request using Read Device Identification (FC43, MEI type 14). The runtime returned an Illegal Function exception. A request for an invalid register address returned Illegal Data Address.</p>
+<p>Nothing particularly dramatic happened during discovery, and that was fine. The goal at this stage was to establish which requests the tested interface would answer and how it behaved when given an unsupported or invalid request.</p>
+<p>With that baseline in place, I moved on to the application itself.</p>
+<p>Knowing that a PLC has a particular variable in its program doesn't automatically tell us where to find it through an industrial protocol.</p>
+<p>In the Structured Text application, I used explicit IEC addresses for the process variables. OpenPLC's generated variable information helped identify the names and data types, while actual Modbus reads allowed me to verify the mapping.</p>
+<p>I then used a Python script to read the coils and holding registers. This gave me a live view of the process variables without having to rely solely on the application source code.</p>
+<p>At the time of the enumeration, the high setpoint was 800, the low setpoint was 200, and the tank level was 335. The system was enabled, manual override was off, and the pump and alarm states were both off in that particular snapshot.</p>
+<p>Those values would change as the simulated process continued running, so I treated them as a snapshot rather than fixed properties of the application.</p>
+<p>With the mapping verified, I now had a clearer picture of what could be read through the Modbus interface. More importantly, I knew which registers controlled the behavior I wanted to examine.</p>
+<p>This was the part I had been working toward. I knew where the setpoints were, I could read them from the external client, and I had a running process whose behavior depended on those values.</p>
+<p>The next question was whether the same client could write to them.</p>
+<p>I used Modbus Function Code 16, Write Multiple Registers (FC16), to modify both setpoints in a single request. The original values were:</p>
+<p>In other words, I deliberately reversed the normal ordering of the thresholds. The high setpoint was now lower than the low setpoint. The request was sent from the research client at 10.97.0.1 to the OpenPLC target at 10.97.0.103, using Modbus TCP on port 502.</p>
+<p>The packet capture gave us something much more useful than a script simply printing "success."</p>
+<p>The FC16 request contained the following values:</p>
+<p>The request's register values appear in the payload as: 01 90 02 58. These are the hexadecimal representations of decimal 400 and 600.</p>
+<p>The runtime returned a normal FC16 response. It echoed the starting address and quantity of registers written, and the transaction identifier matched the request.</p>
+<p>That response is important. It establishes that the server acknowledged the write request at the Modbus protocol level. Still, I didn't want to stop there. An acknowledgement alone wasn't enough to establish what values the runtime would expose afterward.</p>
+<p>There it was. The two setpoints had changed, and the new values were visible through a subsequent Modbus read.</p>
+<p>For me, this was the central finding of the experiment. An external client with network access to the tested interface could modify the process setpoints, and the runtime acknowledged the write and returned the modified values afterward.</p>
+<p>There was no application-level authorization challenge in the observed Modbus exchange. That doesn't establish every aspect of the runtime's access-control configuration, but it does tell us what happened during this particular test.</p>
+<p>I could have stopped after confirming the modified register values. But that would leave an important part of the experiment unanswered.</p>
+<p>The setpoints weren't just numbers sitting in memory. The running application used them to make decisions about the pump. I wanted to see what happened to the simulated process after the change. To do that, I continued polling the holding registers and coils.</p>
+<p>The modified thresholds remained visible in the subsequent reads:</p>
+<p>The pump output also changed during the polling period. It was off in the first sample, on in the second, and off in the remaining three. The system-enable coil remained on, while manual override and the alarm remained off in the captured samples.</p>
+<p>There is an interesting detail in the control logic here.</p>
+<p>With the low setpoint at 600 and the high setpoint at 400, the two thresholds overlap in a way the original configuration never intended. The application checks the low threshold first. When the tank level is at or below 600, it turns the pump on. Otherwise, it checks whether the level is at or above 400 and turns the pump off.</p>
+<p>Given those values, the second condition will also be true whenever the first condition is false. The pump's behavior therefore follows the order of the conditions in the program, not a conventional high/low hysteresis range.</p>
+<p>The polling results are consistent with the runtime continuing to execute the application while the modified values were present. However, the coil and register reads were separate Modbus requests, and the PLC continued executing between them. I can't use those samples to claim that each individual pump transition was caused by a particular register value at an exactly synchronized moment.</p>
+<p>That's an important limitation. The experiment demonstrated accepted writes, modified values in subsequent reads, and continued process execution. It did not establish a precise, time-correlated causal account of every output transition.</p>
+<p>Still, the result was worth examining. Changing two registers had altered the parameters that the running control logic relied on, and the new values remained observable throughout the captured polling interval.</p>
+<p>A Modbus TCP write request is a normal part of industrial communication. Engineering tools, supervisory systems, and other authorized clients may need to change process values. The problem begins when the ability to write is available to systems that have no legitimate reason to do so.</p>
+<p>In this experiment, the client could reach the OpenPLC Modbus TCP service and issue a write request. The runtime acknowledged it, and the changed values were visible afterward.</p>
+<p>That makes network exposure an important part of the discussion. If a PLC communication interface is reachable from networks containing ordinary workstations or systems outside the control environment, the number of potential clients able to interact with it may be larger than intended.</p>
+<p>There are a few practical defensive considerations worth taking away from this.</p>
+<p>✔ Restrict network access. Modbus TCP should not be broadly reachable simply because a device needs to communicate with an engineering workstation or supervisory system. Network segmentation and firewall rules can limit which systems are able to reach the PLC interface.</p>
+<p>✔ Control who can write. Read access and write access have different operational consequences. Where the platform or surrounding architecture permits it, write operations should be restricted to explicitly authorized systems and workflows.</p>
+<p>✔ Monitor changes, not just connections. Seeing a client connect to TCP/502 doesn't tell an operator what it did. Monitoring Modbus write function codes, register ranges, source addresses, and unusual changes to important process parameters can provide more useful visibility.</p>
+<p>✔ Validate important process parameters. Control applications should account for invalid or unexpected operating values. In this experiment, the application accepted a configuration in which the low setpoint exceeded the high setpoint. Whether such values should be accepted depends on the intended process, but it is worth considering input validation and safe operating constraints.</p>
+<p>None of these measures should be treated as a magic fix. They address different parts of the problem, and their effectiveness depends on the actual deployment.</p>
+<p>I went into this investigation wanting to understand how much influence an external Modbus TCP client could have over a running OpenPLC application. The experiment gave me a concrete answer for the configuration I tested.</p>
+<p>The service responded to the tested Modbus read requests. I identified the process variables exposed through the interface, then used FC16 to modify two holding registers. The runtime returned a normal response, and subsequent reads confirmed that the new values were visible.</p>
+<p>The polling that followed showed the application continuing to execute with those modified values present.</p>
+<p>There are limits to that conclusion, though.</p>
+<p>I did not test whether the changes survived a runtime restart or application reload. I did not test the same behavior across other OpenPLC versions or Modbus implementations. And because the process was simulated, this experiment says nothing about direct physical consequences for industrial equipment.</p>
+<p>Nor did I attempt to establish a real-world operator's identity or authorization. The word unauthorized describes the action within the lab's threat model: a client outside the intended control workflow was able to issue the tested write request without an application-level authorization challenge appearing in the observed exchange.</p>
+<p>For a small experiment, there was quite a bit to learn from those few Modbus packets. The interesting part wasn't simply that two registers changed. It was seeing how an externally issued protocol request could reach variables that the running control application depended on, and how the runtime continued operating with those values.</p>
+<p>That's a useful place to continue investigating SoftPLC security. Understanding the interface is one thing; understanding what an external interaction can change inside a running process is where the security implications become much clearer.</p>
+<p>From HTTP to SSH: Finding a Host-Level Attack Path in OpenPLC v3</p>
+<p>Security researcher focused on Industrial Control Systems (ICS), protocol forensics, and open-source security tools.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://towardsdatascience.com/how-ai-agents-become-a-tool-for-attackers-and-how-to-stop-it/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/testing-unauthorized-process-manipulation-in-openplc?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
