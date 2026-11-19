@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>IPv6 delegation, an unusually subtle failure mode</title>
+    <title>South Korea tries to out exam cheats with Extreme Emergency smartphone alert</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9934.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,35 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>IPv6 delegation, an unusually subtle failure mode</h1>
+        <h1>South Korea tries to out exam cheats with Extreme Emergency smartphone alert</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
-            <img src="https://savyasacheejha.com/processed_images/cover.9c945b52eb23e34e.jpg" alt="IPv6 delegation, an unusually subtle failure mode" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5310947.jpg?imageId=5310947&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="South Korea tries to out exam cheats with Extreme Emergency smartphone alert" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://savyasacheejha.com/processed_images/cover.9c945b52eb23e34e.jpg" alt="IPv6 delegation, an unusually subtle failure mode" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5310947.jpg?imageId=5310947&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="South Korea tries to out exam cheats with Extreme Emergency smartphone alert" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Running a custom x64 router has a lot of upsides. One, it runs mainline Linux, so it gets updates quickly. Two, router adblocking. 'Nuff said. And three, if something breaks, you get to dive in deep and figure out what's going wrong.</p>
-<p>This week, I had a really interesting time with my custom setup. I noticed that if I'd restart pppd (which connects to my ISP), Google would stop working. It would still resolve, but I couldn't reach it.</p>
-<p>I have a stack where networkd is responsible for the network in general, with pppd dialing in to my ISP, kea-dhcp4 handing out DHCPv4 addresses, blocky handling DNS (on the router as well as the laptop) and networkd itself handling RA. As far as I knew, there was nothing wrong in this stack at all. All the daemons themselves are battle-tested and known to be working fine.</p>
-<p>So maybe this was a problem with my laptop?</p>
-<p>One ping told me that Google was getting resolved to its IPv6 address, which exonerated DNS, but I couldn't ping it. An IPv4 address on the other hand, worked fine.</p>
-<p>On the other hand, wlan0 showed 2 groups of IPv6 addresses with the older IPv6 address having a preferred lifetime greater than 0. Could this be the culprit? I restarted NetworkManager, and lo and behold, Google magically started working again and I was down to just one group of IPv6 addresses, the newer ones.</p>
-<p>I've never debugged networks in depth, but the problem here seemed to be fairly simple to grasp. Whenever pppd restarts, it negotiates a new connection with my ISP, which provides a new prefix to my router for delegation. However, no device drops the old IPv6 address. At first I thought this was NetworkManager's fault, but then I saw my iPhone do the same thing. Two points don't make a pattern, but they do make a line. Which pointed straight at networkd.</p>
-<p>Don't get me wrong. I like networkd. The only reason I have NetworkManager on my laptop is because it's purpose built for Wi-Fi and roaming and it's never let me down yet (iwd ftw). My router and server both run networkd. It's a very comfortable, no-nonsense daemon. So I was reluctant to blame it. So I turned to pppd instead as a cop-out.</p>
-<p>I decided to ensure that pppd would never restart when I'd redeploy my NixOS router. But unfortunately, I've had times when my ISP has randomly hiccoughed and pppd reconnects to it leading to the same problem all over again. Which meant I'd have to get to the bottom of this.</p>
-<p>A little bit of searching led me to RFC 9096, Improving the Reaction of Customer Edge Routers to IPv6 Renumbering Events, which tightens RFC 7084, Basic Requirements for IPv6 Customer Edge Routers. Basically, whenever a new prefix is given to the router and the old one dropped by upstream, the router needs to advertise the old prefix with preferred and valid lifetimes of 0 which causes consumers of the router advertisement to stop using it as a source address.</p>
-<p>Interestingly, networkd has an issue RFC 7084 support in networkd (automatic ipv6 range delegation) where a requirement for properly implementing RFC 9096 came up in September 2026. There's a patch as well which hasn't yet been merged. The same issue has been brought up with radvd on OPNsense and closed as "not planned", as well as with dnsmasq on OPNsense. VyOS's dynamic-prefix support is still an open request. Which meant that the usual suspects were out. There's only one option left, and it's not available on NixOS. odhcpd from OpenWrt, which actually does implement RFC 9096.</p>
-<p>I was a bit wary of relying on an OpenWrt package. Not because I think there's anything wrong with OpenWrt (quite the contrary!), but because the distribution itself is unusual. It doesn't use systemd or dbus, instead using procd as pid1 and uses ubus for IPC. I know that many of their packages depend on these two pieces of infrastructure to function, so that was the first thing I checked. Fortunately, odhcpd is unusual in that it can get information from the kernel directly through netlink and can be configured without the need for ubus, so that was not a blocker. Packaging it took me a while, but I submitted it for review to nixpkgs and began running it on my router, switching off router advertisement on networkd. I could have used odhcpd for DHCP as well, but I was fairly happy with kea-dhcp4 so I left it alone.</p>
-<p>And lo and behold, when I deliberately restarted pppd, I got:</p>
-<p>Success! The best thing was that odhcpd's memory is persistent across reboots and is agnostic to the time set on your machine. This is pretty important for me, because I haven't replaced the dead CMOS battery on my router and the clock resets every time the router restarts. This allows odhcpd to advertise old prefixes with the correct preferred/valid lifetime of 0 after every reboot without caring about when they were delegated. In practice, this would matter if my router loses power while my Wi-Fi access point remains up, or if I reboot my router (which definitely does happen often). Given my family's reliance on the home network remaining up, I'd rather cover all cases.</p>
-<p>My euphoria lasted until I got onto my iPhone, where the old address lingered on my screen. I switched off mobile data to check (iOS silently routes to mobile data where Wi-Fi fails, a service called Wi-Fi Assist) and the same problem persisted for a few minutes before the address changed and the problem resolved on its own.</p>
-<p>Took me a bit of packet capture to work out, but it became clear what had happened. The router advertisement had gone out as soon as the prefix had arrived, but the phone was sleeping and missed it. It caught the next advertisement when it was awake and in my hands. This shows us that dropping prefixes is prompt, but not instant. It took around 10 minutes for my phone to pick the new one up. networkd advertises times of 30/60 mins for preferred/valid respectively, while radvd advertises times of 4/24 hours by default. odhcpd conforms to the recommendations of RFC 9096 by advertising 45/90 mins.</p>
-<p>odhcpd behaves slightly differently from its natural home in OpenWrt when deployed on another distribution. It cannot be updated via ubus (note: it technically can because ubus is packaged in NixOS, but I wasn't using it here) so it can only get interface names at startup and it gets state by talking to the kernel, not from ubus. The NixOS module ties it to device units so that it picks them up at startup. It also differs quite a bit from networkd's behaviour. For example, networkd, reloading its config, would send a router-lifetime-0 goodbye message, which odhcpd doesn't (which is correct here, because odhcpd being down does not imply the router being down). This would cause a brief network disruption where for a moment, everything connected to my network would lose IPv6 capability momentarily as networkd reloaded. And finally, when pppd would go down, odhcpd advertises a router lifetime of 0, implying there's no default route available, telling clients to not use it as a gateway.</p>
-<p>The takeaway for me was quite simple. I usually prefer using systemd utilities wherever possible. I prefer networkd, I don't use a separate syslog daemon, I feel like udev is my friend, and so on. However, that holds true when the machine is a client. As soon as the machine has to behave as a server to another machine, I'd prefer to fall back to specialised tools. Hence, my router has chrony instead of systemd-timesyncd, blocky instead of systemd-resolved, and kea-dhcp4 and now odhcpd in place of systemd-networkd's DHCP and router advertisement functionality. There's enough edge cases that getting dedicated tools there just makes more sense.</p>
-<p>But more than that, I heartily recommend odhcpd. I don't know whether I'd want to replace kea-dhcp4 with it or not, but as a router advertisement daemon it's the best one I've found for a home network connecting to a consumer ISP.</p>
+                <p>At least it’s less disruptive than an internet shutdown</p>
+<p>At 08:30 on Thursday morning every powered-on mobile phone in South Korea blared out an Extreme Emergency Alert tone for 10.5 seconds – but the nation was at peace, with no major natural disasters occurring.</p>
+<p>The extreme emergency South Korea hoped to avoid was cheating in the annual College Scholastic Ability Test (CSAT), an exam that over half a million people sit in the hope of securing admission to their preferred university. This year, around a third of those applicants are repeating the test after their previous effort didn’t get them the result they wanted.</p>
+<p>CSAT involves five separate examinations staged in a single day. Participants can only bring pencils to the test. Smartphones or any sort of tech is strictly forbidden.</p>
+<p>Which is why Korean authorities used the national alert system on the day of CSAT, because if the 40dB tone sounded in an exam centre, it could indicate a student had deliberately or inadvertently tried to bring a smartphone – perhaps as an exam aide.</p>
+<p>Korean media report the 08:30 alert turned up nine phones.</p>
+<p>Authorities will send a second alert tone at an unspecified time later in the day to again smoke out any surreptitious smartphones.</p>
+<p>It’s not possible to opt out of the alerts, one reason a concerned netizen has used the Android issue tracker to suggest sending alerts to detect exam cheats could be an abuse of the emergency alert system that Google might want to do something about.</p>
+<p>South Korea sends a lot of emergency alerts, for matters such as helping to find missing persons or to warn of dangerous weather. It’s not uncommon to receive several in a single day. Authorities also gave advance notice of the CSAT alerts, which will not, therefore, cause panic on the streets of Seoul or Busan.</p>
+<p>CSAT day is, however, a serious occasion. Some businesses open late so test-takers can get to their exams without having to battle peak hour traffic.</p>
+<p>Those measures are arguably less disruptive than the widespread internet outages that some states in India impose on major exam days.</p>
+<p>An alleged leak of one Indian exam paper saw the nation’s tech regulator ban messaging service Telegram in the country and eventually sparked a youth protest movement that New Delhi tried to suppress with more deliberate internet outages. ®</p>
+<p>Multiple CDNs and routing users to nearby download sites kept traffic flowing for everyone</p>
+<p>At least it’s less disruptive than an internet shutdown</p>
+<p>PARTNER CONTENT: As carriers tighten underwriting, a backup job marked green is no longer enough. Here’s the evidence underwriters expect</p>
+<p>Don’t hoist the Mission Accomplished banner, because company president thinks it also will spur China’s chip biz into action</p>
+<p>Pre-digital tech can't be transformed and automated</p>
+<p>At least one dangerous RCE bug will get a fix on Thursday</p>
+<p>AI has birthed some truly colossal supers, they just aren't on the Top500</p>
+<p>Nvidia unveils an HPC-optimized Rubin GPU to challenge AMD's 288 teraFLOPS MI430X</p>
+<p>Ride-hailing biz says stolen credentials allowed crooks to help themselves to driver's license data</p>
+<p>In the age of AI, the top spot on the bi-annual ranking is whoever willing to run HPL instead of LLMs</p>
+<p>Securing supply chains or coercing other nations to help Washington sideline Beijing and its AI ambitions?</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Cheap tiny e-readers and the perils of LLM-generated drive-by pull requests – plus much more</p>
+<p>Devuan-based distro swaps Wayland for XLibre and i3, with Xfce waiting if the tiling gets tiresome</p>
+<p>Version 4.0 of Redmond’s cloudy OS is free to use in its cloud. Repeat. Free to use</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>We love this, but suspect this is the Marmite of GNOME extensions</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://savyasacheejha.com/posts/why-odhcpd/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/personal-tech/2026/11/19/south-korea-tries-to-out-exam-cheats-with-extreme-emergency-smartphone-alert/5310942" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

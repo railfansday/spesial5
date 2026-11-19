@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications</title>
+    <title>What a Fictional Robot Can Teach Us About Care</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9822.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,96 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications</h1>
+        <h1>What a Fictional Robot Can Teach Us About Care</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6a725daa5ca641a21ab61956/OWGtXjnbBov-7SI_04o4z.png" alt="How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6a725daa5ca641a21ab61956/OWGtXjnbBov-7SI_04o4z.png" alt="How Specializing the Vocabulary of SLMs Can Cut Inference Cost by 77% in Real Applications" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Models specialized for a domain or a task by fine-tuning general open-source models, such as Qwen and Gemma, inherit a vocabulary built for many domains and general applications.</p>
-<p>In an essay grader we run in production, that vocabulary split the text the model writes most into many tokens. This article previews some results from the VocabX paper, which we will publish soon: how we specialized the vocabulary around the cost of each token rather than its frequency, and cut measured inference cost by 77% without changing the base model.</p>
-<p>The tokenizer is usually treated as a fixed property of the base model, inherited and left alone. For a model specialized in a single domain, it can be one of the largest cost levers, and it is set before any training step.</p>
-<p>One of the systems we run in production is an automated grader for Portuguese essays, built on Qwen3-4B. It receives the essay, the prompt and the supporting texts, and returns a JSON assessment with a grade and a comment for each competency.</p>
-<p>The model was already small, at 4 billion parameters, and had already been trained for the task. Its tokenizer, however, was still the original Qwen3-4B one, built for many languages and many kinds of text. In the grader, it was used for a single language, Portuguese, and a single response format. That had two costs: the text the grader writes on every request took more tokens than it needed, and at every generated token the model scored a vocabulary of 151,669 entries, including many this task almost never uses.</p>
-<p>We rebuilt that vocabulary with a method we call VocabX, keeping the same base model, the same data and the same training recipe. The numbers in this article come from the current version of the paper, still under review, and may change before publication.</p>
-<p>The leading language models read and write in tokens, and the tokenizer decides how text becomes tokens. The tokenizers of the leading general-purpose models are trained on large collections of text from many domains and languages, from source code to contracts to Chinese. For a general-purpose model, that choice makes sense.</p>
-<p>For a model used in a single domain, it creates two kinds of waste at once.</p>
-<p>The first is fragmentation. The tokenizer splits into many pieces exactly what the domain repeats most. In the grader, every response starts with the same JSON envelope, the same competency names, the same evaluation phrases. In contracts, it is the boilerplate clauses. In code, the identifiers. Each of these sequences costs several tokens where one would do, and the model pays for every one of them on every request.</p>
-<p>The second is excess. The vocabulary carries tens of thousands of entries the domain never uses, and the model computes a score for all of them at every token it generates. A model tuned to grade American school biology exams will almost never write in Chinese, yet it computes the probability of every Chinese-language token at every step. The vocabulary splits into many pieces what the domain repeats most, and carries entries the domain never uses.</p>
-<p>The natural reaction is to count tokens and try to reduce the count. But the count is not the bill.</p>
-<p>To see why a generated token costs more, it helps to look at how inference works. It has two phases. In prefill, the model processes the whole input in a single pass through the network: each weight read from GPU memory is reused for every input token, and the limit is compute. In decode, the model generates the response one token at a time, and each token needs a full pass. Each weight read is used only a few times, and the GPU spends most of its time waiting for data to arrive from memory: the limit becomes memory bandwidth.</p>
-<p>This effect is strongest exactly where we operate: small models served with moderate batches. Batching requests splits the weight reads across them and eases the problem, but does not solve it. At every decode step, the model also reads the KV cache, the attention memory that holds the context already processed and grows with it. In the case we measured, the grader, a generated token costs 7.4 times a token read, but the ratio varies with the hardware, the problem, the batch size, the context length and other factors, and it can be larger than that. In general, the direction holds: generating costs more than reading.</p>
-<p>Think of a shipping company that charges per box, but charges seven times more for outgoing boxes than for incoming ones. Reducing the total number of boxes helps. Reducing the outgoing boxes helps seven times more. A method that compresses input and output equally misses most of the possible savings.</p>
-<p>The third component of the bill is the vocabulary itself. The model's last layer, the LM head, turns the internal state into a score for every possible token. To do that, it holds one row of parameters per vocabulary entry. In a model the size of Qwen3-4B, that matrix accounts for almost 10% of the parameters. It is a share that large models absorb without noticing, but it weighs on a small model.</p>
-<p>And the cost is not paid only once. The input layer looks up only the row of the token being read, but the LM head reads and multiplies the entire matrix for every generated token. Since decode is already memory-bound, every extra row is more data to move at every step. An entry the domain never uses costs exactly the same as a frequent one. That is why adding tokens can lower the count and raise the bill at the same time. VocabX does not include this term in its selection criterion, but it controls vocabulary size in two steps: the sub-word merge replaces the base vocabulary with a smaller, domain-specific one, and macros enter under a fixed budget. In the grader, the output layer went from about 152,000 to about 65,000 rows.</p>
-<p>Adapting a model's vocabulary is not a new idea. Reference methods in the literature, such as fast vocabulary transfer (FVT), multi-word tokenization (MWT) and Liquid AI's in-place tokenizer expansion (in-place BPE), which continues BPE training from the original vocabulary, already reduce fragmentation. When we tested them on our problem, we found two limitations.</p>
-<p>They choose tokens by frequency, not by cost. An expression that appears often in the input is worth more to them than one that appears less often in the response, even if the second is the more expensive one to serve.</p>
-<p>They work on a single layer. They either adjust how words are cut into pieces, or merge whole phrases into one token. None of these three does both under the same criterion. And the grader's biggest waste was precisely in long, repeated spans such as the JSON envelope, which a sub-word method only reaches after merging each part, one by one.</p>
-<p>VocabX addresses both limitations, plus a third problem that appears on the obvious path to solving the first.</p>
-<p>First, we changed the question. Instead of asking how many tokens a candidate saves, we ask how much cost and time it saves. Each eliminated token is multiplied by the price of the field it appears in: system prompt, user message or model response. In the case we measured, the grader, a token saved in the response is worth 7.4 times one saved in the input, and the vocabulary is built accordingly.</p>
-<p>Second, we work on both layers at once. Back to the shipping company: you can cut boxes by packing each item better, or by recognizing that the same twelve-item kit ships every week and sending the kit in a single box. VocabX does both. At the sub-word layer, it rebuilds how domain words are cut into pieces. At the multi-word layer, it looks for whole spans that repeat, from short expressions to full lines and JSON envelopes, and turns each into a single token, which we call a macro token. Both layers are chosen under the same cost criterion, each with its own budget.</p>
-<p>To find these spans, we use five miners, automatic searches for spans that repeat across the corpus, each specialized in one kind of repetition: long words, whole lines, expressions, complete sentences, and structures with punctuation such as JSON and tags. Averaged over eight corpora, the last one contributed the most, and on code it alone accounted for 17.5 points. Without all five, token reduction on the grader would drop by 55.6 points.</p>
-<p>Third, we estimate what the sample cannot see. Choosing tokens by cost requires knowing how much each candidate still saves after the ones already chosen. Measuring that exactly would require reprocessing the entire corpus after every choice, tens of thousands of times. A common way to do this at scale is to measure on a sample of documents, and then a candidate absent from the sample gets zero gain.</p>
-<p>An expression that appears 37 times in 50,000 documents shows up in a 400-document sample only about 26% of the time. In a contracts corpus, only 16.6% of the candidates appear in a 400-document sample; the rest are never evaluated.</p>
-<p>A candidate's gain has two parts. One is how much it saves over the entire corpus, and that can be counted exactly, without a sample. The other is how much of that saving is not yet covered by the tokens already chosen, and only that part needs to be estimated. For candidates the sample cannot see, we use a statistical estimate based on the behavior of the ones it can see, instead of zero. A candidate that is rare in the sample but frequent in the corpus is back in the running.</p>
-<p>That change alone, with the same sample and the same budget, raised token reduction on a contracts corpus from 44.7% to 52.8%.</p>
-<p>To measure the real effect, we trained seven versions of the grader with the same base model, the same data, the same recipe and the same seed. The only difference between them is the tokenizer. All of them ran the same 500 requests on the same test machine, with an RTX 5090 GPU and the vLLM inference server, and cost was calculated from measured runtime.</p>
-<p>The model's response dropped from 350 to 101 tokens on average. Cost dropped 77.0%. Quality, measured by the bench score, which combines grading accuracy and the accuracy of screening off-topic or rule-breaking essays, rose from 0.703 to 0.810.</p>
-<p>Getting there required a course correction. The first version of the vocabulary fused each competency's grade with the surrounding JSON into a single macro token. It was the most compact option, but quality dropped: its bench score was 0.689, below the production grader's 0.703. With the grade inside the macro, each combination of grade and structure became a different variant of the same token, and the model chose both in a single step. Giving the grade its own token cost 2 extra tokens per response, raised the bench score to 0.810 and, in the measurement, was even cheaper: a 77.0% reduction, against 73.3% for the fused version.</p>
-<p>The lesson applies beyond the grader. Compression has a cost when the compressed span carries the very decision the model exists to make. The goal is not the cheapest possible vocabulary, but the cheapest one that preserves the tokens that matter.</p>
-<p>To find out whether the gain was specific to our case, we compared VocabX with the three reference methods on five public domains (contracts, medical papers, scientific papers, news and Python code) and three model families (Qwen3, Llama-3.1 and Gemma-3). All methods used the same mining and test documents, and the same vocabulary ceiling.</p>
-<p>VocabX compressed more than the strongest reference method in all fifteen combinations, by 1.2 to 9.3 points. In estimated inference cost, the pruned version of VocabX also led in all fifteen, with average margins of 10.2 points on Qwen3, 7.5 on Llama-3.1 and 13.6 on Gemma-3. On contracts, the pruned version reached 62.6% token reduction with 113,426 vocabulary entries, against 61.8% for the best in-place BPE configuration, which uses 207,803.</p>
-<p>VocabX does not make the model smarter. It makes the model stop paying for text it does not need to write piece by piece, and stop scoring a vocabulary it will never use. In our grader, that cut measured inference cost by 77%, with the same base model and the same training recipe.</p>
-<p>Specialization usually starts with data and weights. It can also start one layer earlier, in the vocabulary.</p>
-<p>The full method, the tables for every experiment and the discarded interventions will be in the VocabX paper, which we will publish soon.</p>
-<p>Explore Dharma AI on Hugging Face to try our demos, download our open models, and see how specialized AI systems outperform general-purpose models in real enterprise applications.</p>
+                <p>This essay contains mild spoilers for the novel Klara and the Sun.
+
+The baby, my baby, was to be named Josie. Josie Joy. 
+
+But when she was born, she was decidedly not a Josie. The name was too soft, too ethereal for such a sentient, wide-awake, bird-like baby. I knew that I had to find a new name. Who are you? I whispered into the swirls of her astoundingly warm, circulated, and singularly perfect ear. I couldn’t wait to get to know her. 
+
+In another story, a girl named Josie is dying. In Kazuo Ishiguro’s 2021 novel Klara and the Sun, Josie has an unknown illness and a prognosis that haunts the pages. Her life exists in the shadow of her sister, Sal, who has already died of the same unarticulated illness, likely caused by an elective genetic alteration procedure known as “lifting.” 
+
+In Josie’s world, being lifted is the new social currency; those who are lifted are expected to have greater access to both intellectual and economic success. The procedure does not, however, come without risk. When we meet Josie’s mother, she is tasked with the impossible: coping with the impending death of her only remaining child. A death likely resulting from a choice she made as a parent. The ultimate consequence.
+
+Klara is a robot purchased by Josie’s mom to be her companion, in part (it is implied) to assuage the guilt she feels. I first read Ishiguro’s Klara and the Sun shortly after its debut. Despite being disturbed by some aspects of the dystopian world depicted within, my memory of the novel was poignant. I recalled Klara with particular affection. 
+
+Now, the distance between Ishiguro’s dystopian world and our current reality is rapidly collapsing. With the much anticipated film adaptation set to be released this Friday, October 23, and the sudden ubiquity of artificial intelligence in our day-to-day lives, Klara and the Sun is now repositioned as a mirror. If we look closely enough, we might discern what remains uniquely human during this moment of profound technological and social change.
+
+Care through other eyes
+
+We are introduced to Klara, the story’s narrator, when Josie’s mom takes her to find an artificial friend, or AF for short. In the novel, AFs confer social standing, but also offer practical assistance—tutoring, companionship, monitoring an ailing child—not unlike the benefits purported by artificial intelligence companies today. 
+
+Klara has been patiently waiting, alongside several other AFs, to be chosen. Josie’s mother is the final decider. In a foreboding scene, Josie’s mother commands Klara to reenact Josie’s gait—a test, of sorts—before agreeing to purchase her. It’s the precision of Klara’s mimicry that convinces “the Mother” (as she’s called in the novel) that Klara is the right model for Josie.
+
+All of this, we learn through Klara. Ishiguro’s choice to position the reader within Klara’s perspective allows us to bypass the quagmire question of whether or not Klara is conscious and instead project our own consciousness onto her. In doing so, we view the human world through her sometimes malfunctioning robot eyes, as she nonjudgmentally conveys the complexities of the very flawed and sometimes desperate human behaviors she seeks to understand. In one particularly moving scene, Klara witnesses the vulnerability of caring for another human being:
+
+I saw before me, on the near edge of the bed, a large shifting shape, made additionally complex by the patches of blackness and moonlight moving over its surface. I realized the shape was the Mother and Josie embracing. . . . As well as their limbs, their hair had become mingled, and then their shape began gently to rock, in a way not unlike when their goodbyes became extended. 
+
+“Don’t want to die, Mom. I don’t want that.”
+
+“It’s okay. Okay.” The Mother’s voice was soft, at just the same level mine had been.
+
+“I don’t want that, Mom.”
+
+“I know. I know. It’s okay.”
+
+
+Prior to this moment, Klara—steadfast and ever-available—had offered her presence to comfort Josie. Yet, despite their far more complicated and at times strained relationship, it is the Mother that Josie calls for. 
+
+Care creates love
+
+When I first became a parent, I confided to a friend that when my not-Josie was born, I felt like a new sun had burst into my solar system, and I was now orbiting around her. I couldn’t quite articulate the “before,” in my metaphor. I didn’t feel like I was previously my own sun, nor did I feel like I was a planet untethered to others. But there was something distinctly different when she arrived, a whole new consciousness, a space and force and awareness created within me. Her pull was intoxicating, undeniable, sometimes terrifying, and my awareness and attention seemed to expand overnight to now include not only my own experiences, but also to track, perceive, anticipate, and accommodate her own.
+
+If Klara had turned to psychological theory and research about the complexity of parent-child bonds, she would have found a great deal of it. Consider Winnicott’s “good-enough mother” or research indicating that parents and infants are rarely, if ever, perfectly attuned, and the growing body of evidence suggesting that the navigation of the ruptures and repairs themselves reinforce attachment. It has become increasingly clear through evolving applications of experiments such as Edward Tronick’s now famous “still-face” experiment that the imperfect dance between caregiver and child lays the groundwork for resilience and emotional regulation.
+
+In The Philosophical Baby, developmental psychologist and philosopher Alison Gopnik says, “It’s not so much that we care for children because we love them, as that we love them because we care for them.”
+
+We love them because we care for them. 
+
+Beyond Gopnik’s own research, there is an abundance of data to back this up. Studies I have long been familiar with, such as those demonstrating that in same-sex, non-carrying male couples, fathers who act as primary parents show changes in similar brain regions to women who carried their pregnancies and go on to parent their children. Yet, there was something profound about the simplicity of Gopnik’s statement, about love being something we cultivate within ourselves and, more precisely, about care being the means through which we build love, not merely a necessary byproduct. 
+
+In a separate interview, Gopnik jokes that spending time with a three-year-old gives you a small taste of sainthood. Not in the sense that the demands are so extreme that you inherently become a saint (though there is a real argument to be made here for any parent who weathers the storm of a parking lot tantrum), but in the actual felt-sense of the divine, the experience of feeling so acutely and utterly in love with this being, so in awe of their singularity, their specialness, their openness to experience, their brilliance. 
+
+Gopnik continues on, teasing, about our tendency to claim the uniqueness of our three-year-old, in her case her grandchild, but gently affirms the truth beneath: that there is something numinous, universal, pure within all three-year-olds, a near-magical vitality that we sometimes make contact with when we intimately care for one. Something primal, or perhaps primary, is awoken when we re-experience the world through the eyes of a three-year-old.
+
+Care and distance
+
+My not-Josie is now three. In many ways she is more unknowable, separate, than she was when she was a newborn, so physically attached and dependent on me. Now, she has her own relationships—with teachers, classmates, family members—that are entirely her own. And yet, she occupies and orients so much of me, continually changing my experience of the world, my access to play, to awe, to unadulterated, intoxicating adoration.&nbsp; 
+
+This past summer, I was sitting by a lake, relaxed but hawk-eyed as I watched my not-Josie from the shore. I felt a familiar presence by my side, the barely-perceptible shadow in my peripheral vision of a small body sitting down, and soon thereafter, the unselfconscious weight of a small hand on my leg. I looked down to see a head covered in feathery blonde hair, not the dark, curly brown of my own child. 
+
+The wispy tufts belonged to another small child who had clearly mistaken me for her mother. In that brief moment before she looked up, before we both acknowledged our separateness, I felt overcome with the awareness—as though received through the touch of her hand on my leg—that her mother loved her in the way that I love my child, and that, despite how unbelievably special my not-Josie is, my love for her is not. It is precious, but also universal. 
+
+Intellectually, of course, this is not a profound realization. Emotionally touching into it is, on the other hand, equally as brutal as it is beautiful. Next to this small child, healthy and safe, I felt her preciousness, but also that of all the children flooding my news feed every day who are not healthy and safe, and whose parents must live with this love and that devastation. 
+
+Care and consciousness
+
+On the back cover, Klara and the Sun is described as a story about love, which it undeniably is. But I think it’s perhaps more fundamentally about care. 
+
+Care is arguably more tangible than love, but also more complex, friction-prone, messy. It’s the gaps, the mistakes, the harms, the repairs, the precarity, the forgiving, that make care so deeply painful and so deeply nourishing. Nourishing enough to sustain the vulnerability of love. 
+
+It is care that drives Josie’s mother to have her “lifted” in an age-old attempt of desperation to give her child what she perceives as the best chance at a full life in a rapidly reorganizing world. It is care that sends the Mother down the path of trying to find a way to have Klara “continue” Josie’s life, even though she has already tried and failed to recreate her first child’s consciousness in an artificial intelligence through the work of an artist and scientist named Capaldi.
+
+It is care that allows the Mother—despite her cold exterior—to fearlessly comfort her child as she confronts  the possibility of her own death, enveloping her, rocking her, soothing her through the unimaginable. It is the Mother’s human care, not her cowardice, that makes her love true.
+
+There is so much in Klara and the Sun that is undeniably relevant in this particular social, cultural, and technological moment, so many ways in which Ishiguro’s Josie and my not-Josie’s world are suddenly uncomfortably proximate, but it is what Klara herself affirms about humanity that is most resonant.
+
+At the end of the novel, Klara reflects on what she’s learned. She did not have to become a Josie 2.0, for Josie survived. Klara is glad for this, of course, believing that it was her bargain with the Sun (which she sees as a kind of god) that saved Josie. Sitting discarded in a junk yard, Klara is increasingly convinced that the desperate plan to turn Josie into a digital consciousness wouldn’t have worked:
+
+Mr. Capaldi believed there was nothing special inside Josie that couldn’t be continued. He told the Mother he’d searched and searched and found nothing like that. But I believe now he was searching in the wrong place. There was something very special, but it wasn’t inside Josie. It was inside those who loved her. That’s why I think now Mr. Capaldi was wrong and I wouldn’t have succeeded.
+ 
+It is what happens within us and between us when we care for another being that differentiates us as humans. In other words, it’s not so much what’s there but what’s not there—the space between the person in front of us and how we perceive, imperfectly care for, and ultimately love them—that makes us human. 
+
+Through Klara’s eyes, I was able to see more clearly what connects the Mother and her Josie to me and my not-Josie. It is the very fact that we can so wholeheartedly love another being, without being them, having them, solving them, knowing every bit of them. It is the fact that still, we carry them in our hearts, and somehow we are not heavier for it.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/Dharma-AI/vocabx-vocabulary-specialization" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://greatergood.berkeley.edu/article/item/what_a_fictional_robot_can_teach_us_about_care" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SigLIP 2: A better multilingual vision language encoder</title>
+    <title>From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10753.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>SigLIP 2: A better multilingual vision language encoder</h1>
+        <h1>From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/from-chunks-to-blocks/thumbnail.png" alt="From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/from-chunks-to-blocks/thumbnail.png" alt="From Chunks to Blocks: Accelerating Uploads and Downloads on the Hub" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Content-defined chunking (CDC) plays a central role in enabling deduplication within a Xet-backed repository. The idea is straightforward: break each file’s data into chunks, store only unique ones, reap the benefits.</p>
+<p>In practice, it's more complex. If we focused solely on maximizing deduplication, the design would call for the smallest possible chunk size. By doing that, we’d create significant overheads for the infrastructure and the builders on the Hub.</p>
+<p>On Hugging Face's Xet team, we're bringing CDC from theory to production to deliver faster uploads and downloads to AI builders (by a factor of 2-3x in some cases). Our guiding principle is simple: enable rapid experimentation and collaboration for teams building and iterating on models and datasets. This means focusing on more than just deduplication; we’re optimizing how data moves across the network, how it’s stored, and the entire development experience.</p>
+<p>Imagine uploading a 200GB repository to the Hub. Today, there are a number of ways to do this, but all use a file-centric approach. To bring faster file transfers to the Hub, we've open-sourced xet-core and hf_xet, an integration with huggingface_hub which uses a chunk-based approach written in Rust.</p>
+<p>If you consider a 200GB repository with unique chunks, that's 3 million entries (at ~64KB per chunk) in the content-addressed store (CAS) backing all repositories. If a new version of a model is uploaded or a branch in the repository is created with different data, more unique chunks are added, driving up the entries in the CAS.</p>
+<p>With nearly 45PB across 2 million model, dataset, and space repositories on the Hub, a purely chunk-based approach could incur 690 billion chunks. Managing this volume of content using only chunks is simply not viable due to:</p>
+<p>In short, network requests balloon, databases struggle to manage the metadata, and the cost of orchestrating each chunk skyrockets all while you wait for your files to transfer.</p>
+<p>These challenges lead to a key realization:</p>
+<p>Deduplication is a performance optimization, not the final goal.</p>
+<p>The final goal is to improve the experience of builders iterating and collaborating on models and datasets. The system components from the client to the storage layer do not need to guarantee deduplication. Instead, they leverage deduplication as one tool among many to aid in this.</p>
+<p>By loosening the deduplication constraint, we naturally arrive at a second design principle:</p>
+<p>Avoid communication or storage strategies that scale 1:1 with the number of chunks.</p>
+<p>What does this mean? We scale with aggregation.</p>
+<p>Aggregation takes chunks and groups them, referencing them intelligently in ways that provide clever (and practical) benefits:</p>
+<p>Together, blocks and shards unlock significant benefits. However, when someone uploads a new file, how do we know if a chunk has been uploaded before so we can eliminate an unnecessary request? Performing a network query for every chunk is not scalable and goes against the “no 1:1” principle we mentioned above.</p>
+<p>The solution is key chunks which are a 0.1% subset of all chunks selected with a simple modulo condition based on the chunk hash. We provide a global index over these key chunks and the shards they are found in, so that when the chunk is queried, the related shard is returned to provide local deduplication. This allows us to leverage the principles of spatial locality. If a key chunk is referenced in a shard, it’s likely that other similar chunk references are available in the same shard. This further improves deduplication and reduces network and database requests.</p>
+<p>The Hub currently stores over 3.5PB of .gguf files, most of which are quantized versions of other models on the Hub. Quantized models represent an interesting opportunity for deduplication due to the nature of quantization where values are restricted to a smaller integer range and scaled. This restricts the range of values in the weight matrices, naturally leading to more repetition. Additionally, many repositories of quantized models store multiple different variants (e.g., Q4_K, Q3_K, Q5_K) with a great deal of overlap.</p>
+<p>A good example of this in practice is bartowski/gemma-2-9b-it-GGUF which contains 29 quantizations of google/gemma-2-9b-it totalling 191GB. To upload, we use hf_xet integrated with huggingface_hub to perform chunk-level deduplication locally then aggregate and store data at the block level.</p>
+<p>Once uploaded, we can start to see some cool patterns! We’ve included a visualization that shows the deduplication ratio for each block. The darker the block, the more frequently parts of it are referenced across model versions. If you go to the Space hosting this visualization, hovering over any heatmap cell highlights all references to the block in orange across all models while clicking on a cell will select all other files that share blocks:</p>
+<p>A single block of deduplication might only represent a few MB of savings, but as you can see there are many overlapping blocks! With this many blocks that quickly adds up. Instead of uploading 191GB, the Xet-backed version of the gemma-2-9b-it-GGUF repository stores 1515 unique blocks for a total of approximately 97GB to our test CAS environment (a savings of ~94GB).</p>
+<p>While the storage improvements are significant, the real benefit is what this means for contributors to the Hub. At 50MB/s, the deduplication optimizations amount to a four hour difference in upload time; a speedup of nearly 2x:</p>
+<p>Similarly, local chunk caching significantly speeds up downloads. If a file is changed or a new quantization is added that has significant overlap with the local chunk cache, you won’t have to re-download any chunks that are unchanged. This contrasts to the file-based approach where the entirety of the new or updated file must be downloaded.</p>
+<p>Taken together, this demonstrates how local chunk-level deduplication paired with block-level aggregation dramatically streamlines not just storage, but developing on the Hub. By providing this level of efficiency in file transfers, AI builders can move faster, iterate quickly, and worry less about hitting infrastructure bottlenecks. For anyone pushing large files to the Hub (whether you're pushing a new model quantization or an updated version of a training set) this helps you shift focus to building and sharing, rather than waiting and troubleshooting.</p>
+<p>We’re fast at work, rolling out the first Xet-backed repositories in the coming weeks and months! As we do that, we will be releasing more updates to bring these speeds to every builder on the Hub to make file transfers feel invisible.</p>
+<p>Follow us on the Hub to learn more about our progress!</p>
+<p>A view of dedupe from quants in bartowski/gemma-2-9b-it-GGUF</p>
+<p>Nice to see that Xet backed repos are being rolled out on the Hub.</p>
+<p>📻 🎙️ Hey, I made a podcast about this blog post, check it out!</p>
+<p>This podcast is generated via ngxson/kokoro-podcast-generator, using DeepSeek-R1 and Kokoro-TTS</p>
+<p>How can we find the chunk content using chunk hash? The  CAS system only stores "block_hash -> block_content", Where does the map of chunk  to block?</p>
+<p>what does the shards store? Is it "file_name, shard_id, chunk_hash, block_hash"?</p>
+<p>How can we find the chunk content using chunk hash?</p>
+<p>Chunk hash is calculated via content-defined chunking (CDC), which means that if two chunks have the same content they will share the same hash. CDC removes the need to store the mapping between chunk hash -> chunk content because we know if two chunks share the same hash, they will have identical content.</p>
+<p>The CAS system only stores "block_hash -> block_content", Where does the map of chunk to block?</p>
+<p>This is explained in the "key chunks" section in the blog post above. Essentially we only store a tiny subset of chunk -> block by leveraging spatial locality in the file. Trying to store every mapping of chunk -> block can get impractical very quickly.</p>
+<p>what does the shards store? Is it "file_name, shard_id, chunk_hash, block_hash"</p>
+<p>You can think of the shards as storing mappings between file (identified via file hash) to list of chunks that make up the file.</p>
+<p>I hope this help explains our underlying tech better!</p>
+<p>If we don't store every chunk hash to block hash, how can we download a model file. For example if a model does not have a key chunk, the shard info only contains "file hash -> list of chunks", the CAS only has "block hash -> block content", how can we know which block is needed ?</p>
+<p>For example if a model does not have a key chunk</p>
+<p>Two points of clarification might be in order concerning the above point:</p>
+<p>If we don't store every chunk hash to block hash, how can we download a model file</p>
+<p>When downloading a model file, a request is made to our services with the file hash. This is mapped to a list of block subranges. Logically these are chunks, but by storing the offsets we save on the metadata storage and ultimately many offsets will share boundaries inside a block (allowing us to group them together in a response) providing benefits when sending the content back to the client.</p>
+<p>If you're reading this post and want to get your hands dirty, join the waitlist to get access! https://huggingface.co/join/xet</p>
+<p>A view of dedupe from quants in bartowski/gemma-2-9b-it-GGUF</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/siglip2" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/from-chunks-to-blocks" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

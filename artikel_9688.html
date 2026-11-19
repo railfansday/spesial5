@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>StoicCloud</title>
+    <title>Cutting LLM Fine-Tuning Memory in Pure Kotlin: Fused Linear Cross-Entropy and the JVM Vector API</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9688.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,36 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>StoicCloud</h1>
+        <h1>Cutting LLM Fine-Tuning Memory in Pure Kotlin: Fused Linear Cross-Entropy and the JVM Vector API</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F806tq8lnhjmcke21qk4w.png" alt="Cutting LLM Fine-Tuning Memory in Pure Kotlin: Fused Linear Cross-Entropy and the JVM Vector API" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F806tq8lnhjmcke21qk4w.png" alt="Cutting LLM Fine-Tuning Memory in Pure Kotlin: Fused Linear Cross-Entropy and the JVM Vector API" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Cloud storage for films that only your Mac can read
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/stoiccloud?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1317823?app_id=339">Link</a>
-          </p></p>
+                <p>When fine-tuning language models like Qwen2-0.5B or Llama-3 on a constrained heap, the biggest memory and compute bottleneck often isn't self-attention. On models with a small hidden dimension and a large vocabulary, the bottleneck is the output projection head (lmHead) and cross-entropy loss.
+I ran into this while working on v1.1.0 of Kotensor (io.github.tspstudio:kotensor), an open-source, pure-Kotlin Transformer and reverse-mode autograd engine for JVM 17+ and Android with no native C++ or JNI dependencies. Inference was already reasonably fast and ran within tight mobile memory limits, but running a LoRA fine-tuning step on the full 24-layer Qwen2-0.5B architecture inside a 6 GB JVM heap consistently failed with OutOfMemoryError: Java heap space.
+At first I looked for a reference leak in the autograd graph, assuming intermediate activations weren't being freed between steps. Once I actually calculated the tensor sizes at the output layer, though, it became obvious that the problem was just raw array allocation in the output head.</p>
+<p>Qwen2-0.5B has a hidden size of D = 896 and a vocabulary size of V = 151,936. That means the final linear projection matrix W_head ([896 x 151,936]) holds 136.1 million parameters, which is roughly 544 MB in FP32.
+In a standard autograd training step with a batch of N = 64 tokens, three things happen at once:</p>
+<p>Filtering out the prompt tokens helps, but on longer responses we still don't want to allocate an [activeTokens x 151,936] tensor or hold onto a full probability matrix until backward() runs.
+To fix this, I added fusedCrossEntropyLoss in Loss.kt. Instead of calling lmHead.forward(hidden) and passing the result to the loss function, fusedCrossEntropyLoss takes hidden and head directly and processes the active tokens in fixed chunks of at most FUSED_CHUNK_ELEMENTS = 1 shl 22 floats (4,194,304 elements, or 16 MB).
+For each chunk of active rows:</p>
+<p>One side benefit here is how clean the backward closure becomes during LoRA or QLoRA training. Since lmHead is frozen (weight.requiresGrad == false), we don't need to keep the vocabulary logits around at all. When loss.backward() runs, it just scales the [active x 896] hiddenGrad buffer and adds it into hidden.grad.</p>
+<p>For the scalar matrix multiplication kernels in MatMul.kt, I originally structured the inner loops as y[j] += a * x[j] (axpy) over 32 x 256 cache tiles. HotSpot's C2 JIT compiler auto-vectorizes that pattern well as long as both arrays are indexed by a plain loop variable j with no offset arithmetic inside the brackets.
+The problem is that multiplyTransposedB naturally wants to compute dot products across rows (sum += a[j] * b[j]), and C2 refuses to auto-vectorize floating-point dot-product reductions because floating-point addition isn't associative.
+To get around C2's auto-vectorization limits on desktop and server JVMs, I added an optional SimdKernels implementation using Java's Incubator Vector API (jdk.incubator.vector). It uses FloatVector.SPECIES_PREFERRED and fused multiply-add (fma) across four rows at a time (axpy4 and dot4):</p>
+<p>I measured a rank-8 LoRA training step on the Qwen2-0.5B shape (24 layers, hidden dimension 896, vocabulary 151,936, LoRA attached to wQ and wV, 64-token batch with 18 active response tokens) on a 2-core Intel Xeon container with AVX-512, running JDK 21 with a 6 GB heap limit. Numbers below are the mean of three steps after one warm-up step:</p>
+<p>Output-layer time dropped from 2.70 seconds to 0.33 seconds, and peak memory stayed under 2.85 GB for the full 24-layer step.
+With the output head fixed, most of the remaining 3.04 seconds per step is spent propagating input gradients backward through the 24 frozen Transformer blocks (~0.11s per block) so they reach the adapters in the early layers. Because v1.1.0 also added early backward termination via requiresGrad, restricting LoRA to the upper blocks (LoRAAdapter(model, blockIndices = 20 until 24)) lets the autograd engine stop backpropagation at layer 20 and skip layers 0 through 19 entirely.
+If you want to inspect the full implementation or test the engine yourself, the code is on GitHub at https://github.com/TSPstudio/kotensor and published on Maven Central as io.github.tspstudio:kotensor:1.2.0.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/stoiccloud" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/tspstudio/cutting-llm-fine-tuning-memory-in-pure-kotlin-fused-linear-cross-entropy-and-the-jvm-vector-api-1cj1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

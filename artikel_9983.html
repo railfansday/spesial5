@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Faster CI with Orchestrated Pytest Workers</title>
+    <title>Welcome Inkling by Thinking Machines</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9983.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,160 +15,75 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Faster CI with Orchestrated Pytest Workers</h1>
+        <h1>Welcome Inkling by Thinking Machines</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-19</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Find out about the roles currently available at Close.</p>
-<p>Here at Close, our primary backend service has automated tests. Quite a lot of
-them, nearly 58,000. While some things are easy
-to test in pure Python, the tests that actually give us the most confidence generally
-are API or service-level integration tests that avoid mocking and typically do
-actually hit datastores.</p>
-<p>How long do all 58,000 integration tests take to run in CI?</p>
-<p>Yes, 58,000 integration tests, most of which do IO across multiple datastores,
-in under 3 minutes.</p>
-<p>Close launched in 2013, but our test suite is actually even older! Tests in CI
-were introduced in 2012, with a Jenkins build script and the
-nose testing library. We've since
-migrated to CircleCI then GitHub Actions, swapping to pytest along the way. But
-a lot of the same concepts are still relevant today. The general shape of a
-test run is:</p>
-<p>For simple applications with only a handful of tests, this setup works great! But
-as the application starts growing, slowly the "run tests" step inflates to the
-point where you start waiting tens of minutes for a green checkmark to appear.
-While working on features you're subject to intrusive voices of gremlins
-whispering "but what if it was faster? Surely it could go faster"</p>
-<p>The natural next step is... parallelism! There's a few common ways to do this,
-but the most straightforward options are either multiprocessing parallelism
-(something like pytest-xdist)
-that fans out work across multiple CPUs, or deterministically splitting work
-across multiple machines (something like pytest-split).</p>
-<p>Multi-CPU parallelism doesn't really help us, because most of our tests
-rely on external databases. Running multiple tests at the same time on the same
-database can lead to logical conflicts where tests end up reading each other's
-data. While it's possible to configure things like dynamic database creation,
-practically it's both hard to do correctly across many datastores and is even
-harder to do performantly.</p>
-<p>Deterministic work splitting was a much more attractive option for us, since many
-CI providers started offering matrix'd builds where you could easily specify
-different parameters for each of them (i.e. run the pytest with parallelism
-of 4, where each runner knows which number it is). This strategy just added a
-little bit of CI configuration, but ultimately only required installing a plugin
-and adding a few flags to the CI command. Today it would look something like:</p>
-<p>Some version of this logic has been relatively easy to set up for a long time,
-and we introduced it to Close in late 2014. With this version of test splitting,
-our full test run now looks like:</p>
-<p>Early versions of test splitting logic relied on file names to split tests up,
-leading to unbalanced workloads. Eventually we were able to tweak the splitting
-logic a bit, so that we tracked main-branch test timings and bin packed them
-instead of splitting pseudo-randomly.</p>
-<p>And this rough setup actually lasted us about 12 years! Over this time we
-didn't ignore CI speed, but we were mostly able to improve it through
-relatively minor / incremental changes:</p>
-<p>But ultimately we hit a wall. The gremlins continued whispering, but there
-was no low-hanging fruit left. For a long time we were able to stabilize
-our test suite under around 10 minutes, but eventually even at 17x
-parallelization our CI times grew longer. The fixed-cost steps became very hard
-to optimize and scale out of.</p>
-<p>Well, the part of the test run that pytest-split parallelizes is actually
-running the test cases. When the application gets big enough, just running
-things like test collection could take up to a minute to resolve. It's not
-technically "fixed" cost, but these operations scale with the size of the entire
-app/test suite rather than just the selected test subset. So even as
-we scale up the number of runners, a lot of our runtime still goes
-to an ever-growing setup cost:</p>
-<p>Despite our best efforts, the best performance we could get out of this
-setup was around 12 minutes of wall clock runtime. About half of that was eaten
-up by either fixed-cost steps, or by imperfect test balancing that resulted in
-some runners taking multiple minutes longer than others. We're already
-self-hosting our GitHub Actions runners to squeeze better performance out of
-them, but at some point you have diminishing returns turning the N knob
-higher. And that's just for tests! There's also unparallelizable build and
-deploy steps that continued to add up end to end runtime.</p>
-<p>So where do we go from here? Well... while looking at something related to our
-end to end Playwright tests, I stumbled across currents.dev.</p>
-<p>What currents.dev does for Playwright is that they maintain a centralized
-queue of work and tweak the test runner logic to consume from that queue instead
-of from a deterministic -split of work. They present two major unlocks:</p>
-<p>Smart Orchestration: Work is split dynamically so workloads are always split evenly</p>
-<p>Spot instance support: If a worker's node gets yoinked by AWS, its work gets redistributed</p>
-<p>Those features are really neat, but there's also a more subtle opportunity this architecture unlocks:</p>
-<p>We can much more effectively parallelize our fixed-cost setup steps.</p>
-<p>What if we applied these concepts to pytest? Let's visualize how a shared
-orchestrator changes our testing setup:</p>
-<p>So now we're running one extra job (to orchestrate), but virtually all of our
-test workers' steps scale in runtime with the number of tests they're asked to
-run. What's next?</p>
-<p>Actually implementing spot instance support in GitHub Actions was hairy enough
-to deserve its own post, so we'll have to leave it on a cliffhanger for now. But
-with the amount of savings they offer, we were able to turn 17 on-demand runners
-into 2 on-demand runners + 54 spot instances for about the same dollar cost. That's
-one orchestrator and on-demand worker (for yoink insurance), plus 54 spot
-instance workers. We did end up keeping main on-demand though to keep it
-predictable.</p>
-<p>With that type of parallelism and our improved scaling mechanism, our CI speed is
-good enough ... for now.</p>
-<p>If you're trying to reproduce this type of setup, here's a bit more detail to
-help.</p>
-<p>Even with self-hosted runners, workers need some way to communicate back to
-the orchestrator server. But GitHub Actions runners aren't externally
-addressable. We worked around this by having the pytest-orchestrator CI step
-work more like a k8s operator that creates a temporary, deterministically
-named namespace / pod in the same CI/CD Kubernetes cluster.</p>
-<p>Each worker knows what namespace to look for based on run-specific identifiers,
-and has a connection grace period where it waits for them to come up.</p>
-<p>With a pytest-split type of setup, rerunning just a subset of workers would
-rerun the same subset of tests. Now that tests are distributed dynamically, it's
-not trivial to rerun just the failing tests. If only one worker fails, rerunning
-failed jobs essentially amounts to running the full test suite with just a
-single worker. Slow.</p>
-<p>Instead of always rerunning all jobs, we've set each worker to wait until all
-batches are finished, then let the orchestrator decide if the run was clean or
-not. If it wasn't, then all workers fail. All test failures / stack traces
-show up in the orchestrator's outputs, so you don't need to inspect every
-individual worker for failures. But now since they all fail, rerunning failed
-jobs starts up the right number of workers for the test suite.</p>
-<p>To avoid drift between pytest config and CI logic, we've opted to keep pytest
-responsible for test collection (as opposed to basic file globbing
-tests/**/*.py). The plugin only activates if explicitly enabled, and
-if no other collection-related args are passed (e.g. -k, -m, --lf, etc).
-While collecting, it skips descending into files and writes out discovered files
-to a given location as JSON.</p>
-<p>Initially we noticed that some runners still took noticeably longer than others,
-even though we aimed for batches of 20s of test runtime. It turned out to be a
-subtle issue with a simple fix: not all files themselves fit into that 20s
-target, and during batching we ended up with a somewhat random batch ordering.
-So, often an oversized batch would be the last one for a worker to claim and
-everything else would just wait on it. The fix was to sort batches in descending
-order before assigning them out. That way towards the end we have slightly
-better bin packing / runtime distribution.</p>
-<p>Just because we now request dozens of workers all at the same time doesn't mean
-we actually get them. When looking at CI runs, it's not always obvious how long
-was spent waiting in a queue for a runner to come up, and with this type of
-coordinated workload it can make a big difference in end to end runtime.</p>
-<p>We bumped our idle runner count and had to scale the max node pool sizing to
-better account for bursty demand during the day.</p>
-<p>The GitHub Actions UI can be very misleading about how long something actually
-took to run. The timings of each step don't well communicate how long it took
-a job to start, and how long in wall-clock time it fully took end to end. And
-it's really hard to get a true sense of this in aggregate if you can only look
-at cherry picked CI runs.</p>
-<p>Our CI setup has a post-action job that for every CI run inspects the step
-timings and converts it into trace data. That trace data then feeds into our
-OTel stack, making it easy to aggregate and report on with ClickHouse in
-Grafana. We end up with nice aggregate stats, and can drill down into specific
-jobs if needed:</p>
-<p>Note: Average build time here includes all actions queueing, uncached image
-builds from dependency bumps, deploy, and post-deploy steps. It also reflects
-GitHub Actions degradations.</p>
-<p>© 2026 Close • The Making of Close • API • Jobs</p>
+                <p>Update: Inkling 2 Small is here! 🤗
+Thinking Machines released Inkling 2 Small, the next generation of the Inkling family. We have updated this post with a new section on Inkling 2 Small, covering what changed in the architecture and how to run it with transformers.</p>
+<p>Inkling is Thinking Machines' family of open multimodal models, and it now spans two generations on the Hub:</p>
+<p>In this post, we start with the first-generation architecture, then walk through what changed in Inkling 2 Small and how to run it. The rest of the post covers inference, use cases, post-training, and deployment, with examples built on the first-generation checkpoints.</p>
+<p>Inkling is the first large open model with ~1T parameters and 1M context window to natively receive image, text, and audio inputs, trained on 45 trillion tokens of text, images, audio and video. It’s focused on reasoning across modalities such as audio, images, and text. It is intended for domain adaptation via fine-tuning. We’ve tinkered (pun intended) with this model to build some demos and explore the architecture, and we think it’s great for building a new wave of multimodal reasoning apps.</p>
+<p>Inkling is a decoder-only multimodal Mixture-of-Experts (MoEs) model with 975B total and 41B active parameters. There are a lot of things going on, so let’s break each part down:</p>
+<p>Here’s a quick glance of the architecture.</p>
+<p>Relative attention: Instead of RoPE, which is the usual method to inject positional information in transformers models, Inkling uses relative attention to encode position information. Each attention layer learns position directly in the attention logits. Aside from key-query-values, there's a fourth projection producing a per-token, per-head relative feature R. This projection tensor is then tweaked with distance information (distance between the key and the query vector) and propagated into the attention module.</p>
+<p>Hybrid attention: The decoder layers alternate between global attention (attending to the full context length at once) and sliding window attention (attending to a fixed context window in a sliding fashion). The architecture has a pattern of 5:1 sliding window to global attention layers. This hybrid attention scheme provides efficiency in computation. The final layer uses global attention to help build feature-rich representations.</p>
+<p>Short convolution: The model uses a distinctive short 1D convolution, or SConv over the hidden states. SConv reads the current token and the previous W-1 hidden states, with W being the sliding window size. The intuition here is that SConv helps with local attention while freeing the attention and MoE modules from local representations.</p>
+<p>MoE with shared experts sink: In Inkling, the router scores both routed experts and shared experts. Top-k selection is performed over 6 experts, plus 2 shared experts always active.</p>
+<p>Vision understanding: The model includes a simple hierarchical MLP patchifier consisting of several linear layers. Each layer merges pixels progressively, until the final layer produces one embedding per patch.</p>
+<p>Audio understanding: The architecture employs a discretized mel spectrogram, where each of the audio chunks (of 100 ms) are converted to the mel scale and then classified into the exact mel spectrogram bin.</p>
+<p>The multimodal towers are relatively simple modules, unlike other models that employ separate encoders for each modality. Each image patch passes through the image embedding tower and the audio chunk is passed through the audio embedding tower to get both media embeddings. Image inputs also include an additional temporal dimension for video processing. We expect this capability to be useful for downstream fine-tuning, but we haven’t evaluated out-of-the-box video performance. The tower folds the patch grid, a small local block of neighboring tokens is stacked into the channel dimension and goes through hMLP. The audio waveform is converted to mel scale, which is then classified into a discrete mel bin. These mel bin values are embedded in the audio embedding tower and the embeddings are then summed to construct the final audio input.</p>
+<p>Inkling 2 is the next generation of the family. It takes text and image inputs (but no audio), and generates text. It keeps the core ideas of Inkling's decoder:</p>
+<p>Almost everything around that core was redesigned, though. The layers read from the residual stream differently, attention is bounded and gated, the MoE is simpler and wider, and the vision tower is now a real vision transformer.</p>
+<p>Let's go over the most notable changes together:</p>
+<p>Block attention residuals: In a standard transformer, every layer adds its output to the residual stream, and the next layer reads it. Inkling 2 has no single residual stream. Instead, it groups its 48 layers into 8 blocks of 6 and keeps one sum per block:</p>
+<p>A sublayer (attention or MLP) doesn't read one of these sums directly. It attends over depth, which means at each token position, it treats the finished block summaries plus the current partial block as a short sequence, and takes a softmax-weighted mix of them.</p>
+<p>The query is a single learned vector per sublayer. The keys and values are the RMS-normalized block summaries at that position. So the weights differ from token to token, depending on what each block wrote there.</p>
+<p>In other words, each sublayer learns how much to draw from each earlier stage of the network, rather than always reading the sum of everything. By the last layer, there are up to 9 sources to choose from (the embeddings, 7 finished blocks and the current partial block), and the final norm reads its input the same way. Global attention layers learn three queries, so their query, key and value projections can each draw on a different mix of blocks.</p>
+<p>Dynamic short convolutions: The short convolutions on keys and values in the global attention layers are now dynamic. The 4 taps of each convolution are a fixed learned weight plus a per-token weight predicted from the input, shared within each key/value head. So the model can change, token by token, how much local context goes into each key and value. All short convolutions also rescale their residual sum to keep its variance stable through depth.</p>
+<p>A leaner, wider MoE: Each layer has 384 routed experts with 8 active per token, and the shared experts are gone.</p>
+<p>A new vision encoder: Inkling encoded images with a lightweight hierarchical MLP. Inkling 2 uses a 23-layer vision transformer based on the Perception Encoder. It has the following properties:</p>
+<p>Several images are packed into one sequence, and each image only attends to itself.</p>
+<p>Inkling 2 uses the same Auto classes as Inkling. Make sure to have updated transformers to run the model.</p>
+<p>Inkling comes with day-0 transformers support and is supported in major inference engines like SGLang and vLLM.</p>
+<p>This model is huge. The bf16 checkpoint requires 2 TB of VRAM, while the nvfp4 version requires 600 GB of VRAM. You can try the model through serverless inference routers like Inference Providers, or use ggml quants for local deployment with llama.cpp.</p>
+<p>The easiest way to infer with transformers directly is to use the any-to-any pipeline. You can use either the 16 bit "thinkingmachines/Inkling" on Hopper or later GPUs, or the quantized NVFP4 checkpoint "thinkingmachines/Inkling-NVFP4" on Blackwell Nvidia GPUs. Make sure to have the latest version of transformers (5.14.0 was released today) (pip install -U transformers).</p>
+<p>After initializing the pipeline, you can pass in the prompt as follows.</p>
+<p>Going one level lower, you can use Auto classes. For inference, you can use the AutoModelForMultimodalLM class for models and AutoProcessor class for processors. For different reasoning tasks, the tokenizer takes in a reasoning_effort argument. Existing options for reasoning effort are "none", "minimal", "low", "medium", "high", "xhigh", and "max".</p>
+<p>For multimodal inference, you can use the same classes. We provide example snippets for each different modality in the model card.</p>
+<p>Inkling also takes in audio input. Below is an example inference snippet, which still uses the same AutoModelForMultimodalLM class.</p>
+<p>For more realistic parallel deployment in a cluster of several nodes, please refer to the Slurm section below.</p>
+<p>SGLang is one of the fastest deployment frameworks for Inkling at the time of release, as it includes a custom model implementation. The launch command below shards the model across 8 GPUs and serves an OpenAI-compatible API on port 30000.</p>
+<p>Match --tp-size to your GPU count. Add --mem-fraction-static (e.g. 0.85) if you need to leave more headroom for the KV cache.</p>
+<p>vLLM is strong for production serving. A single vllm serve command downloads the weights from the Hub, shards the model across your GPUs with tensor parallelism, and starts an OpenAI-compatible server on port 8000. You can view the vLLM Recipe for the model here to customize to your hardware.</p>
+<p>In practice, you might need multiple nodes and a distribution tool like SLURM (see below). Key parameters are --tensor-parallel-size to the number of GPUs on your node, and use --max-model-len to cap the context window if you hit KV-cache memory limits.</p>
+<p>You can infer with this model using several inference providers through Hugging Face. You can see all the code snippets to consume here. Below you can see how to use with the OpenAI client.</p>
+<p>Using the “:auto” suffix routes to your preferred provider in your settings; you can also use “cheapest” or “:fastest” as well. For this release, we cover the inference costs for 2 hours within the release for everyone.</p>
+<p>Note: audio support in Inference Providers is work in progress and will be added shortly.</p>
+<p>You can use llama.cpp to run quantized versions of the model on limited hardware. Unsloth have quantized the model down to 1-bit precision, reducing VRAM consumption by 95% over the original model.</p>
+<p>This starts an OpenAI-compatible server running at http://localhost:8080/v1 that you connect to in your preferred tool or clients. Heading there, you can start chatting with the model, and set it up with your favorite MCPs, pass in images or files conveniently and more!</p>
+<p>Llama cpp also ships with a built-in UI that supports tools, mcp, and agentic workloads. Checkout Inkling running at 1-bit precision in the llama app:</p>
+<p>Inkling GGUFs are also runnable in Unsloth Studio with dynamic 1-bit GGUFs which retain ~74.2% of top-1% accuracy whilst being 86% smaller.</p>
+<p>Pi is a minimal coding agent harness you can use with different language models. You can use Pi with either an inference engine server endpoint, such as llama.cpp, or with Inference Providers on Hugging Face by adding this to your ~/.pi/agent/models.json after installation.</p>
+<p>Then you can start Pi in your project directory by calling pi and you’re good to go! In this demo, we give the model a hard math reasoning problem and it uses tools in pi to solve it.</p>
+<p>Inkling is focused on broad multimodality reasoning and low token consumption, so try it out with document processing or audio tasks.</p>
+<p>MTP adds extra layers to the model that predict several tokens at once, not just the next one. During inference, the extra layers act as “drafters” for speculative decoding, speeding up generation without compromising performance. With MTP, you get the exact same generated outputs, multipliers in generation speed-up at small memory cost in VRAM (due to serving the drafter). Thinking Machines also provides an MTP drafter with this release.</p>
+<p>We have prepared a small suite of reasoning questions from expert-level sources and university entrance exams. We have taken photos of the screen with watermarks in the screenshot to challenge the model. The model has solved all of them on high one, failed one in highest and medium reasoning efforts, so we provide a link to the model answers for you to check out how the model sounds and provide the number of tokens the model has taken to solve each of them. Note that we provide no system prompts in these vibe evals, and these reasoning questions should often be run with a good system prompt. The vibe eval images and results live here.</p>
+<p>We have vibe-evaluated the model on some audio reasoning examples from BigBenchAudio and a few multilingual audio examples of GlobeAudio (Russian and Chinese multi-choice questions asking the last word in transcription). The BigBenchAudio examples we tested consist of logical statements and questions that either ask for formal fallacies (whether an argument can be logically deduced from the context given in audio) or object counting (stating multiple distinctive objects in the audio, asking for the total count of a certain one). Although this benchmark is initially made for speech-to-speech reasoning, we just want to see audio reasoning capabilities of this model. For GlobeAudio, the questions are relatively straightforward, so we ran with reasoning efforts of 0.1. We ran the first example of each language within GlobeAudio. All tests pass on all questions and efforts, except for second formal fallacy example on lowest effort, so we only provide the number of tokens spent in each question against reasoning effort. Vibe eval results and audio files live here.</p>
+<p>If you would like to use Inkling for post-training, Thinking Machines have built tinker, a managed tool for post-training open weight models. Their cookbook includes examples for fine-tuning, distillation, and reinforcement learning.</p>
+<p>We post trained Inkling with tinker and OpenEnv, an agentic RL environment tool. We used the ECHO algorithm that trains a model to predict the environment without a verifier, applying next-token cross-entropy loss to tokens produced by the environment, alongside the usual policy learning on agent actions. This teaches the policy an implicit world model without requiring a separate model, teacher, or additional rollouts. Check out the example.</p>
+<p>If you’re working with Transformers Reinforcement Learning we suggest using Inkling as a teacher model in a knowledge distillation setup. For example, take advantage of Inkling’s document understanding abilities to improve the performance of a smaller (on-device) model. In this example, we use the transformer reinforcement learning library and the GOLD algorithm to distill knowledge. GOLD is handy here because it matches token logits between different tokenizers, so you can distill to any model on the hub.</p>
+<p>Below you can find each Inkling checkpoint as well as their VRAM requirements.</p>
+<p>To deploy Inkling on a cluster, we provide SLURM scripts serving with transformers API, as well as how to query the endpoint with different modalities. You can adapt these scripts to vLLM or SGlang by updating the commands. These scripts live here.</p>
+<p>You can deploy an Inkling-Small NVFP4 checkpoint using Inference Endpoints. We provide a pre-tested configuration to deploy it on 8 RTX PRO 6000s with an aggregated VRAM of·768 GB, giving large space for KV cache, costs $ 22 per hourly uptime (scales to zero when unused). To deploy, run hf endpoints catalog deploy --repo thinkingmachines/Inkling-Small-NVFP4 using the Hugging Face CLI or alternatively, head to https://endpoints.huggingface.co/new/thinkingmachines/Inkling-Small-NVFP4. With this setup, you can get 140 TPS (single user inference, prepared for multi-user support with continuous batching)</p>
+<p>Once the endpoint is up, you can query as follows.</p>
+<p>Releasing a natively multimodal model (text, vision, and audio) open-weights is a huge step forward for the open-source AI ecosystem! Having variable and controllable thinking effort built into a MoE architecture makes Inkling a really attractive foundation for fine-tuning. Excited to test out the smaller 12B active parameter variant for local agent workflows at https://geometrydashsubzero.io</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://making.close.com/posts/faster-ci-with-orchestrated-pytest-workers/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/thinkingmachines-inkling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
