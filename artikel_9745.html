@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Research Dashboard Retrieval Architecture for Semantic Pagination Under Alert Pressure</title>
+    <title>DWaste</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9745.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,36 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Research Dashboard Retrieval Architecture for Semantic Pagination Under Alert Pressure</h1>
+        <h1>DWaste</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxht9vjidp5jzs1pwo72e.png" alt="Research Dashboard Retrieval Architecture for Semantic Pagination Under Alert Pressure" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxht9vjidp5jzs1pwo72e.png" alt="Research Dashboard Retrieval Architecture for Semantic Pagination Under Alert Pressure" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Short answer: use a snapshot-bound cursor over a two-stage semantic search, and attach the snapshot ID to every page. That keeps a financial research dashboard from showing the same near-duplicate filing twice while an index refresh is running. The extra metadata costs a little latency; the alternative is an analyst chasing evidence that moved between pages.</p>
-<p>The page that wakes me up is usually not “search is down.” It is an analyst reporting that page two contains a duplicate of page one, or that a filing visible ten minutes ago vanished when they clicked Next. In a fintech dashboard, those are evidence defects. A green 200 response does not make them harmless.</p>
-<p>I work backwards from that alert. The signal should fire when a stable query returns a high near-duplicate rate across adjacent pages, or when the cursor's snapshot is no longer available. Log the query hash, embedding model version, index generation, candidate count, reranker latency, and result IDs. Never log the entire filing by default.</p>
-<p>The most useful incident record is concrete. Capture the analyst's original query, the normalized query hash, page size, cursor age, and the ordered IDs returned on each request. Then record what the index reported for generation 481 and generation 482, including document counts and the embedding model digest. In one replay, an offset-based endpoint returned IDs A17 through A36, then an amendment inserted before A17 and shifted the next request to A36 through A55; the overlap was not visible in aggregate latency metrics. A preserved cursor would have pinned the boundary. A preserved generation would have made the result explainable six hours later, after the refresh job completed. During the fix, I would run the same query against both generations, compare the deduplication clusters, and check whether a representative changed because of a score tie or because the source record was re-embedded. This is slower than deleting duplicate rows after the fact, but it gives the on-call one deterministic question to answer: did the page change, or did the ranking change?</p>
-<p>Treat pagination as part of the retrieval contract, not a UI detail. At request time, resolve the query into a normalized form, select an index generation, and return an opaque cursor containing (or referring to) that generation. Every following request uses the same generation until the cursor expires. A refresh can build generation 482 while generation 481 continues serving existing cursors.</p>
-<p>The cursor should sort by a deterministic tuple: relevance score, publication timestamp, and a unique record ID. Floating-point scores alone are not a tie-breaker. If two records have equal scores, the ID makes the boundary reproducible. Set a short expiry and return a clear “restart search” response when the snapshot is gone; silently switching generations is how duplicates enter an audit trail.</p>
-<p>A practical response shape is small and boring:</p>
-<p>The evidence pointer matters. Store the source document ID and passage offsets, not only generated text. The RAG paper describes retrieval as a separate source of knowledge for generation; your dashboard still needs to make that source inspectable when an analyst opens a result.</p>
-<p>First retrieve a wider candidate set, then rerank, then paginate. For a page size of 20, retrieving only 20 vectors leaves no room to remove near-duplicates. I usually fetch 100 candidates, cluster records by a cosine-similarity threshold chosen from labeled pairs, keep the strongest representative per cluster, and only then apply the cursor boundary. The threshold is a policy knob, not a universal constant: false merges can hide a restatement, while missed merges waste an analyst's time.</p>
-<p>Near-duplicate detection needs a record identity rule. Hash normalized issuer, filing type, period, and source revision for exact repeats; use embeddings for paraphrased headlines and amended text. Keep both identities in telemetry so a postmortem can say whether the error came from normalization, embedding drift, or cursor handling.</p>
-<p>That loop is intentionally obvious, not a production-scale index. The production path should use the vector store's neighborhood query or an offline clustering job; the contract remains the same. A reranker can improve relevance, but it must receive stable document IDs and return them unchanged so pagination can be audited.</p>
-<p>When the duplicate-rate alert fires, freeze the query sample and compare the snapshot IDs across requests. If they differ, stop blaming embeddings: the pagination contract was broken. If snapshots match, compare candidate counts, model versions, and threshold configuration. Re-run the same query against the preserved generation and retain the exact cursor as an incident artifact.</p>
-<p>I once started with the assumption that “next page” meant “run the query again with an offset.” That assumption fails as soon as inserts land ahead of the offset. Cursor pagination avoids that shift, but only when the sort tuple and generation are immutable. Short sentence. Keep the invariant visible in code review.</p>
-<p>Instrument four timings separately: query encoding, candidate retrieval, deduplication, and reranking. The decision axis is retrieval quality versus latency, so one blended histogram hides the trade-off. Track page-level duplicate rate, citation coverage, and the percentage of cursors restarted after expiry. A latency improvement that increases restarts is not an improvement for an analyst.</p>
-<p>This design is not suitable for a rapidly changing, non-audited feed where “latest items” matters more than repeatable evidence; a simple time-based offset can be easier to operate there. It is also a poor fit when the index cannot retain generations long enough for a user's reading session. In that case, reduce cursor lifetime and make the restart explicit, or choose a storage layer with snapshot support.</p>
-<p>The catch is operational cost: retaining old generations consumes storage, and reranking 100 candidates adds tail latency. Stick with a smaller candidate window when the corpus is tiny and quality labels show little duplication. Your mileage may vary because the right threshold depends on issuer language and amendment patterns; publish the evaluation set and the chosen trade-off with the service configuration.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            Eliminate recycling contamination with low-power Edge AI
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/deep-waste?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1321585?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/ellsworthpierce7528/research-dashboard-retrieval-architecture-for-semantic-pagination-under-alert-pressure-16an" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/deep-waste" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

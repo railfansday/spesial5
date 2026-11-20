@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</title>
+    <title>Nvidia Approaches Arm Boss Rene Haas In Search For New CEO</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10042.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,69 +15,57 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code</h1>
+        <h1>Nvidia Approaches Arm Boss Rene Haas In Search For New CEO</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/business_64.png" alt="Nvidia Approaches Arm Boss Rene Haas In Search For New CEO" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/pwc-search/thumbnail.png" alt="How Hugging Face Inference Endpoints, Jobs, and Buckets Power Search on Papers with Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/business_64.png" alt="Nvidia Approaches Arm Boss Rene Haas In Search For New CEO" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>3 months ago, we started a revival of Papers with Code (see also the announcement tweet). Its goal is to make open AI research accessible and digestible, so that people can easily find the artifacts related to a paper, find state-of-the-art (SOTA) across the various domains of AI, share interesting research and build on top of each other's work. In other words, its goal is to power the wave of research that leads to the next Transformer.</p>
-<p>Of course, making AI research accessible requires a powerful search engine, so that humans and agents can quickly find relevant and related work, either through the website or the pwc search CLI command, which agents can use via the Skill.</p>
-<p>It's important to note that searching for research is not quite the same as searching for regular text. A useful paper search engine should find an exact title or arXiv identifier, but it should also understand a query such as “small language models for code generation” even when those words do not appear together in a paper. It needs to recognize that “the original BERT paper” is a navigational request, tolerate an incomplete title or typos, and still respond quickly when a model service is cold or temporarily unavailable.</p>
-<p>For Papers with Code, we built this as a hybrid search system. This is also based on our prior experience at ML6, where we developed RAG-based systems for clients. It turned out that hybrid search typically outperforms keyword- and vector-based search systems, as it combines the best of both worlds (see also this blog for more info). Keyword search finds exact mentions, whereas vector search finds more fuzzy, semantically similar terms. Note that rerankers (also called cross-encoders) can further improve the results, although they also come with additional overhead and latency.</p>
-<p>Papers with Code relies on a PostgreSQL database, hence its full-text search capabilities provide a fast lexical baseline. For dense embeddings, pgvector is used to add semantic recall, and the reciprocal rank fusion (RRF) algorithm combines the two. Three Hugging Face services are used for the dense embeddings:</p>
-<p>Today, the system maintains embeddings for more than 110,000 current papers sourced from arXiv and Daily Papers. This post explains the architecture, the design decisions behind it, and the lessons we learned while taking it to production.</p>
-<p>We deliberately split search into an offline corpus build and an online search service:</p>
-<p>The expensive, throughput-oriented work runs as Jobs. Durable artifacts live in a Bucket. Only the small query-embedding step sits on the request path, behind a protected Inference Endpoint, to power the online search. If that endpoint is cold, busy, or unhealthy, search immediately falls back to full-text retrieval. This separation makes the system both powerful and fast.</p>
-<p>Embedding pipelines often fail in subtle ways: a model revision changes, query and document prompts are mixed up, vectors are truncated differently, or an updated abstract no longer matches its stored vector.</p>
-<p>We avoid this by treating the embedding format as a versioned API. Every paper is encoded as:</p>
-<p>Our production generation uses Qwen/Qwen3-Embedding-0.6B, pinned to an exact revision, with 256-dimensional L2-normalized vectors. We selected the model with help from the MTEB leaderboard, the go-to benchmark for comparing embedding models. Note that newer embedding models like Qwen3 allow for 2 new features:</p>
-<p>This contract follows an embedding from export, through GPU inference, into PostgreSQL, and finally into online retrieval.</p>
-<p>Full-corpus embedding is a classic batch workload. It needs a GPU for a relatively short period, benefits from high throughput, and should not consume resources between runs. Hugging Face Jobs fits that shape well: a Job is defined by a command, a hardware flavor, and optionally a Docker image, and can run uv scripts with their dependencies declared inline.</p>
-<p>Our corpus build starts by exporting the latest version of every paper from a repeatable-read PostgreSQL snapshot. The exporter streams rows rather than loading the catalog into memory, writes bounded JSONL shards, and creates a manifest containing row counts and SHA-256 checksums.</p>
-<p>We sync that immutable run directory to a private Storage Bucket and mount the Bucket directly (using hf-mount) into an l4x1 Job (an NVIDIA L4 GPU, which has 24GB of VRAM). From the worker's perspective it is simply a filesystem:</p>
-<p>Each completed shard has its own marker, so a restarted Job can skip verified work. This is useful for a large corpus: retrying should just resume work rather than overwriting existing embeddings.</p>
-<p>In our 5,000-paper pilot, the Qwen Job encoded about 75 papers per second at 1024 dimensions on an L4 GPU. The same pass could be deterministically materialized at 512 and 256 dimensions, so we could compare the storage and retrieval trade-offs without paying for more inference.</p>
-<p>Storage Buckets are mutable, S3-like object storage on the Hub, optimized for AI workloads. They can be accessed through hf://buckets/... paths and mounted read-write in Jobs without building a separate storage integration.</p>
-<p>For us, the Bucket is more than a place to put vectors. It is the boundary between three systems with different lifecycles:</p>
-<p>We organize artifacts under immutable run prefixes:</p>
-<p>Buckets themselves are intentionally mutable, so immutability is an application-level rule: a run ID is never overwritten, and every artifact is covered by a manifest and checksum.</p>
-<p>Only after the importer rechecks schemas, checksums, dimensions, normalization, unique paper IDs, and current content hashes do we load the vectors into PostgreSQL. We then build a separate HNSW index for the new generation and atomically mark it active only when every eligible current paper is covered (HNSW is the graph-based algorithm that enables fast vector search).</p>
-<p>Batch embeddings solve the document side of retrieval. A user query still needs to be embedded at request time using the same model contract.</p>
-<p>We deploy the pinned model as an authenticated Inference Endpoint backed by Text Embeddings Inference (TEI). The endpoint accepts the query text and returns a normalized 256-dimensional vector using the model's query prompt. Note that one could also leverage vLLM or SGLang here.</p>
-<p>The API then performs a cosine-distance search over the active pgvector generation:</p>
-<p>The HNSW index keeps this lookup fast. On our 5,000-paper pilot, the 256-dimensional Qwen index achieved 0.9955 Recall@20 against exact search, with 1.31 ms p50 and 2.21 ms p95 HNSW lookup latency. Its table and index used about 27% of the storage of the 1024-dimensional version while retaining essentially the same ANN recall in that test.</p>
-<p>The Endpoint is configured with a maximum of one replica and can scale to zero when idle. That is a useful cost lever, as this means you're not paying when there's no usage. However, this also means cold starts must be part of the application design rather than treated as an exceptional event, as it takes some time for the endpoint to spin up and serve traffic.</p>
-<p>Our query client therefore has deliberately strict behavior:</p>
-<p>If the endpoint is scaling up, times out, returns a malformed vector, or has no concurrency available, we skip the semantic branch immediately. Users still receive lexical results instead of waiting for an unreliable dependency.</p>
-<p>Inference Endpoints works really reliably, and includes a nice dashboard so you can quickly see key analytics.</p>
-<p>For every query, the lexical branch retrieves up to 50 candidates using weighted PostgreSQL full-text search. The semantic branch retrieves up to 50 candidates from pgvector.</p>
-<p>We combine their ranks using weighted reciprocal rank fusion (RRF):</p>
-<p>score(d)=∑r ∈ {lexical, semantic}wrk+rankr(d)
-\text{score}(d) = \sum_{r \,\in\, \{\text{lexical},\, \text{semantic}\}} \frac{w_r}{k + \text{rank}_r(d)}
-score(d)=r∈{lexical,semantic}∑​k+rankr​(d)wr​​</p>
-<p>RRF is simple and robust, because it combines ranks rather than scores from two systems with different scales. Basically, if a paper is ranked high both by the lexical branch and the semantic branch, it has a higher chance of being ranked high by the hybrid search. We currently use equal branch weights and (k=60) (k is the "rank constant", a hyperparameter of the RRF algorithm).</p>
-<p>Dense retrieval improves recall for conceptual queries. Full-text retrieval remains excellent for exact terminology, identifiers, and rare names. We also preserve deterministic identity behavior on top of the fused ranking:</p>
-<p>Note: hybrid search isn't always the best option, it is recommended to start with keyword search as a cheap and fast baseline, and only adding semantic and/or hybrid search when it turns out those give a reasonable boost in retrieval quality. One could further improve the search by adding a reranker after keyword/semantic/hybrid retrieval, using a model like Qwen3-Reranker.</p>
-<p>The large initial corpus is embedded with Jobs, but Papers with Code changes continuously. New papers arrive, abstracts are corrected, and new arXiv versions become current.</p>
-<p>Launching a GPU Job for a handful of changed rows would add unnecessary startup and orchestration overhead. Instead, an hourly incremental process selects missing or content-changed papers and sends a bounded delta to the same TEI Endpoint, this time with the document prompt.</p>
-<p>Each run processes at most 500 papers in batches of 16. Before an embedding is written, the source row is locked and its content hash is checked again. If a paper changed during inference, that vector is discarded and picked up by the next run.</p>
-<p>This gives us a useful division of labor:</p>
-<p>The hourly path keeps the active index close to the live catalog without turning an online endpoint into an unbounded batch processor.</p>
-<p>The same document embeddings also power related-paper recommendations on each paper page.</p>
-<p>Because the source paper already has a stored vector, related-paper retrieval requires no model call at request time. It is a single nearest-neighbor query over the active generation. If a vector is temporarily missing, the application can use a previous arXiv version or fill results from the existing task- and citation-based fallback. We fetch citation data through the Semantic Scholar API and also built s2-cli, a command-line interface for querying its citation graph. The latter is used by the agent at https://paperswithcode.co/chat.</p>
-<p>Corpus embedding and query embedding use the same model, but they are different infrastructure problems. Jobs optimize for throughput and bounded cost; Inference Endpoints optimize for availability and request latency.</p>
-<p>Buckets provide an explicit handoff between compute and production. Checksummed artifacts create a reviewable boundary before data enters the production index.</p>
-<p>The revision, dimension, prompt, normalization, and input formatter all affect retrieval. Store them together and validate them everywhere.</p>
-<p>Scale-to-zero is valuable when traffic is intermittent, but only if the product has a fast fallback. Hybrid search gave us that fallback naturally: lexical search is always useful on its own.</p>
-<p>Matryoshka embeddings let us evaluate quality, memory, index size, and latency as one trade-off. In our pilot, 256 dimensions preserved ANN recall while materially shrinking storage compared with 1024 dimensions.</p>
-<p>New generations are imported beside the current one, indexed independently, checked for complete and current coverage, and then activated atomically. Rollback is a configuration change, not an emergency recomputation.</p>
-<p>Feel free to try out the search at https://paperswithcode.co or the chat interface at https://paperswithcode.co/chat, and let us know any feedback!</p>
-<p>The lexical fallback for scale-to-zero and the separate index activation boundary are useful production details. One question for the hybrid setup: do you measure relevance and latency separately when dense search is cold versus warm, so fallback quality is visible rather than hidden in an overall average? We examined lexical-first retrieval and semantic reranking on a smaller workload here: https://huggingface.co/blog/ironbcc/bm25-seb-rag-retrieval (I'm an author). That benchmark doesn't establish behavior on a paper-scale corpus.</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>I'll only touch certified spies, I promise.</p>
+<p>Find someone that does NOT have a penis!Elizabeth Holmes, formerly of Theranos, maybe the President can make her available.</p>
+<p>Elizabeth Holmes, formerly of Theranos, maybe the President can make her available.</p>
+<p>Absolutley! We need more EOE employees for men in the spy game!  Everyone knows spying has been done almost exclusively by women up until now!</p>
+<p>I was just thinking, slashdot neckbeards are gonna be up in arms (heh) over a man named Rene.</p>
+<p>The main thing holding them back is reading comprehension.</p>
+<p>I guess your criteria would exclude transgender women...</p>
+<p>You read it. They had his hero and they axed him. He's got it good. No reason to throw yourself into that chipper.</p>
+<p>Forgetting all the times they sold that already?</p>
+<p>Forgetting all the times they sold that already?I think that is more announced than sold.</p>
+<p>Forgetting all the times they sold that already?</p>
+<p>I think that is more announced than sold.</p>
+<p>Forget it?  He never knew it!Untrue. The RTX Spark laptops for example only recently began to ship. They are lagging in performance and battery life, they're not quite competitive against MacBook Pro yet. If you need Win11 its what you settle for.. It's a v1.0 design, it'll probably be a couple generations before there is serious competition. Also various performance oriented software vendors are still optimizing their code for RTX Spark. 
+
+Haas coming on board and making ARM+CUDA a desktop/laptop priority could really help. I think Je</p>
+<p>Untrue. The RTX Spark laptops for example only recently began to ship. They are lagging in performance and battery life, they're not quite competitive against MacBook Pro yet. If you need Win11 its what you settle for.. It's a v1.0 design, it'll probably be a couple generations before there is serious competition. Also various performance oriented software vendors are still optimizing their code for RTX Spark. 
+
+Haas coming on board and making ARM+CUDA a desktop/laptop priority could really help. I think Je</p>
+<p>Who wrote this? Is this just engagement bait?</p>
+<p>I don't know if Rene swings that way, but with Jensen gone I doubt anybody is going to try to pouch him.</p>
+<p>I'm not sure it even counts as poaching if it's a rehire.</p>
+<p>FFS, if you shop  and pouch someone else's CEO you get someone else's selfish garbage.At this level of company valuation (~4 trillion) there are few viable external candidates, and they are all going to already be part of major corporations (some running the company, some heir apparent).  Internal candidates should and will be considered, of course, but the board needs to have some options to evaluate and consider, and to make their decision.</p>
+<p>FFS, if you shop  and pouch someone else's CEO you get someone else's selfish garbage.</p>
+<p>At this level of company valuation (~4 trillion) there are few viable external candidates, and they are all going to already be part of major corporations (some running the company, some heir apparent).  Internal candidates should and will be considered, of course, but the board needs to have some options to evaluate and consider, and to make their decision.</p>
+<p>https://x.com/AYi_AInotes/stat... [x.com]</p>
+<p>Amazon founder Jeff Bezos just came right out and said it at a Semafor event:If Nvidia’s board doesn’t bring Jensen Huang back as CEO, it absolutely must not go outside and parachute in a professional manager,because Nvidia is far too complex. The odds of an outside CEO succeeding at a company this complex are so low as to be almost nonexistent.</p>
+<p>Quick history refresher: Nvidia tried to buy Arm for ~$40B back in 2020. The FTC sued 4-0 to stop it [ftc.gov] in Dec 2021, the UK and EU had their own investigations going, and Nvidia gave up in Feb 2022. SoftBank even got to keep the $1.25B Nvidia had already paid. So not technically "denied", but it sure wasn't going to happen.</p>
+<p>The FTC's big complaint wasn't Nvidia owning the IP. It was Nvidia getting a look at all the confidential roadmap stuff that Qualcomm, Apple, Samsung, etc. hand over to Arm because Arm is supposed to be a figurative Switzerland. Guess who knows all of that? Sure, Haas has an NDA and a non-compete, but you can't NDA what's in a guy's head. Can't buy the company, so hire its brain? Same trick as the $20B Groq "license and hire" acqui-hire deal the DOJ is already poking at.</p>
+<p>This is why I care about open ISAs. I like the Arm ISA, really I do, but it's a product one company rents out. Arm tried to make Qualcomm destroy the Nuvia core designs (and lost). And look at Apple: the userspace is plain AArch64, but everything around it is undocumented Apple-only weirdness. Custom interrupt controller, custom boot chain, secret GPU. Asahi has to reverse-engineer every new chip, and M3 support only just landed this month, still with no GPU acceleration. That's the kind of lock-in an architecture license lets you build.</p>
+<p>RISC-V and Power are royalty-free, and there's no single company to buy, sue or headhunt. Until Arm is in that category, I'm backing RISC-V or Power ISAs and I'm staying on x86-64 ISA until one of those two open ISAs takes off. x86-64 isn't an open standard on paper, but the baseline (x86-64-v1) AMD Athlon 64 patents have expired, and x86 has 40+ years of inertia and a long line of non-Intel implementations behind it: Cyrix, Transmeta, VIA, Zhaoxin. Compaq clean-rooming the IBM BIOS is why the PC platform is open in the first place. Used x86-64 servers are a dime a dozen on eBay, and I can scrounge a working CPU pretty much anywhere on the planet, even on an island like Hawaii, without anybody's permission or a working supply chain.</p>
+<p>This is why I care about open ISAs. I like the Arm ISA, really I do, but it's a product one company rents out. Arm tried to make Qualcomm destroy the Nuvia core designs (and lost). And look at Apple: the userspace is plain AArch64, but everything around it is undocumented Apple-only weirdness. Custom interrupt controller, custom boot chain, secret GPU. Asahi has to reverse-engineer every new chip, and M3 support only just landed this month, still with no GPU acceleration. That's the kind of lock-in an architecture license lets you build.All that "open" RISC-V or PPC or SPARC or whatever gives you over AArch64 is a different instruction set on top of an equally proprietary Chip.  The ISA *does not matter one iota* in that respect; everything other than the CPU instruction set is still a special snowflake set needing to be reverse-engineered, ie the exact same "apple weirdness" status-quo as we have today.If anything, the "openness" of RISC-V means that Apple (or whomever) will be able to include bespoke functionally at the ISA level, furthe</p>
+<p>This is why I care about open ISAs. I like the Arm ISA, really I do, but it's a product one company rents out. Arm tried to make Qualcomm destroy the Nuvia core designs (and lost). And look at Apple: the userspace is plain AArch64, but everything around it is undocumented Apple-only weirdness. Custom interrupt controller, custom boot chain, secret GPU. Asahi has to reverse-engineer every new chip, and M3 support only just landed this month, still with no GPU acceleration. That's the kind of lock-in an architecture license lets you build.</p>
+<p>All that "open" RISC-V or PPC or SPARC or whatever gives you over AArch64 is a different instruction set on top of an equally proprietary Chip.  The ISA *does not matter one iota* in that respect; everything other than the CPU instruction set is still a special snowflake set needing to be reverse-engineered, ie the exact same "apple weirdness" status-quo as we have today.</p>
+<p>If anything, the "openness" of RISC-V means that Apple (or whomever) will be able to include bespoke functionally at the ISA level, furthe</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Iowans Brace For Lead Dust Cloud As Army Plans to Detonate 5 Tons of Bomb-Making Chemicals</p>
+<p>JPMorgan, Visa, Mastercard Disclose Cyberattack On Third-Party Vendors</p>
+<p>If I have not seen as far as others, it is because giants were standing on
+my shoulders.
+		-- Hal Abelson</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/pwc-search" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://slashdot.org/story/26/11/19/2212215/nvidia-approaches-arm-boss-rene-haas-in-search-for-new-ceo?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

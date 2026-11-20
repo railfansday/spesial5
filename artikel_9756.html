@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>A Japan stock data API an agent can actually call</title>
+    <title>Scam Link Check</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9756.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,44 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>A Japan stock data API an agent can actually call</h1>
+        <h1>Scam Link Check</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fhl4llq2fxww7l607li3r.png" alt="A Japan stock data API an agent can actually call" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fhl4llq2fxww7l607li3r.png" alt="A Japan stock data API an agent can actually call" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 20
-•
-Originally published at agentjournal.dev</p>
-<p>Japan publishes more company data than most markets. EDINET has annual reports going back a decade, TDnet pushes earnings releases in near real time, JPX publishes listing files, and none of it costs money. If you are writing English documentation for an agent that needs Japanese financials, the problem is not supply.</p>
-<p>The problem is that every one of those sources identifies a company differently, and the mismatch shows up at the join, not at the download. I spent the last months building a data pipeline over these sources and then a tool layer on top of it. Here is what I measured on the way, and which route I ended up keeping.</p>
-<p>EDINET is the Financial Services Agency's disclosure system. It has a documented API, a subscription key, and document types for annual reports, semi-annual reports and extraordinary filings. For an agent that needs line-item detail, this is the only serious source, because the filings carry XBRL.</p>
-<p>The first is the join key. EDINET's document list does not always tell you the ticker. On one day I pulled the list and got 5,741 documents, of which 3,694 came back without a securities code. That is 64 percent. Newly listed companies, foreign issuers and share-class filings are the usual suspects. If your loader keys on ticker only, two thirds of the day's filings silently fall out, and you will notice weeks later when a company you care about has a gap.</p>
-<p>The fallback is a two-step resolution: securities code first, then EDINET's own company code, then the filer name, normalised by folding full width characters and stripping the corporate form and punctuation. Name matching has to be fuzzy enough to survive "ＫＯＭＰＥＩＴＯ" against "株式会社コムペイト", and strict enough that two share classes of the same company do not collide. I chose to skip ambiguous matches rather than risk attributing a filing to the wrong entity.</p>
-<p>The second is that some filings have no numbers at all. Foreign companies come back with a flag that says no CSV is available, and the XBRL behind them contains no numeric facts, only converted HTML. Four of the companies in my universe are in that state. A pipeline that treats "no data" as "retry later" will retry forever.</p>
-<p>J-Quants is the JPX-backed API, and it is where I would send someone who needs prices and valuation ratios with a clean contract. I did not benchmark it, and I am not going to quote its plan limits here: the site returned a 403 to my scripted requests, and publishing numbers I could not verify seemed worse than saying so. If the limits matter to your budget, read them on the site yourself.</p>
-<p>What I can say is what it does not carry: XBRL line items. If your agent needs to answer "what was in the segment note" or "what did the cash flow statement actually say", the JPX route is not the source for that question. The two are complementary, not substitutes.</p>
-<p>The pragmatic route for daily prices is a library that scrapes a public quote page. I ran that for months. It works, with two traps I had to learn twice.</p>
-<p>First, the end date is exclusive. Pass today's date and today never lands, so your table looks one day stale forever. Second, in batch mode the most recent row often comes back with a null close, and if you write null rows you get holes that look like market holidays.</p>
-<p>Third, and this one hurt: never run the ingest during the session. A run at 09:27 wrote the intraday print as the close for 38 symbols, and because the freshness timestamp is derived from the newest row, the service reported "prices to today" while the values were wrong. The fix was to delete that day, republish, and move the job after the close. Freshness indicators are only as honest as the data they summarise.</p>
-<p>None of the above is the hard part. The hard part is the vocabulary.</p>
-<p>Japanese filings use three accounting vocabularies: the domestic standard, IFRS, and US GAAP. The same line item can appear under three element names, and US GAAP inserts a token into the middle of the name rather than using a separate prefix. Build your map from IFRS samples alone and a whole block of companies comes back empty, including some of the largest. I found that out by diffing "companies with zero extracted revenue" against the listing file, which is the only reliable detector I have.</p>
-<p>The other trap is consolidation. A company's current year numbers can live only in a non-consolidated context. If you default to consolidated you get a row where the prior year is populated and the current year is null, which looks like a parsing bug but is a data shape. In my universe that affects 466 of roughly 3,700 companies. The detector cannot be the "consolidated / non-consolidated" column either, because it is frequently "other"; the reliable signal is the audit report element in the filing.</p>
-<p>Once the numbers are one schema, the remaining question is the interface. Agents do better with tools than with an SDK and a retry loop. So each endpoint in my service is also an MCP tool with typed arguments, and both surfaces run the same query layer with a parity test that compares the two outputs. Fourteen tools, fourteen endpoints, no second dialect to keep in sync.</p>
-<p>I measured the round trips from Tokyo against the hosted version. Five years of annual financials for Toyota is 10.5 KB and 0.56 seconds. A screen of 50 companies by ROE and PER is 27.6 KB and 0.21 seconds. Fifty disclosures is 15.6 KB and 0.31 seconds. Fifty XBRL line items is 7.8 KB and 0.28 seconds. Cold starts add to the first call after idle, and none of these numbers are promises.</p>
-<p>Being clear about the edges is cheaper than a support ticket later.</p>
-<p>Prices start in 2023 and are not split adjusted in this release. There is no real time feed and no order book. Forecast data only exists for companies that filed an earnings release while the source still keeps it, and that source keeps roughly one month, so guidance coverage is narrower than financial statement coverage by construction. Nothing here is investment advice, and it is not a licensed vendor for regulated use.</p>
-<p>I put the result behind a free key: an MCP server and REST API over EDINET, TDnet and JPX, with five years of financials, XBRL line items, disclosures, screening and rankings. One hundred calls a month, no card. The product page and the key form are at discli, and the API contract is in the EDINET API v2 notes if you want to build the ingest yourself instead.</p>
-<p>If you have wired Japanese filings into an agent, which part cost you the most: the join key, the vocabulary, or the freshness lie?</p>
-<p>Originally published at agentjournal.dev.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            Paste a suspicious text or link, get a plain-English verdict
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/scam-link-check?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1315337?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/ikkun1222/a-japan-stock-data-api-an-agent-can-actually-call-3i0" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/scam-link-check" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

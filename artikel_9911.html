@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Mutex poisoning is not for everyone</title>
+    <title>Announcing Project ProtoStar: Making Publicly Funded Science AI-Ready</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9911.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,173 +15,49 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Mutex poisoning is not for everyone</h1>
+        <h1>Announcing Project ProtoStar: Making Publicly Funded Science AI-Ready</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://bertptrs.nl/assets/2026/poisoning/cover.webp" alt="Mutex poisoning is not for everyone" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/announcing-project-protostar/thumbnail.jpg" alt="Announcing Project ProtoStar: Making Publicly Funded Science AI-Ready" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://bertptrs.nl/assets/2026/poisoning/cover.webp" alt="Mutex poisoning is not for everyone" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/announcing-project-protostar/thumbnail.jpg" alt="Announcing Project ProtoStar: Making Publicly Funded Science AI-Ready" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>After some recent discussion on the topic of mutex poisoning and notably a blog post that I
-thought was interesting, thoughtful, exhaustive, yet completely disagreed with, I wanted to comment
-on the debate myself. To me, poisoning-by-default is one of biggest mistakes that were made in the
-language, next to some others that are a story for a different time.</p>
-<p>In short, I believe that Mutex poisoning is the wrong choice for most applications, as</p>
-<p>In theory, a mutex guards a critical section of the code. That code changes the state of a piece of
-data free from interference of concurrent threads, then releases the lock. That code might then
-encounter an error, and release the lock in the middle of doing its important work. For example:</p>
-<p>The following code will work fine most of the time, but if the dice roll doesn’t go our way, the
-always_even mutex gets unlocked in an invalid state. In Rust, today, poisoning exists to handle
-this. If a guard is released abnormally (while panicking), it records that this happened in a
-boolean. Any future calls to lock() will return Err(PoisonError), which will trigger a panic
-when we unwrap it. The bad state is never observed and all is well.</p>
-<p>You might have felt that the example I made up was somewhat contrived. That’s because it is. Real
-cases of this pattern can and do happen, but most of the use cases that involve mutexes are much
-simpler. Many critical sections are no longer than a variable assignment, or doesn’t have an invalid
-in-between state. There are cases in lower level programming where a mutex guards a piece of data
-that is not directly inside it, or is outside the view of the program entirely. In fact, I’ve
-written a wrapper for a C library that worked like that. Though I disagree with the notion that this
-is the common case.</p>
-<p>I do recommend anyone Rain’s blog on the matter, as she has some good examples of how
-you can cause violations of these critical sections (even without mutexes) and I wholeheartedly
-support the idea of a Poison wrapper for the use cases that need it. I suspect the domains she
-works on lend themselves more towards these issues compared to mine. Rust’s default behaviour should
-make the common case easy and the rare case possible.</p>
-<p>This section is only tangentially related to the topic at hand, but I already wrote it and wasn’t
-ready to kill my darlings.1 Skip to the next
-section to continue the discussion on poisoning.</p>
-<p>In Rust, for most platforms, mutexes are implemented using the futex2 system call. It
-allows for operations to remain purely in user-space as long as the mutex in question isn’t
-contended, which is nice for performance reasons.</p>
-<p>Under the hood, a mutex is a simple 32-bit integer on most platforms even though it only holds three
-unique values:</p>
-<p>Flow chart showing how a mutex acquisition is implemented in Rust, using atomic operations and
-futex primitives. Note how the uncontended case remains entirely in user-space and does not sleep
-the thread.</p>
-<p>Rust implements this with a few atomic operations and the futex_wait call. Crucially, the path for
-locking a mutex that isn’t contended is a single atomic operation. The only operation that
-requires a context switch is futex_wait.</p>
-<p>Unlocking is even simpler. The thread that holds the mutex first releases the lock, then optionally,
-if there was an indication that the lock was contended, wakes any sleeping threads so they can try
-to acquire the lock.</p>
-<p>Flow chart showing how a mutex release in Rust. First, we swap the current value with 0, and
-depending on whether it was originally 1 (simply locked) or 2 (contended), we optionally wake any
-sleeping threads.</p>
-<p>As discussed in too much detail above, (un)locking mutexes is cheap as long as they’re not
-contended, and when contended, they are at least cheap instruction wise. This is where poisoning
-mutexes get you.</p>
-<p>In short, being able to poison is a cost that is always paid, but seldom used. To start, poisoning
-is essentially implemented by adding an AtomicBool field to every Mutex. Due to alignment, this
-grows the size of every mutex by anywhere from zero bytes to an additional pointer. This isn’t
-terrible but for use cases where you have many mutexes guarding small objects, this can add up.</p>
-<p>The real issue to me however is in code size. Let’s start with another contrived example, a function
-that reads its argument, copies it, and returns it. An idealised version of that would be the
-following.</p>
-<p>This compiles down to 2 instructions and a label. Copy the data into the register then return.</p>
-<p>Of course, this doesn’t work for any context that needs shared mutation, but we can consider it our
-baseline. Perfection would look like this. So, let’s ignore that atomic integers exist and add a
-mutex to this story. We will go over the generated assembly code for each, and you can compare the
-code in its entirety in this Compiler Explorer overview.</p>
-<p>We can update the code above to actually use mutexes, and simply lock-then-unwrap the mutex.</p>
-<p>This compiles to a total of 147 lines of assembly which I’m not going to reproduce here in full.</p>
-<p>To divide that up a different way, we have</p>
-<p>Most of this is inlined into the function. This in turn affects performance, as this limits how much
-of your “real” code fits in the CPU’s instruction cache. The laptop I’m writing this on has a paltry
-32KiB of instruction cache. Luckily we can do better.</p>
-<p>Most of the code generated in the previous example had to do with setting up the panic, and checking
-the conditions. But we don’t care about panicking. We can simply acknowledge the PoisonError and
-continue. That looks as follows:</p>
-<p>This results in only 68 lines of assembly, which is much better, though all of it is inlined to our
-function. Compared to before, we’ve lost all panic related code. There’s still some unnecessary
-branching related to whether the mutex is poisoned, as well as a little dance to track poisoning in
-our function. Our function can never panic, but compiler optimisations currently do not remove the
-atomic loads and stores involved here. Nevertheless, if you want to target stable Rust and you
-don’t care about panics, this is what you should do at the moment.</p>
-<p>In the current nightly builds of Rust, there are non-poisoning mutexes that can don’t have any of
-the overhead. We can optimise our code from above to make use of them.</p>
-<p>No unwrapping, and it only results in 34 lines of assembly code. This is short enough for me to walk
-through it.</p>
-<p>I’ve added comments and labels to the assembly so the steps from the (un)locking flow charts become
-visible. As far as assembly code goes, it’s very readable and simple. Which, of course, is exactly
-what you want from fundamental library code.</p>
-<p>The additional logic checking the poison state, adding a destructor for the mutex guard, and, if you
-choose ergonomics, even panic machinery, significantly bloats the code of a rather fundamental
-operation.</p>
-<p>Besides the purely technical argument that poisoning makes all code larger and slower than it needs
-to be, there is a different one. As discussed previously, code that doesn’t
-care about mutex poisoning should generally write:</p>
-<p>It’s reasonably efficient and available on stable Rust. But that whole unwrap_or_else part takes
-up more than half the line. No worry, you might say, we can make it shorter:</p>
-<p>This works well enough. It’s less efficient than the previous example, but it’s nice and short. If
-your code never panics, it’s even perfectly safe. You might have spotted a load-bearing “if”
-already. It’s kind of hard to guarantee your code does not panic. Array indexing, integer division,
-and a whole host of other features might panic unexpectedly.</p>
-<p>This is hard for experienced developers, but for those learning it’s even worse. It also trains bad
-habits. Every time a beginner Rust developer writes unwrap() instead of handling their errors, a
-puppy steps on a Lego brick. Or causes a widespread internet outage. One of the
-two, I forget which.</p>
-<p>We should not want to include APIs into the standard library that return a Result that is
-“expected” to be unwrapped. Infallible operations should not fail.</p>
-<p>Poisoning protects against a task panicking in the middle of an invariant violation. But why must
-this be specific to mutexes? The example from before works just as well with a simple mutable
-borrow. Panics may still happen, and you may still catch them.</p>
-<p>This is actually a fairly common problem. In a more recent blog post, researchers at Microsoft
-highlight various places they’ve found where even the standard library gets this
-wrong.</p>
-<p>In most cases however, this is fine, as it is with the mutex example given in the beginning. You
-don’t need to poison this reference. But for applications where you do, it’s kinda nice to be able
-to.</p>
-<p>It’s not hard to imagine a wrapper that adds poisoning behaviour when you want to have it.
-Crucially, this needs to be an additive wrapper. You can add a poisoning system to something. You
-cannot strip out the poisoning system from a primitive that has it. Poison safety is important for
-the specific use cases that need it, but most do not.</p>
-<p>I don’t believe it’s worth it to saddle mutexes in particular with this overhead when the problem is
-near universal with any mutable state. State invariants are just hard that way.</p>
-<p>One might draw a comparison between poison safety and buffer safety. In Rust, we always do bounds
-checking, relying on the compiler to optimise it out in cases it can be proven redundant. Can’t
-poison safety be the same? And the answer, it turns out, is no.</p>
-<p>The compiler cannot optimise poisoning away. It requires any mutex carry additional data to track
-it. Maybe the compiler can figure out one particular critical section cannot panic, and therefore
-it can leave out the setup and clean-up, but in general it cannot avoid checking the state. This is
-overhead that always applies, and hurts, especially in environments where code size is more
-restricted.</p>
-<p>In C++, there are a few choices in the standard that make certain containers less efficient than
-they could be4. Because of how standardisation works, the containers can never be
-“fixed”. This causes third party implementations, such as Abseil and Boost, to become the de facto
-standard.</p>
-<p>Mutexes in Rust suffer from the same problem. The standard library has poisoning, but people don’t
-want poisoning, so instead they opt for crates like parking_lot. I believe this is
-bad for the ecosystem as a whole. When the standard library offers a feature, it should be an
-uncontroversially good choice, unless you are doing something hyper specific. We don’t have to be
-“batteries included” but the parts that are there should be a good fit.</p>
-<p>I started out writing this blog in response to a movement to change the default mutex behaviour in
-Rust. It seems to me there are three camps:</p>
-<p>Rain’s blog argued for option 1. I believe we both agree that option 2 is a terrible idea. I think
-we should do at least option 3. Option 4 would be a good edition improvement, but it is also a
-significant compatibility issue, and even I find it hard to argue that it’s really worth it.</p>
-<p>Which is a roundabout way of saying that we really should stabilise std::sync::nonpoison and
-definitely should not make std::sync::Mutex panic by default.</p>
-<p>For various reasons, this article took me about a year to write. Not everything is still relevant,
-or as cohesive as I’d like. I’m publishing mainly for my own sanity. I do still hope that the mutex
-discussion around stabilising the new mutexes ends up in a good place.</p>
-<p>Matt Godbolt’s compiler explorer has been an invaluable help in writing this
-blog, as has Rain’s original blog on the discussion.</p>
-<p>Cover image Red fly agaric mushrooms in
-grass by
-Pixabay user Sven Kirsch.</p>
-<p>It is becoming apparent to me that I just like explaining mutexes and I don’t know what
-to do about that. ↩︎</p>
-<p>Fast Userspace muTEX. See futex(2) for more on the system call and
-futex(7) for its semantics ↩︎</p>
-<p>For generic definitions (e.g. Mutex<T>) the compiler must generate code for
-every unique T that gets used, and for loads of reasons often more than once per T. The
-compiler development docs have a deeper explanation of monomorphisation. ↩︎</p>
-<p>A famous example is std::unordered_map, which suffers from being over-specified
-and that prevents more efficient implementations. ↩︎</p>
-<p>My name is Bert Peters and I'm a software developer/computer enthusiast/nerd. I write articles and create demos about technology and miscellaneous items that strike my fancy, and I fail to hide my love for Rust.</p>
+                <p>An initiative bringing together universities, research organizations, industry, and the open science community to make publicly funded research easier to discover, reuse, and build upon.</p>
+<p>Today, we're announcing Project ProtoStar, an initiative to unlock the potential of publicly funded scientific research by making datasets, models, and code more accessible and reusable, particularly for AI-driven research. ProtoStar brings together research institutions, industry, and the open science community to support the release of scientific artifacts in AI-ready, machine-actionable formats, and to demonstrate their value through a series of open challenges. The first challenge, hosted by Carnegie Mellon University, opens on November 2. See How to Participate below.</p>
+<p>The initiative's founding partners include Carnegie Mellon University, Purdue University, Georgia Institute of Technology, Arizona State University, and The George Washington University, all working through the Open Forum for AI (OFAI) as the university coalition partner; the Astera Institute; Hugging Face as the infrastructure partner; and the Open Research Community Accelerator (ORCA), through its Fostering Innovation Network, as the community partner.</p>
+<p>Participating organizations formalize their involvement through a memorandum of understanding supporting the release of suitable scientific datasets, models, and code in AI-ready formats on open infrastructure. Organizations interested in joining Project ProtoStar can reach out to protostar@orcaopen.org.</p>
+<p>The U.S. federal government invests approximately $190 billion annually in research and development, and federal policy increasingly expects the results to be shared publicly. Agencies such as the National Institutes of Health (NIH) and National Science Foundation (NSF) have strengthened public-access requirements for funded research publications and require researchers to plan for sharing the underlying data. Hugging Face is among the ten generalist repositories listed by NIH for sharing research data.</p>
+<p>But making research publicly available does not automatically make it usable. Scientific datasets, models, and code are often scattered across incompatible systems, stored in static or legacy formats, or released without the documentation, metadata, and provenance needed to understand and reuse them. These limitations make it harder for researchers to build on existing work, and harder still for AI systems to discover, interpret, and combine scientific resources across disciplines.</p>
+<p>Project ProtoStar aims to help close this gap by encouraging systematic sharing of publicly funded scientific artifacts in AI-ready formats, supported by open infrastructure and practical publishing guidance. It builds on efforts such as the National Cancer Institute's AI Data-Readiness Challenge and Hugging Face's guide to preparing public-sector data for AI. The goal is to make it easier for research organizations to meet existing public-access expectations while increasing the scientific value of the work they release.</p>
+<p>The demand for reusable scientific resources is already evident. Hugging Face hosts more than 17,000 public datasets across core scientific domains, including genomics, protein design, chemistry, weather and climate, Earth observation, and astronomy. That figure approaches 29,000 when medicine and mathematics are included, alongside a comparable number of scientific models.</p>
+<p>The pace of sharing is also accelerating. Researchers shared more than three times as many new science datasets on Hugging Face in the first nine months of 2026 as in the same period of 2025, with growth remaining substantial even after excluding the largest individual uploader.</p>
+<p>Figure 1. New public science datasets on Hugging Face per quarter, by domain (Q1 2023–Q3 2026). Counts datasets still public, by creation date. Source: Hugging Face Hub data, October 2026. Explore the data.</p>
+<p>When organizations share research in reusable formats, the scientific community can build on it at scale. The 18 public repositories maintained by NIH's National Center for Biotechnology Information (NCBI) on Hugging Face have collectively received more than 11 million downloads, while NASA IMPACT's 27 repositories have received approximately 770,000 downloads, as of October 26, 2026. Documentation is also an important part of making these resources useful: 90% of dataset downloads on Hugging Face are from fully documented datasets.</p>
+<p>Publicly available genomic data has proved important in contributing to research that further advances fields such as biological research; researchers at Hugging Face have been building on openly available scientific resources, including recent releases from HuggingFaceBio such as Carbon-A and Carbon-X. By releasing the resulting models, datasets, and tools openly, these efforts demonstrate how existing scientific resources can support new research that others can build upon.</p>
+<p>This is the kind of activity that we are further catalyzing via Project ProtoStar through institutional policies adopted by participating orgs. As an early example of institutional commitment, CMU's Open Source Programs Office is encouraging its researchers to share suitable datasets, AI models, and other research outputs on Hugging Face, while recognizing the continued importance of domain-specific repositories.</p>
+<p>Making scientific artifacts AI-ready is an important first step. We also want to demonstrate what researchers, developers, and the broader scientific community can accomplish when those resources are made available for reuse.</p>
+<p>A central question for ProtoStar is: Can publicly funded scientific datasets, models, and code, released in AI-ready formats, be readily discovered, reused, combined, and extended to accelerate scientific discovery and public benefit?</p>
+<p>To explore this, ProtoStar will organize a series of open challenges, each hosted by a participating research institution and built around scientific resources that the institution has released openly. The challenges have two complementary goals:</p>
+<p>The resulting projects and lessons learned will help build a practical evidence base for making publicly funded science more accessible and useful.</p>
+<p>Hosted by Carnegie Mellon University | November 2–13, 2026</p>
+<p>The inaugural ProtoStar challenge invites participants to test whether AI can improve predictions of urban climate conditions using historical weather data from 210 U.S. cities. Building on research by Carnegie Mellon University, teams will use climate records through 2018 to predict actual conditions from 2019 to 2026, allowing their models to be evaluated against observed weather rather than hypothetical future scenarios.</p>
+<p>Participants will forecast four indicators relevant to urban planning: average annual temperature, total annual precipitation, the hottest day of the year, and cooling degree days, a measure of demand for air conditioning. Their predictions will be compared against simple statistical baselines, including historical averages and linear trends, to assess whether AI approaches offer meaningful improvements in accuracy.</p>
+<p>Beyond forecasting, participants will also propose a short climate adaptation policy idea informed by what they learned from the data. This component encourages teams to connect scientific analysis with practical public benefits, such as preparing cities for extreme heat, improving energy efficiency, or managing changing precipitation patterns.</p>
+<p>Teams will submit a Hugging Face dataset with these outputs. Forecasting performance will be assessed through a public leaderboard measuring prediction errors against established baselines, while policy ideas will receive separate consideration. Final forecasting results will be published in early 2027, once the complete 2026 weather records are available.</p>
+<p>Explore the CMU Climate Risk Intelligence Challenge</p>
+<p>The CMU challenge is the first in this series. Other participating institutions will host their own challenges sequentially, each highlighting different publicly funded scientific resources and opportunities for reuse. Future challenges will be announced through the Project ProtoStar page on Hugging Face.</p>
+<p>Whether you're an academic researcher, student, independent developer, or company building on open scientific infrastructure, ProtoStar offers opportunities to put publicly funded research to work and help us learn what is needed to make AI-ready open science more widely useful.</p>
+<p>We also welcome universities, federal research agencies, national laboratories, nonprofits, and other research organizations interested in making their scientific resources more accessible and reusable. To explore participation or collaboration, reach out to protostar@orcaopen.org.</p>
+<p>Our hope is that ProtoStar will make it easier for publicly funded scientific work to reach the people and tools that can build on it, while generating practical evidence about the infrastructure and practices needed to support open science at scale.</p>
+<p>Register, submit, and track competition entries online</p>
+<p>The best open model for DNA understanding</p>
+<p>Science models, datasets and Spaces on the Hub, daily</p>
+<p>Register, submit, and track competition entries online</p>
+<p>The best open model for DNA understanding</p>
+<p>Science models, datasets and Spaces on the Hub, daily</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://bertptrs.nl/2026/11/16/mutex-poisoning-is-not-for-everyone.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/announcing-project-protostar" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

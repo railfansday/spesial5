@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building a Browser-Based Image Editor With Web Workers and OffscreenCanvas</title>
+    <title>Vatsalya Circle</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9817.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,52 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building a Browser-Based Image Editor With Web Workers and OffscreenCanvas</h1>
+        <h1>Vatsalya Circle</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/a-vibrant-graphic-depicting-a-computer-screen-with-intuitive-drag-and-drop-interface-elements-accompanied-by-icons-symbolizing-efficiency-and-innovation-in-web-development-this-image-is-tailored-to-complement-an-article-on-best-practices-in-low-code-web-development-highlighting-the-accessibility-x0bc2okjz63i0bv9m5idgfzv.png" alt="Building a Browser-Based Image Editor With Web Workers and OffscreenCanvas" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/a-vibrant-graphic-depicting-a-computer-screen-with-intuitive-drag-and-drop-interface-elements-accompanied-by-icons-symbolizing-efficiency-and-innovation-in-web-development-this-image-is-tailored-to-complement-an-article-on-best-practices-in-low-code-web-development-highlighting-the-accessibility-x0bc2okjz63i0bv9m5idgfzv.png" alt="Building a Browser-Based Image Editor With Web Workers and OffscreenCanvas" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I’m a full-stack engineer specialising in front-end development & design engineering</p>
-<p>I’m a full-stack engineer specialising in front-end development & design engineering</p>
-<p>I’m a full-stack engineer specialising in front-end development & design engineering</p>
-<p>Photoshop can do everything ScapeStudio does. That is not the point. Preparing photographs for fine art prints and T-shirt production is a specific pipeline: greyscale, curves, threshold knockout with feathered edges, export at 300 DPI across fixed paper and garment sizes. In Photoshop, that is opening each file, running an action, exporting, renaming, repeating. Twenty photographs is an afternoon.</p>
-<p>ScapeStudio does those four steps, nothing else, and the entire pixel pipeline runs in a Web Worker. Dragging a curves handle has to re-render the preview in under 16ms or the feel is gone. Main-thread processing on a 24-megapixel shot cannot hit that. A worker with an OffscreenCanvas can.</p>
-<p>Canvas 2D is not slow in itself. Every pixel operation on the main thread competes with layout, paint, input handling, and React reconciliation. Luminance conversion on an 8000x6000 image is 48 million pixels, 192 million byte operations. On a warm JIT, around 150ms. For the duration of that loop, the UI is frozen, scrolling halts, and the curves handle stops tracking.</p>
-<p>Most web editors work around this by downsampling aggressively and processing the thumbnail, only running the full pipeline on export. That gets interactive curves, but what you see is not what you get. Shadow clipping and highlight roll-off are invisible in a 400-pixel preview.</p>
-<p>ScapeStudio processes a 2000-pixel preview in a worker on every parameter change, and runs the full-resolution pipeline only at export. The worker does not block the main thread, so the curves handle drags smoothly while the pipeline works.</p>
-<p>The message shape between the main thread and the processing worker is deliberately tight:</p>
-<p>Two details are load-bearing. The image moves as an ImageBitmap, not raw ImageData: ImageBitmap is a transferable reference to decoded pixel memory, so postMessage hands the GPU-side resource across thread boundaries without copying. The curves state is pre-baked into a 256-entry Uint8Array lookup table on the main thread before sending. The worker never sees the user's control points; it just indexes the LUT.</p>
-<p>This is the serialisation gotcha that kills naive worker pipelines. Send four control point objects and expect the worker to rebuild the spline every frame, and you pay spline evaluation per frame. Send a Uint8Array of 256 bytes, the worker runs one array lookup per pixel, and the spline maths happens once per parameter change, on the main thread, where it is cheap.</p>
-<p>A normal <canvas> is a DOM node. Its 2D context reaches into layout, compositor, and the DOM in ways that only exist on the main thread. You cannot instantiate one in a worker. For years, image processing in workers meant shuttling raw Uint8ClampedArray buffers through postMessage, which either copies (slow) or transfers (you lose the buffer on the sender side).</p>
-<p>OffscreenCanvas exists in the Web Worker global scope. Its getContext("2d") behaves like the DOM canvas context and can produce ImageBitmap via transferToImageBitmap. The pipeline is built around that:</p>
-<p>Everything after drawImage operates on a single Uint8ClampedArray that never leaves the worker. createImageBitmap returns a transferable bitmap handed back to the main thread by reference. The only bytes that actually cross the worker boundary are the 256-byte LUT in, and a pointer-sized bitmap handle out.</p>
-<p>Greyscale uses luminosity weighting, not an RGB average:</p>
-<p>Coefficients from Rec. 601 match how the eye perceives brightness. Naive (R + G + B) / 3 loses shadow detail in greens and blows out blues. For fine art prints, weighted luminance is non-negotiable.</p>
-<p>Curves is a pre-baked 256-entry LUT applied to the luminance channel:</p>
-<p>One array lookup per pixel. No branches, no arithmetic. Fastest possible tonal transformation.</p>
-<p>Threshold with feathering modifies the alpha channel based on luminance:</p>
-<p>Pixels below lower go fully transparent. Pixels between lower and threshold get a linear alpha ramp. Pixels above threshold are untouched. For t-shirt prep this knocks out studio backdrops while leaving hair and fabric edges soft, rather than the jagged bitmap look of a pure binary threshold.</p>
-<p>The obvious way to wire up a Photoshop-style curves tool is Catmull-Rom splines through the user's control points. Mostly works, except when two adjacent points have a steep slope difference: Catmull-Rom overshoots. Drag a shadow point down, the curve dips below zero before recovering. The LUT clamps negatives, so you get a flat black region where you wanted a gentle toe.</p>
-<p>ScapeStudio uses monotone cubic Hermite interpolation via the Fritsch-Carlson method, which guarantees no overshoot:</p>
-<p>The harmonic mean of slopes plus the radius-3 restriction is what makes it monotonic. The curve still passes through every control point exactly, still feels like Photoshop. It just cannot dip outside the range you drew. 256 evaluations per parameter change, a few microseconds total.</p>
-<p>Each pipeline stage reads from the previous stage's output and writes to its own buffer. The source ImageBitmap is never touched. That matters for two reasons.</p>
-<p>First, parameter changes only need to rerun from the earliest affected stage. Adjusting feather does not retouch the curves result; it clones the post-curves pixel data and applies threshold to the copy. After curves run, the print output is captured, then a fresh Uint8ClampedArray is allocated and thresholded independently for the t-shirt preview.</p>
-<p>Second, the original image is still available at full resolution for export. The preview pipeline works on a downsampled 2000-pixel version for interactive feel; the export worker re-ingests the original bitmap, applies the same LUT and threshold values at full resolution, writes PNGs at 300 DPI. Same pipeline, different sampling.</p>
-<p>The main-thread glue is deliberately thin but does one thing that matters: it debounces worker dispatch by 100ms:</p>
-<p>Without this, dragging a slider fires dozens of worker dispatches per second. The worker processes one at a time, a queue builds, the preview falls behind. 100ms is long enough to coalesce a drag gesture, short enough that the output feels live.</p>
-<p>One worker instance is reused across the session. Worker startup costs a few hundred milliseconds; you only pay it once.</p>
-<p>The export worker is the same pipeline at full resolution, looped over configured sizes, written into a zip client-side:</p>
-<p>Each size gets a fresh OffscreenCanvas at target pixel dimensions (cm at 300 DPI), the cropped source draws into it, the pipeline runs, convertToBlob produces a PNG. The t-shirt output clones the buffer, thresholds, exports separately. All blobs go into a JSZip folder and save as one archive. No server round trip. A 20-photograph batch at six sizes produces 240 PNGs and never leaves the browser.</p>
-<p>The interactive budget is 16.6ms per frame. The worker pipeline on a 2000-pixel preview takes 30-50ms depending on image and device. Over budget for a single frame, which is why the main thread never waits on it. The drag gesture updates React state at 60fps from input events; the worker processes the latest coalesced state on its own clock; the result paints when it arrives. The preview trails the drag by one or two frames, the UI never stutters.</p>
-<p>Moving the pipeline off the main thread is not an optimisation. It is the architectural choice that makes everything else possible. Once pixel loops live in a worker, the main thread only schedules messages and paints bitmaps. The curves handle stays under your cursor. The tab does not beachball on a 24-megapixel shot.</p>
-<p>Purpose-built beats general-purpose. Four things, in a worker. Enough.</p>
-<p>How I Built Semantic Search for 2,000 Articles Using pgvector and Postgres</p>
-<p>I’m a full-stack engineer specialising in front-end development & design engineering</p>
+                <p><p>
+            Family elder care: check-ins, missed alerts, SOS, scam help
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/vatsalya-circle?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1322641?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/building-a-browser-based-image-editor-with-web-workers-and-offscreencanvas?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/vatsalya-circle" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

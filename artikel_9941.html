@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed, high-performance blob storage on SQLite</title>
+    <title>Security updates for Friday</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9941.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,61 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Distributed, high-performance blob storage on SQLite</h1>
+        <h1>Security updates for Friday</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://zerodha.tech//static/images/blobasaur-og.png" alt="Distributed, high-performance blob storage on SQLite" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://zerodha.tech//static/images/blobasaur-og.png" alt="Distributed, high-performance blob storage on SQLite" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>TLDR; We built Blobasaur, a sharded, distributed, lightweight blob storage server on top of SQLite to solve our high-throughput blob read/write usecase. JSON blobs varying from a few KBs to MBs are now written and read thousands of times per second on commodity hardware while maintaining single-digit millisecond latency.</p>
-<p>On Kite, our trading platform with ~20 million customers, users are able to customize their investment and trading screens heavily. They save multi-chart layouts, financial indicator templates, vector drawings, and various kinds of arbitrary UI preferences. In addition, we offer a Terminal mode that allows users to design their own workspaces by dragging, dropping, and customizing widgets. Under the hood, our backend services store these user preferences and metadata as opaque blobs (mostly JSON) ranging from a few kilobytes to several megabytes.</p>
-<p>Many years ago, we stored such blobs in CouchDB, which turned out to be ill-suited for the kind of throughput we were starting to see. We then moved to SSDB (ssdb), a C++ disk-backed store that speaks the Redis protocol. This made it very easy to integrate as well. SSDB solved our immediate performance problems and ran reliably in production for several years.</p>
-<p>Over time, two problems forced us to look for a replacement:</p>
-<p>As we added features like the Terminal mode and onboarded more internal services, we needed a robust solution. Our criteria were:</p>
-<p>So we investigated FOSS databases optimized for high-throughput blob storage and looked at the following:</p>
-<p>Around this time, we were toying with SQLite for another project and were marveling at its 35% Faster Than The Filesystem claim. We also happen to have a query cache system that creates millions of tables every day in a Postgres instance, which pushes the database to its limits quite successfully. Putting two and two together, we thought, why not build a system on top of SQLite to store millions of blobs and see what happens?</p>
-<p>So we ended up building Blobasaur, an open source sharded blob server written in Rust that speaks the Redis protocol and uses SQLite as its storage engine. It is a single binary application that is high performance, and super simple to deploy and maintain. It is in production at Zerodha and it has successfully replaced SSDB.</p>
-<p>We had several Go and Python services already talking to SSDB via the Redis protocol, with more waiting to onboard. We wanted the new solution to meet these requirements:</p>
-<p>We had a few options for the storage. The obvious one is the raw filesystem, with one file per blob. But with that, we’d need to invent everything ourselves:</p>
-<p>SQLite pretty much gave us everything that the raw filesystem lacked. For small blobs, SQLite is up to 35% faster than raw filesystem I/O. While raw files start to beat SQLite above ~100 KiB, we compress blobs before writing them. And thankfully, 99% of our compressed values sit well below 100 KiB.</p>
-<p>Using SQLite also meant inheriting a battle-tested storage engine with ACID transactions, crash recovery, and standard tooling. Any shard on disk can be inspected with the standard sqlite3 CLI or queried with plain SQL for analytics, etc.</p>
-<p>While most of our backend stack is written in Go, we wrote Blobasaur in Rust. Go’s standard SQLite driver requires CGo, which complicates static builds, pins OS threads during C calls under high concurrency, and adds garbage-collection pressure when allocating and compressing multi-megabyte buffers. With Rust (sqlx, rusqlite, and tokio), we call SQLite’s C API directly with predictable memory usage and ship a single static binary.</p>
-<p>In WAL (Write-Ahead Logging) mode, a single SQLite database allows concurrent readers, but still permits only one writer at a time. Since writes make up roughly 50% of our production traffic, a single SQLite file per node would bottleneck quickly.</p>
-<p>To get write concurrency on a single machine, Blobasaur splits data across multiple SQLite database files on disk, called shards:</p>
-<p>We benchmarked 1 shard against 16 shards using a load generator opening 64 concurrent connections. Each request used a 64 KiB JSON blob payload (close to our production average), which zstd compresses roughly 9x.</p>
-<p>All runs used 100,000 keys, synchronous writes, and batch_size = 50, with the data directory on tmpfs to isolate SQLite locking and CPU overhead from disk variance. Both setups received the same total resources: 1,600 MB of SQLite page cache and 64 total read connections.</p>
-<p>With 16 shards, write throughput increases 3.3x and median write latency drops from 8.2 ms to 2.1 ms. Read throughput stays nearly identical because SQLite WAL mode already serves concurrent readers without contention.</p>
-<p>At 25,324 HSET operations per second, each carrying a 64 KiB payload, Blobasaur processes roughly 1.66 GB/s of uncompressed JSON through zstd. Both the server and load generator ran on the same 16-core laptop, sharing its CPU resources.</p>
-<p>Our services use both plain keys (SET/GET) and Redis hashes (HSET/HGET) to group blobs by service or feature (for example, HSET prefs userID <json>).</p>
-<p>Inside each shard, plain keys live in a blobs table:</p>
-<p>SET writes to blobs. HSET writes to a table for its namespace, blobs_<namespace>, with the same columns. For example, HSET prefs user42 ... stores user42 in blobs_prefs.</p>
-<p>Expiry is stored in expires_at on the same row. Read queries filter out expired rows at read time (expires_at IS NULL OR expires_at > ?), while a background worker reaps expired rows asynchronously. Because the index on expires_at is a partial index (WHERE expires_at IS NOT NULL), rows without a TTL take up no space in the expiry index.</p>
-<p>Blobasaur supports zstd, lz4, gzip, and brotli compression before writing to SQLite. We run zstd in production.</p>
-<p>Here is the compression ratio across one hour of production HSET traffic:</p>
-<p>With SQLite’s default 4 KiB pages, shrinking a 63.6 KiB payload to 5.5 KiB reduces its storage footprint from roughly 16 pages to roughly 2, before accounting for row and index overhead. Fewer pages holding blob data means less pressure on the page cache and less data to write through the WAL and into the database.</p>
-<p>Because we don’t require strict durability for our specific use case of UI preferences, shards run in WAL mode with PRAGMA synchronous = NORMAL. SQLite does not fsync on every transaction commit. An OS crash or power loss can lose recent committed transactions that have not yet been synced to durable storage, while preserving database consistency.</p>
-<p>For workloads that want even lower write latency, Blobasaur also supports an optional async_write mode that acknowledges writes as soon as they enter the shard’s memory queue, before the SQLite batch commits.</p>
-<p>To scale beyond a single server, Blobasaur implements the Redis Cluster protocol, making it compatible with standard cluster-aware Redis clients. Like Redis Cluster, the keyspace is divided into 16384 hash slots using CRC16. Each Blobasaur node owns a configured range of slots, and nodes discover each other via gossip. If a client sends a key to the wrong node, the node responds with a MOVED redirect pointing to the owner node.</p>
-<p>There are some limitations right now. At present, slot assignment is static in config. Live slot rebalancing between running nodes and automatic failover are not implemented yet.</p>
-<p>We chose multi-probe consistent hashing so resharding a node only has to move minimal data, without needing virtual nodes. With naive hash % num_shards, increasing from 4 to 5 shards moves ~80% of keys. With consistent hashing, only ~20% of keys move (the share belonging to the new shard).</p>
-<p>Resharding is currently an offline operation via the built-in CLI:</p>
-<p>The migration tool moves keys whose target shard changed. With --verify, it checks that keys are in the expected shards and reports post-migration row counts.</p>
-<p>We rolled out Blobasaur in a phased deployment strategy:</p>
-<p>After running dual-writes for a month with zero discrepancies, we turned off SSDB.</p>
-<p>Early on, we noticed disk usage only grew, even after millions of keys expired or were deleted. By default, SQLite keeps freed pages on an internal freelist for future writes rather than returning space to the OS.</p>
-<p>To fix this, we enabled PRAGMA auto_vacuum = INCREMENTAL across every shard and added a blobasaur shard vacuum subcommand to reclaim unused freelist pages within a set allocation (128 MB default). Since shrinking the actual database file in WAL mode requires a checkpoint, Blobasaur runs PRAGMA wal_checkpoint(TRUNCATE) right after executing an incremental vacuum.</p>
-<p>When async_write is enabled, a write returns OK while still sitting in the shard’s memory queue waiting for the next batch commit. To preserve read-your-writes consistency, queued writes are also placed in an in-memory pending map that reads check before querying SQLite.</p>
-<p>During testing, we hit edge cases where certain read and existence-check paths bypassed this pending map or didn’t account for deletes. For example, a DEL followed immediately by a GET could return the old value from SQLite because the queued DEL hadn’t committed yet. We fixed this by storing explicit tombstones in the pending map and routing every read (GET, HGET, EXISTS, TTL) through it first.</p>
-<p>In production, our p99 write latency normally sat below 5 ms, but we occasionally saw spikes to 30 to 50 ms.</p>
-<p>We traced the spikes to the background TTL cleanup task. Initially, the cleanup worker opened its own write connection and ran a single large DELETE statement for all expired rows. That large DELETE contended with the shard’s main writer for SQLite’s single write lock, stalling normal client batches.</p>
-<p>We fixed this in two ways: routing cleanup batches through the shard’s existing writer connection so they take turns cleanly with client writes, and bounding each pass with cleanup_chunk_size (1,000 rows by default). Since expired rows are already filtered out at read time, spreading physical deletion across smaller chunks eliminated the latency spikes without affecting correctness.</p>
-<p>Our current Blobasaur deployment runs as a three-node (4 vCPU, 8 GB RAM) cluster. Over a full trading session (09:00 to 15:30), p99 latency across all commands stays around 2 ms on every node, and p50 sits between 250 and 550 µs.</p>
-<p>Broken down by command, HSET p99 sits around 2 ms, HGET p99 around 1.4 ms, and HDEL p99 mostly under 1 ms.</p>
-<p>Blobasaur is open source under the AGPLv3 license and available on GitHub @iamd3vil/blobasaur. Find other projects from the Zerodha.tech hacker collective at 4th Cross Labs.</p>
+                <p>Note: you can avoid this step in the future by logging
+        into your LWN account.</p>
+<p>Note: you can avoid this step in the future by logging
+        into your LWN account.</p>
+<p>Copyright © 2026, Eklektix, Inc.
+            
+            Comments and public postings are copyrighted by their creators.
+            Linux  is a registered trademark of Linus Torvalds</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://zerodha.tech/blog/high-performance-distributed-blob-storage/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lwn.net/Articles/1108811/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

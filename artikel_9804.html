@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</title>
+    <title>AI Code Generation Is Only One Small Piece Of The ROI Equation</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9804.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,176 +15,75 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</h1>
+        <h1>AI Code Generation Is Only One Small Piece Of The ROI Equation</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/InxBRjRIs6M1kdhuWcyNHiiUrxm1-3883alk.png" alt="AI Code Generation Is Only One Small Piece Of The ROI Equation" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/InxBRjRIs6M1kdhuWcyNHiiUrxm1-3883alk.png" alt="AI Code Generation Is Only One Small Piece Of The ROI Equation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Streaming MoE experts directly from SSD gets within 6% of Strata on token generation.</p>
-<p>I've been trying to rely less on online models and run bigger ones locally.
-At home I have a PC with two RTX 4090s (let's call it Orthrus - the two-headed hound
-of Greek mythology), and for work I have a MacBook M5 with 32G of unified memory.</p>
-<p>Orthrus runs on Windows 11, because my kids play games all the time. I had a
-dual boot with Ubuntu, but their games ended up taking most of the two
-terabytes of disk.</p>
-<p>I am also a huge fan of RMD (rooms moving development): one hour in the kitchen
-sipping my coffee, two hours at my office desk, then the sofa. A fixed desktop
-tower is not for me.</p>
-<p>My first experiment was to run Qwen 3.8 27B with llama.app on Orthrus and use
-it from my laptop through pi. That model does the coding tasks, an online
-model like Opus does the orchestration, and the second RTX runs a FIM model for
-auto-completion in Neovim.</p>
-<p>When I talked about this on social networks, I got very strong feedback: use
-Strata with Qwen3.8-Flash-Next.</p>
-<p>Strata is an inference engine for MoE models like Qwen. Only the hot experts
-stay in VRAM, the rest goes to RAM, or even to disk. Experts are 90%+ of a MoE
-model's weights, so a 180B model like this one can run on a GPU with much less
-memory. Like my RTX 4090!</p>
-<p>It works on a laptop too, and I stumbled on
-this blog post doing
-exactly that: Qwen3.8-Flash-Next on a 32 GB Mac M4, faster than llama.cpp, at
-13.5 tok/s.</p>
-<p>That's too slow for how I use coding agents, but it's an interesting itch to
-scratch. A whole range of MoE models don't fit in a MacBook's unified memory and
-could run at a decent speed.</p>
-<p>Before committing to Strata, I looked at what llama.cpp, vLLM and Transformers
-do when a MoE model doesn't fit. Three questions matter: where do the experts
-live, where does the expert matmul run, and what moves on each token?</p>
-<p>llama.cpp maps the GGUF file with mmap and can keep the experts on the
-CPU (--cpu-moe, --n-cpu-moe N, -ot "exps=CPU", or --fit on to pick for
-you). Those experts are also computed on the CPU, so only the activations
-cross PCIe, never the weights. Great when the experts fit in RAM. When they
-don't, the page cache thrashes. A GPU expert cache (--moe-cache-mib) just
-landed, but it fragments the graph (2 splits per token become 50) and loses
-~10% even when everything fits.</p>
-<p>vLLM's --cpu-offload-gb N puts N GB of weights in pinned RAM, and kernels
-read them in place over PCIe. For a MoE layer, that's only the routed experts,
-but nothing is cached: a hot expert crosses PCIe again on every token, and
-there's no disk tier. By default the offloaded weights include dense layers,
-read on every token; --cpu-offload-params experts keeps it to the experts. That fits vLLM's big
-batches, which touch almost every expert anyway, less so one user on one GPU.</p>
-<p>Transformers offloads through Accelerate (device_map="auto",
-offload_folder), one module at a time: hooks copy its weights to the GPU
-before forward. For a MoE, that module is a layer's whole expert bank, so
-every token copies every expert of every offloaded layer to use 8 or 10 of them.
-No cache, no notion of routing. And on a Mac, CPU and GPU share the same memory,
-so "offload to CPU" frees nothing.</p>
-<p>I ran all of them on Qwen3.6-35B-A3B on one A10G (24 GB), with plenty of RAM,
-and Harry Mellor reran vLLM with better flags:</p>
-<p>Offloading only the experts doubles vLLM's speed, and FP8 helps on top (half
-the bytes per expert, more of the model on the GPU). vLLM's other offload
-backend, which copies groups of layers ahead of time, ran under 1 tok/s.</p>
-<p>If the experts fit in RAM, llama.cpp is hard to beat. If they don't, you have to
-stream only what the router picks, through a bounded cache, fast enough that the
-SSD is the bottleneck and not Python, ideally reusing the model's fast expert
-kernels. That's Qwen3.8-Flash-Next on a 32 GB Mac, and Transformers couldn't do
-it out of the box.</p>
-<p>Strata was already too slow for me on the laptop, and Transformers was not going
-to beat it anytime soon. But the Accelerate path was so far off that I wanted to
-try fixing offloading in Transformers itself, with the big model on my laptop as
-the target, knowing it would probably stay too slow for how I work.</p>
-<p>All of the code was built with AI: the Transformers PR, the model-specific
-package and the Metal kernels. My part was choosing what to try, reading the
-profiles, and deciding what to keep. Everything is in a Space:
-tarekziade/moe-expert-streaming.</p>
-<p>I started with OLMoE-1B-7B, which fits in memory, so I could compare every token
-with vanilla Transformers.</p>
-<p>First version: experts on disk, an LRU cache on the device, and a Python loop
-running one expert at a time. With every expert already cached, it did 10.1
-tok/s. Vanilla did ~32. The I/O was fine, my loop was not: vanilla uses
-grouped_mm, which runs all the experts of a layer in one kernel.</p>
-<p>The fix, and the key idea of this project, was to turn the cache into a slot
-pool: one preallocated device tensor shared by all layers, plus a per-layer
-table from expert id to slot. Remap the router's expert ids to slots and the
-pool looks like a regular expert bank, so grouped_mm runs on it as is. No
-custom expert matmul needed. That got it to 34.6 tok/s, against 38.1 for
-vanilla.</p>
-<p>I then turned the standalone loader into an option of from_pretrained, in
-huggingface/transformers#50717.
-To try it, install Transformers from that PR:</p>
-<p>Then, moving from OLMoE to the real target, Qwen3.8-Flash-Next:</p>
-<p>That repo
-holds the output of the project's
-conversion script:
-the dense weights, the experts quantized to 3 bits, and the n-gram table.</p>
-<p>Experts mapped to "disk" go through the streaming path instead of Accelerate's
-offload: the loader skips their tensors and MoE layers switch to an offloaded
-implementation. Misses are read by 8 I/O threads, one contiguous read per
-expert. The next two layers' routers run early on the current hidden states to
-guess which experts to prefetch. Experts can be quantized offline so reads are
-smaller. It works for MoE models with the standard experts layout.</p>
-<p>The API is still being discussed with the Transformers maintainers. The
-device_map form came out of that, and quantized experts will probably go
-through the per-layer quantization plan of
-#50245 rather than
-their own option.</p>
-<p>Qwen3.8-Flash-Next has 48 layers of 512 experts (10 active), 121 GB in FP8.
-Streaming them isn't enough: there's also a 51 GB n-gram embedding
-table that needs its own disk path. So:</p>
-<p>The conversion takes ~5 hours. After loading, it uses ~18 GiB, and a 6K prompt
-peaks at 25.4 GiB. That's about the limit: I have to close the browser, or macOS
-starts swapping.</p>
-<p>The model-specific bits (the n-gram table, Metal kernels) live in a small
-package, moe-expert-streaming,
-on top of the PR. The first version ran at about 10 tok/s.</p>
-<p>Then I installed Strata on the same M5, with the same prompts:</p>
-<p>Strata 0.1.60 used IQ3_XXS experts. Both ran greedy, with thinking, MTP and
-speculative drafts off, and 1,024-token prefill chunks. The full setup and raw
-results are on the Space's
-details page.</p>
-<p>I also tried vllm-metal, vLLM on
-Apple GPUs through MLX, which recently got expert offloading. It streams the
-routed experts from an MLX checkpoint through a bounded cache, like this
-project. But it can't run Qwen3.8-Flash-Next on 32 GB, for the n-gram reason
-above: only the experts are streamed, and the n-gram tables stay in memory.
-That's 32 GB in the MLX checkpoints on the Hub, before the ~5 GB of dense layers and any expert cache.</p>
-<p>Most of the time wasn't spent on experts. Here's what helped:</p>
-<p>Here's one MoE layer for one token, as it runs now:</p>
-<p>These are the final results after these optimizations on the same M5 with the same prompts:</p>
-<p>That's about 6% behind Strata on short decode, with slightly faster prefill,
-all through Transformers.</p>
-<p>Most of what's left is host round trips, ~10 ms per token. Waking up after a
-sync is only ~1 ms of that. The rest is the GPU running dry while Python queues
-the next layer. Strata queues the whole token's work up front, and the GPU waits
-on a Metal shared event at each layer while the host reads experts. PyTorch
-doesn't expose that. I tried to fake it with a kernel spinning on a flag the CPU
-writes, and the GPU took anywhere from a second to never to see the write. The
-real fix would be a native op on PyTorch's MPS stream, with a risk of hangs, so
-I haven't built it.</p>
-<p>It runs at ~14 tok/s, close to Strata, and it's still too slow for how I use
-coding agents. Orthrus keeps doing the real work.</p>
-<p>Transformers didn't beat Strata, and closing the last ~6% would take deeper
-changes in the stack, starting with control over that per-layer sync, which
-PyTorch doesn't give you today. The interesting part is how it got that
-close: streaming only the routed experts, a bounded cache that grouped_mm runs
-on as is, and a few targeted Metal kernels. There's no C++ extension in the
-project: just Python, Metal kernels compiled at runtime with
-torch.mps.compile_shader, and prebuilt kernels from the Hub.
-All the Metal kernels written for this experiment are now
-published on the Hub,
-and the project loads them from there.</p>
-<p>Beating Strata was never the only goal, though. Building this was a great way
-to learn how MoEs and LLMs work from a systems perspective: how sparse the
-routing really is, how much an expert cache buys you, where memory bandwidth
-goes per token, and how much time the host and the GPU spend waiting on each
-other. Transformers makes all of that easy to poke at, one module at a time.</p>
-<p>The generic expert streaming implementation is in
-huggingface/transformers#50717,
-and the benchmarks are in the Space.
-Feedback on the approach and the API is welcome.</p>
-<p>Thanks to Pedro, Lysandre and Arthur for their excellent feedback, and to Harry
-for helping test vLLM.</p>
-<p>Finally, thanks to Niko Veit for Strata.
-Strata set the bar for what's possible with expert streaming on consumer
-hardware, and having those numbers to chase is what pushed this work as far as
-it went.</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
+                <p>Solve the biggest challenges in your codebase.</p>
+<p>Solve the biggest challenges in your codebase.</p>
+<p>Solve the biggest challenges in your codebase.</p>
+<p>The short answer: To measure AI ROI in software engineering, look past how fast code gets written. Count the engineering hours your team spends after the code exists, on triage, diagnosis, prioritization, review, and release for escalated customer issues. Then estimate how much of that time AI could recover, and value it at a loaded engineering rate.</p>
+<p>AI coding tools help engineers implement features and explore solutions faster. But faster code only gets teams partway to a positive return on AI. Teams still need to review, test, and release changes, then diagnose and resolve defects that reach customers.</p>
+<p>That work depends on understanding how the code behaves in production, which customer configurations matter, and what previous failures revealed. When each team has to reconstruct the same production context, time saved in the editor gets spent again downstream.</p>
+<p>A more complete way to measure AI ROI includes the effort required to verify, release, and support the software teams produce: the work of production engineering. Drawing on what we've seen with customers, we built an AI ROI calculator that estimates the capacity tied up in escalated customer work, and how much of it an engineering world model can recover by connecting the evidence teams need to cut redundant investigation and coordination. Together, they bring a broader opportunity into focus: preserving more of the gains from faster coding and making each resolution useful beyond the issue that prompted it.</p>
+<p>Run the AI ROI calculator to estimate how much engineering capacity your team could recover.</p>
+<p>Faster implementation gives teams room to test ideas, refine features, and respond to customers. Those gains become harder to realize when the surrounding workflow still depends on people rebuilding the same explanation.</p>
+<p>DORA's 2026 report, The ROI of AI-assisted Software Development, emphasizes that faster coding doesn't automatically translate into business value. It identifies reducing unnecessary rework as a way to reclaim engineering capacity and increase output without expanding headcount.</p>
+<p>For teams already investing in AI code generation, that opens another investment question: how much capacity could AI recover from the work triggered by production defects? Customer escalations still require investigation, fixes need prioritization, and corrective changes need verification before release. Those responsibilities create an opportunity to extend AI's value beyond producing code.</p>
+<p>An escalated customer issue makes those dependencies visible. Support rebuilds the customer's history. Engineering traces the failure through code and runtime evidence. Product seeks a reliable account of its impact, while QA establishes the conditions the fix needs to satisfy. When those findings stay scattered across tickets and conversations, each handoff adds another round of explanation.</p>
+<p>Much of this effort is easy to miss because it appears inside otherwise necessary work. Investigating a defect is necessary; reconstructing evidence that another team has already assembled adds avoidable effort. Reviewing a change is necessary; asking its author to recover the reasoning behind its scope adds more.</p>
+<p>The loss extends beyond labor cost: slower resolutions, interrupted feature work, less time for prevention, and senior engineers diverted into repeated explanations. Recovering that capacity means addressing repeated work across the full production workflow, from the first customer report to a verified release.</p>
+<p>PlayerZero's engineering world model connects code, production signals, customer tickets, and prior outcomes into a persistent context that teams and agents share. Support, engineering, product, and QA can work from the same evidence about how the system behaves and what previous investigations established.</p>
+<p>Shared context helps work move between teams without losing intent or scope. A discovery in support becomes available to the people and agents responsible for diagnosis, prioritization, and validation, reducing the work each team repeats.</p>
+<p>PlayerZero's AI ROI calculator puts a number on that question for teams already using AI coding tools. It estimates a practical portion of the opportunity: recoverable effort across escalated customer work and the cost equivalent of that capacity.</p>
+<p>Assembling evidence and coordinating escalations</p>
+<p>Less escalation overhead and fewer clarification requests</p>
+<p>Reconstructing symptoms and prior investigative work</p>
+<p>More engineering capacity for unresolved causes</p>
+<p>Establishing customer impact, related requests, and priority</p>
+<p>Faster, better-informed decisions about engineering work</p>
+<p>Reacquiring the fix context and rebuilding validation scenarios</p>
+<p>Less review rework, and more focused release validation</p>
+<p>The calculator uses illustrative effort assumptions and a loaded engineering rate to estimate the capacity teams could redirect toward planned delivery and reliability. The cost equivalent values that time before platform costs, providing a starting point for weighing the investment. The four stages below illustrate the repeated work reflected in the estimate and where shared context can reduce it.</p>
+<p>Support's contribution begins well before a backend engineer picks up a ticket. L1 support clarifies the report and responds to the customer; support engineers connect it to sessions, documentation, related tickets, and technical evidence.</p>
+<p>When those sources are disconnected, preparing an escalation becomes an investigation in its own right. Customer follow-up stretches out while support coordinates the people who might have the answer.</p>
+<p>Consider a hypothetical customer whose data export times out when they request a large dataset with a particular filter enabled. Smaller exports still succeed. A report that simply says "exports are broken" leaves engineering with substantial work to do before it can investigate the cause.</p>
+<p>PlayerZero connects customer reports to the relevant code and runtime conditions. In this example, support can pass along the affected configuration, request traces, and findings about which exports succeed or fail. The engineering world model keeps those findings connected to the report, giving engineering a defined technical case and support evidence for customer updates.</p>
+<p>The immediate gain is less effort to prepare and clarify the escalation. Across a busy support queue, this returns time to customer work and reduces the interruptions needed to make an engineering ticket actionable. That means support can keep customers informed without every update depending on a specialist engineer's availability.</p>
+<p>Backend engineers contribute specialized judgment, but a fragmented escalation can consume their time before they reach the unresolved question. They inspect logs and traces, review code history, and test competing explanations. If support's findings or a previous investigation are missing, they also retrace work that the organization has already completed.</p>
+<p>That effort interrupts feature development and concentrates investigations around engineers who remember the affected system. The cost includes both the investigation and the planned work waiting for those engineers to return.</p>
+<p>For the export timeout scenario, agentic debugging uses connected runtime evidence and code history to point to a query changed in a recent release. The engineering world model incorporates support's findings into this investigation, alongside the relevant changes, failure conditions, and explanations already considered. The engineer then checks that hypothesis against current behavior and determines whether the query accounts for the timeout.</p>
+<p>Once confirmed, the cause and supporting reasoning become part of the same context, alongside support's original findings. Ruled-out explanations remain available, too, so another engineer can understand why the investigation settled on that path. Resolving escalations places fewer demands on the specialist engineers who know the system best, preserving their capacity for planned development. Their judgment goes toward evaluating the cause and choosing a correction rather than recovering the history behind it.</p>
+<p>A confirmed cause gives product managers and engineering leads a technical basis for prioritization. They still need to connect customer impact to technical scope before deciding what takes precedence over planned work.</p>
+<p>When that evidence is disconnected, effort accumulates in reconciling related requests, agreeing on the immediate response, and explaining why it matters more than competing priorities.</p>
+<p>The engineering world model keeps related customer reports connected to the internal engineering issue, so product can assess customer impact alongside the diagnosis and proposed correction. In the export example, the team can distinguish an urgent query fix from a broader request to redesign exports, then connect that scope decision and its rationale to the technical findings and affected customer workflows.</p>
+<p>Engineering begins implementation with both the technical findings and the reason for the chosen response. Carrying agreed priorities and scope into the work reduces coordination demands and the need for repeated scope discussions, helping the team protect planned delivery.</p>
+<p>A prioritized fix still needs implementation, review, testing, and release. Backend engineers implement the correction, while reviewers and QA determine whether it resolves the failure without disrupting working behavior. Reconstructing the intended outcome, affected configurations, and regression coverage delays release decisions and consumes capacity that could otherwise go toward evaluating the change itself.</p>
+<p>Coding assistance can accelerate the query change in the export example. The engineering world model carries the diagnosis and agreed scope into validation: the large, filtered export should complete successfully and return the expected records, while previously successful exports continue to work.</p>
+<p>Those conditions guide review, code simulations, and regression testing. Simulations predict behavior without executing the code, helping the team focus tests on potential risks; testing establishes whether the change meets the intended outcome.</p>
+<p>With less effort spent reconstructing validation requirements, reviewers and QA can concentrate on correctness and relevant coverage. Release decisions are better informed, with engineering time going toward verifying the fix rather than recovering why it was needed.</p>
+<p>After release, the engineering world model keeps validation results and production observations connected to the original report, diagnosis, and scope decision. Support and SRE teams can see what the fix covered, whether the customer's export succeeded, and what remains unresolved. That completed record gives support a grounded closing explanation and preserves the evidence behind the resolution.</p>
+<p>The engineering world model's value extends beyond the effort saved on the current issue. PlayerZero's shared organizational memory makes configuration findings, decisions, and their rationale available across teams, so lessons from one investigation can inform future work.</p>
+<p>PlayerZero's approach to memory and learning captures useful findings from completed work and incorporates corrections as conditions change, keeping the organization's accumulated experience useful over time. Teams can build on those findings while checking them against current evidence, rather than reconstructing each investigation from scratch.</p>
+<p>One customer's experience shows how shared production understanding can extend across functions. At Higher Logic, a PlayerZero pilot on its Vanilla product line gave support visibility into the code behind customer reports, helping the team investigate and resolve eligible defects within engineering-defined boundaries. Support shipped fixes for 50 customer issues in two months. The company also reports 250 engineering hours reclaimed from support escalations.</p>
+<p>QA adoption emerged from support's use of the platform. The QA team used the same visibility into code-change impact to identify areas likely to be affected by a release and prioritize testing. The production understanding that helped support resolve customer work gained another application in release quality, extending its usefulness across the organization.</p>
+<p>Shared knowledge also affects the operating cost of AI work. Workflow memory carries lessons between runs, while concise handoffs carry completed work and decisions between stages. Retained findings and concise handoffs reduce repeated retrieval and reasoning, lowering the operating waste involved in reaching a useful outcome.</p>
+<p>The calculator estimates recoverable effort in escalated work. The broader return comes as the same learning improves support, engineering, product, and QA work over time, including opportunities to prevent a known failure from becoming another customer escalation.</p>
+<p>Use the AI ROI calculator to estimate the capacity your team could recover from escalation volume, resolution effort, and loaded engineering cost. Put that estimate alongside the longer-term value of shared learning: fewer repeated investigations, more focused validation, and more engineering time for the product and reliability improvements your customers need.</p>
+<p>Start with the time AI coding assistants like GitHub Copilot save during implementation. Then account for what happens after the code exists: review, testing, triage, and defect resolution. Value the net hours your team recovers at a loaded engineering rate and compare that against tool and platform costs. Coding speed on its own overstates the return.</p>
+<p>Code generation speeds up one stage of delivery. If review, testing, triage, and diagnosis still depend on people rebuilding the same production context, the time saved in the editor gets spent again downstream. DORA's research makes a similar point: the biggest returns come from reducing unnecessary rework, not from writing code faster.</p>
+<p>It should measure capacity across the full production workflow, not just coding output. PlayerZero's AI ROI calculator estimates recoverable effort in escalated customer work across four stages: support and triage, engineering diagnosis, product intake, and build, verify, and release. It values that time at a loaded engineering rate, before platform costs.</p>
+<p>DORA describes AI adoption as a J-curve: teams often see a temporary dip while they learn the tools and adjust workflows, before longer-term returns show up. Escalation work is a good place to look early because the effort is easy to count. At Higher Logic, support shipped fixes for 50 customer issues within two months of its PlayerZero pilot.</p>
+<p>DORA's framework models the financial return of AI-assisted development across software delivery as a whole. PlayerZero's AI ROI calculator focuses on one place that return leaks: the effort escalated customer issues pull from support, engineering, product, and QA. Used together, they show both the overall picture and a specific, recoverable source of capacity.</p>
+<p>What the Microsoft 365 outage says about change risk</p>
+<p>Human in the Loop AI: How to Safely Scale Agentic Workloads with Tunable Autonomy</p>
+<p>Solve the biggest challenges in your codebase.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/moe-expert-streaming" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/ai-code-generation-is-only-one-small-piece-of-the-roi-equation?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
