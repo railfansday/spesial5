@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</title>
+    <title>Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9847.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,176 +15,56 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</h1>
+        <h1>Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/6ab2f79bd8000a811c648a32/xZT8tg4be3bgZIx2EQS_m.png" alt="Your Experts Have Partners. There&#x27;s HOPE for Keeping Them Together" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6ab2f79bd8000a811c648a32/xZT8tg4be3bgZIx2EQS_m.png" alt="Your Experts Have Partners. There's HOPE for Keeping Them Together" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Streaming MoE experts directly from SSD gets within 6% of Strata on token generation.</p>
-<p>I've been trying to rely less on online models and run bigger ones locally.
-At home I have a PC with two RTX 4090s (let's call it Orthrus - the two-headed hound
-of Greek mythology), and for work I have a MacBook M5 with 32G of unified memory.</p>
-<p>Orthrus runs on Windows 11, because my kids play games all the time. I had a
-dual boot with Ubuntu, but their games ended up taking most of the two
-terabytes of disk.</p>
-<p>I am also a huge fan of RMD (rooms moving development): one hour in the kitchen
-sipping my coffee, two hours at my office desk, then the sofa. A fixed desktop
-tower is not for me.</p>
-<p>My first experiment was to run Qwen 3.8 27B with llama.app on Orthrus and use
-it from my laptop through pi. That model does the coding tasks, an online
-model like Opus does the orchestration, and the second RTX runs a FIM model for
-auto-completion in Neovim.</p>
-<p>When I talked about this on social networks, I got very strong feedback: use
-Strata with Qwen3.8-Flash-Next.</p>
-<p>Strata is an inference engine for MoE models like Qwen. Only the hot experts
-stay in VRAM, the rest goes to RAM, or even to disk. Experts are 90%+ of a MoE
-model's weights, so a 180B model like this one can run on a GPU with much less
-memory. Like my RTX 4090!</p>
-<p>It works on a laptop too, and I stumbled on
-this blog post doing
-exactly that: Qwen3.8-Flash-Next on a 32 GB Mac M4, faster than llama.cpp, at
-13.5 tok/s.</p>
-<p>That's too slow for how I use coding agents, but it's an interesting itch to
-scratch. A whole range of MoE models don't fit in a MacBook's unified memory and
-could run at a decent speed.</p>
-<p>Before committing to Strata, I looked at what llama.cpp, vLLM and Transformers
-do when a MoE model doesn't fit. Three questions matter: where do the experts
-live, where does the expert matmul run, and what moves on each token?</p>
-<p>llama.cpp maps the GGUF file with mmap and can keep the experts on the
-CPU (--cpu-moe, --n-cpu-moe N, -ot "exps=CPU", or --fit on to pick for
-you). Those experts are also computed on the CPU, so only the activations
-cross PCIe, never the weights. Great when the experts fit in RAM. When they
-don't, the page cache thrashes. A GPU expert cache (--moe-cache-mib) just
-landed, but it fragments the graph (2 splits per token become 50) and loses
-~10% even when everything fits.</p>
-<p>vLLM's --cpu-offload-gb N puts N GB of weights in pinned RAM, and kernels
-read them in place over PCIe. For a MoE layer, that's only the routed experts,
-but nothing is cached: a hot expert crosses PCIe again on every token, and
-there's no disk tier. By default the offloaded weights include dense layers,
-read on every token; --cpu-offload-params experts keeps it to the experts. That fits vLLM's big
-batches, which touch almost every expert anyway, less so one user on one GPU.</p>
-<p>Transformers offloads through Accelerate (device_map="auto",
-offload_folder), one module at a time: hooks copy its weights to the GPU
-before forward. For a MoE, that module is a layer's whole expert bank, so
-every token copies every expert of every offloaded layer to use 8 or 10 of them.
-No cache, no notion of routing. And on a Mac, CPU and GPU share the same memory,
-so "offload to CPU" frees nothing.</p>
-<p>I ran all of them on Qwen3.6-35B-A3B on one A10G (24 GB), with plenty of RAM,
-and Harry Mellor reran vLLM with better flags:</p>
-<p>Offloading only the experts doubles vLLM's speed, and FP8 helps on top (half
-the bytes per expert, more of the model on the GPU). vLLM's other offload
-backend, which copies groups of layers ahead of time, ran under 1 tok/s.</p>
-<p>If the experts fit in RAM, llama.cpp is hard to beat. If they don't, you have to
-stream only what the router picks, through a bounded cache, fast enough that the
-SSD is the bottleneck and not Python, ideally reusing the model's fast expert
-kernels. That's Qwen3.8-Flash-Next on a 32 GB Mac, and Transformers couldn't do
-it out of the box.</p>
-<p>Strata was already too slow for me on the laptop, and Transformers was not going
-to beat it anytime soon. But the Accelerate path was so far off that I wanted to
-try fixing offloading in Transformers itself, with the big model on my laptop as
-the target, knowing it would probably stay too slow for how I work.</p>
-<p>All of the code was built with AI: the Transformers PR, the model-specific
-package and the Metal kernels. My part was choosing what to try, reading the
-profiles, and deciding what to keep. Everything is in a Space:
-tarekziade/moe-expert-streaming.</p>
-<p>I started with OLMoE-1B-7B, which fits in memory, so I could compare every token
-with vanilla Transformers.</p>
-<p>First version: experts on disk, an LRU cache on the device, and a Python loop
-running one expert at a time. With every expert already cached, it did 10.1
-tok/s. Vanilla did ~32. The I/O was fine, my loop was not: vanilla uses
-grouped_mm, which runs all the experts of a layer in one kernel.</p>
-<p>The fix, and the key idea of this project, was to turn the cache into a slot
-pool: one preallocated device tensor shared by all layers, plus a per-layer
-table from expert id to slot. Remap the router's expert ids to slots and the
-pool looks like a regular expert bank, so grouped_mm runs on it as is. No
-custom expert matmul needed. That got it to 34.6 tok/s, against 38.1 for
-vanilla.</p>
-<p>I then turned the standalone loader into an option of from_pretrained, in
-huggingface/transformers#50717.
-To try it, install Transformers from that PR:</p>
-<p>Then, moving from OLMoE to the real target, Qwen3.8-Flash-Next:</p>
-<p>That repo
-holds the output of the project's
-conversion script:
-the dense weights, the experts quantized to 3 bits, and the n-gram table.</p>
-<p>Experts mapped to "disk" go through the streaming path instead of Accelerate's
-offload: the loader skips their tensors and MoE layers switch to an offloaded
-implementation. Misses are read by 8 I/O threads, one contiguous read per
-expert. The next two layers' routers run early on the current hidden states to
-guess which experts to prefetch. Experts can be quantized offline so reads are
-smaller. It works for MoE models with the standard experts layout.</p>
-<p>The API is still being discussed with the Transformers maintainers. The
-device_map form came out of that, and quantized experts will probably go
-through the per-layer quantization plan of
-#50245 rather than
-their own option.</p>
-<p>Qwen3.8-Flash-Next has 48 layers of 512 experts (10 active), 121 GB in FP8.
-Streaming them isn't enough: there's also a 51 GB n-gram embedding
-table that needs its own disk path. So:</p>
-<p>The conversion takes ~5 hours. After loading, it uses ~18 GiB, and a 6K prompt
-peaks at 25.4 GiB. That's about the limit: I have to close the browser, or macOS
-starts swapping.</p>
-<p>The model-specific bits (the n-gram table, Metal kernels) live in a small
-package, moe-expert-streaming,
-on top of the PR. The first version ran at about 10 tok/s.</p>
-<p>Then I installed Strata on the same M5, with the same prompts:</p>
-<p>Strata 0.1.60 used IQ3_XXS experts. Both ran greedy, with thinking, MTP and
-speculative drafts off, and 1,024-token prefill chunks. The full setup and raw
-results are on the Space's
-details page.</p>
-<p>I also tried vllm-metal, vLLM on
-Apple GPUs through MLX, which recently got expert offloading. It streams the
-routed experts from an MLX checkpoint through a bounded cache, like this
-project. But it can't run Qwen3.8-Flash-Next on 32 GB, for the n-gram reason
-above: only the experts are streamed, and the n-gram tables stay in memory.
-That's 32 GB in the MLX checkpoints on the Hub, before the ~5 GB of dense layers and any expert cache.</p>
-<p>Most of the time wasn't spent on experts. Here's what helped:</p>
-<p>Here's one MoE layer for one token, as it runs now:</p>
-<p>These are the final results after these optimizations on the same M5 with the same prompts:</p>
-<p>That's about 6% behind Strata on short decode, with slightly faster prefill,
-all through Transformers.</p>
-<p>Most of what's left is host round trips, ~10 ms per token. Waking up after a
-sync is only ~1 ms of that. The rest is the GPU running dry while Python queues
-the next layer. Strata queues the whole token's work up front, and the GPU waits
-on a Metal shared event at each layer while the host reads experts. PyTorch
-doesn't expose that. I tried to fake it with a kernel spinning on a flag the CPU
-writes, and the GPU took anywhere from a second to never to see the write. The
-real fix would be a native op on PyTorch's MPS stream, with a risk of hangs, so
-I haven't built it.</p>
-<p>It runs at ~14 tok/s, close to Strata, and it's still too slow for how I use
-coding agents. Orthrus keeps doing the real work.</p>
-<p>Transformers didn't beat Strata, and closing the last ~6% would take deeper
-changes in the stack, starting with control over that per-layer sync, which
-PyTorch doesn't give you today. The interesting part is how it got that
-close: streaming only the routed experts, a bounded cache that grouped_mm runs
-on as is, and a few targeted Metal kernels. There's no C++ extension in the
-project: just Python, Metal kernels compiled at runtime with
-torch.mps.compile_shader, and prebuilt kernels from the Hub.
-All the Metal kernels written for this experiment are now
-published on the Hub,
-and the project loads them from there.</p>
-<p>Beating Strata was never the only goal, though. Building this was a great way
-to learn how MoEs and LLMs work from a systems perspective: how sparse the
-routing really is, how much an expert cache buys you, where memory bandwidth
-goes per token, and how much time the host and the GPU spend waiting on each
-other. Transformers makes all of that easy to poke at, one module at a time.</p>
-<p>The generic expert streaming implementation is in
-huggingface/transformers#50717,
-and the benchmarks are in the Space.
-Feedback on the approach and the API is welcome.</p>
-<p>Thanks to Pedro, Lysandre and Arthur for their excellent feedback, and to Harry
-for helping test vLLM.</p>
-<p>Finally, thanks to Niko Veit for Strata.
-Strata set the bar for what's possible with expert streaming on consumer
-hardware, and having those numbers to chase is what pushed this work as far as
-it went.</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
+                <p>Mixture-of-Experts (MoE) models have enabled state-of-the-art LLMs to be scaled to hundreds of billions of parameters, but they come with a fundamental and costly caveat: every expert MLP must occupy memory at inference time, even though the vast majority are idle for any given token. For example, Qwen3.5-122B has 256 experts in each of its 48 MoE layers, and 95% of its ~250 GB parameter memory footprint is taken up entirely by these expert MLPs alone. However, for any given token, only 8 experts in each layer are actually used.</p>
+<p>Expert pruning is one of the most direct fixes to this memory bottleneck. That is, permanently delete the least useful experts. Pruning avoids the latency issues which make dynamic loading/off-loading of experts impractical; it does not require any training; and it composes with quantization. Given these attractive benefits and the simplicity of the idea, it's easy to see why expert pruning has become a go-to approach for shrinking MoEs. The difficulty lies in deciding which experts are safest to remove.</p>
+<p>Existing pruning methods score each expert independently, assigning every expert a scalar importance score (based on a calibration dataset), and cutting out the least important experts (in each layer independently). These are first-order methods, because they assume each expert's contribution is independent of all others. In reality, experts form cooperative groups. We observe consistent clusters of co-activated experts in our own experiments, and independent work has shown that expert cooperation is a stable property of MoEs and is important for model performance. Ignoring these interactions leads to suboptimal pruning, especially at aggressive rates.</p>
+<p>Our newest paper derives HOPE (Higher-Order Pruning of Experts), a second-order method that accounts for pairwise expert interactions. At 50% pruning, HOPE achieves the best average rank of any method, with gains of up to +6.1% on agentic coding tasks over the next-best pruning method.</p>
+<p>In this post, we explain how HOPE works, show where it outperforms existing methods, and walk through how to use it for your own models. For readers unfamiliar with MoE architectures, see Mixture of Experts (MoEs) in Transformers.</p>
+<p>In a standard MoE, each layer has EEE experts, and each input token xxx is routed independently to KKK such experts ( K=8 K = 8 K=8 is a typical choice). Routing is performed by a single layer which produces softmax-normalized gate weights gk(x)g_{k}(x)gk​(x) for each expert kkk, wherein the KKK experts with the highest gate weights are selected to form the active set of experts, T(x)⊂{1,..,E}T(x) \subset\{1,..,E\}T(x)⊂{1,..,E}. The output of the layer is then ∑k∈T(x)gk(x)fk(x)\sum\limits_{k\in T(x)}g_{k}(x)f_{k}(x)k∈T(x)∑​gk​(x)fk​(x), where fk(x)f_{k}(x)fk​(x) is the output of expert kkk for token xxx.</p>
+<p>Left: typical MoE layer, where each token is routed to the top-K experts. Right: first-order methods rank and delete experts based on a scalar importance score, but the best pruning decisions will also consider the strength of interactions between experts.</p>
+<p>Importantly, experts in the selected set T(x)T(x)T(x) are not independent. Experts form stable cooperative groups that get consistently co-activated together. This has been observed before in the literature, as well: expert co-selection patterns emerge early in training and stabilize throughout.</p>
+<p>This means that when we prune experts from an MoE layer, pruning decisions need to consider the higher-order effects between these experts. Removing expert A might seem fine on its own, but if expert B—which frequently cooperates with and relies on A—is highly important, then removing A would dismantle a cooperative group just through a single deletion. First-order methods miss this entirely, because they score A and B separately.</p>
+<p>This effect compounds at high pruning rates. When we remove up to 50% of experts, we risk breaking many cooperative links. This is where second-order pruning is most advantageous.</p>
+<p>(See Appendix A in our corresponding paper for the full derivation of the HOPE objective)</p>
+<p>When we delete a set of PPP experts from some MoE layer, the selected set of experts T(x)T(x)T(x) (for any token xxx) can change. The pruned experts that would have been selected are replaced by the experts with the next-highest gate weights. The resulting change in layer output is the pruning error. Our goal is to find the prune-set PPP (of some predefined pruning budget ∣P∣\vert P\vert∣P∣) that minimizes the resulting pruning error (over tokens xxx from our calibration set).</p>
+<p>Unfortunately, minimizing the pruning error over PPP directly is intractable. The pruning error depends on the identities of the replacement experts, which in turn depend on the prune-set PPP itself. HOPE sidesteps this by defining a tractable surrogate ZZZ, which strictly upper-bounds the dominant component of the pruning error:</p>
+<p>Z=[∑j∈P∩T(x)gj(x)∥fj(x)∥2]2≥true errorZ = \bigl[\sum\limits_{j \in P\cap T(x)} g_{j}(x)\Vert f_j(x)\Vert_{2}\bigr]^{2} \geq \text{true error}Z=[j∈P∩T(x)∑​gj​(x)∥fj​(x)∥2​]2≥true error</p>
+<p>Because ZZZ is a squared sum, expanding it naturally produces cross-terms gi(x)gj(x)∥fi(x)∥2∥fj(x)∥2g_{i}(x)g_{j}(x)\Vert f_{i}(x)\Vert_{2}\Vert f_{j}(x)\Vert_{2}gi​(x)gj​(x)∥fi​(x)∥2​∥fj​(x)∥2​ between pairs of experts. These are the interaction terms that first-order methods discard.</p>
+<p>To find the optimal prune-set, HOPE minimizes E[Z]\mathbb{E}[Z]E[Z] over the calibration set, which can be reformulated as the following quadratic program:</p>
+<p>P∗=arg min⁡p  p⊤Fps.t.p∈{0,1}E,∑k=1Epk=∣P∣P^{*} = \argmin_{p}\; p^{\top}Fp \quad \text{s.t.} \quad p \in \{0,1\}^{E}, \sum\limits_{k=1}^{E}p_{k} = \vert P\vertP∗=pargmin​p⊤Fps.t.p∈{0,1}E,k=1∑E​pk​=∣P∣</p>
+<p>where F∈RE×EF\in\mathbb{R}^{E\times E}F∈RE×E is defined as:</p>
+<p>Fi,j=1∣Xi,j∣∑x∈Xi,jgi(x)gj(x)∥fi(x)∥2∥fj(x)∥2whereXi,j={x:i,j∈T(x)}F_{i,j} = \frac{1}{\vert \mathcal{X}_{i,j}\vert} \sum\limits_{x\in\mathcal{X}_{i,j}} g_{i}(x)g_{j}(x)\Vert f_{i}(x)\Vert_{2}\Vert f_{j}(x)\Vert_{2}\quad\text{where}\quad \mathcal{X}_{i,j} = \{x: i,j \in T(x)\}Fi,j​=∣Xi,j​∣1​x∈Xi,j​∑​gi​(x)gj​(x)∥fi​(x)∥2​∥fj​(x)∥2​whereXi,j​={x:i,j∈T(x)}</p>
+<p>This F-matrix is collected on the calibration dataset, and the optimal prune-set is obtained by solving the resulting quadratic program (QP) with a continuous relaxation (then rounding to binary solutions). Each entry Fi,jF_{i,j}Fi,j​ captures the average gate-weighted output product of experts iii and jjj, across tokens where both are co-activated. Whereas the diagonal Fk,kF_{k,k}Fk,k​ measures individual expert importance, the off-diagonal entries ( Fi,jF_{i,j}Fi,j​ for i≠ji\neq ji=j) measure pairwise cooperative contribution.</p>
+<p>What does FFF look like in practice? It shows the structure of expert cooperation, which depends on layer:</p>
+<p>Visualization of the interaction matrix F for GLM-4.5-Air (128 experts per layer, 106B parameters total) at three representative layers (early, middle, late). Experts have been clustered to reveal block structure. Bright blocks along the diagonal indicate groups of experts with strong pairwise interaction scores.</p>
+<p>In terms of practical cost, HOPE requires the same calibration pass as any other expert-pruning method (one forward pass over calibration data). The only addition is solving the quadratic program, which is non-convex, but can be solved efficiently via a standard QP solver (1–2 seconds each layer). The total additional overhead is negligible compared to first-order methods, as the time for calibration dominates.</p>
+<p>Notably, HOPE has a strong connection to Router-weighted Expert Activation Pruning (REAP), a state-of-the-art first-order expert-pruning method. HOPE's F-matrix encodes individual expert importance scores on the diagonal, and this diagonal effectively recovers the scores used by REAP to independently rank experts for pruning (differing only by the variance of expert contributions). The diagonal of FFF recovers REAP's expert rankings almost perfectly (Spearman ρ=0.988\rho = 0.988ρ=0.988). Thus, any improvement HOPE achieves over REAP is attributable to the second-order interaction terms in the off-diagonal entries of the FFF-matrix.</p>
+<p>We evaluated HOPE as an expert pruning method using 3 models (Qwen3.5-122B, Qwen3.5-35B, and GLM-4.5-Air), with 2 calibration datasets (Evol-CodeAlpaca and SWE-Bench Verified trajectories). We used the Tulu3 suite and SWE-Bench Pro (agentic coding) to test the resulting pruned models, comparing HOPE to 4 first-order baselines (REAP, MAN, EAN, and Frequency) across pruning rates spanning from 10% to 50%.</p>
+<p>HOPE achieves the best overall rank across conditions and dominates at aggressive pruning rates. Left: average rank (lower = better) across all models, calibration sets, and benchmarks. Right: SWE-Bench Pro performance on Qwen3.5-35B.</p>
+<p>Across all conditions, HOPE achieved the best average rank (2.07 out of 5 methods), with the highest rate of top-1 finishes (39% of conditions) and top-2 finishes (67%). In a head-to-head comparison, HOPE beats every other baseline in the majority of conditions.</p>
+<p>As expected, HOPE's advantage grows at higher pruning rates. As more experts are removed, more cooperative links are broken, and the off-diagonal terms of FFF become more important. At 50% pruning, HOPE's average rank improves to 1.58 (vs. 2.42 for the next-best method, REAP). This is also the most deployment-relevant setting, where memory savings are large enough to accommodate longer contexts, deeper reasoning, and more tool calls.</p>
+<p>HOPE's advantage is most pronounced on SWE-Bench Pro, an agentic coding benchmark where models must solve real GitHub issues autonomously. These problems involve compositionally diverse tasks (e.g. coding, tool calls, reasoning, etc.) over many turns and likely exercise diverse expert combinations—exactly the regime where preserving cooperative structure matters most. On Qwen3.5-35B-A3B at 50% pruning, HOPE achieved 42.3 on SWE-Bench Pro, matching the unpruned model's 41.8 (while REAP dropped to 36.2, a 13% regression).</p>
+<p>Notably, pruned models can occasionally match or exceed the unpruned baseline, likely because the removal of low-relevance experts reduces noise on the target tasks. This effect is not unique to HOPE and has been observed across pruning methods. Furthermore, our experiments showed that code-focused calibration with any pruning method (including HOPE) did not severely degrade non-coding benchmarks, and HOPE performed well across the Tulu3 suite regardless of calibration set.</p>
+<p>Average strength of cooperation (measured by F-matrix value) with retained experts, split by experts on which HOPE and REAP disagree.</p>
+<p>HOPE's advantage stems from optimizing over the entire interaction matrix FFF. To understand how this affects pruning decisions in practice, we examine the experts where HOPE and REAP disagree. For each disputed expert, we compute its cooperative score (i.e. its average F-value with other retained experts). Experts retained only by HOPE consistently have higher cooperative scores than experts retained only by REAP. In other words, as part of the QP optimization, HOPE sacrifices some individually high-scoring experts in favor of preserving cooperative clusters. The gains in benchmark performance (shown above) validate that this trade-off is advantageous.</p>
+<p>We created a basic package to run HOPE. It has three steps: 1) calibrate; 2) solve; 3) prune. Our package has been tested on Qwen3, Qwen3-Next, Qwen3.5, and GLM-4.5.</p>
+<p>The calibration step runs a single forward pass over calibration data, whether it be agentic rollouts or single-turn traces. This uses HuggingFace transformers to hook into the forward pass of each individual MoE layer. For each token, this records which experts are selected, their gate weights, output norms, and pairwise co-activation statistics. The output of this step is the F-matrix, stored in an HDF5 file.</p>
+<p>This command materializes the F-matrix and solves the binary quadratic program via a continuous relaxation. This takes a few seconds per layer, and the output is a JSON file which contains the prune-set. This is technically the final output of the HOPE algorithm.</p>
+<p>To complete the pipeline, we run this command to actually create the smaller model checkpoint from the prune-set. The pruned model is a standard HuggingFace checkpoint which is smaller on disk and in memory (no changes to vLLM or SGLang model definitions needed).</p>
+<p>We also released a more compact Python API:</p>
+<p>HOPE's advantage is most pronounced at higher pruning rates (40–50%). At lower pruning rates (10–20%), first-order methods like REAP and MAN are sometimes competitive, and HOPE's advantage shrinks. Additionally, as with most expert-pruning algorithms, HOPE prunes each layer independently and does not account for cross-layer interactions. In our paper, we presented a theoretical framework for cross-layer HOPE, but the results remain preliminary. Finally, HOPE captures pairwise interactions, but even higher-order interactions (triplets and beyond) could provide additional signal, although they are combinatorially difficult to estimate.</p>
+<p>For more information, see our corresponding paper and codebase.</p>
+<p>To see how HOPE can be applied to next-generation hybrid architectures, see our corresponding repository.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/moe-expert-streaming" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/amazon/higher-order-pruning-experts" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

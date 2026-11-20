@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The second after the cap</title>
+    <title>Why your AI agent pushes as the wrong GitHub account (and a 3-minute fix)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9810.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,28 +15,43 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The second after the cap</h1>
+        <h1>Why your AI agent pushes as the wrong GitHub account (and a 3-minute fix)</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fn0y7eam5krpv0jdok3gi.png" alt="The second after the cap" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fraw.githubusercontent.com%2Fus-urvin%2Fclaude-gh-accounts%2Fmain%2Fassets%2Fbanner.png" alt="Why your AI agent pushes as the wrong GitHub account (and a 3-minute fix)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fn0y7eam5krpv0jdok3gi.png" alt="The second after the cap" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fraw.githubusercontent.com%2Fus-urvin%2Fclaude-gh-accounts%2Fmain%2Fassets%2Fbanner.png" alt="Why your AI agent pushes as the wrong GitHub account (and a 3-minute fix)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A detector that counts breaches has to know where the measurement itself ends. We had a detector for one boundary — the engine's hard limit on how long a single wake may run — and it was counting the act of recording the result as a breach of the limit.</p>
-<p>Wakes are cut off at a fixed hard cap. When the cap fires, the wake still has to write down its outcome, and that write often lands one second after the deadline. So the recorded span for a correctly capped wake reads as a little longer than the cap: 48 of 4,652 recorded spans exceeded the bare limit, and most of those were exactly one second over.</p>
-<p>A detector written as "span greater than cap" treats every one of those as an escape. It would have alarmed on the exact moments the cap worked as designed. The number was not wrong — the recording really does finish after the deadline. But the threshold sat inside the measurement's own overhead.</p>
-<p>A genuine failure at this boundary is not one second. Early versions of the system ran wakes to fifty minutes or more, far beyond the thirty-five-minute limit. A real escape is minutes of overrun; a recording delay is one second. They are different events wearing similar-looking numbers.</p>
-<p>The fix was a five-second recording slack: count a breach only when the span exceeds the cap by more than five seconds, and name the threshold in the report so nobody reads it as the bare limit. On the live data that gives zero escapes out of 153 recorded fences, with the longest span exactly at the cap. Before the slack, those same 153 would have produced a steady trickle of false alarms.</p>
-<p>Counting cap escapes answers one question: did anything run past the limit? It does not tell you about wakes that stayed inside the limit but held the shared path for a long time. Twelve holders ran twenty minutes or more, and those twelve contributed eighteen percent of all the waiting time on that path; the longest imposed twenty-three minutes and twenty-seven seconds on a single promotion. Both facts now sit on one bounded line — real escapes, and the share of waiting caused by long-but-legal holders. Neither hides the other.</p>
-<p>Two guards matter here. First, if the record of paired wake spans is broken or absent, the report says UNKNOWN rather than printing zero breaches; a silent zero would be indistinguishable from a dead detector. Second, the slack is explicit and labelled, so a change in recording overhead shows up as a visible number instead of quietly shifting what "breach" means. Regression tests cover the one-second case, the real-escape case and the unmeasurable case. Nothing that already reported a span was removed or narrowed.</p>
-<p>Before you count violations of a boundary, measure what your own recording adds at that boundary. Put the threshold above that overhead, say out loud where you put it, and keep a detector for the cases that fall short of the boundary but still cost something. A breach count is only as honest as its tolerance for the act of measuring.</p>
+                <p>You open a client project, ask Claude Code to fix a bug and open a pull request. Two minutes later the PR is up, from your personal GitHub account, with your personal email on every commit.</p>
+<p>If you use more than one GitHub account on the same computer (work, personal, a client or two), you've probably hit some version of this:</p>
+<p>I hit all three in the same week, so I dug into why it happens and built a small open-source fix. This post explains the problem, the pieces of git and the GitHub CLI that solve it, and the surprising gotchas along the way.</p>
+<p>When Claude Code (or you) works in a repo, three different things decide which GitHub account is used, and they don't talk to each other:</p>
+<p>The GitHub CLI has supported several logged-in accounts since version 2.40, but gh auth switch changes the active account globally. Switch to work in one terminal and every other terminal, including a Claude Code session you started an hour ago, is suddenly work too. Two agents in two repos can't each have their own account.</p>
+<p>Each fixes one of the three identities. You need all three, and you need them to follow the folder you're in.</p>
+<p>Put each account's projects in its own folder, for example ~/code/work and ~/code/personal, and make everything inside a folder use that folder's account. Git and the GitHub CLI already have every piece needed.</p>
+<p>Git can load extra config only for repositories under a path:</p>
+<p>Every repo under ~/code/work/ now commits as jane@acme.com. (Mind the trailing slash in gitdir/i:~/code/work/. Without it, the rule silently never matches.)</p>
+<p>The GitHub CLI can print the token of any logged-in account, not just the active one:</p>
+<p>So the per-folder config can include a tiny credential helper that hands git exactly that account's token:</p>
+<p>The empty helper = line clears any helpers defined earlier, such as your OS keychain, so only this one runs inside the folder. Tokens stay in gh's secure storage; nothing new is written to disk.</p>
+<p>For git@github.com: remotes you don't need host aliases at all. Git can choose the key per repository:</p>
+<p>Your remotes stay exactly as they are. Bonus: includeIf is applied during git clone too, so cloning into the folder already uses the right key.</p>
+<p>gh always prefers the GH_TOKEN environment variable over its active account. So instead of switching anything globally, a small claude shell function finds which account folder you're in and starts Claude Code with that account's token, for that process only:</p>
+<p>Now gh pr create inside that Claude session runs as the folder's account, and a second session in another folder can use a different account at the same time.</p>
+<p>Getting this right on macOS, Linux and Windows turned up some surprises:</p>
+<p>I packaged all of this into claude-gh-accounts, a free, MIT-licensed installer for macOS, Linux and Windows (PowerShell and Command Prompt):</p>
+<p>It installs anything missing (Git, GitHub CLI, Claude Code), suggests the GitHub accounts you're already logged in to, fills in your name and email from your GitHub profile, and optionally sets up an SSH key per account. Most answers are just Enter. Then:</p>
+<p>Projects outside the account folders keep their usual settings. Re-running the installer remembers everything, so adding an account takes a few seconds.</p>
+<p>Current limits, honestly: it's built for Claude Code in the terminal. In IDE extensions and the desktop app, git commits and pushes still use the right account, but Claude Code's own gh actions don't switch yet. Web and IDE support is next. It also covers github.com only, not GitHub Enterprise, for now.</p>
+<p>If you juggle multiple GitHub accounts, I'd love to hear whether this fixes it for you, and what's missing. Ideas already on the list: a doctor command that shows which account a folder will use, and picking the account from the repo's owner instead of the folder.</p>
+<p>👉 github.com/us-urvin/claude-gh-accounts. A ⭐ helps other people find it.</p>
 <p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
 <p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
 <p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
 <p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/ilya_mozerov_867dbdd91feb/the-second-after-the-cap-3a92" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/urvin/why-your-ai-agent-pushes-as-the-wrong-github-account-and-a-3-minute-fix-57la" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

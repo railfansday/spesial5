@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Agents are sessions, not requests: size GKE node pools for AI agent sessions</title>
+    <title>Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10193.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Agents are sessions, not requests: size GKE node pools for AI agent sessions</h1>
+        <h1>Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Screenshot_2026-11-11_at_4.46.52P.2e16d0ba.fill-1200x600.png" alt="Agents are sessions, not requests: size GKE node pools for AI agent sessions" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/08/07/Image-2-2_1-no-footer-1260x630.png" alt="Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Screenshot_2026-11-11_at_4.46.52P.2e16d0ba.fill-1200x600.png" alt="Agents are sessions, not requests: size GKE node pools for AI agent sessions" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2026/08/07/Image-2-2_1-no-footer-1260x630.png" alt="Announcing AWS Well-Architected Agent, an AI-powered intelligence to optimize your cloud environment (preview)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Sorry, your browser doesn't support playback for this video</p>
-<p>Your company wants to move its coding agents from developer laptops to a shared GKE cluster, for persistence, scale, and governance. Each of those agent sessions stays open all day but works only part of it, and how you run them decides how much of your node bill pays for waiting.</p>
-<p>By the end of this article, you will know why an agent session needs a different runtime than a web request, how Agent Substrate and AX run sessions on GKE, and how to identify cost optimization opportunities in your GKE node pools. This article assumes you know Kubernetes Pods and node pools. If not, check out the GKE overview.</p>
-<p>A web request lasts milliseconds. The server answers it, keeps nothing, and serves the next one, so Kubernetes scales a web app by its traffic: more requests, more Pods.</p>
-<p>An agent session works another way. A coding agent's workspace can stay open for the developer's whole workday: it keeps its memory and its files between prompts, and it works only after a prompt arrives.</p>
-<p>How much of that day does the agent really work? Much less than it waits. In a July 2026 study of agent traces, Banruo Liu and colleagues found that in a typical session with several prompts, the agent waits for the user about 80% of the time. A turn, one prompt and the agent's whole response to it, takes about 6.5 minutes of agent work on average</p>
-<p>Put those numbers on one developer's day. With 2 prompts an hour over an 8 hour workday, which is our assumption, the agent works 22% of the day and waits for nearly 78% of it. If each session holds a machine, you pay for that waiting time</p>
-<p>Teams usually pick one of two answers, and both work well for web apps.</p>
-<p>The first is to give each session its own Pod. The session keeps its state, but its Pod holds 1 vCPU and 1 GiB all day. For example, a c3-standard-4 node fits 3 such Pods after GKE's reservations, so in our cost model 100 coding agents need 34 nodes and about USD 1,288 a month, for agents that work 22% of the time.</p>
-<p>The second is to scale the Pod to zero between prompts. The node's capacity is released, and files on a persistent volume survive, but the process and its memory do not, so the next prompt starts a new agent process.</p>
-<p>Based on that, you want a third option: keep the session, and free the machine while the session waits.</p>
-<p>Agent Substrate and AX are built for that: the developer's session stays open, and the sandbox that serves it gives its machine back while the session waits. Together they cover the parts of an agentic platform that are the same for most teams: the control plane, the runtime, and the sandbox. Agent Substrate answers where and how an agent runs. AX answers what the agent is.</p>
-<p>Following the CNCF donation of gVisor, Agent Substrate, and OpenRL in November 2026, you can run Agent Substrate on GKE or on other Kubernetes clusters. Agent Substrate 1.0 is generally available on GKE.</p>
-<p>One distinction helps from here on. The session is the multi turn interaction between the developer and the agent, with its conversation history. The compute that serves it is an isolated sandbox: an actor in Agent Substrate, or a Task in AX. Parking acts on the sandbox, and the session stays open.</p>
-<p>Agent Substrate answers where and how an agent runs. It separates the stateful agent from the compute it runs on. An actor is the sandbox for one agent, and it holds the agent's running processes, files, and identity. A worker is a reusable sandbox drawn from a warm pool of Kubernetes Pods, and one worker hosts several actors.</p>
-<p>An agent runs code that a model wrote, so anything in its environment can leak through a prompt injection or a bad command, API keys included. Gateways control the actor's inbound and outbound traffic and add credentials on the way out, based on the actor's identity, so credentials stay out of the agent's environment.</p>
-<p>SuspendActor snapshots an idle actor to object storage and frees its worker, and the next request restores the actor on a warm worker with room for it. Agent Substrate snapshots memory by default and falls back to files when it cannot capture memory. Many parked sessions share a small warm pool, so in our cost model the same 100 agents need 16 nodes instead of 34.</p>
-<p>AX answers what the agent is and what it knows. You declare a Task, which says what runs (image, command, and limits), and a Workspace, which says what the agent knows (repositories and files). AX runs each Task as an actor. ax suspend parks the task and keeps its /workspace. Today AX asks for a volume snapshot, so the files come back on resume and the agent's processes start fresh (runner guide).</p>
-<p>AX passes suspend, resume, and delete to Agent Substrate. The AX roadmap plans to add budgets, policies, and gateways, which limit what an agent may do, and a record of what each task did.</p>
-<p>Two details decide the bill before you size anything.</p>
-<p>First, you decide when a sandbox parks. Agent Substrate does not suspend an idle actor by itself (#424), so your agent harness, or the service in front of it, calls the suspend API after an idle timeout. Until then, an idle actor keeps its worker. When idle actors hold every worker, a request for another actor waits up to 5 seconds by default, then fails with HTTP 503 (Agent Substrate docs).</p>
-<p>Second, you decide how much CPU each sandbox is promised. An actor is sized by its CPU and memory limits, and each worker books those limits against the capacity you declare for its pool (API guide). Our cost model sets that capacity to what the node really has, so every actor keeps its full limit. You can declare more capacity than the node has, and then you overcommit CPU at the pool instead of in each Pod.</p>
-<p>Our cost model prices parking for the same 100 coding agents, at Google Cloud on-demand list prices, as of November 2026, in us-central1.</p>
-<p>With a 2 minute idle timeout, each session holds a worker nearly 29% of its open time. A warm pool sized for bursts (the 99th percentile of sessions holding a worker at once, if sessions act independently, plus 15% headroom) needs 15 nodes. Add one node that runs around the clock for the Agent Substrate control plane and its PostgreSQL database, and a job that scales the pool to zero after hours:</p>
-<p>Parking saves nearly 40% of the node bill. The pool is full about once in 3,000 turns, so a prompt rarely meets that 503. In an hour at 2.5 prompts instead of 2, the same 15 nodes are full for 3% of turns, so size the pool for your busiest hour.</p>
-<p>Keep in mind that parking pays most when your agents wait the most. At 2 prompts an hour, the saving is nearly 40%. At 4 prompts an hour, the agent works 44% of the hour, the pool grows to 27 nodes, and the saving is 4%. Above about 4 prompts an hour, one Pod per session becomes the cheaper option, so measure your prompt rate first.</p>
-<p>Also, the pool size is yours to set. The autoscaling option in the GKE install guide follows worker Pods, not suspended actors, so scale the pool to zero after hours with a scheduled job: a pool that runs all 730 hours of the month costs nearly twice the one Pod per session bill.</p>
-<p>Finally, the fleet size matters. The Agent Substrate control plane costs the same for 10 sessions or 1,000, so parking pays from about 37 coding sessions, or 13 for an assumed chat assistant that works about a minute an hour.</p>
-<p>Overcommit changes the comparison. If your Pods request less CPU than their limit, Kubernetes places them by their requests. A Pod that requests 0.25 vCPU with a 1 vCPU limit packs 12 to a node (its 1 GiB of memory caps it there), so the same 100 coding agents fit on 9 nodes, fewer than our parked pool. Agent Substrate can overcommit too, through the capacity you declare on the worker pool, and our cost model does not price that case.</p>
-<p>Overcommit has the same cost on both sides: agents share CPU and slow down when their neighbors are busy, during builds and tests. Compare like with like before you decide to park: Pods and actors with the same CPU guarantee.</p>
-<p>Back to the shared cluster. Agents are sessions, not requests: size the warm pool for the sessions that hold a worker, not the sessions that are open.</p>
-<p>We would park long lived sessions that wait most of the hour, and keep one Pod per session when developers prompt more than about 4 times an hour. Size the warm pool for working time plus a short idle timeout at your busiest hour, and compare with your current Pods at the same CPU guarantee before you park.</p>
-<p>Thanks for reading! If you run agent sessions on Kubernetes today, how many prompts an hour do your users send? The prompt rate is the input we are least sure of. You can reach Ivan on LinkedIn or X with your numbers, questions, and corrections.</p>
-<p>TPU Model Design Considerations and Optimization Guide</p>
-<p>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</p>
-<p>Catch Go bugs that fuzzing misses with Gemini and a constraint solver</p>
-<p>Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText</p>
+                <p>AWS is the world's most comprehensive cloud, enabling organizations to accelerate innovation, reduce costs, and scale more efficiently</p>
+<p>Migrate to modernize → Modernize to unlock data → unlock data to run AI</p>
+<p>Get started with one of these featured services or browse all</p>
+<p>From startups to enterprises, find AWS solutions scaled to your needs. Access tailored resources, pricing models, and support levels.</p>
+<p>Today, we’re announcing the public preview of AWS Well-Architected Agent, an AI-powered service that analyzes your AWS environment to deliver targeted, contextual recommendations for improving your applications’ cost, security, performance, and resilience. The AWS Well-Architected Agent analyzes your infrastructure, understands unique business goals, and delivers contextual recommendations with ready-to-implement fixes. It delivers context-aware optimization without relying on manual audits or generic checklists.</p>
+<p>The agent evaluates your environment as an experienced cloud architect would. It automatically correlates utilization metrics, resource configurations, and application topology, and analyzes against Well-Architected best practices across 65+ AWS services. It generates recommendations aligned to your declared business goals, delivers implementation packages with every finding, and surfaces cross-pillar trade-offs making it simpler to remediate the findings.</p>
+<p>Here are the three main features of this service:</p>
+<p>AWS Well-Architected Agent in action
+         To get started, create an agent profile to define the scope of what Well-Architected Agent can access and provide recommendations on, complete the IAM role setup to access resources, conduct architecture review, and remediate recommendations.</p>
+<p>Create an agent profile
+         In the AWS Well-Architected console, choose Get started with Well-Architected Agent. You can define an agent profile that specifies which AWS accounts and applications to monitor, which optimization pillars to focus on, and the permissions required.</p>
+<p>You can choose AWS accounts or AWS Regions to monitor and optimization pillars that matter most to your business. You can also set goals for each pillar: cost optimization, performance, resilience, and security.</p>
+<p>To give access to the agent for your AWS environment, provision customer-managed IAM roles the agent uses to read resource configurations, utilization metrics, and application topology. To learn more, visit the IAM prerequisite for AWS Well-Architected Agent.</p>
+<p>When you choose Get Started, the agent creates your agent profile. Resource and application recommendations will be generated within 24 hours after profile creation.</p>
+<p>You can conduct an architecture review on pre-deployment workloads by uploading an IaC project in Terraform, AWS CloudFormation, or AWS Cloud Development Kit (CDK) to be analyzed. Choose Conduct architecture review in the dashboard, upload a.zip file containing IaC project or repository file, and select which Well-Architected lens to use for reviewing your infrastructure.</p>
+<p>You can define your applications to add context which will enhance the relevancy and further contextualize recommendations. Choose Add application context in the dashboard, add your applications with AWS accounts, AWS Regions, AWS services, tags if you want to narrow the scope to specific resources, and the details of applications.</p>
+<p>Review prioritized recommendations and start remediating
+         Now you can see generated prioritized recommendations generated by the agent across your resources and applications, selected pillars, ranked against your declared goals, with automation-ready remediation included.</p>
+<p>When you choose the specific recommendation, you can see the details, insights into why the agent are suggesting the recommendation, impacts and trade-off, and recommended fixes across affected AWS resources.</p>
+<p>Choose Start remediation to address recommended fixes. You can choose the console, updated IaC template, CLI commands to remediate by the resolution type. It provides detailed step-by-step instructions and you can roll out this instruction and verify the result.</p>
+<p>When you choose Using updated IaC template, the agent provides the code changes needed to update your existing IaC templates such as the CDK function shown above which you can copy directly into your codebase.</p>
+<p>You can also configure API access to integrate recommendations directly into your existing development and operations workflows. To interact with the agent programmatically, including calling APIs and searching documentation, try the AWS MCP Server and plugins with your preferred AI coding tool. To learn more, visit the AWS Well-Architected Agent documentation.</p>
+<p>Things to know
+         Here are some things that you should know about the Well-Architected Agent.</p>
+<p>You can still use existing AWS Well-Architected Tool to manually evaluate your cloud architecture with user-defined lenses that measure your workload using your own best practices.</p>
+<p>Join the preview
+         Access to the AWS Well-Architected Agent and its recommendations is available in US East (N. Virginia), US East (Ohio), and US West (Oregon). You can onboard workloads from any AWS commercial Region. AWS Well-Architected Agent is delivered by AWS Support and available to AWS customers with an AWS Support plan.</p>
+<p>Give it a try today in the AWS Well-Architected console and send feedback through your usual AWS Support contacts.</p>
+<p>Channy is a Lead Blogger of AWS News Blog and Principal Developer Advocate for AWS Cloud. As an open web enthusiast and blogger at heart, he loves community-driven learning and sharing of technology.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/agents-are-sessions-not-requests-size-gke-node-pools-for-ai-agent-sessions/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aws.amazon.com/blogs/aws/announcing-aws-well-architected-agent-an-ai-powered-intelligence-to-optimize-your-cloud-environment-preview/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

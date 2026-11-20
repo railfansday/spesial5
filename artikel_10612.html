@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</title>
+    <title>Nvidia board faction angling for Jensen Huang return as CEO, report claims</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10612.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,45 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams</h1>
+        <h1>Nvidia board faction angling for Jensen Huang return as CEO, report claims</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn.mos.cms.futurecdn.net/QicyzQMVLnsDMjT5SC4mZY-2000-80.jpg" alt="Nvidia board faction angling for Jensen Huang return as CEO, report claims" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_42c7784289.png" alt="What Breaks When a Self-Hosted LLM Gateway Hits 1,000 Concurrent Streams" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn.mos.cms.futurecdn.net/QicyzQMVLnsDMjT5SC4mZY-2000-80.jpg" alt="Nvidia board faction angling for Jensen Huang return as CEO, report claims" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>We sent 1,000 streaming calls at the same moment through three self-hosted LLM gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each gateway was limited to 2 CPUs. As shipped, Langfuse finished 261 of the 1,000 streams and LiteLLM finished 403. Neither failure came from the gateway's own code.</p>
-<p>Langfuse's failures came from Linux's open-file limit, which Docker sets to 1,024 by default. LiteLLM had that problem too, plus a second one: an empty key cache sent hundreds of database lookups at once, and the ones that waited longer than 10 seconds were rejected. This article shows how each failure looked, how we traced it to its cause, and the settings that fixed it.</p>
-<p>This benchmark measured the resource consumption of three LLM gateways under scaling concurrent streaming loads.</p>
-<p>Full latency, memory, and feature results are available in the Langfuse vs LiteLLM vs AcruxCore benchmark.</p>
-<p>First-token times are medians of the streams that succeeded. Up to 250 streams, every gateway succeeded. Then the errors started, and they did not look alike:</p>
-<p>A 502 and a 503 point at different layers, so we expected two different causes. Two of the three turned out to share one cause.</p>
-<p>Linux counts every network connection as an open file, and it caps how many open files one process may hold. The cap has two values. The soft limit is the cap that is in force now. The hard limit is the ceiling: a process may raise its own soft limit up to that value, and no further.</p>
-<p>A streaming gateway holds two connections for each stream: one from the client, and one to the model provider. That makes about 1,000 open files at 500 streams, and about 2,000 at 1,000 streams. A gateway also needs a few more files for its database, its logs and its own libraries.</p>
-<p>Docker on our machine gave every container a soft limit of 1,024 and a hard limit of 524,288. All three gateways received the same two numbers. What differed was how each program treats them when it starts:</p>
-<p>Node.js raises its own soft limit to the hard limit at startup. The Rust and Python services keep 1,024, and neither project's Compose file sets a higher value. So the two gateways ran out of open files near 500 streams, which is the point where the errors started.</p>
-<p>The out-of-files error appeared as a failed connection, not as a clear message. The Langfuse gateway's logs showed failed connections to OpenAI, and also failed connections to Langfuse's own web service, which the gateway asks to check each key. Both come from one cause: a process that cannot open another file cannot open another socket. Its client then receives a 502.</p>
-<p>Read the limit the process actually has, not the one you think Docker gave it. Process 1 is usually the main process in a container:</p>
-<p>If the gateway runs under a supervisor or several workers, check each worker's process ID instead of process 1. To see how close a process is to its limit under load, count its open file descriptors:</p>
-<p>Raise the limit for the gateway service in its Compose file. We used 65,536 for all three gateways:</p>
-<p>The same ulimits block works on the LiteLLM service. On Kubernetes or another platform, check /proc/<pid>/limits inside a running container rather than assuming a value.</p>
-<p>With the open-file limit raised, the Langfuse gateway finished all 1,000 streams. LiteLLM still returned 503 errors. To separate the two causes, we ran LiteLLM with one worker and only the open-file limit raised. All 500 streams succeeded in that ladder, but 595 of 1,000 failed with 503.</p>
-<p>The 503 message names the authentication database, so we read LiteLLM's logs and its source. The log gave the same reason for all 840 failed streams in these runs, 595 in that ladder and 245 in the cold-cache runs below:</p>
-<p>When 500 calls arrive while the key is not in the cache, each call looks the key up in Postgres. All of those lookups queue for 10 connections. The worker was also using its whole CPU allowance at this point, which slows every query it sends and receives. We infer that this CPU load lengthens the queue, but we did not measure it separately. Whatever the share of each, the lookups at the back of the queue miss the 10-second deadline.</p>
-<p>If that explanation is right, the failures should depend on whether the key is already in the cache. So we ran 500 streams four more times. Three runs started after 75 seconds with no calls, which is longer than the 60-second cache. One run started right after a single warm-up call:</p>
-<p>The warm run had no failures. The cold runs failed by different amounts, 161, 84 and 0, because the result depends on how many lookups miss the deadline, and that changes from run to run. This probably explains why the earlier ladder succeeded at 500 and failed at 1,000. A run is a race between the lookup queue and the deadline, so a single ladder does not show where the limit is.</p>
-<p>The warm-up result is the one we measured. Send one call with each virtual key after LiteLLM starts, and avoid quiet periods longer than 60 seconds before a traffic spike. A steady flow of traffic keeps the key in the cache.</p>
-<p>LiteLLM also exposes three settings that act on this path. We did not test them, so treat them as places to look rather than proven fixes:</p>
-<p>We raised the open-file limit to 65,536 for all three gateways and gave LiteLLM 2 workers, one per CPU, as its production guide recommends for a single machine. Then we ran the full ladder again:</p>
-<p>The open-file errors were gone for every gateway, and the Langfuse gateway gave the fastest first token of the three. LiteLLM still returned 120 × 503 at 500. That level started about 60 seconds after the first call of the ladder, so the cached key had probably just expired. All 1,000 succeeded at the next level, which started within 60 seconds of the 500 level.</p>
-<p>Once nothing failed, CPU decided the first-token times. LiteLLM used its whole 2-CPU allowance from 100 streams on, and its median first token took 19.2 seconds at 1,000 streams. AcruxCore also used both CPUs from 100 streams on, and its first token at 1,000 streams was 3.8 s at the median and 9.7 s at p95. The Langfuse gateway peaked at 1.65 CPUs and 168 MiB, with a first token of 1.7 s at the median and 9.6 s at p95.</p>
-<p>Each gateway also needs the rest of its stack, and that stack uses CPU too. While the Langfuse gateway served 500 streams, its whole stack used up to 3.1 CPUs, because the web service checked keys and the worker and ClickHouse stored usage. AcruxCore's whole stack peaked at 4.0 CPUs, because its API writes a trace for every call to Postgres. Size the stack around the gateway, not only the gateway container.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems at talhaanwar.com.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Join for quick access. Enter your email below and we'll send confirmation plus sign you up to our newsletter.</p>
+<p>Get started with free access to reviews, badges and discussions.</p>
+<p>Unlock exclusive tools and insights for enthusiasts who want more.</p>
+<p>Access Bench, Roadmaps, deep analysis and other exclusive tools.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Keep exploring and earning more as a member.</p>
+<p>Reviews, benchmarks, and updates on current GPUs.</p>
+<p>Join for quick access. Enter your email below and we'll send confirmation plus sign you up to our newsletter.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Unlock instant access to exclusive member features.</p>
+<p>Get full access to premium articles, exclusive features and a growing list of member rewards.</p>
+<p>Huang has already said he'd be willing to return, but whether he will get the chance is still very much up in the air.</p>
+<p>When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works.</p>
+<p>Even though Nvidia says that it does not plan to bring its former CEO Jensen Huang back to the company, that hasn't stopped some of its board members from continuing to lobby for his return. Following the news that some of Huang's allies have formed a "war room" to drive his reinstatement just days after his resignation, one Nvidia employee went so far as to warn that the company faces the possibility of an exodus of "irreplaceable talent" if Huang isn't reinstated. We've even seen U.S. President Trump argue for giving Huang his old job back, but the company said during its November 17 earnings call that wasn't in the cards. Now, Semafor reports that some Nvidia board members aren't taking "no" for an answer.</p>
+<p>Huang, for his part, has already said that he would be "honored" to return to the company that he resigned from in disgrace just a few days ago. At the time, he admitted to having an affair with a woman who worked for Megaspeed, a controversial Nvidia customer linked to the smuggling of export-controlled AI hardware into China. That woman has also been accused of being a Chinese spy, further complicating an already troublesome matter for Nvidia and Huang. Huang and Nvidia's top lawyer will make an appearance before the House Foreign Affairs, Intelligence, and China Select Committees in early December and are likely to face some difficult questions.</p>
+<p>But despite all of this, Huang is said to have spoken with at least one Nvidia board member about the possibility of making a return to Nvidia. That meeting took place hours before Nvidia chairman Harvey Jones said on the company’s earnings call that Huang wasn't coming back. The board voted unanimously to accept his resignation, and won't be backtracking. It's reported that three board members don't agree with that stance, while others have already turned their attention to who will replace Huang long-term. Interim CEO Colette Kress is not being considered as a full-time replacement for Huang.</p>
+<p>Instead, Arm CEO Rene Haas has appeared as a frontrunner for the top job, with the Nvidia board believed to have already made an approach. Marvell CEO Matt Murphy is also another name under consideration, but the ongoing calls for Huang to be brought back into the fold are thought to have put him off. Rene Haas has reportedly been considere</p>
+<p>It isn't just some of Nvidia's board members who have rallied around Huang. SpaceX CEO Elon Musk and Epic Games CEO Tim Sweeney have also chimed in, while a Taiwanese skyscraper was used to send messages of support to a man who has proven hugely popular in the country.</p>
+<p>Download the Tom's Hardware app for up-to-the-minute updates on iOS and Android. Also follow Tom's Hardware on Google News, or add us as a preferred source, to get our latest news, analysis, & reviews in your feeds.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Oliver Haslam has written about technology of all shapes and sizes for over 15 years, both online and in print. He's fascinated by how personal computing continues to change as tower PCs give way to foldable phones and beyond.</p>
+<p>Tom's Hardware is part of Future US Inc, an international media group and leading digital publisher. Visit our corporate site.</p>
+<p>©
+Future US, Inc. Full 7th Floor, 130 West 42nd Street,
+New York,
+NY 10036.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/what-breaks-when-a-self-hosted-llm-gateway-hits-1-000-concurrent-streams/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.tomshardware.com/tech-industry/data-centers/nvidia-board-faction-angling-for-jensen-huang-return-as-ceo-report-claims-company-defiant-at-earnings-calls-says-no-possibility-of-reinstatement" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

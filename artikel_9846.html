@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Implementing Table Partitioning in PostgreSQL</title>
+    <title>How Four Evaluation Bugs Distorted a Cross-Encoder Model Comparison</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9846.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Implementing Table Partitioning in PostgreSQL</h1>
+        <h1>How Four Evaluation Bugs Distorted a Cross-Encoder Model Comparison</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/lh3GIz5KYbVlETykJ0q4yOt71CA3-nj83ppo.jpeg" alt="Implementing Table Partitioning in PostgreSQL" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/Q2hVgZeRZPdwV7UkvDTUm20BD9b2-pya3d02.gif" alt="How Four Evaluation Bugs Distorted a Cross-Encoder Model Comparison" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/lh3GIz5KYbVlETykJ0q4yOt71CA3-nj83ppo.jpeg" alt="Implementing Table Partitioning in PostgreSQL" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/Q2hVgZeRZPdwV7UkvDTUm20BD9b2-pya3d02.gif" alt="How Four Evaluation Bugs Distorted a Cross-Encoder Model Comparison" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Database administrator with  14+ years of hands-on experience in database management and database design.</p>
-<p>Database administrator with  14+ years of hands-on experience in database management and database design.</p>
-<p>Database administrator with  14+ years of hands-on experience in database management and database design.</p>
-<p>I have been running production PostgreSQL systems for over sixteen years, and if there is one lesson that never gets old, it is this: a table that behaves beautifully at ten million rows can turn into a nightmare at five hundred million. Indexes stop helping as much as they used to, vacuum runs longer, and every maintenance window gets scarier. When I see queries slowing down despite solid indexing, partitioning is usually the next tool I reach for. Let me walk you through how I actually implement it.</p>
-<p>Partitioning takes one logical table and splits it into several physical sub-tables called partitions. From the application side, nothing changes. You still insert into and query one table name. Behind the scenes, PostgreSQL decides which partition each row belongs to and routes reads and writes there automatically.</p>
-<p>I like to compare it to a filing cabinet with labeled drawers. If everything is dumped into one drawer, finding last year's invoices means digging through everything ever filed. Label the drawers by year, and you go straight to "2024" and search only there. That is the entire value proposition, in one image.</p>
-<p>PostgreSQL, from version 10 onward, gives me three built-in partitioning strategies. I pick based on the shape of the data.</p>
-<p>Range partitioning splits rows by a range of values, most often dates or numeric IDs. This is my default choice for time-series data, things like orders, logs, or events that accumulate by day or month.</p>
-<p>List partitioning splits rows by a discrete set of values, like country codes or status flags. I reach for this when the data naturally falls into named buckets rather than a continuum.</p>
-<p>Hash partitioning spreads rows evenly across a fixed number of partitions by hashing the partition key. I use this when there is no natural range or list to key off of, but I still want the data spread out for performance and manageability.</p>
-<p>Here is how I would partition an orders table that is bringing in millions of rows a year. I will partition it by created_at, monthly.</p>
-<p>Something worth keeping in mind here: the parent table never actually stores any rows. It is a purely logical container that PostgreSQL uses to route data to the right child partition.</p>
-<p>One detail I always double check with new team members: the range bounds are inclusive at the bottom and exclusive at the top. A row dated exactly 2024-02-01 lands in orders_2024_02, not orders_2024_01.</p>
-<p>I create indexes on the parent table, and as of PostgreSQL 11 they propagate down to every partition automatically. That saves me from having to remember to index each child individually.</p>
-<p>I do not have to tell PostgreSQL which partition this belongs in. It reads the created_at value and routes it to orders_2024_01on its own.</p>
-<p>This step is not optional in my process. I always verify pruning with EXPLAIN before I trust a partitioning setup in production.</p>
-<p>If the setup is correct, the plan should only touch orders_2024_02. If I see the planner scanning every partition, something in my query or my partition key is off, and I go fix it before moving on.</p>
-<p>If I am partitioning something like a customers table by region rather than by time, list partitioning is the right tool.</p>
-<p>Each region code is explicitly assigned to a bucket, which makes this strategy easy to reason about and easy to explain to the rest of the team.</p>
-<p>Sometimes there is genuinely no range or category to split on, and I just need the data spread evenly for performance and manageability. That is when I use hash partitioning. Here I am splitting an events table into four partitions by user_id.</p>
-<p>Especially during development, or when I am not one hundred percent sure every possible value has a home, I set up a default partition to catch anything that does not match an existing rule.</p>
-<p>This has saved me more than once from a failed insert at 2 a.m. because someone introduced a new status value nobody told me about.</p>
-<p>I never want to be the person manually creating next month's partition by hand, and neither should you. In production, I write a function like this and schedule it.</p>
-<p>I schedule this with pg_cron when it is available, or with an external scheduler like a cron job or Airflow when it is not. Either way, I make sure I always have a few months of partitions created ahead of time, so an inserting application never hits a missing partition.</p>
-<p>This is where partitioning earns its keep for data lifecycle management. Instead of running a slow, lock-heavy DELETE that chews through WAL and leaves bloat behind, I just drop the partition.</p>
-<p>If I need to keep the data around for archival purposes rather than destroying it, I detach it instead:</p>
-<p>A few things trip people up every single time, so let me save you the pain.</p>
-<p>Your primary key has to include the partition key. PostgreSQL cannot enforce uniqueness across partitions unless the partition key is part of the key.</p>
-<p>Foreign keys referencing a partitioned table are not supported. Foreign keys going out from a partitioned table are fine, but nothing else can point at it with a foreign key constraint.</p>
-<p>Partition pruning only works if the partition key shows up in your WHERE clause. Leave it out, and PostgreSQL has no choice but to scan every partition.</p>
-<p>Do not go overboard with granularity. Hundreds of tiny partitions will hurt planning time more than they help. For time-series data, I have found monthly or quarterly partitions to be the sweet spot in most systems I have run.</p>
-<p>When I want a quick sanity check on what partitions exist and how big they have gotten, I run this:</p>
-<p>Partitioning is not free. It adds real operational complexity, and I skip it when any of the following apply:</p>
-<p>PostgreSQL's declarative partitioning is mature and, honestly, not that hard to implement once you understand the shape of your data. Here is what I keep coming back to:</p>
-<p>My advice after years of doing this: pick one table that is currently causing you pain, instrument it properly, implement partitioning, and measure the before and after. Once you see the difference for yourself, you will not need convincing on the next one.</p>
-<p>Oracle AI Vector Search & Native AI: The Converged Database Era</p>
-<p>Database administrator with  14+ years of hands-on experience in database management and database design.</p>
+                <p>CTO & CPO | Enterprise AI & Big Data at National Scale</p>
+<p>CTO & CPO | Enterprise AI & Big Data at National Scale</p>
+<p>CTO & CPO | Enterprise AI & Big Data at National Scale</p>
+<p>My first comparison of two releases showed a clean accuracy gain and two large regressions. None of the three was real. Fixing that took four bugs. Once the numbers were right, half of my wording benchmark turned out not to be held out, and a conclusion I nearly published came from comparing effects measured at different candidate-set sizes.</p>
+<p>I maintain Ru-Jev, an open typed-decision model for Russian-language text. It takes a context and a set of candidate options and returns a probability for each option. It does not generate text. Technically, it is a pointwise cross-encoder on mmBERT-base, 307M parameters: each (context, option) pair gets its own encoder pass, and a softmax over the options gives the distribution. It runs on CPU, so it can sit inside a closed network. Weights and code are MIT.</p>
+<p>Version 1.3 had one goal. The caller names the options, in the caller's own words, and version 1.1 had learned the exact label wordings in its training data. So 1.3 presents each label in several surface forms during training, including English intent keys transliterated into Cyrillic and a clipped form of that transliteration, and draws one form per example.</p>
+<p>The first table had two regressions I could not explain. Sentence acceptability fell from 0.909 to 0.647. A reasoning set fell from 0.939 to 0.596. A release that only changed label wording had no mechanism for that.</p>
+<p>The data builder carved each task's validation slice like this:</p>
+<p>random.shuffle with no generator draws from the module-level stream, which every other random call in the file also consumes, including the new choice of label wording. Adding label styles to one task changed how many draws happened before the next task was carved, and every later task got a different split.</p>
+<p>That is leakage, and it can be measured: 90.3% of 1.3's acceptability validation rows and 89.4% of its reasoning rows had been in 1.1's training data. The 0.909 was 1.1 scored on rows it had trained on. On held-out rows it scores 0.650.</p>
+<p>The fix seeds each carve from the task name:</p>
+<p>The check is what confirms the diagnosis. I rebuilt the previous release's data from its commit and confirmed that the six tasks whose option sets never changed matched at 100%. Those tasks had no reason to move, so if they had moved, my diagnosis would have been wrong.</p>
+<p>With the split repaired I matched the two validation sets by input text and found nine comparable tasks. In this release a row with the same text can carry an option wording 1.1 never saw, so scoring 1.1 on it measures robustness to renaming, not accuracy. Matching on text and option wording together leaves six tasks.</p>
+<p>A toxicity gain from 0.722 to 0.954 that I had presented as a capability gain was this bug. Version 1.1 scores 0.961 on toxicity with the labels it trained on.</p>
+<p>The summary row of my comparison table, 0.7948 against 0.7920 on 5,078 decisions, came from one random half of the comparable rows. The per-task table beside it counted all 10,157. A calibration advantage, 0.0172 against 0.0160, came from the same single split. Both numbers reached the published model card.</p>
+<p>On all 10,157 rows the two releases answer exactly 8,120 correctly, disagreeing on 1,680 rows split 840 and 840. Over 25 random splits the calibration difference changes sign. Both claims were withdrawn. What survives is narrower: 1.3 takes a lower fitted temperature in all 25 splits, so its raw scores are less overconfident, but after each model gets its own temperature the residual calibration error is the same.</p>
+<p>To measure seed variance I retrained both recipes on a rented GPU and checked the data on the remote machine against my local copy by SHA-256, row count and per-task counts. Everything matched. The local copy predated the commit that added the transliteration styles, so the "augmented" seed runs were trained without the augmentation. Their jargon accuracy fell in the baseline's range, and I first read that as an unstable recipe.</p>
+<p>Row counts could not catch it, because the new styles change option strings, not the number of rows. What caught it was counting distinct option strings per task: 120 in the stale copy, 198 after rebuilding. Those runs are excluded from everything.</p>
+<p>Once the numbers were right, I ran a wider wording test: ten label vocabularies on the same 1,000 routing questions, each scored with five candidates per question and eight of them also with all eighteen. Because the model scores every option independently, the five-candidate answer can be computed exactly from the eighteen-candidate run. I checked every probe label against all training option strings, used exact McNemar tests, a bootstrap that resamples labels rather than just questions, and a Holm correction over 23 comparisons.</p>
+<p>Two things came out of it. First, two of my six original benchmark vocabularies, the English key and the ordinary Russian word, turned out to be training styles for both releases, and a third, the Russian phrase, was a training style for the new release only. Half of my original benchmark was not a held-out test.</p>
+<p>Second, the effect size depended on the number of candidates, differently for different vocabularies. I had first measured jargon with five candidates and slang with eighteen, which made the slang gain look far smaller than the jargon gain. With both vocabularies in both settings:</p>
+<p>English-derived jargon, strict (no exact or prefix match to training)</p>
+<p>Department names (no exact match; 2 of 18 labels share a prefix with a training option)</p>
+<p>On every held-out vocabulary made of words, the new release is better in both settings, though not every gain survives the Holm correction. On abbreviations and opaque codes there is no usable gain. The two releases differ in more than the augmentation (I also fixed the split and trained four epochs instead of three), so this compares two trained models rather than a clean ablation. Two replicates of the v1.1 recipe scored 0.658 and 0.622 on jargon with five candidates, against 0.633 for the release, so small differences in the table should not be read as reproducible; the jargon gains are large relative to that spread. The contrast I almost published between jargon and slang came from comparing a five-candidate effect with an eighteen-candidate one.</p>
+<p>Accuracy and confidence also diverged. Where accuracy rose, the risk–coverage curve mostly improved, but with eighteen candidates the number of wrong answers given above 0.8 confidence went up on jargon (all labels, 79 to 109 per 1,000) and on slang, because the new release is more confident overall. On department names it went down.</p>
+<p>Author’s note: The name references Jev, a commercial decision model by TypeSafe AI. Ru-Jev is an independent project, not affiliated with TypeSafe AI and not trained on Jev outputs.</p>
+<p>Grading a Machine That Read 51,008 Pages With No Answer Key</p>
+<p>CTO & CPO | Enterprise AI & Big Data at National Scale</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/implementing-table-partitioning-in-postgresql?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-four-evaluation-bugs-distorted-a-cross-encoder-model-comparison?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
