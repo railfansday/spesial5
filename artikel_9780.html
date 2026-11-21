@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Currents</title>
+    <title>Duplicate refunds from scattered status checks: fixing it with the State pattern in C#</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9780.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Currents</h1>
+        <h1>Duplicate refunds from scattered status checks: fixing it with the State pattern in C#</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fjc79mgc2p8mw2wr2zw9t.png" alt="Duplicate refunds from scattered status checks: fixing it with the State pattern in C#" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fjc79mgc2p8mw2wr2zw9t.png" alt="Duplicate refunds from scattered status checks: fixing it with the State pattern in C#" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Currents for Claude & Codex to see all your tests
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/currents-4?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1323083?app_id=339">Link</a>
-          </p></p>
+                <p>Posted on Nov 21
+•
+Originally published at programero.blogspot.com</p>
+<p>This post was originally published in Portuguese on my blog: Status de pedido com if espalhado gera estorno duplo -> State.</p>
+<p>Every order system has an Order class with a Status property. At first there are three or four statuses, each action checks the current status with an if, and everything is fine. The trouble shows up months later, when a new status arrives and nobody remembers all the places that needed to know about it. In this post I'll show a very concrete case of that, a refund paid twice, and how the State pattern solves it without ceremony.</p>
+<p>The order goes through Pending, Paid, Shipped and Delivered, and it can be cancelled before shipping. If it was already paid, cancelling issues a refund. The Cancel() method in the "before" version is the kind of code everyone has written:</p>
+<p>Look at the first condition: it's a list of what is not allowed. And the second one assumes that anything that isn't Pending has been paid. As long as the enum had only those statuses, both assumptions were true.</p>
+<p>Then the business asked for returns. Someone created the Returned status and the new method, with a refund:</p>
+<p>Return() is correct. The bug is in Cancel(), which nobody opened: Returned isn't in the forbidden list and isn't Pending, so a returned order can be cancelled and the customer gets refunded a second time. No test broke, because the existing tests didn't know Returned existed. In the project I left a test, Cancelling_a_returned_order_refunds_twice, that documents exactly this behavior in the old version.</p>
+<p>That's the real pain of the status-based if: each status's rules end up scattered across every method. To add a status you have to review every action, and the compiler doesn't warn you about any of them.</p>
+<p>The idea is to flip the question. Instead of every action asking "what status am I in?", each status becomes a class that knows which actions it accepts. The order only holds the current state and delegates to it. The base class forbids everything by default:</p>
+<p>This "forbidden by default" is the most important point of the design. A new state is born with no permissions at all, and you explicitly allow what makes sense. It's the opposite of the old Cancel()'s forbidden list.</p>
+<p>Each state overrides only what it allows and returns the next state. The refund for a cancellation lives where it makes sense, in PaidState:</p>
+<p>The Order class in the "after" version became trivial: a _state field that starts as PendingState, and each action is a one-liner like public void Cancel() => _state = _state.Cancel(this);. The refund is done by IssueRefund(), marked internal so that only the states, in the same assembly, can call it.</p>
+<p>And ReturnedState? It only declares its own Status. It doesn't override Cancel, so cancelling a returned order throws InvalidOperationException with "Cannot cancel an order that is Returned." without anyone having to remember it.</p>
+<p>First, the bug goes away by construction, not by discipline. The Cancelling_a_returned_order_is_rejected test checks that the cancellation is refused, that the status stays Returned and that RefundCount stays at 1.</p>
+<p>Second, reading the code changes. To know what a paid order can do, you open PaidState and everything is there, in a few lines. In the old version you had to read the five methods of Order and assemble the state machine in your head.</p>
+<p>Third, extension becomes local. A new status, like "being picked" or "awaiting pickup", is a new class plus a tweak to the state that leads to it. The other states aren't touched. Tests also get more direct: each transition has a short test, and refusals are tested by the exception message.</p>
+<p>State has a cost, and it's not a small one. You trade one file for several, and whoever arrives at the code has to understand the pattern before finding where each rule lives. For a three-status flow that never changes, a well-written switch is more honest and easier to read.</p>
+<p>It also isn't worth it when the transitions are basically data, with no behavior: if all you need is "from A you can go to B or C", a transition table (a dictionary, or even a database table) solves it with less code and lets you change it without a deploy. State shines when each transition carries its own behavior, like the refund here, sending an email or reserving stock.</p>
+<p>Another thing to watch is persistence. In the database you keep storing the Status enum, and when loading the order you need to rebuild the state object from it. It's a simple mapping, but it's one more piece to maintain. And if the states start accumulating dependencies (repositories, payment gateways), stop and think: maybe the rule belongs in an application service, and the state should only say whether the transition is allowed.</p>
+<p>My rule of thumb: if you've already fixed a bug because of a status forgotten in some if, or if the status enum got its fifth value, State is worth considering.</p>
+<p>The project has both versions side by side, in the Before and After folders, with tests for each. All you need is Docker installed:</p>
+<p>The full code is on GitHub: programero-csharp/2026-11-order-status-state-pattern.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/currents-4" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/dunirvana/duplicate-refunds-from-scattered-status-checks-fixing-it-with-the-state-pattern-in-c-382m" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

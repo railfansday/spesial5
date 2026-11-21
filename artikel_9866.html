@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>177 Blog Posts To Learn About Bitcoin Mining</title>
+    <title>We Tested Every REST Endpoint and Missed the Queue That Dropped $62K</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9866.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,22 +15,55 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>177 Blog Posts To Learn About Bitcoin Mining</h1>
+        <h1>We Tested Every REST Endpoint and Missed the Queue That Dropped $62K</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/github/bitcoin-mining-174.png" alt="177 Blog Posts To Learn About Bitcoin Mining" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/hnDrcNS3vSYYAneclDfYGA4In0Q2-bf83agv.png" alt="We Tested Every REST Endpoint and Missed the Queue That Dropped $62K" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/github/bitcoin-mining-174.png" alt="177 Blog Posts To Learn About Bitcoin Mining" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/hnDrcNS3vSYYAneclDfYGA4In0Q2-bf83agv.png" alt="We Tested Every REST Endpoint and Missed the Queue That Dropped $62K" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Lets geek out. The HackerNoon library is now ranked by reading time created. Start learning by what others read most.</p>
-<p>Lets geek out. The HackerNoon library is now ranked by reading time created. Start learning by what others read most.</p>
-<p>Lets geek out. The HackerNoon library is now ranked by reading time created. Start learning by what others read most.</p>
-<p>bitcoin mining - gold mining of this era!</p>
-<p>Visit the /Learn Repo to find the most read blog posts about any technology.</p>
-<p>Lets geek out. The HackerNoon library is now ranked by reading time created. Start learning by what others read most.</p>
+                <p>Automation Architect & Lead SDET | Killing flaky tests and breaking pipeline bottlenecks.</p>
+<p>Automation Architect & Lead SDET | Killing flaky tests and breaking pipeline bottlenecks.</p>
+<p>Automation Architect & Lead SDET | Killing flaky tests and breaking pipeline bottlenecks.</p>
+<p>That was the output of aws sqs get-queue-attributes on prod-merchant-payouts-dlq when our finance lead finally asked why Tuesday's Stripe Connect batch was missing $62,400 in disbursements.</p>
+<p>Every single REST API contract test in our monorepo had passed that morning. Our Playwright suite was green. Our Go service's unit tests were green. Our TypeScript worker's unit tests were green.</p>
+<p>None of them caught the bug, because the bug did not live on an HTTP route. It lived in the invisible gap between a Go service calling sqs.SendMessage and a Node.js worker calling JSON.parse(record.Body) as PayoutRequestedEvent.</p>
+<p>Engineering teams spend huge amounts of energy locking down synchronous HTTP boundaries. We generate TypeScript clients from OpenAPI specs, run Supertest against Express routers, and fail CI if a response field changes from int to string.</p>
+<p>Then we take an asynchronous SQS queue, a Kafka topic, or an internal SNS fan-out—which often carries the actual money-moving side effects—and treat it like a lawless JSON dropbox.</p>
+<p>In our case, two separate teams owned the two ends of prod-merchant-payouts:</p>
+<p>In payout-worker, the consumer had a type annotation that looked safe in code review and meant literally nothing at runtime:</p>
+<p>When ledger-go refactored its decimal serialization to avoid float rounding and started emitting "payoutCents": "14900" as a string instead of 14900 as an integer, JSON.parse happily returned a string. Downstream, Math.round(payload.payoutCents) did not throw—Wait: actually, Math.round("14900") works in JavaScript!</p>
+<p>What did throw was the strict Postgres BIGINT / Stripe SDK validation two functions later (Invalid integer: "14900.00" when a fractional fee was included), crashing the worker, exhausting maxReceiveCount: 3, and dumping 4,819 messages into prod-merchant-payouts-dlq.</p>
+<p>Nobody was watching the DLQ metric in Datadog because that queue had sat at 0 for eight months.</p>
+<p>When we pulled the two repos side-by-side after replaying the DLQ, both teams had written tests for that exact flow:</p>
+<p>Static fixtures in consumer unit tests are a slow-acting poison. The day you write fixtures/payout-message.json, it matches reality. Six months later, after three producer refactors, your consumer tests are certifying a payload shape that no longer exists anywhere in production.</p>
+<p>We did not want to deploy a heavy Confluent Schema Registry just for 14 SQS queues. We wanted something boring that worked across Go and TypeScript inside GitHub Actions with zero new infrastructure.</p>
+<p>So we made JSON Schema (Draft 2020-12) the single source of truth inside a lightweight shared directory (contracts/queues/*.schema.json), paired with:</p>
+<p>Here is contracts/queues/payout-requested.v1.schema.json:</p>
+<p>And here is the TypeScript consumer boundary wrapper (src/queues/validateMessage.ts) that replaced JSON.parse(...) as ...:</p>
+<p>Notice additionalProperties: false and "type": "integer" on payoutCents. If ledger-go ever serializes "14900" as a string again, parsePayoutMessage rejects it in under 0.1 milliseconds with an unmistakable SCHEMA_DRIFT_ERROR instead of letting it corrupt downstream state.</p>
+<p>Validating a schema in memory is only half the story. You also want to prove that the Go producer's actual serialized bytes survive SQS attributes, base64/JSON encoding, and the TypeScript consumer's parsePayoutMessage() function.</p>
+<p>We added a 55-line integration test (tests/contracts/sqs-payout-contract.test.ts) that spins up LocalStack via Testcontainers (or a GitHub Actions service container), runs the Go producer binary's emit-sample command to push real messages onto a local queue, and lets the TypeScript consumer pull and validate them:</p>
+<p>That single test runs in 6.4 seconds in GitHub Actions. No mocked JSON fixtures. If a Go developer changes int64 to string on PayoutCents—even by adding ,string to a Go struct tag—that test blows up on their PR before payout-worker ever sees it in production.</p>
+<p>The other embarrassing half of the $62K incident was not technical—it was operational. A queue had 4,819 failed payout messages sitting in it for 19 hours because nobody had wired an alarm to ApproximateNumberOfMessagesVisible > 0 on *-dlq.</p>
+<p>We fixed that across all 14 queues in one Terraform module (infra/modules/sqs_dlq_alarm/main.tf) so every new queue gets a PagerDuty/Slack alert on message #1 in the DLQ, not message #4,819:</p>
+<p>Zero tolerance on DLQ depth sounds aggressive until you realize a dead-letter queue is literally a bucket of failed customer promises. If one message lands there, you want to know within 60 seconds, not when finance reconciles Stripe payouts on Wednesday morning.</p>
+<p>Putting a strict JSON Schema validator on a queue consumer introduces a subtle trap during rolling deployments: in-flight messages.</p>
+<p>When Kubernetes rolls payout-worker to a new version, there can easily be 800 messages still sitting in SQS serialized by the previous version of ledger-go. If you rename a required field or tighten an enum in payout-requested.v1.schema.json, your new consumer pods will immediately reject valid in-flight messages as SCHEMA_DRIFT_ERROR.</p>
+<p>We learned that the hard way on our second schema update. Now we enforce two rules in CI:</p>
+<p>One last thing nobody tells you until you actually have to drain a 4,819-message financial DLQ: you cannot just click "Start DLQ Redrive" in the AWS Console and walk away.</p>
+<p>During the 19-hour outage, our finance team had already manually wired payouts for 140 urgent enterprise merchants via the Stripe dashboard. If we had blindly redriven all 4,819 messages back into the main queue, those 140 merchants would have been paid twice.</p>
+<p>Before replaying a single message, we added an INSERT INTO processed_queue_events (event_id) VALUES ($1) ON CONFLICT DO NOTHING idempotency guard backed by Postgres, pre-seeded it with the 140 manually settled eventIds, and ran a small redrive script that patched "payoutCents" from string to integer on the fly while logging every skipped duplicate.</p>
+<p>We tested the redrive script with --dry-run on the first 50 DLQ messages, verified the Stripe idempotency keys matched, and then drained the remaining 4,769 messages in batches of 100. The whole replay finished in 4 minutes and 40 seconds across 20 concurrent workers, with zero double payouts and zero manual spreadsheet reconciliation afterward.</p>
+<p>That idempotency table stayed in payout-worker permanently—because SQS is at-least-once delivery anyway, and sooner or later every distributed queue delivers the same message twice.</p>
+<p>Once we put JSON Schema contracts and LocalStack round-trip tests on our SQS queues, we expected fewer production outages. And yes, we have had zero schema-drift DLQ incidents in the five months since.</p>
+<p>What surprised me was how much faster onboarding got. New engineers stopped having to grep through three Go repositories to figure out what shape an SQS event actually had—they just opened contracts/queues/*.schema.json and read the exact contract in ten seconds.</p>
+<p>If your test suite checks every REST route twice while your SQS, Kafka, or BullMQ workers still rely on JSON.parse(...) as MyType and hand-written test fixtures, you are only testing half your system. The other half is one struct tag away from a very quiet, very expensive pileup.</p>
+<p>We Killed Our Staging Environment and Moved QA to Production Canaries</p>
+<p>Automation Architect & Lead SDET | Killing flaky tests and breaking pipeline bottlenecks.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/177-blog-posts-to-learn-about-bitcoin-mining?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/we-tested-every-rest-endpoint-and-missed-the-queue-that-dropped-$62k?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
