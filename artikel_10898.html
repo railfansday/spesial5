@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)</title>
+    <title>A 10-Point Checklist for Legacy Application Modernization</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10898.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,55 +15,222 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)</h1>
+        <h1>A 10-Point Checklist for Legacy Application Modernization</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_7f84dc250a.png" alt="Why Your AI Agent Can&#x27;t Read the Web (and How to Build a Fetch Layer That Can)" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_image_6b9d565074.jpg" alt="A 10-Point Checklist for Legacy Application Modernization" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_7f84dc250a.png" alt="Why Your AI Agent Can't Read the Web (and How to Build a Fetch Layer That Can)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_image_6b9d565074.jpg" alt="A 10-Point Checklist for Legacy Application Modernization" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
                 <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>This is the least glamorous part of building with LLMs and it's where a lot of agent projects quietly fall over. The model is rarely the problem. The fetch is. In this article we'll look at why live web retrieval has become so unreliable for AI tools, what the numbers say about the shift, and how to build a small, well-behaved fetch layer in Python that fails loudly instead of feeding your model garbage.</p>
-<p>A few years ago, a plain requests.get() worked on most of the public web. That's no longer true, and the reason is simple: there are now more bots than people.</p>
-<p>According to the 2025 Imperva Bad Bot Report, automated traffic made up 51% of all web traffic in 2024. That's the first time in a decade it has passed human activity. Bad bots alone (scrapers, credential stuffers, scalpers) went from 32% to 37% of traffic in a single year.</p>
-<p>Source: Imperva Bad Bot Report 2024 and 2025</p>
-<p>From a site owner's point of view, your polite research agent and a credential-stuffing botnet look much the same at the network edge. Both are non-browser clients making fast requests from data-center IP ranges. So the defaults have tightened. In July 2025 Cloudflare began blocking known AI crawlers by default for new customers, and bot management products now look at TLS fingerprints, header order, IP reputation and JavaScript execution, not just the User-Agent string.</p>
-<p>It helps to understand the publisher's side of the deal, because it explains why your agent is being treated with suspicion.</p>
-<p>Cloudflare splits AI crawling into three purposes: training (collecting data to train models), search (building an index for AI search answers) and user action (fetching a page because a person just asked a question). Training dominates.</p>
-<p>Training crawls take content and send nothing back. Cloudflare measures this with a crawl-to-referral ratio: how many pages a platform crawls for every visitor it sends to the site. In its crawl-to-click gap analysis, the ratios for some AI platforms ran into the tens of thousands, compared with single digits for traditional search.</p>
-<p>If you ran a publication and saw those numbers, you'd block too. The catch is that blocking is usually done by user agent or IP range, so it hits user-action fetches as well. Those are the ones that happen when a person asks your agent to read a specific article, and Cloudflare's 2025 Year in Review found they grew more than 15x during the year. Your agent is caught in a fight it didn't start.</p>
-<p>The mix of crawlers also shifts quickly, which makes static allow and block lists fragile on both sides:</p>
-<p>And restrictions keep piling up. The Consent in Crisis study audited 14,000 web domains and found that a large and fast-growing share of the sources behind the C4 training corpus now restrict AI crawlers, either through robots.txt or their terms of service.</p>
-<p>Source: Longpre et al., Consent in Crisis (NeurIPS 2024)</p>
-<p>So that's the environment your agent fetches in. Here's how to build for it.</p>
-<p>Before writing any retry logic, put names on your failures. "The request failed" is useless to both you and the model. In practice almost every failed fetch falls into one of four buckets:</p>
-<p>Bucket 2 is the dangerous one, because a block page often comes back with a 200 OK. If you don't check, the model will happily summarise "Checking your browser before accessing..." as if it were the article.</p>
-<p>Here's a compact fetch layer in Python using httpx and the standard library's robots.txt parser. It's around 100 lines and covers the four buckets above.</p>
-<p>Use a descriptive user agent with a contact URL. It costs you nothing and site operators are far more likely to allow a client they can identify and reach. Then check robots.txt (standardised as RFC 9309) before every new host.</p>
-<p>The lru_cache means you fetch robots.txt once per origin rather than once per page. In a long-running service you'll want a cache with a TTL instead, since robots.txt files do change.</p>
-<p>This is the core of the layer. Instead of returning raw HTML, return a result that says which bucket you landed in.</p>
-<p>The marker list is deliberately simple. It won't catch every interstitial, but it catches the common ones, and a false "blocked" is much cheaper than a confident summary of a CAPTCHA page. Log every blocked result with its first few hundred characters so you can grow the list from real data.</p>
-<p>Retries should depend on the bucket. Throttled and broken responses get exponential backoff with jitter. Blocked and not-allowed responses get no retries at all.</p>
-<p>Note the cap on wait. A site sending Retry-After: 3600 is telling you to go away for an hour. An interactive agent should report that to the user rather than block a request thread for that long.</p>
-<p>The cheapest fetch is the one you don't make. Agents often re-read the same documentation page several times in one session. Store the ETag and Last-Modified headers and send them back as If-None-Match and If-Modified-Since. A 304 Not Modified response costs the server almost nothing and lowers the odds of being rate limited.</p>
-<p>Wire these into fetch() by passing headers=conditional_headers(url) to client.get(). On a 304, return the cached text. On a 200, call remember().</p>
-<p>Finally, don't hide failures from the LLM. Give the tool output a structured shape so the model can reason about it:</p>
-<p>(extract_main_text is whatever readability or boilerplate-removal step you already use. Libraries like trafilatura work well here.)</p>
-<p>With this in place, the model's answer changes from a made-up summary to "I couldn't read that page because the site blocks automated access. Here's what I found from two other sources." That's a better product, and it builds trust with users.</p>
-<p>Once you've done everything above, some legitimate user-action fetches will still fail. That's usually because the site blocks data-center IP ranges outright, not because of anything your agent did. Teams handle this in a few ways, roughly in order of preference:</p>
-<p>The principle is the same in every case: the network path is a reliability decision, not a way around a site's wishes. Your robots.txt check and your honest user agent should stay in place whichever route the request takes.</p>
-<p>Once your fetch layer returns structured results, observability is easy. Emit one event per fetch with the host, status bucket and latency, and watch these:</p>
-<p>If you're prototyping agents with AI coding assistants, ask them to generate these metrics hooks from the start. They're easy to bolt on now and painful to add later. For a sense of how well current tools handle this kind of infrastructure code, Vibe Coder Journal publishes hands-on reviews and benchmarks of AI coding tools.</p>
-<p>The web your agent reads in 2026 isn't the open, fetch-anything web many of us learned on. More than half the traffic is automated, publishers have good reasons to be wary of AI crawlers, and the defaults now lean toward blocking. You can't change that. You can make your agent a good citizen, though: one that identifies itself, respects the rules, backs off when asked, and tells the truth when it can't read something.</p>
-<p>Most of the reliability gains come from the unglamorous parts: classifying failures, caching and passing honest errors to the model. Get those right and your agent will feel much more dependable, even on the days when half the web won't let it in.</p>
-<p>It depends on the jurisdiction, the site's terms of service and what you do with the content. Respecting robots.txt and site terms is the baseline. For commercial products, get proper legal advice.</p>
-<p>Many site owners expect it to, and RFC 9309 makes no exception for user-triggered fetches. The safest default is to obey it and tell the user when a page is disallowed.</p>
-<p>Many bot-protection systems serve a challenge page with a 200 status. Check the body for challenge markers before passing it to the model, as in the looks_blocked() function above.</p>
-<p>Only for pages that render their main content with JavaScript. Try a plain HTTP fetch first. Headless browsers are slower, cost more to run and are easier to fingerprint.</p>
+<p>Legacy applications often support critical business operations, but keeping them running can become increasingly difficult. Outdated infrastructure, growing technical debt, security vulnerabilities, and limited integration capabilities can make these systems expensive to maintain and harder to adapt to changing business needs.</p>
+<p>Modernizing them involves more than upgrading technology. You need to understand what the existing application does, identify which components need improvement, and manage the transition without disrupting essential operations.</p>
+<p>This 10-point legacy application modernization checklist walks you through the process, from assessing your existing systems and selecting a modernization strategy to migrating data, testing applications, and measuring results.</p>
+<p>Legacy application modernization is the process of updating existing software applications, their architecture, infrastructure, or underlying technologies to meet current business and technical requirements.</p>
+<p>Depending on the application's condition, modernization may involve moving it to a new platform, improving its code, redesigning its architecture, or replacing it with a new solution.</p>
+<p>The goal is to improve performance, security, scalability, maintainability, and the application's ability to support future business requirements.</p>
+<p>Modernization isn't necessarily the same as cloud migration. Moving an application from on-premises infrastructure to the cloud changes where it runs, but it may leave its underlying architecture and technical limitations unchanged.</p>
+<p>An organization can modernize an application without moving it to the cloud or combine both approaches as part of a larger transformation.</p>
+<p>Use this checklist to track the ten essential steps involved in modernizing legacy applications.</p>
+<p>1. Define modernization goals: Identify business problems and establish measurable success criteria.</p>
+<p>2. Assess existing applications: Review infrastructure, technical debt, code quality, and performance limitations.</p>
+<p>3. Map application dependencies: Document critical workflows, integrations, and business rules.</p>
+<p>4. Choose a modernization strategy: Select an approach based on business value, cost, complexity, and risk.</p>
+<p>5. Develop a roadmap and budget: Prioritize activities, estimate costs, assign responsibilities, and establish milestones.</p>
+<p>6. Plan architecture and security: Design the target environment and address security, compliance, and availability requirements.</p>
+<p>7. Prepare data migration: Plan data transfer, integration changes, and validation procedures.</p>
+<p>8. Modernize incrementally: Validate the approach with a pilot and implement changes in manageable phases.</p>
+<p>9. Test and deploy: Verify functionality, performance, security, and data integrity before production rollout.</p>
+<p>10. Monitor and optimize: Measure results, support users, and continuously improve the modernized application.</p>
+<p>Let's examine what each step involves and how to determine whether you're ready to proceed.</p>
+<p>Before selecting technologies or planning development work, identify what the modernization initiative needs to achieve.</p>
+<p>Clear business objectives help prioritize investments, guide technical decisions, and establish whether the project delivers meaningful improvements.</p>
+<p>Start by examining the problems affecting your application's performance, reliability, or business value.</p>
+<p>For example, a legacy order management system might still process transactions reliably but require extensive manual work whenever the business adds a new sales channel.</p>
+<p>In this situation, improving integration capabilities may be more valuable than replacing the entire application.</p>
+<p>An application's age alone doesn't justify a major technology investment. Whether legacy modernization makes sense for your business depends on the problems the existing system creates, the cost of maintaining it, and whether smaller improvements could resolve those issues.</p>
+<p>Once you've identified the problems, translate them into measurable objectives.</p>
+<p>If slow performance is the primary concern, establish a target for response times or transaction processing speed. If maintenance expenses are rising, determine what reduction in operating costs would justify the investment.</p>
+<p>Relevant key performance indicators (KPIs) may include:</p>
+<p>These baseline measurements will help determine whether the changes deliver the expected results.</p>
+<p>Completion check: You have a documented business case identifying the problems to address, expected outcomes, measurable KPIs, and stakeholders responsible for approving success.</p>
+<p>A legacy application assessment provides a clear picture of your current technology environment.</p>
+<p>Without this assessment, teams may underestimate project complexity, overlook critical components, or choose a modernization approach that doesn't address the application's actual limitations.</p>
+<p>Begin by creating an inventory of your applications and their supporting technologies.</p>
+<p>Document each application's purpose, business owner, primary users, operating environment, programming languages, frameworks, databases, and infrastructure requirements.</p>
+<p>Also identify software versions, third-party dependencies, licensing restrictions, and components approaching or past their end-of-support dates.</p>
+<p>If your organization operates several legacy applications, use a consistent assessment framework. This makes it easier to compare their business importance, technical condition, and modernization urgency.</p>
+<p>Review the application's codebase to identify issues that make maintenance and development difficult.</p>
+<p>Look for tightly coupled components, duplicated logic, outdated libraries, insufficient automated tests, and undocumented configurations.</p>
+<p>Pay particular attention to areas where small modifications regularly cause unexpected problems elsewhere in the system.</p>
+<p>For example, if payment processing, inventory management, and customer records share tightly connected code, modifying one function could require extensive testing across the entire application.</p>
+<p>Your infrastructure assessment should also cover hardware limitations, database compatibility, backup capabilities, operating systems, and unsupported dependencies.</p>
+<p>Analyze how the application performs during normal operations and periods of increased demand.</p>
+<p>Review response times, database queries, resource utilization, transaction volumes, and recurring failures.</p>
+<p>Existing monitoring data and incident records can reveal problems that aren't immediately visible during routine use.</p>
+<p>Determine whether performance limitations originate from inefficient application code, infrastructure capacity, database design, or external dependencies.</p>
+<p>This distinction matters because adding computing resources won't necessarily resolve problems caused by poor application logic.</p>
+<p>Completion check: You have an application inventory and technical assessment report documenting major components, technical debt, operational risks, and performance limitations.</p>
+<p>Legacy applications rarely operate independently. They exchange data with other systems, support interconnected business processes, and often contain business rules that aren't fully documented.</p>
+<p>Understanding these dependencies is essential because changing one component can affect several other applications or workflows.</p>
+<p>Document the processes that rely on the application, including the steps users follow, the data they need, and the expected outcomes.</p>
+<p>Work with business users, application owners, operations teams, and developers familiar with the system.</p>
+<p>Identify processes that cannot tolerate significant interruption, such as payment processing, order fulfillment, customer authentication, or financial reporting.</p>
+<p>Don't overlook activities that happen less frequently. Month-end financial reports, annual calculations, and scheduled data exchanges may depend on functionality that isn't exercised during everyday operations.</p>
+<p>Map how the application communicates with databases, APIs, third-party services, and other internal systems.</p>
+<p>Include scheduled jobs, file transfers, message queues, authentication services, and reporting tools.</p>
+<p>Some legacy applications contain years of accumulated business logic.</p>
+<p>Rules for pricing, approvals, calculations, or customer eligibility may exist only in source code, database procedures, or undocumented workflows.</p>
+<p>Identify these rules before modifying the underlying implementation.</p>
+<p>Where possible, create automated tests that capture existing expected behavior. These tests can help verify that the modernized application preserves required functionality.</p>
+<p>Completion check: Critical workflows, system dependencies, integrations, and business rules are documented and reviewed by the relevant business and technical owners.</p>
+<p>The appropriate modernization strategy depends on the application's technical condition, business importance, budget, and future requirements.</p>
+<p>Not every application needs to be rebuilt. Some systems require targeted improvements, while others may be better replaced or retired.</p>
+<p>Common legacy application modernization strategies include:</p>
+<p>Different applications within the same organization may require different approaches.</p>
+<p>Evaluate each option against your technical constraints and business requirements.</p>
+<p>Consider implementation effort, expected benefits, ongoing maintenance costs, required expertise, and potential disruption.</p>
+<p>For example, replatforming may be suitable for an application that operates reliably but depends on aging infrastructure. Rearchitecting may be necessary when tightly coupled components prevent independent updates or scaling.</p>
+<p>A complete rebuild requires particular caution. Recreating undocumented functionality can be expensive, and important business rules may be lost if the existing system hasn't been thoroughly assessed.</p>
+<p>The right strategy should solve the identified problems without introducing unnecessary cost or complexity.</p>
+<p>Completion check: Each application has a selected modernization strategy, documented rationale, estimated effort, and an approved decision on whether to modernize, retain, replace, or retire it.</p>
+<p>Once you've selected a modernization approach, convert it into an actionable plan.</p>
+<p>Your roadmap should establish what will change, in what order, who will be responsible, and how progress will be evaluated.</p>
+<p>Prioritize modernization work according to business value, technical complexity, urgency, and dependencies.</p>
+<p>Applications with unsupported components or significant security risks may require early attention. However, starting with the most complex application isn't always the best choice.</p>
+<p>A smaller, lower-risk application can provide an opportunity to validate tools, workflows, and team capabilities before modernizing more critical systems.</p>
+<p>Dependencies also affect the sequence. For example, a shared authentication service may need to be updated before applications that rely on it can be migrated.</p>
+<p>Prepare a budget covering the full modernization process rather than development alone.</p>
+<p>Compare upfront implementation expenses with expected operating costs over time.</p>
+<p>A modernization approach with a lower initial cost may still require significant ongoing maintenance.</p>
+<p>Allow contingency for unexpected issues, particularly when legacy documentation is incomplete or system dependencies remain uncertain.</p>
+<p>Divide the project into phases with defined deliverables and approval requirements.</p>
+<p>Assign responsible owners for architecture, development, security, data migration, testing, and business acceptance.</p>
+<p>Establish how project risks will be reported and who can approve changes to scope, budget, or deployment schedules.</p>
+<p>Keep the roadmap adaptable. Findings from pilot implementations or migration rehearsals may require changes to the original plan.</p>
+<p>Completion check: Your modernization roadmap includes prioritized activities, estimated costs, responsible owners, dependencies, milestones, and approval checkpoints.</p>
+<p>The target architecture determines how the modernized application will operate, scale, integrate with other systems, and remain maintainable.</p>
+<p>Security and compliance requirements should be incorporated into the design from the beginning.</p>
+<p>Choose an architecture that fits the application's actual requirements.</p>
+<p>Possible approaches include a modular monolith, service-oriented architecture, microservices, or event-driven components.</p>
+<p>Microservices aren't automatically the best option. Although they allow independent deployment and scaling of components, they also introduce complexity in communication, monitoring, deployment, and data management.</p>
+<p>For smaller applications or tightly integrated business processes, a well-structured modular architecture may be easier to maintain.</p>
+<p>Document architectural decisions covering application components, data storage, interfaces, infrastructure requirements, and operational responsibilities.</p>
+<p>Identify security weaknesses that should be resolved during modernization.</p>
+<p>Review authentication, authorization, encryption, secrets management, logging, and access to sensitive information.</p>
+<p>Evaluate third-party dependencies and establish processes for vulnerability scanning, patching, and security testing.</p>
+<p>Regulatory and contractual requirements should also influence the target design.</p>
+<p>Security controls should be applied throughout development and deployment rather than added shortly before release.</p>
+<p>Define how the application will remain available and recover from failures.</p>
+<p>Establish recovery time objectives (RTOs) and recovery point objectives (RPOs) based on business requirements.</p>
+<p>Plan backup procedures, restoration testing, appropriate redundancy, and monitoring for critical components.</p>
+<p>Validate that the target environment can support the required availability and recovery objectives.</p>
+<p>Completion check: The target architecture has documented design decisions, security controls, compliance requirements, availability objectives, and recovery procedures.</p>
+<p>Data migration is one of the most sensitive stages of legacy application modernization.</p>
+<p>Legacy databases may contain inconsistent records, outdated formats, duplicated information, or relationships that newer systems handle differently.</p>
+<p>A migration strategy needs to explain how data will be transferred, validated, and made available without compromising business operations.</p>
+<p>Begin by reviewing the quality and structure of existing data.</p>
+<p>Identify missing values, duplicate records, inconsistent formats, obsolete fields, and relationships that could create migration problems.</p>
+<p>Document how existing data structures correspond to the target system.</p>
+<p>For example, a legacy customer database might store contact details in a single field, while the new application requires separate fields for email addresses and phone numbers.</p>
+<p>The migration process needs defined transformation rules to handle these differences.</p>
+<p>Determine which records must be migrated, archived, retained for compliance, or excluded.</p>
+<p>Choose a migration approach based on data volume, application availability requirements, and acceptable downtime.</p>
+<p>Depending on the system, this may involve a scheduled migration during a maintenance window, staged transfers, or synchronization between old and new environments.</p>
+<p>Identify integrations that will need modification.</p>
+<p>Where applications exchange information through APIs, files, or messaging systems, verify that the modernized implementation supports the required data formats and business behavior.</p>
+<p>If the legacy and modernized applications will operate simultaneously, define how data updates will be synchronized between them.</p>
+<p>Test the migration process using representative datasets before transferring production data.</p>
+<p>Validate record counts, field values, relationships, and critical business calculations.</p>
+<p>For sensitive or business-critical information, use appropriate reconciliation methods, including integrity checks where applicable.</p>
+<p>Document how inconsistencies will be identified and resolved.</p>
+<p>Also establish what happens if migration fails or the application needs to return to its previous environment.</p>
+<p>Completion check: Data mapping rules are approved, migration rehearsals have been completed, and reconciliation procedures can verify data accuracy.</p>
+<p>Modernizing an entire application in a single major release can increase project risk, particularly when the system supports critical business operations.</p>
+<p>An incremental approach allows teams to validate decisions, identify problems earlier, and limit the impact of failures.</p>
+<p>Select a manageable component or workload to validate your modernization approach.</p>
+<p>The pilot should test an important assumption, such as whether the target platform supports the application, whether a legacy integration can be replaced, or whether an architectural change improves performance.</p>
+<p>Define success criteria before implementation.</p>
+<p>A useful pilot should provide evidence that the approach is technically feasible and that the team can manage its operational requirements.</p>
+<p>Use the findings to improve estimates, identify missing skills, and refine the broader implementation plan.</p>
+<p>Divide the application into manageable migration or development units where its architecture allows.</p>
+<p>One approach is the Strangler Fig pattern, which gradually replaces legacy functionality while the remaining parts of the original application continue operating.</p>
+<p>For example, an organization might modernize customer notifications first, followed by reporting and then core transaction processing.</p>
+<p>This can reduce the risks associated with replacing an entire system at once.</p>
+<p>However, incremental modernization also requires careful coordination. Temporary integrations, duplicated components, and parallel systems can introduce complexity.</p>
+<p>Each phase should have defined boundaries, validation requirements, and completion criteria.</p>
+<p>Establish repeatable processes for developing, testing, and deploying application changes.</p>
+<p>Continuous integration and continuous delivery (CI/CD) pipelines can automate builds, execute tests, and promote approved changes through environments.</p>
+<p>Use version control, consistent configuration management, and infrastructure as code where appropriate.</p>
+<p>Include security and quality checks in the delivery process to reduce the risk of introducing defects during frequent releases.</p>
+<p>Completion check: The pilot has validated the selected approach, implementation is divided into manageable phases, and repeatable build, test, and deployment processes are established.</p>
+<p>Modernization isn't complete when the new application runs successfully in a development environment.</p>
+<p>It must perform the required business functions, communicate correctly with connected systems, and meet operational expectations before production rollout.</p>
+<p>Develop a testing plan based on the application's critical workflows and identified risks.</p>
+<p>Automate repeatable tests where practical, especially for critical business processes.</p>
+<p>Compare results against the performance baselines and acceptance criteria established earlier.</p>
+<p>Business users should verify that the modernized application supports their actual workflows.</p>
+<p>User acceptance testing (UAT) should include routine operations, exception handling, reporting requirements, and tasks that depend on specialized business knowledge.</p>
+<p>Use representative migrated data during testing.</p>
+<p>Confirm that critical records, calculations, and reports remain accurate after the transition.</p>
+<p>Resolve issues affecting essential operations before approving production deployment.</p>
+<p>Prepare a documented deployment plan outlining the sequence of activities, responsible teams, communication channels, and expected service interruptions.</p>
+<p>Choose a deployment method appropriate for the application, such as a phased rollout, canary release, or scheduled cutover.</p>
+<p>Establish measurable conditions that would stop deployment or trigger a rollback.</p>
+<p>Rollback planning must account for data changes made after cutover. Restoring an earlier application version doesn't automatically restore database consistency, especially if new transactions have already been processed.</p>
+<p>Rehearse deployment and recovery procedures in a suitable non-production environment.</p>
+<p>Completion check: Required tests have passed, business owners have approved acceptance criteria, and deployment, cutover, and recovery procedures have been validated.</p>
+<p>The initial deployment marks the beginning of ongoing operation rather than the end of modernization.</p>
+<p>The application needs continued monitoring and maintenance to ensure that expected improvements are sustained.</p>
+<p>Compare post-modernization results against the baseline established at the beginning of the project.</p>
+<p>Track metrics linked to your business objectives, such as application availability, maintenance costs, response times, deployment frequency, security vulnerabilities, and user satisfaction.</p>
+<p>Use monitoring tools, logs, traces, and alerts to identify problems that may not be visible through basic availability checks.</p>
+<p>Review performance after deployment and at agreed intervals to determine whether the modernization initiative is meeting its objectives.</p>
+<p>Technical improvements may introduce changes to established workflows.</p>
+<p>Provide relevant training, updated documentation, and support resources for users and operational teams.</p>
+<p>Ensure that administrators and developers understand the new architecture, deployment processes, monitoring tools, and incident response procedures.</p>
+<p>Collect user feedback to identify usability issues or missing functionality.</p>
+<p>Use production data and operational feedback to guide further improvements.</p>
+<p>Optimization may involve updating dependencies, improving database queries, adjusting infrastructure capacity, strengthening security controls, or simplifying application components.</p>
+<p>Once replacement functionality is stable and approved, begin decommissioning components that are no longer needed.</p>
+<p>Before retirement, confirm that dependent applications have been migrated, necessary records are retained, and archival or compliance obligations have been met.</p>
+<p>Removing unused infrastructure and software can reduce maintenance costs and unnecessary security exposure.</p>
+<p>Completion check: Monitoring and support responsibilities are established, modernization KPIs are reviewed, and unused legacy components have an approved retirement plan.</p>
+<p>Organizations without the internal resources to manage legacy modernization may need support from an external software development company.</p>
+<p>Depending on the project, a development partner can assist with application assessments, code refactoring, architecture redesign, system integration, data migration, and implementation.</p>
+<p>Companies offering custom software development and application modernization services include:</p>
+<p>Idea Maker: Provides custom software development and legacy application modernization services, including application assessments, code refactoring, architecture redesign, and cloud migration.</p>
+<p>ScienceSoft: Offers custom software development, legacy software modernization, application reengineering, cloud migration, and system integration services.</p>
+<p>Itransition: Provides custom application development, legacy application modernization, system integration, software migration, and post-modernization support.</p>
+<p>Simform: Offers digital product engineering, software modernization, cloud and platform engineering, and data integration services.</p>
+<p>These are examples of providers rather than a ranked comparison.</p>
+<p>When evaluating a development partner, consider their experience with your existing technology stack, ability to handle complex integrations, approach to data security, and experience delivering projects with similar requirements.</p>
+<p>Ask prospective providers how they assess legacy systems, manage migration risks, preserve critical business logic, and validate application functionality before deployment.</p>
+<p>The main steps are defining business goals, assessing existing applications, mapping dependencies, choosing a modernization strategy, developing a roadmap, designing the target architecture, planning data migration, implementing changes, testing and deploying, and continuously optimizing the application.</p>
+<p>The exact sequence may vary depending on the application's complexity and business requirements.</p>
+<p>Start by evaluating the application's business value, technical condition, dependencies, and future requirements.</p>
+<p>Rehosting or replatforming may be sufficient when the application functions well and infrastructure is the primary concern.</p>
+<p>Refactoring or rearchitecting may be necessary when code quality or architectural limitations affect maintainability and scalability.</p>
+<p>Rebuilding or replacing becomes an option when the existing implementation no longer meets business needs or would be too costly to maintain.</p>
+<p>Compare expected benefits, implementation costs, risks, and ongoing maintenance requirements before making a decision.</p>
+<p>Common risks include undocumented dependencies, data loss or corruption, unexpected downtime, security vulnerabilities, integration failures, and loss of essential business functionality.</p>
+<p>Projects may also experience delays or budget overruns when technical complexity is underestimated.</p>
+<p>These risks can be reduced through early assessment, phased implementation, migration rehearsals, comprehensive testing, and validated recovery procedures.</p>
+<p>The timeline depends on the application's size, architecture, technical debt, data complexity, integrations, and selected modernization approach.</p>
+<p>A limited rehosting or refactoring project generally requires less effort than rebuilding a large application or modernizing several interconnected systems.</p>
+<p>A reliable estimate requires an initial technical assessment. A pilot or proof of concept can help validate assumptions about implementation effort and potential challenges.</p>
+<p>Measure success against the business and technical objectives established before implementation.</p>
+<p>Relevant indicators include application performance, availability, maintenance costs, security improvements, deployment speed, and user satisfaction.</p>
+<p>For example, if reducing maintenance effort was the primary goal, lower support costs and faster resolution of application issues may be more meaningful than infrastructure performance alone.</p>
+<p>Modernization success should be evaluated over time rather than only immediately after deployment.</p>
+<p>Legacy application modernization works best when it follows a structured plan based on business needs and the realities of existing technology.</p>
+<p>The ten steps in this checklist cover the key decisions and activities involved, from assessing legacy systems and selecting a modernization strategy to migrating data, validating functionality, and maintaining the resulting application.</p>
+<p>Careful dependency mapping, realistic planning, incremental implementation, and thorough testing help reduce risks throughout the transition.</p>
+<p>Start by assessing your existing applications and defining what modernization needs to achieve. Those findings will help you identify which systems deserve attention, where to invest resources, and how to approach modernization without introducing unnecessary complexity.</p>
 <p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/why-your-ai-agent-can-t-read-the-web-and-how-to-build-a-fetch-layer-that-can/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/a-10-point-checklist-for-legacy-application-modernization/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

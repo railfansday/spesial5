@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transformers Model Integration Contracts</title>
+    <title>CertiK and Columbia University Bring Math Proofs to the GPU Code Behind Every Large AI Model</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9893.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,142 +15,42 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Transformers Model Integration Contracts</h1>
+        <h1>CertiK and Columbia University Bring Math Proofs to the GPU Code Behind Every Large AI Model</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/7rEmNIeHNFOBfZZtUMQerOZIGGH3-jxe3dfy.png" alt="CertiK and Columbia University Bring Math Proofs to the GPU Code Behind Every Large AI Model" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/7rEmNIeHNFOBfZZtUMQerOZIGGH3-jxe3dfy.png" alt="CertiK and Columbia University Bring Math Proofs to the GPU Code Behind Every Large AI Model" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>On July 30, 2026, Transformers enabled PyTorch's scaled dot-product attention
-(SDPA) for T5. As a side effect, UMT5's decoder could attend to future tokens.
-During training, it could peek at the answer it was supposed to predict.
-Nothing crashed, and the bug stayed in main for almost two months.</p>
-<p>When we later replayed those commits, a small UMT5 model running on CPU flagged
-it on every one of them. This post is about that model and the tests built
-around it.</p>
-<p>Transformers supports over 750
-model types, and its test suite is big: 88,000+ CPU tests on main, plus
-200,000+ GPU tests in a daily run. Model tests are only part of it: we also
-test pipelines, training, distributed execution, quantization and attention
-kernels.</p>
-<p>The integration tests load real checkpoints and exercise the model's API on
-real hardware. Running all of that on every PR would mean keeping a lot of GPUs
-busy all day long, which isn't practical. By the time a scheduled run finds a
-regression, it may already be in main.</p>
-<p>Our approach is to shrink the model instead. We build a fixture: a small
-model made from the real checkpoint's configuration, with fewer and narrower
-layers but every kind of layer it has, and its tokenizer and processor files
-unchanged. It is published once, then reused. We run "fast integration tests"
-against it on a cheap CPU runner. In our
-CPU study,
-the experimental UMT5 fixture used 66 MB of weights; the source checkpoint
-is 1,227 MB.</p>
-<p>This also covers very large models: some don't fit on our standard GPU
-runners, but their fixtures run on CPU.</p>
-<p>Model integrators already build tiny test models (Transformers' tiny-random-*
-checkpoints). We wanted a common recipe, and
-checks that go beyond loading the model and running a forward pass. The UMT5
-bug would have passed a forward pass just fine.</p>
-<p>Fixtures won't replace full integration tests, but on PRs they give us a
-chance to catch bugs before they reach main.</p>
-<p>transformers-mic is a proposed
-standard for packaging these tests. A Model Integration Contract (MIC) has
-three parts:</p>
-<p>The contract holds if running the usage path on the fixture still produces the
-baselines.</p>
-<p>A contract covers an architecture and a usage path, not a single checkpoint:
-compatible checkpoints can share a fixture, while each keeps its own expected
-results. We publish them in huggingface-mic.</p>
-<p>For example, the SmolLM contract generates from prompts such as "The capital
-of France is" and compares its token IDs with a recorded answer. After loading
-the model and tokenizer, the generation code is, simplified to one prompt:</p>
-<p>It also compares training loss, checks that gradients are finite and verifies
-that an optimizer step changes the weights. See the full
-usage.md.</p>
-<p>A fleet dataset
-on the Hub pins each MIC to a frozen revision, along with the package versions
-used to record its baselines. Each CI run records the fleet revision it
-used, so we can reproduce it later.</p>
-<p>On a PR, we pick MICs based on the files the patch changes.</p>
-<p>We replayed frozen MICs over five months of Transformers commits. The small
-UMT5 fixture flagged the regression from its introduction on July 30, 2026
-until its fix on September 28.
-Label log-probabilities differed from the reviewed baseline by 1.22 and training
-loss by about 0.20.</p>
-<p>One detail mattered: the contract used SDPA, the default attention path.
-Running only the eager attention variant missed the bug. A fixture only
-helps if it goes through the same code as the real checkpoint.</p>
-<p>We then reverted the fix on a proof branch in Transformers' CI. The check
-failed with the same differences, and the selected T5 contract's runner step
-took 13.4 seconds on CPU, excluding setup.</p>
-<p>The replay results
-and the CI demo
-have the measurements and reproduction details.</p>
-<p>The first recipe was simple: make the dimensions smaller and keep fewer
-layers. That wasn't enough for mixed architectures. Keeping two layers is no
-use if both use sliding attention and the full-attention layers disappear.</p>
-<p>We also keep the original weights file format. Otherwise we would skip the
-conversion code that runs when a user loads the real checkpoint.
-The full recipe
-has more detail.</p>
-<p>The Llama 4 Scout shrink report
-shows what this looks like on a big model. 108.6 billion parameters become 44.7
-million. The vision stack goes from 34 layers to 2 and the language stack from
-48 to 4, keeping the checked layer kinds and MoE routing style.</p>
-<p>Our CLI, tmic, creates the contract and builds the fixture. For a new
-model, an LLM drafts the usage code and manifest, and CPU and GPU runs measure
-the candidate baselines. The LLM drafts; it doesn't approve. Changed
-expectations require human review.</p>
-<p>To try it on your machine, use your source checkpoint in place of org/model:</p>
-<p>It drafts the contract, builds the fixture and records its baselines on your
-machine, asking you to review each step, and stops before uploading anything.
-For a new model, the draft comes from an LLM through Inference Providers, billed
-to your own account (--bill-to ''). The
-CLI docs
-cover the individual steps.</p>
-<p>We used agents to build MICs across model families. When they hit an edge
-case, we fixed the recipe itself rather than the one fixture, with help from
-model experts. The published models and remaining gaps are in the
-coverage space.</p>
-<p>With random weights, our Whisper fixture barely responded to changes in
-the audio. It ran, but that made it a poor test of the audio path.</p>
-<p>So we trained it on a few tones paired with words such as "red" and "green".
-We weren't teaching it speech recognition, just making audio changes visible
-in its outputs. In our weight-initialization study,
-the random Whisper fixtures caught 18 of 24 injected faults. The overfit
-fixtures caught all 24.</p>
-<p>That gives us two ways to build the weights:</p>
-<p>The Whisper result doesn't settle which is better. Those were synthetic
-faults, and we haven't found a real regression caught only by the overfit
-version. Both versions missed an assisted-decoding bug that the real Whisper
-checkpoint exposed.</p>
-<p>So we keep random weights when they pass the checks, and overfit when we need
-better sensitivity or readable answers. Training takes seconds, but it is one
-more step that can fail to converge, and one more thing to maintain. The comparison
-has the results for both.</p>
-<p>As of November 1, 2026, the MIC job in Transformers CI
-reports failures without blocking PRs. Whether it should block depends on
-things we haven't measured yet:</p>
-<p>We also don't know how many bugs, like the Whisper assisted-decoding one, only
-show up with real weights, or whether overfitting catches real bugs that random weights miss.</p>
-<p>Coverage is still partial, across model families and the APIs people use.
-When a regression slips through, we can add the missing usage path and replay
-it on the broken and fixed versions. We'll keep existing tests until their
-coverage is accounted for.</p>
-<p>Finally, we'd like to link original Hub model pages to their MICs, so a
-developer or an agent using a checkpoint could start from an example tested on
-that checkpoint, its environment and its expected outputs.</p>
-<p>Want to help? Pick an uncovered model from the
-coverage space, try
-the tmic workflow,
-and contribute a usage path or review a generated contract.</p>
-<p>MIC contract coverage of Transformers model types</p>
-<p>t5/umt5 in a blog post in 2026, never thought I’d see the day 😍</p>
-<p>MIC contract coverage of Transformers model types</p>
+                <p>AI, Web3, Cybersecurity, Startup Funding & Enterprise SaaS. Top Journalist, Analyst & Thought Leadership Media Leader.</p>
+<p>AI, Web3, Cybersecurity, Startup Funding & Enterprise SaaS. Top Journalist, Analyst & Thought Leadership Media Leader.</p>
+<p>AI, Web3, Cybersecurity, Startup Funding & Enterprise SaaS. Top Journalist, Analyst & Thought Leadership Media Leader.</p>
+<p>Amazon, Microsoft, Alphabet and Meta plan to spend about $725 billion on capital projects in 2026, most of it on AI data centers and chips, while the cost of the largest AI training runs has grown about 2.4 times a year since 2016 and is on track to pass $1 billion by 2027. Nearly all of that money turns into time on graphics processing units (GPUs). Every second of that time runs through kernels, the small, heavily tuned programs that tell a GPU how to multiply large tables of numbers or how to compute attention, the step that lets a language model weigh every word against every other word.</p>
+<p>Those kernels are some of the most valuable code in AI and some of the hardest to check. A bug in one rarely crashes anything, so the job keeps running while quietly producing wrong numbers that flow into the next step of training or into the answers a model gives. CertiK and researchers at Columbia University have now built TensorLean, a system that uses mathematics to prove a production GPU kernel computes what it should. The team has applied it to more than 100 kernels from DeepSeek and the widely used FlashAttention library, finding 25 bugs along the way.</p>
+<p>The 2026 plans are large at every company. Amazon expects to approach $200 billion, Microsoft has guided to $190 billion for the calendar year, Alphabet to between $180 billion and $190 billion and Meta to between $125 billion and $145 billion, while Alphabet has already told investors that its spending will rise significantly again in 2027. Hardware such as chips, servers and the networking between them makes up 47% to 67% of the cost of developing a frontier model, so the efficiency of that hardware is where most of the money is won or lost.</p>
+<p>That efficiency is decided by kernels. FlashAttention, the open-source attention library with more than 25,000 stars on GitHub, supplies features used in models such as Mistral 7B, Gemma-2 and Grok, while DeepSeek released kernels such as DeepGEMM, which reaches up to 1,550 trillion operations a second on an H800 GPU. Because a training cluster runs the same few kernels billions of times, a small speed gain in one of them is worth more than almost any other software change, which is why some of the best engineers in AI spend their careers making kernels faster.</p>
+<p>The TensorLean team puts the stakes in simple terms. If a training run spends $100 million on compute and 1% of that work must be repeated because of an error, the extra cost is $1 million. At the $1 billion scale Epoch AI expects the largest runs to reach by 2027, the same 1% would cost $10 million (our arithmetic). Failures are already routine at that scale: Meta's Llama 3 405B run on 16,384 H100 GPUs saw 419 unexpected interruptions over 54 days, about one every 3.1 hours.</p>
+<p>The failures that crash a job are the easy ones, since the job stops and restarts from a saved checkpoint. The hard ones are silent: Meta traced six interruptions in a 54-day window to silent data corruption, where a chip returns a wrong answer without any error, while Google has estimated one such event every one to two weeks during Gemini training. Researchers at Harvard and Amazon found that a model's loss curve, the main health signal engineers watch, can look normal while its weights drift away from where they should be. A bug in a kernel behaves like silent corruption with one difference that makes it costlier, because a faulty chip affects one machine while a faulty kernel is copied to every GPU that runs it.</p>
+<p>FlashAttention shows how quickly the code has changed. The second version ran at about 350 trillion operations a second on Nvidia's H100, around 35% of the chip's peak, before FlashAttention-3 reached 740 trillion in July 2024, about 75% of peak, with close to 1.2 quadrillion using 8-bit numbers. FlashAttention-4 then reached 1,613 trillion operations a second on Nvidia's newer B200 in March 2026, a 4.6-fold rise in under three years across two chip generations.</p>
+<p>Each jump came from a trick that makes the code harder to reason about. The kernels copy data while doing math at the same time, assign some groups of GPU threads only to loading data while others only compute, change how they split the work depending on the size of the input and use lower-precision numbers such as FP8, which doubles speed but adds rounding. Testing checks a kernel on the inputs someone thought to try, so a bug that only appears for one unusual input size, or only when a copy finishes a moment late, can pass every test and still ship.</p>
+<p>Formal verification replaces examples with proof. A tester runs a program on chosen inputs and checks the outputs, while a formal proof shows mathematically that the program meets its requirements for every input inside a defined range. TensorLean writes these proofs in Lean, a proof language in which a small, trusted checker confirms every step, so anyone can rerun the check and get the same answer without trusting the people who wrote the proof.</p>
+<p>The system works on PTX, the low-level instruction set Nvidia's compiler produces just before code runs on a GPU, so the proof covers the code that actually executes after the compiler has made its changes. TensorLean models the speed tricks together, including data transfers that overlap with computation, layouts that change with the size of the task and lower-precision arithmetic held to set numerical tolerances.</p>
+<p>Specifications written for one kernel can be reused for related kernels, which lets the approach spread to more code and repeat each time that code changes. That reuse is what makes the method practical for teams that ship new optimizations every few weeks.</p>
+<p>The team has applied TensorLean to more than 100 production GPU kernels across several generations of GPU architecture, including kernels from DeepSeek and from FlashAttention. The work uncovered two bugs in DeepSeek's kernels and 23 in FlashAttention. When a proof fails, it points to the case that breaks. Once the code is repaired, the team proves the new version again so the fix is confirmed to meet its requirements.</p>
+<p>The choice of targets matters because both codebases are shared. FlashAttention has more than 3,000 forks on GitHub while DeepSeek's kernels were released openly for anyone to build on, which means a bug in either one travels into many other projects. A fix proved at the source protects every team downstream, which turns one research effort into a gain for a large part of the open-source AI stack.</p>
+<p>For teams that train or serve large models, TensorLean fits into the work they already do. After each round of optimization an engineer can measure the speed gain, rerun verification to check that the change did not introduce a computational error and, when the code meets its requirements, keep a machine-checkable proof alongside it. That record lowers the risk of wasted compute, costly training reruns and wrong results feeding into later calculations, which are the losses that grow with every increase in cluster size.</p>
+<p>The need will grow as AI writes more of its own code. Researchers are already using language-model agents to generate GPU kernels and prove them correct in Lean. Kernel code produced that way will arrive faster than any human team can review it. The practical starting point is the code that runs most often, such as attention, matrix multiplication and mixture-of-experts routing, where a proof protects the largest share of compute and where specifications can be reused across versions.</p>
+<p>Formal verification has a long history in systems software. seL4 became the first fully verified operating system kernel in 2009. CertiKOS, a verified concurrent operating system kernel, followed at Yale with Ronghui Gu as a lead designer. Gu and Yale professor Zhong Shao founded CertiK in 2017. The company has since worked with more than 5,500 enterprise and institutional clients and found more than 119,000 code vulnerabilities.</p>
+<p>AI has made proofs far cheaper to produce. DeepMind's AlphaProof reached silver-medal level at the International Mathematical Olympiad in 2024 with proofs written in Lean, while Anthropic formalized Fermat's Last Theorem in Lean with Claude in 11 days in September, producing about 13 million lines. In October, Claude worked with the firm Theorem to prove 123 open-source libraries free of crashes with about 180 million lines of proof, roughly 900 times the size of the seL4 proof (our arithmetic). TensorLean carries that progress into the computing code that AI itself runs on.</p>
+<p>As training budgets head toward $1 billion per run, a proof of correctness is likely to become as routine a part of shipping a kernel as a speed benchmark is today. Teams that can prove each optimization correct can push for speed with more confidence, while teams that rely on testing alone carry a growing risk of finding errors only after the compute has been spent.</p>
+<p>For CertiK, TensorLean extends formal verification from blockchains and operating systems into AI infrastructure, the fastest-growing category of computing spend. The next test is adoption: whether the labs and library maintainers who write the fastest kernels start shipping proofs alongside them, which would give the industry a firmer base for every gain in AI computing efficiency that follows.</p>
+<p>Don’t forget to like and share the story!</p>
+<p>Vested Interest Disclosure: HackerNoon has reviewed the report for quality, but the claims herein belong to the author. #DYOR.</p>
+<p>AI Made Writing Code Cheap. Getting It Reviewed Now Takes 5x Longer, Says LinearB’s CEO</p>
+<p>AI, Web3, Cybersecurity, Startup Funding & Enterprise SaaS. Top Journalist, Analyst & Thought Leadership Media Leader.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/transformers-mic" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/certik-and-columbia-university-bring-math-proofs-to-the-gpu-code-behind-every-large-ai-model?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

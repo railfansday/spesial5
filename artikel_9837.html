@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How I Traced a Missing Vercel AI SDK Duration Histogram</title>
+    <title>Fridges, Hackers, AI and La Flemme</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9837.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,50 +15,59 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How I Traced a Missing Vercel AI SDK Duration Histogram</h1>
+        <h1>Fridges, Hackers, AI and La Flemme</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/5wpKgV75aONqkTJlafw2yQmK9yd2-6y83bbj.png" alt="How I Traced a Missing Vercel AI SDK Duration Histogram" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/sGExHuk5qORZHCpWB8WbCgF95Nl1-e403bzn.png" alt="Fridges, Hackers, AI and La Flemme" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/5wpKgV75aONqkTJlafw2yQmK9yd2-6y83bbj.png" alt="How I Traced a Missing Vercel AI SDK Duration Histogram" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/sGExHuk5qORZHCpWB8WbCgF95Nl1-e403bzn.png" alt="Fridges, Hackers, AI and La Flemme" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I work on slow clicks and missing browser traces. I'm an OpenTelemetry Browser approver.</p>
-<p>I work on slow clicks and missing browser traces. I'm an OpenTelemetry Browser approver.</p>
-<p>I work on slow clicks and missing browser traces. I'm an OpenTelemetry Browser approver.</p>
-<p>I could see how long the model call took in an OpenTelemetry span. My metrics export showed a counter I’d added during the same run. I looked for the inference duration histogram and came up empty. The counter told me the metrics exporter worked.</p>
-<p>I filed AI SDK issue #24229 with the reproduction. The histogram shipped in @ai-sdk/otel 1.0.160 through PR #24354. That gave me a way to check what gen_ai.client.inference.duration actually measures.</p>
-<p>I ran 25 calls on each version, five each for three generation delays, a stream and an error. A local mock model supplied the delays with timers, and I flushed the in-memory export after every call. The older version recorded zero histogram observations. The new version recorded 25, including all five errors.</p>
-<p>I started with ai 7.0.157 and @ai-sdk/otel 1.0.157. The reproduction printed this:</p>
-<p>An empty export could have sent me back to the exporter setup. Seeing repro.control gave me a reason to look at the integration first.</p>
-<p>The duration I saw was gen_ai.client.operation.duration, an attribute on the span. To query the distribution I needed the integration to emit a histogram.</p>
-<p>The span and the histogram take separate paths. A TracerProvider sends spans to a span exporter. The metric needs a MeterProvider, a reader and a metric exporter.</p>
-<p>In my reproduction I registered new OpenTelemetry() before setting the global meter provider. That order works with the shipped code because it looks up the meter when it records the duration.</p>
-<p>I pinned ai and @ai-sdk/otel at 7.0.157 and 1.0.157 for the first run, then 7.0.160 and 1.0.160 for the second configuration. Both used OpenTelemetry API 1.9.1, metrics SDK 2.8.0, trace SDK 2.7.1 and Node 24.22.2.</p>
-<p>Both configurations ran on the same Linux server. Within each one I called MockLanguageModelV4 sequentially and flushed after each attempt. I disabled retries and left CPU and network settings alone.</p>
-<p>Wait 40 ms, emit text, wait 160 ms, finish</p>
-<p>An 80 ms timer can run a little late. I wanted to see the groups separate in the export, so I used delays far enough apart to see that.</p>
-<p>The in-memory exporter let me read the measurements directly. Here’s how I set it up after registering tracing and the integration.</p>
-<p>I incremented repro.control and flushed after every attempt. The issue reproduction has the tracing setup and mock model. To repeat the comparison, pin both AI SDK packages together.</p>
-<p>Both counters ended at 25. Version 1.0.157 exported no inference histogram. Version 1.0.160 exported a histogram with 25 observations.</p>
-<p>After each call, I subtracted the previous cumulative sum for the same attribute set, checking that its count had increased by one. That gave me a duration in seconds for that call. I converted the medians to milliseconds for the table.</p>
-<p>The three generation groups landed close to their timer delays. The stream and the errors contributed their own measurements.</p>
-<p>I had the mock wait 40 ms, emit text, then wait another 160 ms before closing. The caller consumed all of textStream.</p>
-<p>First text reached my caller at a median of 43.6 ms across five calls. The histogram recorded a median of 202.3 ms for the full invocation. Those clocks start in different places, so I’d track time to first text as its own measurement.</p>
-<p>For future reproductions I’d save the GenAI semantic convention revision alongside the package versions.</p>
-<p>The failing mock waited 80 ms and threw Error('controlled failure'). All five attempts were recorded with retries disabled.</p>
-<p>I want to see those failures when I’m checking latency. The PR and its tests also cover cancellation and failed stream attempts during retries. My test exercised a thrown error.</p>
-<p>The count is model attempts. One user action can cause several model calls, and retries can add more attempts. Local tool execution time is outside this duration.</p>
-<p>The error point had the operation and requested model alongside error.type. The provider was normalized from openai.chat to openai. The point can also carry a response model when the integration has one.</p>
-<p>I chose the model IDs as labels for the mock groups. The exported point had no prompt or response text.</p>
-<p>The updated integration docs show that telemetry.isEnabled: false turns off metrics for the call. The payload controls recordInputs and recordOutputs leave duration recording on. This histogram comes from the new integration.</p>
-<p>I flushed after each attempt and chose cumulative aggregation. By the fifth flush, the snapshot for that group already included the previous four calls.</p>
-<p>The export puts bucket counts into discrete intervals. I’d check how my backend represents them before writing a percentile query. The integration suggests boundaries in seconds, and the metrics SDK can override them.</p>
-<p>I’d start the same way on a real service. Check the control counter and one successful call, then read the metric name, unit, attributes, count and sum in the export. Try one failed call and let one stream close. I would have missed that last 160 ms if I’d stopped reading at the first chunk.</p>
-<p>I Sent 12 AI Shoppers Through a Broken Checkout, but Only One Bought Anything</p>
-<p>I work on slow clicks and missing browser traces. I'm an OpenTelemetry Browser approver.</p>
+                <p>In light of the recent attacks on refrigeration systems in supermarkets across nine European countries, as well as on several blood banks in France, it would be prudent for cybersecurity professionals to analyse the factors that may have been involved, in order to identify valuable lessons.</p>
+<p>In the first wave, which affected hundreds of French supermarkets on the night of 11–12 October, Danfoss stated that the compromised devices were primarily end-of-life AK-SM 800 and AK-SC 355 controllers, which no longer receive security updates, along with some current AK-SM 800A units running outdated firmware.</p>
+<p>This write-up is intended solely for educational purposes and should not be read as a step-by-step guide to carrying out such attacks. Rather, it aims to offer a novel perspective, illustrated through a high-profile case, on how artificial intelligence can be leveraged to weaponize publicly available vulnerability information.</p>
+<p>Although the initial access vector remained uncertain at the time of writing, one fact is clear: thousands of Danfoss controllers are exposed to the internet, some of which may be running outdated firmware or end-of-life models.</p>
+<p>According to data from the Shodan and Censys search engines, France accounts for the majority of these exposed devices. Because these controllers are usually administered remotely by third-party refrigeration service providers, internet-facing access has become standard practice, which helps explain the scale of the exposure.</p>
+<p>Accordingly, the analysis that follows focuses on this attack surface.</p>
+<p>On 9 August 2026, Amir Zaltzman of Claroty Team82 published research describing three vulnerabilities in the Danfoss AK-SM 800A refrigeration controller, all of which have since been patched: a hidden “code-of-the-day” authentication bypass (CVE-2025–41450), a command injection flaw in the SMTP email password field that enables post-authentication remote code execution (CVE-2025–41451), and an Nginx configuration injection that causes denial of service (CVE-2025–41452). Notably, although the author states that the team fully reconstructed the date-based daily password algorithm, the publication does not explain it, redacts the two request attributes required to trigger the bypass, and includes no working exploit payload.</p>
+<p>On 13 October 2026, Claroty published a follow-up article in which Zaltzman reports that:</p>
+<p>However, the author also acknowledges that:</p>
+<p>It is at this point that an advisory published by Synacktiv becomes relevant.</p>
+<p>In 2023, Synacktiv published a security advisory describing how Danfoss SM800 and SC255 system managers (firmware version 08.095.008 and earlier) accept a hidden code_of_day password derived solely from the current date. Because the device discloses its date without requiring authentication, any attacker can compute this password and gain access to authenticated functionality. The advisory thus describes the very mechanism the AI agent failed to identify on its own, effectively supplying the answer that Claroty’s experiment required human guidance to reach.</p>
+<p>More significantly, this suggests that Danfoss carried a publicly reported class of weakness into a newer product line. The company’s publicly accessible firmware repository (https://sm800a.danfoss.com/sw_shared/) shows that, between Synacktiv’s advisory in February 2023 and version 4.2, the last version affected by CVE-2025–41450, Danfoss released several firmware updates for the AK-SM 800A. Taken together with Claroty’s findings, this indicates that the AK-SM 800A, a product actively sold and supported worldwide, continued to ship with an authentication weakness resembling one already publicly documented in older, end-of-life models since 2023.</p>
+<p>Claroty’s article on the use of AI stated that:</p>
+<p>This statement suggests that the LLM, operating independently, was not entirely effective and required substantial human guidance from skilled investigators.</p>
+<p>Although Claroty’s conclusions are valid, they raise three important research questions: Could an AI model independently reproduce an already documented vulnerability if provided with the publicly available 2023 report? How much human guidance would be required to achieve this? Can we leverage AI to reverse-engineer firmware and increase the chances of success?</p>
+<p>To investigate these questions, two experimental scenarios were considered:</p>
+<p>The purpose of this comparison is to complement Claroty’s research by assessing the extent to which publicly available information alone enables an AI model to reproduce a documented vulnerability, identifying what additional information Claroty’s model required to successfully reproduce it, and determining how access to further reverse-engineered technical information affects the model’s capabilities and the degree of human intervention required.</p>
+<p>Since Danfoss makes its firmware publicly available through its software repository, even an inexperienced attacker could download the firmware and use AI assistance to analyse it. This process relies entirely on static firmware reverse-engineering and does not require executing the firmware or interacting with the target device.</p>
+<p>Although this process would traditionally require a certain level of reverse-engineering expertise and potentially considerable time, the task was completed in a matter of minutes with the assistance of claude-opus-4-8. This demonstrates once again how AI can significantly reduce the technical expertise and time traditionally required to analyse publicly available firmware, potentially lowering the barrier to entry for individuals seeking to identify and reproduce vulnerabilities in industrial control systems.</p>
+<p>After extracting the nested .spk package and 7-Zip archive to obtain the ARM binaries, the relevant algorithm can be identified through static binary analysis. The availability of DWARF debugging information and retained symbol names makes it possible to locate the target function check_code_of_day through symbol-table and debug-information searches, trace its callers and cross-references, and examine its implementation through disassembly into assembly language.</p>
+<p>To evaluate whether an LLM could autonomously develop an exploitation tool using publicly available information about the vulnerability, DeepSeek-V4.1-Flash-1017 was provided with Synacktiv’s published findings and the corresponding CVE description.</p>
+<p>To constrain the experiment and ensure that the results reflected the model’s ability to reason from the supplied information, explicit instructions were given to prevent further research or retrieval of external information concerning the vulnerability. The model was therefore restricted to the provided materials (as much as possible).</p>
+<p>The objective was to determine whether the model could autonomously, without human intervention or additional guidance, produce a Python script capable of targeting a URL hosting vulnerable Danfoss firmware and exploiting the identified authentication bypass.</p>
+<p>Both LLM sessions successfully produced a Python script. However, the reasoning process and the resulting approach differed considerably depending on whether the reverse-engineered authentication algorithm was provided.</p>
+<p>In the absence of the algorithm, the model’s uncertainty primarily concerned the underlying communication protocol. With limited information about the authentication mechanism, it attempted to compensate by exploring multiple possible request structures and protocol variations.</p>
+<p>When provided with the reverse-engineered algorithm, the model’s reasoning shifted towards reconciling two partially conflicting descriptions of the same function. Rather than treating the published findings as an unquestionable specification, it compared the documented pseudocode against the decompiled implementation and ultimately favored the latter. This process also prompted additional scrutiny of the underlying arithmetic operations, revealing subtleties involving hexadecimal versus decimal parsing.</p>
+<p>An important distinction emerged between the two experiments: the second session had an additional source of information against which it could validate and challenge the first. This made it possible to identify and investigate an inconsistency that the first session had no means of detecting, as it had no independent implementation reference against which to compare Synacktiv’s documented pseudocode.</p>
+<p>These observations suggest that providing reverse-engineered details can have a dual effect: it reduces the effort required for an LLM to implement an exploitation technique, while also providing additional technical context that can improve its ability to identify inconsistencies and refine its implementation.</p>
+<p>When run against the target in the lab environment, the script generated by the LLM that possessed the reverse-engineered artifact successfully authenticated.</p>
+<p>If properly instrumented, an attacker who successfully authenticates using the daily code can subsequently invoke the get_file command to retrieve database or configuration files from the device through the same /xml.cgi endpoint.</p>
+<p>An attacker can retrieve a sensitive file that is only Base64-encoded, allowing its contents to be trivially decoded without requiring any significant effort.</p>
+<p>Since Claroty’s article focuses on the web interface, we will also direct our attack towards this entry point. The web panel, used by technicians for maintenance purposes, can be accessed by providing a username and password combination.</p>
+<p>This authentication mechanism can also be bypassed by abusing the Code of the Day feature. To investigate this attack vector, an HTTP proxy such as Burp Suite can be configured to intercept communications between the browser and the device.</p>
+<p>Upon submitting a username/password combination (e.g., test:test), the browser sends an HTTP POST request to the device. This request can then be intercepted and inspected, allowing us to examine the authentication parameters and identify the relevant fields to modify.</p>
+<p>By modifying the xml parameter in the intercepted POST request and replacing its original value with the generated payload (including the generated code day), an attacker can bypass the web panel’s standard username/password authentication mechanism.</p>
+<p>The following URL-encoded XML payload illustrates the modified request, where the code of the day is 02605:</p>
+<p>xml=%3Ccmd%20action%3D%22getauth%22%20eds_only%3D%221%22%20password%3D%2202605%22%20version%3D%22C%22%20lang%3D%22eng%22%2F%3E</p>
+<p>An attacker who has successfully authenticated can access sensitive information and potentially proceed to exploit CVE-2025–41451, which can lead to remote code execution.</p>
+<p>Reaching this stage does not, by itself, reproduce the full attack method or the cyber incidents previously reported. Several additional steps are required to chain vulnerabilities and achieve the resulting mass impact. Nevertheless, the fundamental milestone of circumventing the system’s authentication defenses has already been achieved.</p>
+<p>This write-up aims to highlight a broader security concern: techniques that previously required highly specialized knowledge, substantial reverse-engineering expertise and potentially the collaboration of multiple individuals can increasingly be reproduced by leveraging publicly available CVE documentation, even when that documentation is incomplete or omits important implementation details.</p>
+<p>Claroty’s experiment demonstrates that the AI agent initially struggled to reproduce the authentication bypass using the information and tools available in its initial investigation. However, Synacktiv’s publicly available 2023 advisory contained additional technical information concerning a similar authentication mechanism, the check_code_of_day()function. This raises an interesting research question: whether providing an AI model with previously published vulnerability research can substantially reduce the human intervention required to reproduce an analogous vulnerability in a newer product generation.</p>
+<p>The implications extend well beyond the specific devices examined in this research. Many critical and operationally important environments rely on embedded controllers built around similar architectural principles. These include HVAC and building management systems, cold-chain logistics, pharmaceutical and hospital storage facilities, lighting and access control systems, elevators, water and wastewater pumping stations, EV chargers, solar inverters, and industrial process controllers.</p>
+<p>Such systems frequently rely on embedded devices that may be remotely accessible, receive infrequent security updates, and remain operational long after their manufacturers have discontinued software maintenance.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/how-i-traced-a-missing-vercel-ai-sdk-duration-histogram?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/fridges-hackers-ai-and-la-flemme?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

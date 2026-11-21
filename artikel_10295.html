@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</title>
+    <title>Markdown to PDF in 2026: No-Install Methods and the Rendering Problems Nobody Warns You About</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10295.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,48 +15,68 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</h1>
+        <h1>Markdown to PDF in 2026: No-Install Methods and the Rendering Problems Nobody Warns You About</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/zero_tim_tpu_blog_header_1600x900.2e16d0ba.fill-1200x600.png" alt="Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_spt_50be5d3bfa.png" alt="Markdown to PDF in 2026: No-Install Methods and the Rendering Problems Nobody Warns You About" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/zero_tim_tpu_blog_header_1600x900.2e16d0ba.fill-1200x600.png" alt="Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_spt_50be5d3bfa.png" alt="Markdown to PDF in 2026: No-Install Methods and the Rendering Problems Nobody Warns You About" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Reinforcement learning (RL) for large language models is notoriously sensitive to numerical instability: even tiny discrepancies between rollout generation and gradient updates can destabilize training or stall convergence. In LLM RL, the model serves as the policy, π(action | previous tokens), and true on-policy learning requires every action in an update to be generated and evaluated by that exact same policy. While a synchronous loop ensures each rollout batch is scored using the same weights that generated it, a critical numerical requirement remains: the sampler and trainer must evaluate that policy identically.</p>
-<p>In practice, production RL stacks run sampling and training through separate, specialized execution paths. The sampler chooses each action token during incremental decoding and records its behavior logprob. The trainer evaluates the same token in batched forward-backward passes to compute its current logprob and gradients. Under the same weights, these differing execution paths can still assign different logprobs to the same token and context. The training schedule is on-policy, but the numerical execution has introduced a hidden off-policy gap that compounds over multi-turn trajectories.</p>
-<p>Our zero train–inference mismatch (Zero-TIM) implementation, developed in Tunix and verified at multi-host scale across 64 TPU v5p chips (DP8×TP8), closes this numerical gap. At the same weights, the sampler and trainer assign bitwise-identical logprobs to the same action and token history—bringing state-of-the-art, true on-policy stability to TPU RL training.</p>
-<p>A reduction is a tree of floating-point additions. Floating-point addition is not associative, so changing the tree changes where rounding occurs. The effect is easier to expose in bfloat16, which retains less precision than float32.</p>
-<p>The following bfloat16 example isolates the effect of reduction order:</p>
-<p>The same issue appears in model reductions: matrix products accumulate partial sums, normalization computes statistics, and tensor-parallel shards combine partial outputs. In our original stack, sampler decode and trainer forward used different token-array shapes and forward implementations. JAX specializes computations to their input shapes, and the training forward also runs inside a differentiated program.</p>
-<p>Across these paths, reduction order and intermediate precision were not consistently aligned. Floating-point rounding turned those arithmetic differences into different logprob bits. The weights and model equations were identical; the arithmetic was not.</p>
-<p>The contract is simple: across sampler decode, serving prefill, and trainer forward, all three paths must produce bitwise-identical logprobs for every sampled action—comparing raw floating-point bytes under the same rollout weights, token history, and sampling settings, with zero rounding or tolerance.</p>
-<p>Why three paths instead of two? In a decoupled RL stack, a direct sampler–trainer disagreement shows that a numerical gap exists, but not where it enters. Introducing serving prefill as a middle checkpoint turns alignment into a systematic two-step diagnostic that any RL stack can adopt:</p>
-<p>Sampler decode vs. prefill verifies that the serving engine agrees with itself between incremental token generation and full-sequence re-scoring, while prefill vs. trainer verifies that the serving and training engines agree across compilation and differentiation boundaries.</p>
-<p>Achieving Zero-TIM does not require merging the sampler and trainer into a single monolithic engine. Instead, we use a generalizable four-part recipe that bridges separate serving and training pipelines across multi-host TPU meshes: locking within-shard kernel accumulation, ordering cross-shard reductions, standardizing the logprob scoring tail, and wrapping serving kernels with custom differentiation rules.</p>
-<p>Inside each tensor-parallel rank, batch-invariant Pallas kernels control accumulation order and intermediate precision. Projection kernels traverse fixed contraction blocks in order, keeping the reduction blocking independent of token-row count. Partial products accumulate in float32, with explicit output casts.</p>
-<p>The production kernel initializes its scratch accumulator before the tile traversal, then applies this core to each tile:</p>
-<p>The next tile continues from the float32 accumulator, not the cast output. This construction covers the attention and MLP projections and the LM head. Dedicated kernels fix RMSNorm reductions and SwiGLU’s intermediate casts. The existing Pallas paged-attention forward is retained.</p>
-<p>For row-parallel projections, each tensor-parallel rank produces a partial output. We separate communication from addition: ppermute transports the partials, then every rank adds them in the same source-rank order.</p>
-<p>The reduction order is explicit in the program rather than selected by a collective implementation.</p>
-<p>Alignment must extend beyond model logits to the probability of the sampled action. Decode, prefill, and trainer apply matching sampling transforms, use the same fixed Pallas log-softmax construction, and select the recorded action token.</p>
-<p>Prefill and trainer score the action generated during rollout rather than choosing another action. We also preserve sampled token IDs across environment turns so that every path evaluates the same token history.</p>
-<p>The trainer reuses the serving prefill computation. Custom vector–Jacobian products retain the serving kernels for forward evaluation and provide their backward rules. The matmul example shows this separation:</p>
-<p>The differentiable replica mirrors the kernel’s accumulation and casts, but is used only to construct the pullback. Forward values still come from the serving Pallas kernel.</p>
-<p>Training places that forward inside a differentiated JAX program. We pass --xla_allow_excess_precision=false through XLA_FLAGS to the compiler process, constraining excess intermediate precision in the operations surrounding the Pallas kernels.</p>
-<p>Long trajectories are evaluated in fixed-size chunks, carrying the paged KV cache forward. All action logprobs feed the complete train-batch RL loss. The reverse pass propagates gradients through those cache connections and combines parameter-gradient contributions before the optimizer update.</p>
-<p>Across the AI systems community, eliminating train–inference mismatch has rapidly become a state-of-the-art requirement for stabilizing large-scale RL convergence. Recent open-source efforts—including vLLM with TorchTitan and RadixArk/LMSys Miles—have demonstrated how batch-invariant kernels and bitwise numerical alignment prevent off-policy drift during policy optimization.</p>
-<p>Our work delivers an open-source, modular JAX/XLA and Pallas implementation of this contract for TPU in Tunix. Verified across a multi-host 64 TPU v5p (DP8×TP8) mesh, these kernel and collective patterns provide a reusable blueprint that teams can adopt to achieve bit-exact on-policy RL across distributed JAX/TPU stacks.</p>
-<p>To benchmark our TPU kernels, we run a 200-step numerical verification test on the synthetic FrozenLake environment using a public Qwen3-8B checkpoint as a baseline test case using 64 TPU v5p chips with a DP8×TP8 mesh. The recipe uses a GSPO-token loss with leave-one-out advantages. We compare Standard training with trainer-old logprobs and no additional sampler correction, token-level truncated importance sampling (TIS), and Zero-TIM.</p>
-<p>The Zero-TIM configuration also uses token-in/token-out (TiTO) handling to preserve sampled token IDs across environment turns. The comparison runs retain their existing tokenization paths.</p>
-<p>Zero-TIM records zero mean absolute sampler–trainer logprob difference at every logged step in this window, while its training solve rate increases. Standard and TIS retain nonzero differences: TIS adjusts their contribution to the update without removing the underlying mismatch. Zero-TIM reaches higher observed solve rates in these runs.</p>
-<p>We developed Zero-TIM prototype as part of Tunix, Google's open-source, JAX-native library for LLM RL and post-training on Cloud TPU. The kernel patterns and three-way verification contract are modular by design—making them straightforward to adopt across existing multi-host JAX/TPU serving and training pipelines—and we are actively extending support to linear-attention and Mixture-of-Experts (MoE) architectures.</p>
-<p>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</p>
-<p>Agent Anomaly Detection: Safeguarding agents across other clouds</p>
-<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
-<p>Check what your AI agents do before they do it, with Semantic governance policies</p>
+                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Converting Markdown to PDF is easy until the document has real content: long code blocks, wide tables, images and non-Latin text are where most tools fall apart.</p>
+<p>Pandoc with LaTeX is still the most powerful route, but it needs a large install and trips over Unicode and emoji unless you switch engines and fonts.</p>
+<p>Browser-based approaches (print CSS, Chromium-powered converters, in-browser tools) avoid the install and give you HTML-quality rendering, as long as you control page breaks.</p>
+<p>A handful of print CSS rules (@page, break-inside: avoid, break-after: avoid) fix the majority of ugly PDFs, whichever tool you use.</p>
+<p>Choose the tool by the document: a quick README export, a long technical report and a multilingual document each have a different best option.</p>
+<p>I write almost everything in Markdown: READMEs, release notes, client handovers, meeting notes. And at least once a week, someone asks for "the PDF version". Every time, the conversion looks fine on the first page and falls apart somewhere around page three: a code block split in half, a table running off the edge, an emoji replaced by an empty box.</p>
+<p>SitePoint covered the classic route back in 2015 with Creating PDFs from Markdown with Pandoc and LaTeX. That approach still works. But a lot has changed since then, and today there are several ways to get a clean PDF without installing a TeX distribution. This article compares them, then goes through the rendering problems you'll actually hit, with a fix for each.</p>
+<p>Pandoc is still the Swiss Army knife. The simplest command is:</p>
+<p>By default, that goes through LaTeX, which means you need a TeX distribution installed (several gigabytes for a full one). The output is beautiful for prose and math, but LaTeX has strong opinions about layout, and customizing it means writing LaTeX.</p>
+<p>Pandoc can also render through an HTML engine instead, which lets you style the PDF with CSS:</p>
+<p>Best for: long documents, academic writing, math, automated pipelines.</p>
+<p>Watch out for: install size, Unicode handling with the default engine (more on that below).</p>
+<p>Render the Markdown to HTML (any previewer, a static site, a GitHub page) and print it to PDF. It's free and already installed everywhere, but you inherit whatever the page looks like on screen: navigation bars, sidebars, and page breaks wherever they happen to fall.</p>
+<p>Best for: quick, one-off exports of short documents.</p>
+<p>Watch out for: zero control over page breaks unless the page ships print CSS.</p>
+<p>Extensions like Markdown PDF for VS Code, or CLI tools like md-to-pdf, render your Markdown to HTML and print it with a headless Chromium:</p>
+<p>You get the same rendering quality as a browser, plus a config file for CSS, margins, headers and footers. The trade-off is a Node install and a downloaded Chromium.</p>
+<p>Best for: developers who live in their editor or want CI-friendly exports.</p>
+<p>Watch out for: the first run downloads a browser, and print CSS is still your job.</p>
+<p>The newest option is tools that do the whole conversion inside the browser tab: you paste or drop the .md file, preview the actual pages and download the PDF. The good ones don't upload your file anywhere, which matters for client documents and internal notes.</p>
+<p>Best for: people who don't want to install anything, non-developers on your team, private documents.</p>
+<p>Watch out for: many online converters do upload your file to a server; check before you paste anything confidential.</p>
+<p>Whichever method you pick, the same handful of problems show up as soon as the document is longer than a page. Most of them are fixed with print CSS, which works in Pandoc's HTML engines, Chromium-based tools and any HTML you print from a browser.</p>
+<p>A 20-line function cut after line 3, with the rest on the next page, is the most common complaint. The fix is to ask the renderer not to break inside the block:</p>
+<p>One caveat: a block longer than a full page has to break. For those, it's better to let it break cleanly than to push it to a new page and leave a huge gap.</p>
+<p>On screen, a long line in a code block scrolls horizontally. On paper, there's no scrollbar, so it's simply cut off. Wrap long lines in print:</p>
+<p>Tables with many columns overflow the page or get squeezed until every cell is one word per line. Three things help: a smaller font size for tables, a landscape page for the worst offenders, and avoiding breaks in the middle of short tables:</p>
+<p>If a table genuinely needs eight columns, consider whether it should be a table in the PDF at all, or an appendix in landscape.</p>
+<p>A heading alone at the bottom of a page, with its content on the next one, looks broken. This rule keeps a heading attached to what follows it:</p>
+<p>Support for break-after: avoid varies between rendering engines, so test it with yours; when it isn't honored, a manual page break before the heading is the reliable fallback.</p>
+<p>Markdown has no syntax for a page break. The usual trick is a raw HTML element that print CSS turns into a break:</p>
+<p>Some converters also recognize a comment like <!-- pagebreak -->, which has the advantage of staying invisible when the same file is rendered on GitHub.</p>
+<p>Images are inserted at their natural size, so a 4000-pixel screenshot spills off the page. Cap them:</p>
+<p>For blurry images, the problem is usually the opposite: a small screenshot stretched to page width. Export screenshots at 2x if they're going into a PDF.</p>
+<p>This one is specific to the LaTeX route. With the default pdflatex engine, Unicode characters outside its supported set produce errors or simply vanish. Switch to XeLaTeX or LuaLaTeX and give it a font that actually contains the characters:</p>
+<p>Emoji are harder still in LaTeX and often need a dedicated package. HTML-based renderers handle both far better, because they use the operating system's font fallback just like a web page does.</p>
+<p>Internal links ([see setup](#setup)) and external links should stay clickable. HTML-based renderers usually keep both. If yours doesn't, check that headings get IDs (most Markdown parsers add them) and that the PDF engine preserves link annotations.</p>
+<p>Put together, these rules make a solid starting point for any HTML-based route:</p>
+<p>Save it as print.css and pass it to Pandoc (--css=print.css with an HTML engine), to md-to-pdf through its config, or include it in the HTML you print from the browser.</p>
+<p>My rule of thumb after a lot of trial and error:</p>
+<p>A quick README or notes export, no install, private content: an in-browser converter. Full disclosure: this need is why I built the free Markdown to PDF converter on AwesomeToolkit, and it's what I use for this case now. It renders real A4 or Letter pages as you type, has an option to keep code blocks and tables whole, adds page numbers and a table of contents, and the conversion happens in the browser, so the file isn't uploaded anywhere.</p>
+<p>Documentation in a repo, exported in CI: md-to-pdf or Pandoc with an HTML engine, plus the stylesheet above.</p>
+<p>Long reports, math, academic formatting: Pandoc with XeLaTeX, using a font that covers every script in the document.</p>
+<p>Something you'll print once and forget: the browser's Print to PDF is fine.</p>
+<p>Whatever you choose, the biggest quality jump comes from the print rules, not the tool. Ten lines of CSS turn "it looks fine until page three" into a PDF you can actually send.</p>
+<p>Yes. Your browser's Print to PDF works on any rendered Markdown, and in-browser converters do the whole conversion in a tab. Check that the converter processes files locally if the content is private.</p>
+<p>The default pdflatex engine has limited Unicode support. Use --pdf-engine=xelatex or lualatex and set a font that contains the characters with -V mainfont= (and -V CJKmainfont= for CJK text).</p>
+<p>Markdown has no native syntax for it. Insert <div style="break-before: page"></div> where you want the break, or use the page-break comment your converter supports.</p>
+<p>Add pre { break-inside: avoid; } to your print CSS. Blocks longer than a page will still break, which is expected.</p>
+<p>With HTML-based renderers, usually yes, both external links and links to headings inside the document. Test internal links in particular, since they depend on headings having IDs.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/unlocking-stable-on-policy-rl-on-tpu-with-bitwise-zero-traininference-mismatch/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/markdown-to-pdf-in-2026-no-install-methods-and-the-rendering-problems-nobody-warns-you-about/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

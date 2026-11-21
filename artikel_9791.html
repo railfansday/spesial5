@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Internal Engineering Documentation Retrieval: Freshness Windows and Index Cost</title>
+    <title>A 5-day client onboarding workflow for solo consultants</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9791.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,35 +15,40 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Internal Engineering Documentation Retrieval: Freshness Windows and Index Cost</h1>
+        <h1>A 5-day client onboarding workflow for solo consultants</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fp4mbzbdw2jtefa1flg6t.png" alt="Internal Engineering Documentation Retrieval: Freshness Windows and Index Cost" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F578el0t67hoersnh9ubs.png" alt="A 5-day client onboarding workflow for solo consultants" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fp4mbzbdw2jtefa1flg6t.png" alt="Internal Engineering Documentation Retrieval: Freshness Windows and Index Cost" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F578el0t67hoersnh9ubs.png" alt="A 5-day client onboarding workflow for solo consultants" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Short answer: use a freshness window based on document change rate and incident risk, then route only changed pages through incremental indexing; this keeps retrieval answers current without paying to re-embed a quiet corpus.</p>
-<p>For a property-management team, the concrete case is a watcher that diffs a leasing or maintenance web page and alerts an engineer. The same page often has an internal runbook explaining what the alert means. If retrieval serves yesterday's runbook after a policy change, the alert is technically correct but operationally dangerous. I have been paged for missed jobs and duplicate deliveries, so I treat freshness as a delivery guarantee with an audit trail, not as a slider hidden in a vector database.</p>
-<p>The first decision is not a vendor. It is a service-level statement: “a changed source appears in search within N minutes.” Pick N separately for pages that can trigger an on-call action and pages that are background reference. A seven-day window for an archived glossary may be fine; a 15-minute window for an emergency access procedure may be mandatory.</p>
-<p>Start with a source inventory. Record the canonical URL, owner, expected update interval, last successful fetch, content hash, and the maximum acceptable staleness. A scheduler can then choose the next fetch from policy instead of polling every page at the same rate. Use conditional HTTP requests (ETag and Last-Modified) so an unchanged page costs a metadata round trip rather than a new embedding job; the HTTP caching model is documented in RFC 9110.</p>
-<p>Separate three clocks: fetch freshness, index freshness, and answer freshness. A crawler may fetch a new page immediately, while a queue waits for an embedding worker, and a response cache may still hold an older answer. Put all three timestamps in the retrieval trace, along with the scheduler attempt, queue age, revision hash, and cache key. During a postmortem, compare them in order: if fetch time is current but index time is old, inspect worker capacity; if both are current but answer time is old, invalidate or version the response cache; if fetch time is old, the source policy or validator is the bottleneck. For the property-management watcher, this prevents an engineer from widening every crawl window when the real issue is a saturated embedding queue. The trace should make that diagnosis possible from one alert, without reconstructing state from scattered logs.</p>
-<p>The useful unit is a revision, not a URL. Hash normalized main content, keep the source revision ID in every chunk, and delete or tombstone chunks from superseded revisions. This prevents a changed heading from leaving an old chunk with a deceptively high score. It also makes rollback a pointer change: restore the previous revision in the manifest, then reprocess only the affected documents.</p>
-<p>Embedding cost is driven by changed tokens, chunk overlap, and fan-out into replicas. A simple daily estimate is changed_tokens / tokens_per_chunk * embedding_price, but that is only a planning approximation; queue retries, compaction, and storage replicas add work. Track those counters by source owner so a noisy generated page cannot quietly consume the budget for every team.</p>
-<p>I once assumed that shortening the polling interval would improve reliability. It did not. It created duplicate deliveries when two scheduler workers observed the same change. Give each revision an idempotency key such as source_id:content_hash, and make the index writer upsert on that key. The alert path should likewise deduplicate on source_id:revision_id, with a visible reason when an event is suppressed.</p>
-<p>Use a small control table to make the trade-off explicit:</p>
-<p>Measure p50 and p95 source-to-index delay, stale-hit rate, duplicate-job rate, and tokens embedded per changed page. A green average can hide a bad tail: one 12-hour delay on an emergency procedure matters more than thousands of fast glossary updates.</p>
-<p>The loop below keeps scheduling, fetching, and indexing separate. The conditional request details belong in the HTTP client; this coordinator only advances the revision after the index confirms an upsert.</p>
-<p>A failed upsert must leave the source marked as pending, so the next run retries the same hash. Never mark a revision current before the index confirms it. Add a deadline to each fetch and a bounded queue; unbounded retries turn a temporary outage into a cost incident.</p>
-<p>Verification should replay a fixed set of queries against a pinned corpus. Include a page changed in the last window, a page just outside it, and a deleted page. Assert both relevance and revision identity. For the property-management watcher, one test asks for the current maintenance escalation path and checks that the returned chunk carries the latest content hash, not merely similar wording.</p>
-<p>The catch is that short windows are not suitable when the source cannot provide stable validators, has strict rate limits, or changes mostly cosmetic markup. In those cases, stick with a longer crawl interval plus a manual reindex trigger for high-risk pages. Conversely, a long window is a poor fit for runbooks tied to active incidents; route those documents to a priority queue and require an owner acknowledgement when indexing misses its target.</p>
-<p>I'm not sure a single global freshness number is useful for any organization. Your mileage will vary with edit patterns and queue capacity. The defensible choice is the one you can explain from observed delay, stale-hit, and index-cost metrics, then exercise in a rollback drill before an incident.</p>
+                <p>A project often starts before anyone agrees on the basics: who approves the work, what access is needed, how feedback will work, and what is explicitly out of scope.</p>
+<p>The first week sets the tone. If it is scattered across email, calls, and half-filled documents, the project starts with missing assets, unclear decisions, and quiet scope creep.</p>
+<p>Here is a 5-day onboarding workflow that keeps the first week visible.</p>
+<p>Ask for platform invitations or a shared password manager. Do not ask the client to email passwords.</p>
+<p>If an asset is not ready, ask for the date it will be available. “Later” is not a date.</p>
+<p>Run a 45-minute call with a written agenda:</p>
+<p>The most important question is: who is the final decision-maker? If the answer is “the team”, ask who breaks a tie.</p>
+<p>Send it for approval. Do not start dependent work until it is approved.</p>
+<p>Send a short confirmation that repeats the scope in plain language:</p>
+<p>Ask the client to reply “approved”. A written approval is enough; it does not need to be a legal document.</p>
+<p>Confirm access, communication cadence, and the first milestone. Update the tracker. If a dependency is late, move the timeline by the same number of days and document it in writing.</p>
+<p>A three-week rebrand project is fixed at $3,500.</p>
+<p>On day 1 the client has not sent the logo files or hosting access. The access checklist catches it. On day 2 the kickoff agenda identifies the founder as the only decision-maker. On day 3 the brief records the dependency: “Logo files and hosting access needed by Wednesday.”</p>
+<p>The files arrive two days late. The timeline moves by two days. There is no argument because the dependency was written down before work started.</p>
+<p>If two or more are true, slow down and fix the basics before starting production work.</p>
+<p>This is a practical workflow, not legal, tax, or financial advice. Adapt the documents to your contract and jurisdiction. A template cannot guarantee that a client will behave well; it can only make the first week easier to see.</p>
+<p>I packaged the welcome emails, kickoff agenda, project brief, access checklist, scope confirmation, tracker, and worked example into a 19-file kit:</p>
+<p>Client Onboarding Pack for Solo Consultants</p>
+<p>It is $12, one ZIP, no subscription. The workflow above is free to use whether you buy it or not.</p>
+<p>Disclosure: I used AI assistance to draft and format this article and the templates; I reviewed and edited them before publication. Not legal advice.</p>
 <p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
 <p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
 <p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
 <p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/frosty45/internal-engineering-documentation-retrieval-freshness-windows-and-index-cost-4l69" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/konstantin_poplevin_9a539/a-5-day-client-onboarding-workflow-for-solo-consultants-4ce7" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
