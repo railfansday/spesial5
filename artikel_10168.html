@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</title>
+    <title>Introducing Real World VoiceEQ: Measuring the human quality of voice AI</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10168.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,40 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-20</p>
+        <h1>Introducing Real World VoiceEQ: Measuring the human quality of voice AI</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/real-world-voiceeq/thumbnail.png" alt="Introducing Real World VoiceEQ: Measuring the human quality of voice AI" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/real-world-voiceeq/thumbnail.png" alt="Introducing Real World VoiceEQ: Measuring the human quality of voice AI" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our previous posts - Easy FunctionGemma finetuning with Tunix on Google TPUs and Autonomous LLM post-training with Tunix on TPUs - we showed how Google Tunix streamlines Supervised Fine-Tuning (SFT) and single-turn Group Relative Policy Optimization (GRPO) on Cloud TPUs. Real-world AI agents, however, rarely finish their job in a single turn. They have to reason over partial observations, invoke tools, observe environment feedback, and adapt their strategy across multiple steps. So in this post, we will walk through how to train a multi-turn, tool-using LLM agent using Tunix's agentic reinforcement learning pipeline on Cloud TPU v6e-8. You can find the complete code in this GitHub repository.</p>
-<p>We will revisit the Plane Strike board game from an earlier TensorFlow/JAX reinforcement learning blog, replacing the custom MLP policy with Gemma 4 E2B in thinking mode on a single Cloud TPU v6e-8 host. Plane Strike is played on a 6x6 grid (A1 to F6) where one 8-cell plane is hidden in one of 4 orientations. Each turn, the agent sees the result of its previous strike and the raw visible board (. untried, X hit, O miss), thinks through candidate placements, and calls the strike(cell="...") tool to strike one cell. The game ends when all 8 plane cells are hit, or after 23 strikes.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>Although google/gemma-4-E2B-it has decent spatial reasoning and tool calling capabilities, out of the box, it wins only 9.4% of games on held-out boards (averaging 22.44 strikes). After 100 steps of agentic GRPO with Tunix, its win rate reaches 95% while cutting the average game length to ~16 strikes.</p>
-<p>We set up the multi-turn RL pipeline in four modular components:</p>
-<p>Let's look at the key steps for each piece.</p>
-<p>In env.py, we subclass Tunix's BaseTaskEnv to implement PlaneStrikeEnv. Each environment instance receives a task dictionary with a seed that fixes the hidden plane position so all 8 rollouts in a GRPO group play the exact same board:</p>
-<p>On each turn, _step_impl evaluates the struck cell index against the hidden board, updates the visible grid, computes the step reward (summed into the trajectory-level reward over the episode), and returns EnvStepResult(observation, reward, done, info).</p>
-<p>For standard multi-tool agents, tunix.rl.agentic also provides ready-to-use ToolEnvironment, ToolAgent and ToolManager abstractions out of the box so we don't have to write custom message/observation plumbing unless we need custom turn control.</p>
-<p>In Gemma 4, tool schemas are declared in the system prompt inside <|tool>declaration:...<tool|>, and a model turn that calls a tool ends with:</p>
-<p><|tool_response> is one of Gemma 4's native stop tokens: the model pauses there and waits for response:strike{value:<|"|>...<|"|>}<tool_response|>, then continues generating its next thought and tool call within the same assistant turn.</p>
-<p>In strike_tool.py, we define StrikeTool(BaseTool) and subclass Tunix's Gemma4ChatTemplateParser to append the tool declaration to the system prompt and render "tool" messages as in-turn responses:</p>
-<p>In agent.py, PlaneStrikeAgent(ConversationAgentBase) translates between environment observations and model messages.</p>
-<p>When the model finishes a turn, tool_strike ignores everything inside <|channel>thought...<channel|> and parses the final answer after <channel|>; only a final answer with a single valid strike call counts as a valid board coordinate (otherwise INVALID_ACTION is returned). If the model stopped at <|tool_response>, the next board observation is appended with role="tool" so the model continues its turn:</p>
-<p>In train_planestrike.py, we configure Tunix's asynchronous vllm rollout engine, RLEngine, and GRPOLearner:</p>
-<p>Multi-turn agentic RL is often bottlenecked by variable-length rollout generation, so we set rollout_vllm_server_mode to true to enable continuous asynchronous multi-turn rollouts via vllm-tpu and enable_prefix_caching to true to true to cache the growing multi-turn conversation history. Since we are using a v6e-8 single host, the actor model, the reference model, and the rollout workers share the 8 chips.</p>
-<p>We then pass our actor, tokenizer, ClusterConfig, GRPOConfig (loss_algo="gspo-token", advantage_estimator="rloo", exact_token_continuity=True to preserve exact token IDs across multi-turn rollouts without retokenization drift), agent, and environment into RLEngine and PlaneStrikeGRPOLearner:</p>
-<p>All of these enable us to launch the 100-step training job with:</p>
-<p>Over 100 steps (8 boards x 8 games per step), the agent learns both reliable tool calling and spatial deduction:</p>
-<p>With Tunix's tunix.rl.agentic abstractions, vllm-tpu, and GRPOLearner, multi-turn, tool-using agentic RL on Cloud TPUs is easy and efficient. Check out the planestrike-gemma4-rl GitHub repository and read the Tunix documentation to train your own agentic model with Tunix and Google TPUs.</p>
-<p>Agent Anomaly Detection: Safeguarding agents across other clouds</p>
-<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
-<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
-<p>Check what your AI agents do before they do it, with Semantic governance policies</p>
+                <p>Existing benchmarks suggest voice AI is nearing human-level performance but real-world conversations tell a different story.</p>
+<p>Voice is rapidly becoming AI's primary interface. From customer support and healthcare to education, entertainment, and personal assistants, speech is increasingly replacing text as the way people interact with AI.</p>
+<p>Over the last few years, voice models have improved dramatically. Word error rates continue to fall, latency has reached conversational speeds, and many established benchmarks are approaching saturation. Yet anyone who regularly uses voice AI knows something still feels off.</p>
+<p>Voice models can sound like different people over the course of a conversation, miss hesitation or uncertainty, and struggle with accents, noise, or emotional speech. Those shortcomings are easy to miss in benchmarks focused on latency and word error rate. People care whether a voice system can truly listen, respond appropriately, and remain natural and reliable in real conversations.</p>
+<p>To measure those qualities, we built Real World VoiceEQ—a benchmark designed to evaluate the human quality of voice interaction. It assesses whether voice systems can recognize, produce, and respond to the acoustic information transcripts leave out, from tone and emotion to speaker identity and background context.</p>
+<p>Real World VoiceEQ evaluates more than 40 leading proprietary and open-source voice models across 15+ key evaluation dimensions and more than 60 metrics spanning Automatic Speech Recognition (ASR), Text-to-Speech (TTS), Speech-to-Speech (S2S), and Speech Understanding.</p>
+<p>Real World VoiceEQ was developed from more than 1 million individual human ratings collected across different demographics, speaking styles, and acoustic environments. The current benchmark includes 785,000 TTS ratings and 48,000 STS ratings, making it one of the largest human evaluations of voice AI conducted to date.</p>
+<p>Every evaluation was conducted using Kairos, our flexible, voice-native evaluation platform. The same infrastructure enables frontier AI labs and enterprises to run custom evaluations tailored to specific use cases, identify granular failure modes in production voice systems, generate human preference data, and continuously improve models through reinforcement learning and human feedback.</p>
+<p>The race for a single "best" voice model is giving way to a collection of specialized capabilities.</p>
+<p>Today's leading systems optimize for different strengths—including technical accuracy, emotional understanding, conversational intelligence, expressiveness, and robustness. One model that excels at repeating booking reference numbers, bank account details, or complex pharmaceutical names may struggle to produce emotionally expressive speech. Another may sound remarkably natural but be less reliable on precision-oriented tasks.</p>
+<p>As voice AI matures, measuring progress increasingly requires evaluating these capabilities independently rather than collapsing them into a single overall score. In our TTS evaluations, no system configuration ranked among the top five across all eight capability groups—underscoring why there is no single "best" voice model.</p>
+<p>Speech-to-Speech models showed the widest variation of any category we evaluated. Some systems recognized emotion exceptionally well but struggled to respond naturally. We found that access to audio did not guarantee that agents used the paralinguistic information it contained. Some systems remained largely transcript-driven, relying on the words being spoken while overlooking cues such as tone, pacing, hesitation, emphasis, and volume.</p>
+<p>Humans naturally use these cues to infer confidence, uncertainty, frustration, sarcasm, and empathy. Today's models often miss them.</p>
+<p>Imagine a banking agent asking whether you recognize a potentially fraudulent transaction. A confident "Yes" and a hesitant "…yes…" may have completely different meanings, even though the transcript is identical. Humans recognize that difference immediately. Many of today's voice models do not.</p>
+<p>Many established benchmarks are nearing their limits and don't reflect real-world conditions. Models still struggle with accented speech, overlapping speakers, emotion, background noise, and longer conversations. In our evaluation, performance varies far more across leading open-source and proprietary models than traditional benchmarks suggest. In one example, transcription word error rates on noise-backed speech were roughly four times higher than on music-backed speech, showing how a single background-audio score can hide the real failure mode.</p>
+<p>In preliminary research, we found signs that some models may be optimized for established public benchmarks. Several reproduced known errors in reference transcripts, followed arbitrary spelling conventions, and even reconstructed masked words that were not present in the audio.</p>
+<p>LLMs are now widely used to evaluate text-based models, but our findings suggest that speech-language models (SLMs) should be used more carefully for voice evaluation. When we compared leading SLMs with trained human raters on text-to-speech assessments, agreement was highest on tasks with clear, verifiable answers, such as pronunciation accuracy.</p>
+<p>Agreement declined on more subjective evaluations. SLMs sometimes appeared to infer emotion from text-based contextual cues, and agreement was weakest for open-ended judgments such as whether a voice fit an acting role or maintained a consistent identity. Automated evaluators can be valuable for well-defined tasks, but they are not yet a substitute for human listeners when judgments depend on acoustic-context, perception, and social interpretation.</p>
+<p>As voice becomes one of AI's defining interfaces, speed and technical accuracy alone will no longer determine which systems succeed. The models people ultimately choose will be those that can understand, express, and respond like humans—not just under ideal benchmark conditions, but across the complexity of real-world conversation.</p>
+<p>For decades, speech AI has advanced by optimizing against quantitative metrics on standardized benchmarks; from WER for transcription accuracy to objective perceptual metrics like PESQ and DNSMOS for speech quality. We hope Real World VoiceEQ can extend this paradigm by providing a human-grounded metric for evaluating the components of synthetic voice interactions.</p>
+<p>Read the full technical report and explore the public leaderboards—or get in touch to learn how Hume can evaluate your voice model or agent using Real World VoiceEQ, or design custom evaluations tailored to your specific use case.</p>
+<p>Explore speech model benchmarks with interactive tables</p>
+<p>Explore speech model benchmarks with interactive tables</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/multi-turn-agentic-reinforcement-learning-with-tunix-and-gemma-4-on-google-tpus/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/real-world-voiceeq" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
