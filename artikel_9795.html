@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</title>
+    <title>Grafana 13.3 Adds Shared Dashboard Variables and Notebooks</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9795.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,176 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
+        <h1>Grafana 13.3 Adds Shared Dashboard Variables and Notebooks</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://res.infoq.com/news/2026/11/grafana-13-3-shared-variables/en/headerimage/header-1795209346746.jpeg" alt="Grafana 13.3 Adds Shared Dashboard Variables and Notebooks" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/moe-expert-streaming/thumbnail.png" alt="180B Parameters, 32GB of RAM: Pushing MoE Inference to the Limit with Transformers" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://res.infoq.com/news/2026/11/grafana-13-3-shared-variables/en/headerimage/header-1795209346746.jpeg" alt="Grafana 13.3 Adds Shared Dashboard Variables and Notebooks" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Streaming MoE experts directly from SSD gets within 6% of Strata on token generation.</p>
-<p>I've been trying to rely less on online models and run bigger ones locally.
-At home I have a PC with two RTX 4090s (let's call it Orthrus - the two-headed hound
-of Greek mythology), and for work I have a MacBook M5 with 32G of unified memory.</p>
-<p>Orthrus runs on Windows 11, because my kids play games all the time. I had a
-dual boot with Ubuntu, but their games ended up taking most of the two
-terabytes of disk.</p>
-<p>I am also a huge fan of RMD (rooms moving development): one hour in the kitchen
-sipping my coffee, two hours at my office desk, then the sofa. A fixed desktop
-tower is not for me.</p>
-<p>My first experiment was to run Qwen 3.8 27B with llama.app on Orthrus and use
-it from my laptop through pi. That model does the coding tasks, an online
-model like Opus does the orchestration, and the second RTX runs a FIM model for
-auto-completion in Neovim.</p>
-<p>When I talked about this on social networks, I got very strong feedback: use
-Strata with Qwen3.8-Flash-Next.</p>
-<p>Strata is an inference engine for MoE models like Qwen. Only the hot experts
-stay in VRAM, the rest goes to RAM, or even to disk. Experts are 90%+ of a MoE
-model's weights, so a 180B model like this one can run on a GPU with much less
-memory. Like my RTX 4090!</p>
-<p>It works on a laptop too, and I stumbled on
-this blog post doing
-exactly that: Qwen3.8-Flash-Next on a 32 GB Mac M4, faster than llama.cpp, at
-13.5 tok/s.</p>
-<p>That's too slow for how I use coding agents, but it's an interesting itch to
-scratch. A whole range of MoE models don't fit in a MacBook's unified memory and
-could run at a decent speed.</p>
-<p>Before committing to Strata, I looked at what llama.cpp, vLLM and Transformers
-do when a MoE model doesn't fit. Three questions matter: where do the experts
-live, where does the expert matmul run, and what moves on each token?</p>
-<p>llama.cpp maps the GGUF file with mmap and can keep the experts on the
-CPU (--cpu-moe, --n-cpu-moe N, -ot "exps=CPU", or --fit on to pick for
-you). Those experts are also computed on the CPU, so only the activations
-cross PCIe, never the weights. Great when the experts fit in RAM. When they
-don't, the page cache thrashes. A GPU expert cache (--moe-cache-mib) just
-landed, but it fragments the graph (2 splits per token become 50) and loses
-~10% even when everything fits.</p>
-<p>vLLM's --cpu-offload-gb N puts N GB of weights in pinned RAM, and kernels
-read them in place over PCIe. For a MoE layer, that's only the routed experts,
-but nothing is cached: a hot expert crosses PCIe again on every token, and
-there's no disk tier. By default the offloaded weights include dense layers,
-read on every token; --cpu-offload-params experts keeps it to the experts. That fits vLLM's big
-batches, which touch almost every expert anyway, less so one user on one GPU.</p>
-<p>Transformers offloads through Accelerate (device_map="auto",
-offload_folder), one module at a time: hooks copy its weights to the GPU
-before forward. For a MoE, that module is a layer's whole expert bank, so
-every token copies every expert of every offloaded layer to use 8 or 10 of them.
-No cache, no notion of routing. And on a Mac, CPU and GPU share the same memory,
-so "offload to CPU" frees nothing.</p>
-<p>I ran all of them on Qwen3.6-35B-A3B on one A10G (24 GB), with plenty of RAM,
-and Harry Mellor reran vLLM with better flags:</p>
-<p>Offloading only the experts doubles vLLM's speed, and FP8 helps on top (half
-the bytes per expert, more of the model on the GPU). vLLM's other offload
-backend, which copies groups of layers ahead of time, ran under 1 tok/s.</p>
-<p>If the experts fit in RAM, llama.cpp is hard to beat. If they don't, you have to
-stream only what the router picks, through a bounded cache, fast enough that the
-SSD is the bottleneck and not Python, ideally reusing the model's fast expert
-kernels. That's Qwen3.8-Flash-Next on a 32 GB Mac, and Transformers couldn't do
-it out of the box.</p>
-<p>Strata was already too slow for me on the laptop, and Transformers was not going
-to beat it anytime soon. But the Accelerate path was so far off that I wanted to
-try fixing offloading in Transformers itself, with the big model on my laptop as
-the target, knowing it would probably stay too slow for how I work.</p>
-<p>All of the code was built with AI: the Transformers PR, the model-specific
-package and the Metal kernels. My part was choosing what to try, reading the
-profiles, and deciding what to keep. Everything is in a Space:
-tarekziade/moe-expert-streaming.</p>
-<p>I started with OLMoE-1B-7B, which fits in memory, so I could compare every token
-with vanilla Transformers.</p>
-<p>First version: experts on disk, an LRU cache on the device, and a Python loop
-running one expert at a time. With every expert already cached, it did 10.1
-tok/s. Vanilla did ~32. The I/O was fine, my loop was not: vanilla uses
-grouped_mm, which runs all the experts of a layer in one kernel.</p>
-<p>The fix, and the key idea of this project, was to turn the cache into a slot
-pool: one preallocated device tensor shared by all layers, plus a per-layer
-table from expert id to slot. Remap the router's expert ids to slots and the
-pool looks like a regular expert bank, so grouped_mm runs on it as is. No
-custom expert matmul needed. That got it to 34.6 tok/s, against 38.1 for
-vanilla.</p>
-<p>I then turned the standalone loader into an option of from_pretrained, in
-huggingface/transformers#50717.
-To try it, install Transformers from that PR:</p>
-<p>Then, moving from OLMoE to the real target, Qwen3.8-Flash-Next:</p>
-<p>That repo
-holds the output of the project's
-conversion script:
-the dense weights, the experts quantized to 3 bits, and the n-gram table.</p>
-<p>Experts mapped to "disk" go through the streaming path instead of Accelerate's
-offload: the loader skips their tensors and MoE layers switch to an offloaded
-implementation. Misses are read by 8 I/O threads, one contiguous read per
-expert. The next two layers' routers run early on the current hidden states to
-guess which experts to prefetch. Experts can be quantized offline so reads are
-smaller. It works for MoE models with the standard experts layout.</p>
-<p>The API is still being discussed with the Transformers maintainers. The
-device_map form came out of that, and quantized experts will probably go
-through the per-layer quantization plan of
-#50245 rather than
-their own option.</p>
-<p>Qwen3.8-Flash-Next has 48 layers of 512 experts (10 active), 121 GB in FP8.
-Streaming them isn't enough: there's also a 51 GB n-gram embedding
-table that needs its own disk path. So:</p>
-<p>The conversion takes ~5 hours. After loading, it uses ~18 GiB, and a 6K prompt
-peaks at 25.4 GiB. That's about the limit: I have to close the browser, or macOS
-starts swapping.</p>
-<p>The model-specific bits (the n-gram table, Metal kernels) live in a small
-package, moe-expert-streaming,
-on top of the PR. The first version ran at about 10 tok/s.</p>
-<p>Then I installed Strata on the same M5, with the same prompts:</p>
-<p>Strata 0.1.60 used IQ3_XXS experts. Both ran greedy, with thinking, MTP and
-speculative drafts off, and 1,024-token prefill chunks. The full setup and raw
-results are on the Space's
-details page.</p>
-<p>I also tried vllm-metal, vLLM on
-Apple GPUs through MLX, which recently got expert offloading. It streams the
-routed experts from an MLX checkpoint through a bounded cache, like this
-project. But it can't run Qwen3.8-Flash-Next on 32 GB, for the n-gram reason
-above: only the experts are streamed, and the n-gram tables stay in memory.
-That's 32 GB in the MLX checkpoints on the Hub, before the ~5 GB of dense layers and any expert cache.</p>
-<p>Most of the time wasn't spent on experts. Here's what helped:</p>
-<p>Here's one MoE layer for one token, as it runs now:</p>
-<p>These are the final results after these optimizations on the same M5 with the same prompts:</p>
-<p>That's about 6% behind Strata on short decode, with slightly faster prefill,
-all through Transformers.</p>
-<p>Most of what's left is host round trips, ~10 ms per token. Waking up after a
-sync is only ~1 ms of that. The rest is the GPU running dry while Python queues
-the next layer. Strata queues the whole token's work up front, and the GPU waits
-on a Metal shared event at each layer while the host reads experts. PyTorch
-doesn't expose that. I tried to fake it with a kernel spinning on a flag the CPU
-writes, and the GPU took anywhere from a second to never to see the write. The
-real fix would be a native op on PyTorch's MPS stream, with a risk of hangs, so
-I haven't built it.</p>
-<p>It runs at ~14 tok/s, close to Strata, and it's still too slow for how I use
-coding agents. Orthrus keeps doing the real work.</p>
-<p>Transformers didn't beat Strata, and closing the last ~6% would take deeper
-changes in the stack, starting with control over that per-layer sync, which
-PyTorch doesn't give you today. The interesting part is how it got that
-close: streaming only the routed experts, a bounded cache that grouped_mm runs
-on as is, and a few targeted Metal kernels. There's no C++ extension in the
-project: just Python, Metal kernels compiled at runtime with
-torch.mps.compile_shader, and prebuilt kernels from the Hub.
-All the Metal kernels written for this experiment are now
-published on the Hub,
-and the project loads them from there.</p>
-<p>Beating Strata was never the only goal, though. Building this was a great way
-to learn how MoEs and LLMs work from a systems perspective: how sparse the
-routing really is, how much an expert cache buys you, where memory bandwidth
-goes per token, and how much time the host and the GPU spend waiting on each
-other. Transformers makes all of that easy to poke at, one module at a time.</p>
-<p>The generic expert streaming implementation is in
-huggingface/transformers#50717,
-and the benchmarks are in the Space.
-Feedback on the approach and the API is welcome.</p>
-<p>Thanks to Pedro, Lysandre and Arthur for their excellent feedback, and to Harry
-for helping test vLLM.</p>
-<p>Finally, thanks to Niko Veit for Strata.
-Strata set the bar for what's possible with expert streaming on consumer
-hardware, and having those numbers to chase is what pushed this work as far as
-it went.</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
-<p>Generate text with Qwen3.8 using streamed experts</p>
+                <p>A monthly overview of things you need to know as an architect or aspiring architect.</p>
+<p>Learning budget left this year? Use it for a QCon conference or a live InfoQ certification cohort, if your employer's policy allows. 
+
+                            Explore your options.</p>
+<p>Facilitating the Spread of Knowledge and Innovation in Professional Software Development</p>
+<p>Unlock the full InfoQ experience by logging in! Stay updated with your favorite authors and topics, engage with content, and download exclusive resources.</p>
+<p>In this episode, Christopher "CRob" Robinson, CTO of OpenSSF, Akrites and Chief Security Architect of the Linux Foundation, explores the state of software supply chain security amid multiple security incidents and explains how tools like Scorecard, the Security Baseline framework, and SLSA help harden software.</p>
+<p>Jayesh Bhayani discusses Tesco’s decade-long enterprise transformation from fragmented legacy systems to a unified cloud-edge platform. He explains how aligning system, talent, and process modernizations allowed Tesco to scale mission-critical retail operations to millions of customers, while sharing practical lessons on build vs. buy, cloud cost management, and preparing for agentic commerce.</p>
+<p>Nicholas Matsakis shares why AI makes Rust the ideal choice for modern production systems, skipping steep adoption hurdles via compiler guardrails. He discusses Symposium - an open-source, agent-oriented toolchain from the Rust Foundation - and demonstrates how the Agent Client Protocol (ACP) standardizes agent-to-tool extensibility across diverse enterprise developer workflows.</p>
+<p>Henry Wilson shares actionable tools from the BBC Sounds re-architecture to help senior engineering leaders drive technical strategy. He discusses building buy-in, navigating active resistors, using RFCs and ADRs, and balancing tradeoffs - showing that effective software architecture is fundamentally about communication, relationship-building, and organizational influence.</p>
+<p>The panelists explore how engineering teams adapt delivery architectures, pipelines, security, and governance for AI-assisted development. They share practical strategies for verifying AI-generated code, solving testing and deployment bottlenecks, maintaining human oversight, and measuring AI’s true impact on software velocity, quality, reliability, and operational cost.</p>
+<p>Work through your production AI decisions with senior engineers from other companies. Apply their perspectives to challenges from your own work.Online. Register Now.</p>
+<p>Compare team design, delivery flow, AI roles, and metrics with experienced practitioners. Online. Register Now.</p>
+<p>Building RAG pipelines or AI agents? Work through retrieval, context, evals, and reliability decisions with experienced practitioners.Online. Register Now.</p>
+<p>Distributed systems, decentralized decisions, platform engineering, and AI architecture. Online. Register Now.</p>
+<p>What's working across AI, architecture, and leadership, from the teams doing it. Register. Early bird ends Nov 10.</p>
+<p>Production AI across agents, context, evals, security, and infrastructure, from the senior engineers building it.Register. Early bird ends Nov 10.</p>
+<p>What early-adopter teams have proven in production, across 15 engineering tracks. Register. Early bird ends Nov 10.</p>
+<p>Learn from the decisions and trade-offs behind AI systems already running in production.Registration open.</p>
+<p>InfoQ Homepage
+News
+Grafana 13.3 Adds Shared Dashboard Variables and Notebooks</p>
+<p>Nov 21, 2026
+								
+								
+								
+									
+									2
+									min read</p>
+<p>Grafana Labs has released Grafana 13.3 with cross-dashboard variables that let teams manage shared dashboard controls in one place. The release also introduces Notebooks for collecting panels and investigation notes in a document that colleagues can share.</p>
+<p>The release announcement describes cross-dashboard variables as a public preview across all Grafana editions. Teams can define a variable once and use it in multiple dashboards, avoiding separate configurations for a selector such as an environment or a region. Grafana says managing those copies separately can lead to configuration drift.</p>
+<p>Cross-dashboard variables address a longstanding user request. In a 2021 GitHub discussion, Grafana user Darth-Bobo described having to maintain the same variables separately across dashboards, warning that configuration differences could become "unmanageable over time". More recently, an early tester described shared variables as useful for evaluating Git Sync without Terraform templating.</p>
+<p>Variables can have global scope, which makes them available throughout a Grafana organisation, or folder scope, which limits them to dashboards in the same folder. An editor can add the available variables from a dashboard sidebar, either individually or all at once. Viewers can still change the selected value on a dashboard, while the variable configuration remains centrally managed.</p>
+<p>Teams running Grafana themselves must enable the grafana.dashboardGlobalVariables feature toggle to try the preview. Grafana places the management screen under Dashboards > Variables, separate from the dashboard editor where users add the shared controls.</p>
+<p>Notebooks are also in public preview across all editions. A notebook can hold panels from dashboards or Explore alongside written observations, with findings from Grafana Assistant included as well. Teams can use the document to record how they investigated an issue or to prepare a post-incident review with relevant panels already in place.</p>
+<p>Users can create a notebook manually or through Grafana Assistant, then save and share it. Grafana is rolling the feature out gradually to Grafana Cloud. Self-managed installations need the dashboard.notebooks feature toggle enabled.</p>
+<p>Grafana’s Notebooks joins similar investigation-document workflows from other observability vendors. Datadog Notebooks combines live graphs with rich text and supports simultaneous editing, inline comments and reusable postmortem templates. New Relic Notebooks, generally available since August 2026, combines NRQL queries, visualisations and Markdown, with natural-language query translation and notebook-wide variables.</p>
+<p>The release also changes how Grafana Assistant builds dashboards. In public preview, dashboard plans let a user describe what they want to monitor and review a proposed layout in chat before building it. The plan covers the title and the proposed panels, including visualisation types and variables. A read-only preview lets the user refine the plan before choosing to build and save the dashboard.</p>
+<p>A separate Assistant feature, Undo turn, is generally available across all editions. It restores the previous dashboard state after an Assistant edit, including when one request changed multiple panels. The Assistant dashboarding guide notes that undo is unavailable if the dashboard has changed since the Assistant's edit.</p>
+<p>Grafana 13.3 also previews a visual refresh with revised themes and interface components. Grafana Labs says the visual refresh preserves existing navigation and workflows and introduces no breaking changes for plugins. Plugins using standard Grafana components and theme tokens pick up the new appearance; those with custom styling can migrate separately. Self-managed users can enable grafana.visualDesignRefresh to try it and switch back to the previous design.</p>
+<p>Explore how Azul helps Java teams reduce JVM vulnerability risk, strengthen application security, and prepare their Java environments for agentic AI. Discover practical strategies for securing Java workloads while maintaining performance and reliability. Learn more.</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+        
+			View an example</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+		
+			View an example</p>
+<p>Test your approach against the decisions and trade-offs of senior practitioners running agents, evals, model serving, and AI-assisted engineering in production.
+                
+                See what worked, what failed, and what they would do differently. Bring those lessons back to your team to make better-informed architecture and delivery decisions.</p>
+<p>InfoQ.com and all content copyright © 2006-2026 C4Media Inc.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/moe-expert-streaming" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.infoq.com/news/2026/11/grafana-13-3-shared-variables/?utm_campaign=infoq_content&utm_source=infoq&utm_medium=feed&utm_term=global" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

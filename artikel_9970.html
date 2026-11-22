@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Training a coding model to paint watercolours with TRL and OpenEnv</title>
+    <title>Verifying formal models of Raft implementations</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9970.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,272 +15,70 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Training a coding model to paint watercolours with TRL and OpenEnv</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
+        <h1>Verifying formal models of Raft implementations</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-to-paint-with-code/thumbnail.png" alt="Training a coding model to paint watercolours with TRL and OpenEnv" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://antithesis.com/optimized-images/8c536331fc12eb06f747ed05364222576cff38e29f13d352e19d6d6dc50cce12.jpeg" alt="Verifying formal models of Raft implementations" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-to-paint-with-code/thumbnail.png" alt="Training a coding model to paint watercolours with TRL and OpenEnv" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://antithesis.com/optimized-images/8c536331fc12eb06f747ed05364222576cff38e29f13d352e19d6d6dc50cce12.jpeg" alt="Verifying formal models of Raft implementations" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>On 23 August, Surya
-Narreddi posted a beautiful video
-of watercolours painted by a language model. The model writes JavaScript through
-p5.brush, a library that "adds natural
-drawing tools to p5.js". The video went viral fast, over 1.5M views at the time of
-writing.</p>
-<p>The video came with a blog
-post explaining the training
-behind an earlier and narrower stage of the project, close-up flowers rather than the
-full compositions in the video, sadly without open artifacts yet. His site says a full
-technical report is coming, so ensure you follow him. The original idea is his, coming from the art and design side, where his skills are way beyond mine. My attempt is on the engineering side, reproducing the recipe in the open with every piece published.</p>
-<p>Note: for the context behind the project, told by Surya himself, watch this
-video of his thesis.</p>
-<p>In this article I try and reproduce his idea with TRL and
-OpenEnv. The reference pool dataset, the RL
-environment, the training scripts and the trained models, all open.</p>
-<p>The whole pipeline runs on Hugging Face, end to end:</p>
-<p>Once the two Spaces are up, the recipe is one command. Duplicate the
-environment and the
-scorer model, set two
-environment variables for the reward mix, and launch:</p>
-<p>The rest of this article is the story of getting there, and every piece is in the
-repo.</p>
-<p>I have followed the original blog step by step, and only changed something when strictly needed. Every idea of my own went into a list instead of into the experiment, and that list became "What I would try next" at the end, next to the full list of published artifacts. If you have already read his post, the framing and
-the reward design will be familiar. The new material is the open implementation, the
-hand-rated pool, and three reward mixes trained and compared, and it starts at The RL
-environment you need to build.</p>
-<p>The paintings look loose, imperfect, handmade, at a moment when image models produce perfect (statistically average) pictures. My guess is that this contrast is a big part of why the video went
-viral. It reminded me of the early days of generative AI art, when the point was
-to explore the medium. DeepDream (2015) was a debugging tool that people turned into art, works like Edmond de
-Belamy (2018) came from artists probing
-what a GAN could do, and artists like Mario Klingemann spent those years making dreamy portraits with neural networks.</p>
-<p>This project feels closer to those early days. In his thesis, Surya describes the path
-that led here. He started by prompting text-to-image models, where the prompt is the
-only lever you can pull, and more detail buys more control only up to a point. Training
-the model itself goes further. The
-other half of the idea is the medium. The model writes a program of about 150
-lines of JavaScript that paints the image. That model output is code. You can read it, edit it and run it
-again, and the decision behind each brushstroke is visible. And the style comes from a
-restriction where the model is only allowed ten of the library's methods. More on that below.</p>
-<p>In that same period, Anna Ridler
-photographed thousands of tulips, hand-labelled every one, exhibited the dataset itself
-as the artwork, and later trained a model on it. I found her work through the references
-AI agents brought back while building this project and loved it because this
-project does something very similar by curating a set of images by hand, and then training against them.</p>
-<p>Most of the recent RL work on language models uses rewards you can verify. For example, math problems with a known answer, code that passes tests, or graders that are right or wrong and cheap to run. This project is closer to the older exception, RLHF, where the model learns a reward model from human preferences.</p>
-<p>Here the reward is aesthetic preference. There is no correct answer. The real question
-of the project is whether you can do RL over taste.</p>
-<p>The reward, as his blog defines it and as the RL environment I built implements it:</p>
-<p>HPSv3 is an open 7B preference model. Give it an image and a text description, and it returns
-a score for how much a person would prefer that image. It was trained on a large set of
-human choices between pairs of images, so its score is an average of many people's taste. The pairwise judge is
-Qwen3-VL-30B-A3B-Instruct, a
-general vision model called through HF Inference Providers. The pairwise judge sees the candidate
-painting
-next to four references randomly selected from the pool, guided by a written description of what to weigh (bleeds, translucent washes, soft edges),
-each comparison in both presentation orders, and its score is the share of comparisons
-the candidate wins. Its only standard is the pool, so its score is my taste, as encoded
-in those ratings.</p>
-<p>Those are the weights Narreddi converged on. The pool defines taste here. That moves the work from tuning hyperparameters
-to building the set that decides what is beautiful.</p>
-<p>I trained three runs with this reward. They differ only in how the weight splits between
-the two model judges:</p>
-<p>I started with hps-only to validate that the pipeline could learn at all. Once the reward was going up and the metrics were healthy, there was no reason to run it longer, so I launched the two longer runs instead. The question that the longer runs ask is how much of HPSv3's power can you hand to the pairwise judge? The more weight the judge carries, the more
-the reward means my taste instead of everyone's, and the harder it should be to climb. Incidentally, if you push it far enough or your style is too far from the average, the model could stop entirely.</p>
-<p>Fortunately, it did not stop and both runs with the pairwise judge on learned too. The hand-rated pool
-can steer the policy, at least as far as the metrics and the final paintings show. The
-numbers are below.</p>
-<p>Disclaimer. If we use a frontier model, it can already generate the JavaScript code that paints watercolour from a prompt. That's the starting point. The work here is about teaching a smaller model to do it combined with a person's own artistic preferences.</p>
-<p>The environment wraps everything that sits between the model and the reward, including the JavaScript library that the model uses for painting, the system prompt that restricts it, the headless Chromium that renders each sketch, and the gate that rejects cheats.</p>
-<p>The library does more of the work than it seems.
-p5.brush, by
-@acamposuribe, simulates a medium rather than drawing
-shapes: pigment bleeds past the edges of a fill, paper has texture, strokes have mass,
-flow fields drag brushwork around. When the model calls brush.fillBleed(0.25) it is deciding how far the ink
-runs.</p>
-<p>Note. The author of p5.brush had been trying to teach a machine to paint long
-before any of this. In 2022 he made a generative art series that hides a diary about
-teaching p5.js to draw like a child: "It is barely able to use the crayons [...] It
-cannot follow simple commands. I'm done for today, very infuriating." The series was
-meant to have three pieces, and he made two. When Surya's video went viral, he
-quoted it, sharing that diary
-and saying this work is the third piece arriving on its own.</p>
-<p>p5.brush exposes 47 methods. The prompt allows 10: scaleBrushes, noStroke, fill, noFill, fillBleed, fillTexture, beginShape, vertex, endShape and circle. What the other thirty-seven add, lines, hatching, custom brushes, would break the watercolour look. With these ten the model can only paint filled shapes, and the library adds the bleed to every one of them.</p>
-<p>His blog post saved me a lot of time I could have wasted iterating on the prompt. 
-A long API reference makes the model
-invent methods that do not exist, and his 200 GEPA iterations converged on a strict
-allowlist with no documentation. I saw the same failures and wrote the allowlist by
-hand. My only addition to that recipe is one sentence: paint
-each petal two or three times, a big pass first and a smaller, more opaque one inside
-it. This small change made my outputs a lot more colorful.</p>
-<p>Note. If it's the first time you hear about
-GEPA, it is an automatic prompt optimizer.
-A language model reflects in plain words on where the current prompt failed and
-proposes a better one, and the loop repeats.</p>
-<p>The gate is the final piece. The sketch has to compile, use the library instead of direct p5 calls, put real pigment on the canvas, and not try to trick the scorer, for example by writing text on the canvas.</p>
-<p>The pool consists of 178 paintings divided into
-two tiers based on my personal preferences, love and okay. All of them are actually generated by a model. Four open-weight models,
-called through Inference Providers, wrote p5.brush sketches, each one working from a
-real, openly licensed photo of a hibiscus from iNaturalist. A vision model gave written
-feedback on every sketch, over three refinement iterations. Every final render was then rated one at a time, by me, and 178 made the cut.</p>
-<p>Here I chose four different families of models to test their different styles. These four were the open models that produced a valid sketch every time in a quick reliability check, and two other candidates were dropped for failing it. If you want to produce your own pool, you might choose others.</p>
-<p>The tiers do real work in the reward. When the pairwise judge draws four references,
-half come from love and half from okay, so the policy always faces some rivals it
-can sometimes beat, and a win pays the same against either tier. This is one of my few
-deliberate changes: the original compares against its top tier only, and I kept the
-easier tier in the draw so a weak early policy still gets signal.</p>
-<p>No human-made painting is in there, which is a real limitation. p5.brush is a niche
-library, and the human work that exists in it with accessible code is a handful of pieces, nowhere near what a training corpus
-would need, as his blog also notes.</p>
-<p>The interesting idea here, as I've already discussed previously, is that the model will learn to imitate what the pool contains. If we point the environment at a different dataset, the reward would automatically change without touching a single line of code. For the dataset I generated and openly share, I also include the source sketch.</p>
-<p>If we look closer at the judges, the two of them answer different questions. HPSv3 decides whether it is a flower, and
-the pairwise judge decides whether it is well painted in the style I chose.</p>
-<p>Before anything worked, there was a long stretch of flat reward curves. If you've tried to reproduce a research paper/blog without open artifacts, you probably can relate. Every run
-tested what I thought was a reasonable theory about what was wrong. A run takes a lot
-of time, so I queued the next one while still going through the last one's results. As always, starting from something easier that works and then building on top of that was the answer.
-A simple control task, with no browser and no judges, was the first attempt that learned, and the reason was that my learning rate was just too low.</p>
-<p>Another change that cost me time to find was adjusting the LoRA parameters correctly. The usual target_modules list assumes a dense model, and Qwen/Qwen3.5-35B-A3B is a mixture of experts that names most of its projections differently, so the adapter was training ten layers out of forty. I solved this by changing it to all-linear, which reaches every linear layer. The routed experts in this architecture are fused tensors that even all-linear leaves frozen, but everything else gets an adapter, and that was enough to learn.</p>
-<p>The fix was four changes in TRL's GRPOTrainer:</p>
-<p>These four changes unlocked the first successful run (hps-only), with the reward clearly improving.</p>
-<p>With that configuration, all three runs learn. Both judge runs were launched for 200 steps and stopped at 110, with the reward still climbing slowly. A step takes fifteen to eighteen minutes, and the comparison between mixes was already stable, so I stopped both to save compute. Mean group reward over the first and final third of each run:</p>
-<p>The three curves line up with how much weight my taste carries. The more the judge
-weighs, the lower the start and the noisier the climb. judge-led spent its first thirty steps nearly flat
-before it moved. It is the same move that solved the debugging. Shrink the problem until
-something learns, then add the hard parts back one at a time.</p>
-<p>The pairwise judge term itself climbed in the two runs that used it. The model wins more
-comparisons against the pool as training advances, which is the claim hps-only could
-not make. No group in any run collapsed to identical rewards, the GRPO failure mode that
-kills the gradient. For the curious, the per-metric curves (HPSv3, paint coverage,
-entropy) are in the
-repository as CSV.</p>
-<p>The full launch command, the hardware and the two environment variables that turn this
-into the other two runs are in the
-recipe.</p>
-<p>In every run, the first thing the model learned was to stop producing bad
-paintings, the near-blank canvases and shapeless washes that score under 0.3 in total
-reward. In
-hps-only, three quarters of the rise in the group mean comes from bad paintings
-becoming rare. In the judge runs the collapse is even steeper: rollouts under 0.3 fall
-from 99 to 16 across judge-led's thirds, and from 37 to 4 in hps-led.</p>
-<p>This is why the obvious visual, the best painting of each step, shows almost no difference in
-hps-only. It moves +0.034 across the run while the median moves +0.155. The
-learning is visible in the middle of the distribution.</p>
-<p>What the pairwise judge changes is the top. In hps-only, paintings got more
-reliable without getting better. The quality of the good ones added just +0.03 to the
-group mean, and once HPSv3 saw petals around a centre and a stem, it stopped asking for
-more pigment. With the judge on, the other half of the story appears. Better here means closer to
-the pool, so closer to what I rated as "good" or something I liked more. That added +0.12 in judge-led and +0.16
-in hps-led, the best of each step rose too, and
-paint coverage doubled in both runs (0.11 to 0.23, and 0.13 to 0.30) where hps-only
-barely moved it. With a reference left to beat, a good painting can still get better,
-and the model starts being rewarded for using more pigment.</p>
-<p>One more finding. The model ignores an explicit instruction, and it is right to. The
-system prompt asks for fifteen to thirty filled shapes. If we look at the real mean, it is between 7 and 9, and
-n_shapes barely correlates with reward in any run (+0.000, −0.14, +0.07). The policy
-is not rewarded for obeying that sentence, so it does not obey it.</p>
-<p>There is also a ceiling on the hps-only route. If every rollout matched its good
-ones, that run's mean would sit at 0.771. Whether more steps would break it is
-an open question.</p>
-<p>The paintings also show something that the tables miss. Within each run, they all look
-similar. As training advances, the rewards inside each group get closer together, and the
-median paintings in the opening video look like takes of the same flower. That is GRPO
-doing what it is designed to do with a pool built from one subject. The pool decides
-what counts as variety, the same way it decides what counts as quality. If the reward
-only pays for matching one flower, the model learns to paint that one flower. More diverse output would need a
-more diverse pool, and building one is more curation work. Surya's newer compositions are an example of this. Alex Yango's animal
-paintings are the same recipe with
-different choices in the pool. This is the biggest difference between an aesthetic
-reward and a maths grader. Behind the number there is a very human job, deciding what
-belongs in the reward set. Jason Liu's essay on
-taste says the general version in one
-line. AI shifted the bottleneck from making to noticing.</p>
-<p>Surya closes his blog with some of his favourites. Instead of picking mine, below is a
-wall with the 178 paintings the reward scored highest across the two judge runs, the
-same number the reference pool holds, in no particular order. Open it and pick your own.</p>
-<p>To choose, you looked at many and kept a few, and that is exactly the job that built the
-reward of this project. Every painting of every run, with its sketch and its reward, is
-in the rollouts datasets, and browsable in this gallery.</p>
-<p>Since the reward was partly based on my taste, it is fair to close with my verdict as a viewer. To my
-eye, judge-led is the run that ends up the most diverse and the most artistically
-interesting. hps-led paints convincing watercolours, but its best ones share a soft,
-wet-on-wet look that is almost a style of its own. hps-only converges the hardest, and
-most of its paintings settle on the same colours. You can judge for yourself in the
-gallery, which has every painting of
-every run, sortable by step and by reward.</p>
-<p>This project is mostly infra. A run needs a trainer, two Spaces, an inference router and
-a websocket to stay healthy for hours straight, and every piece that fails quietly turns
-into a wrong number somewhere else. Half the work is checking that the number you read
-matches what actually happened.</p>
-<p>Failures of the infrastructure were entering the reward as zeros. A render that
-timed out or a scorer that did not answer scored the same as a bad painting, 0.0 inside
-the group. Across all my runs that was about 1.5% of rollouts, and in the worst run it
-reached 5.2%. That trains the model on noise, so those paths now
-return None and the rollout is excluded from the group.</p>
-<p>I also found a bug in OpenEnv, and sent the fix upstream. The client keeps one
-persistent websocket, and a socket closed by the far end stayed cached, so every later
-call failed even though the environment was healthy. It cost me two half-finished runs
-to find it. The fix is submitted
-upstream, and the runs launched with
-it have been running clean since.</p>
-<p>The reward of a step depends on which references it drew. The pairwise judge
-samples four references per step, so every step faces a different set of rivals, and
-some draws are simply harder. GRPO itself is mostly safe, because advantages are
-computed inside the group and a hard draw moves the whole group together. The curve I
-was reading was not safe, and some of what looked like a bad step was just a hard draw.
-The image above is one example. Step 12 scored half a point below step 11 mostly because
-it drew the hardest references of the run, while the paintings themselves look close.</p>
-<p>Rounded numbers, and only for the runs that finished.</p>
-<p>A step is eight rollouts and takes fifteen to eighteen minutes, of which 70 to 80% is
-rendering. A single render takes 69 to 96 seconds against a 90 second deadline. Part of that is
-expected, the Space has no GPU, so Chromium renders the WEBGL canvas in software and
-p5.brush's bleeds and textures are heavy pixel work. Even so, I expected it to be
-faster, and I have not found the full cause.</p>
-<p>A scorer can cost more than the training that uses it: HPSv3 has to be up for the whole
-run, so pause the Space, or set its sleep timer, when the run ends.</p>
-<p>Everything runs on HF
-Jobs, with the environment as
-a Docker Space and metrics in
-trackio.</p>
-<p>The rule of this project was to reproduce the recipe with every resource open, not to
-improve it, so a list of untried ideas piled up along the way. These are the ones I
-would actually try, in order of how much evidence there is.</p>
-<p>Multi-step, and letting the model see what it paints. This is the first thing I
-would try. The original blog trains single turn, so I trained single turn, and in this
-setup the model paints with its eyes closed. No image ever goes in, and the only
-feedback it gets is one number. The evidence that a feedback loop works is the pool
-itself. The reference paintings came from models iterating three rounds under a vision
-critic, and the later rounds are better. The material that defines the reward was made
-with a loop the policy never gets.</p>
-<p>Smaller models. There is evidence that 35B is more than needed. In my side
-experiments a 4B already wrote valid sketches that passed the gate. If a 4B can learn
-this, the cost of the experiment drops by an order of magnitude.</p>
-<p>Other ideas on the list are SFT on the pool sources before starting RL, rewarding pigment
-explicitly, moving the judge's reference mix from easy to hard as the run advances until
-only love remains, widening the ten-method allowlist for more visual range (my
-attempts on this crashed more sketches and broke the watercolour look), and checking how consistent the pairwise judge really is by
-scoring the same image twice.</p>
-<p>And the method is not specific to flowers. Alex Yango painted animals with the same
-mechanism, and Brendan Hogan
-trained canvas animations
-against a pool of hand-rated clips. I had also played with something similar before using Simon
-Willison's pelican
-benchmark, where code is
-rendered to an image and scored.</p>
-<p>And underneath all of it sits the question this project cannot close. 178 paintings
-made by models define what this trained model considers beautiful. The pool is the bottleneck,
-and it is the part of the pipeline with no principled answer.</p>
-<p>For anyone reproducing this, there are two deliberate divergences from Narreddi's
-recipe, both argued earlier in the article:</p>
-<p>The rest, all-linear for the LoRA, infrastructure failures returning None instead
-of 0.0, stopping the judge runs at step 110, are decisions I had to make along the way
-because his blog does not specify them. His implementation is not published, so
-I cannot tell whether they match his choices or diverge from them.</p>
-<p>The per-rollout numbers in this article can be recomputed from the published datasets.
-Nothing here depends on any Space staying switched on.</p>
-<p>The method and original idea are Surya Narreddi's. The library is Alejandro Campos Uribe's.</p>
+                <p>November 19, 2026 | Rohan Padhye, Research fellow | Hillel Wayne, Developer educator</p>
+<p>Monthly reliability and distributed systems news, curated for teams building critical software.</p>
+<p>Please enable JavaScript in your browser to load and submit this form.</p>
+<p>Check your inbox for your confirmation message.</p>
+<p>We couldnât submit your form. Please try again later.</p>
+<p>At Antithesis, we love finding bugs in distributed systems. But Antithesis can also help eliminate certain classes of bugs by using a combination of AI and formal methods to prove the correctness of complex design choices.</p>
+<p>In this post, we demonstrate the paradigm on two Raft implementations, production libraries from etcd and HashiCorp. Although theyâre implementing the same protocol, there are significant differences in the approaches the two use. We used AI, TLA+, and Antithesis to formally model the two libraries with trace validation. We iterated between model checking, Antithesis testing, and proof attempts, each of which exposed bugs in the code or gaps in the model. We patched bugs and refined the model until it was provable, and until every test run was conformant.</p>
+<p>Our model handles several extensions to the core Raft algorithm including pre-votes, snapshots, leadership transfers, and, for etcd-raft only: read indexes for linearizability, async storage writes, and membership changes (where etcdâs implementation intentionally deviates from the Raft paper).</p>
+<p>The final proofs establish core Raft safety properties such as Election Safety, Leader Completeness, and State-Machine Safety. In other words, our process established that once we applied the workarounds and fixes needed, the specific designs (scoped to the features we modeled) embodied in HashiCorp Raft and etcd-raft actually offer the same guarantees that the Raft paper does. We make the artifacts available for open review:</p>
+<p>Earlier this year, we wrote about how we keep finding bugs in every major Raft implementation we test with Antithesis. This was surprising, because the underlying Raft protocol has been extensively studied, formally specified, and rigorously proven correct (under a set of assumptions). In that post, we pointed out that many implementations subtly deviate from those assumptions, re-design the algorithm for performance, and/or extend the core Raft protocol with unverified extensions â thereby introducing bugs.</p>
+<p>Since then, advances in AI have made automated theorem proving and formal verification of complex systems much more scalable, making it feasible to connect a specification to its implementation. So we set out to formally verify not just the core Raft protocol, but the specific designs implemented by production Raft libraries, incorporating custom data structures, different modes of concurrency, and various extensions such as pre-votes, leadership transfers, snapshots, and (in the case of etcd-raft) membership changes.</p>
+<p>A key challenge in applying formal methods is to identify a level of abstraction that both allows us to reason mathematically about desired properties, and bridges the gap between specification and implementation. We are not yet at the point of reasoning directly at the level of assembly instructions or even programming language semantics in order to verify distributed safety properties in production systems.</p>
+<p>Both Anthropic/Theoremâs OSS-Verify and Google DeepMindâs AlphaProof Code only model single-threaded assembly code; whereas distributed systems are concurrent.</p>
+<p>The most widely used approach models the software as a state-transition system in a specification language such as TLA+, and checks invariants over these transitions for finite state spaces. TLA+ models can either be hand-written by experts, or these days, inferred directly from the code using AI. This approach has its own limitations, but is increasingly popular. The next challenge, then, is showing that the TLA+ model corresponds to the actual software that will run in production.</p>
+<p>For our demonstration, we used Claude Fable 5.2 to automatically infer TLA+ models from the implementations of HashiCorp Raft and etcd-raft and then manually reviewed the safety properties declared in the specifications.</p>
+<p>The etcd-raft repository has a TLA+ model crafted for trace validation that is now out of date, and is not designed for ease of proof. The Specular project produced models of etcd-raft and hashicorp-raft, but those models are designed for trace validation, not ease of proof, and the TLAPS leaderboard indicates that they remain unsolved as of 20 Nov 2026.</p>
+<p>We had to manually provide guidance on which features to model or leave out, what scenarios to specify for model checking, and make one refinement to the auto-generated safety properties. While AI is generally bad at inferring properties, in this case we simply instructed the agent to express the core safety properties defined in the Raft paper.</p>
+<p>We used the recently launched Antithesis plugin to automatically set up a test cluster, an input-generating workload designed to handle all the features captured in the model, and assertions that correspond to the modelâs safety properties. The software was then tested under fault injection while being fed random inputs, exercising various code paths and thread / message interleavings.</p>
+<p>For this demonstration, we developed a lightweight trace validation kit that allowed the software running in Antithesis to emit structured log events that correspond to state transitions in the TLA+ specification. Any test execution that produced a trace that did not conform to some path in the model got flagged. A non-conformant trace could indicate incorrect instrumentation of the trace logging itself, or more seriously, a modeling error or a real bug in the system. We instructed our AI agent to diagnose which one of these it might be, using Antithesis as necessary, and continue iterating until the traces and the inferred model converged.</p>
+<p>For both Raft models, the specification expresses the following safety properties, taken directly from the Raft paper:</p>
+<p>Before trying to prove anything, we verified that these invariants hold on bounded instances using TLC, the standard TLA+ model checker. These instances, also synthesized by our AI agent, specify various bounds: clusters are usually three nodes, a single client value, at most a couple of terms of leader election, logs that are limited to a few entries, with only a handful of network messages in flight. These bounds sound tiny, but theyâre sufficient to create several interesting cases: competing elections, a deposed leader still replicating, log entries overwritten and re-replicated, crashes in the middle of an operation, etc. We also model checked various configurations of the Raft libraries, e.g. with pre-vote or snapshotting features enabled and disabled. These âsmallâ instances can reach a state space of over 1.6 million states, which TLC explores exhaustively. We also included some larger problems which were only checked via random simulation. If model checking triggered a safety violation, we attempted to reproduce it as an assertion failure locally or in Antithesis; if the software couldnât exhibit the behavior, the model had to be tightened.</p>
+<p>Overall, our process was an iterative loop consisting of model checking (flagging invariant violations), trace validation (flagging deviations), model refinement (to fix design flaws or conformance), and software patching (to fix bugs).</p>
+<p>In some ways, this approach is similar to and inspired by Specular. However, given their goal of finding bugs, Specularâs approach involved using AI to identify buggy scenarios before writing models, which meant that static analysis was doing a lot of the heavy lifting. In contrast, our models are intended to be more general and prove safety of the full design.</p>
+<p>Along the way, we encountered bugs in both systems, including previously known open issues such as hashicorp/raft#695 and etcd-io/raft#551, as well as new ones such as hashicorp/raft#746 and etcd-io/raft#558. In our internal repository, we applied a total of 7 patches across the two implementations. In each case, our goal was to make the system and model pass both verification and validation.</p>
+<p>We also encountered a few additional crash bugs, but those donât violate safety.</p>
+<p>But bounded model checking only shows the absence of bugs in a small state space. The only way to get assurance for unbounded input sizes is via rigorous mathematical proof.</p>
+<p>There are two good techniques for proving invariants correct for the whole specification: using a theorem prover integrated into TLA+ called TLAPS, or by translating the model into Veil, a library for the Lean proof assistant for modeling state-transition systems. We used both, delegating the task of proof construction to Claude Fable 5.2.</p>
+<p>We used Veilâs official tla-to-veil LLM skill for the model translation, and the recommended approach of validating this via bounded equivalence checking, using TLC and Veilâs own model checker, on our previously stored instances.</p>
+<p>Ideally, a TLAPS proof provides the best assurance, since it can attest to safety properties defined on the TLA+ model itself. However, we decided to translate TLA+ to Veil and attempt proofs in Lean. Why? As described in the previous section, our process was extremely iterative, involving several steps of model refinement. We wanted to use the proof engine as additional feedback in that process, feeding it any candidate specifications on which bounded model checking and trace validation both succeeded. We found Leanâs interactive tactic paradigm, predictable performance, and persistent kernel-checked proof terms to be key benefits in this iterative process.</p>
+<p>On one occasion, a model of etcd-raftâs membership change as implemented could not be proven correct, revealing a complex bug whose trigger was beyond the state space that bounded model checking explores. In such situations, we could use the Antithesis plugin to attempt to synthesize a workload to reproduce the counter-example.</p>
+<p>Antithesis also helped in the proof construction process. When working on challenging parts of the proof, Claude hypothesized several intermediate invariants which if true would lead to a straightforward proof strategy. The agent then used Antithesis to quickly check if those invariants held true in test runs, and discarded them if run-time assertions failed. Antithesis thus made the proof construction phase more efficient.</p>
+<p>Once we converged on a state where the safety properties were fully provable in Lean and the model was passing trace validation with Antithesis, we froze the specification and asked agents to prove the same invariants on the TLA+ spec directly with TLAPS. This last step wasnât strictly necessary, but eliminated any shadow of doubt concerning the Lean proofs and the TLA+ spec.</p>
+<p>End-to-end, the work on each library cost less than $1,200 in Claude Fable tokens and approximately 2000 Antithesis compute-hours.</p>
+<p>Less, we should note, than the prepaid allowance in a single month of Antithesis Teams.</p>
+<p>Note that our final proofs verify formal models of the implementation, not the code itself. However, we can gain confidence about the modelâs fidelity based on the trace validation performed with the extensive test coverage that Antithesis provides, including fault injection such as network partitions and node crashes. To strengthen assurance even further, our iterative process involved several steps of mutation testing, including: mutating the specification to check that the proofs fall through, mutating stored test logs to ensure that trace validation fails, and mutating the software itself to ensure that everything breaks.</p>
+<p>The models still make several assumptions about the environment, which limits the reach of verification. For example, both Raft libraries provide pluggable interfaces for local persistent storage. In our test workloads, we use BoltDB for storage and the models assume that no single write (e.g., a log entry or tuple of raft state) is ever torn or corrupted, which BoltDB guarantees. A crash can still fall between two writes.</p>
+<p>Our work also leaves out several library features which we have not modeled, such as lease-based reads for etcd-raft (because it depends on wall-clock timing), async heartbeats for hashicorp-raft (because it is known to be very very buggy; really), and membership changes for hashicorp-raft (because we were exhausted from patching bugs in the simpler core). Finally, we only verify safety properties and ignore liveness in this prototype. A comprehensive list of assumptions and limitations is provided in the associated artifactâs README.</p>
+<p>Given our reputation as âa fuzzing companyâ, formal methods might seem like an odd direction for us to explore. But we see ourselves less as âa fuzzing companyâ and more as a correctness company. We need a wide range of different approaches if we want to build truly robust systems. Each technique compensates for the weaknesses of the others. Moreover, they amplify each otherâs strengths. The first property-based testing framework, QuickCheck, derived test inputs from a functionâs static type. Many of our customers use both testing and formal methods, so we want to make the two techniques work better together.</p>
+<p>The biggest weakness of formal specification is that it proves the design correct, but doesnât guarantee that the code we implemented actually matches the design. Trace validation uses the strengths of tests to compensate for the core weakness of formal specification. Validation works best if our tests can reach wildly unusual system states, which aligns well with our core technology.</p>
+<p>How formal specification can help testing is relatively less explored, but there are some opportunities here too. We often find that newcomers to property-based testing struggle to describe the properties for their system. But they can describe a high-level outline of what the system essentially does. With trace validation, we can potentially turn that outline into a property to test!</p>
+<p>All that said, this is an early research project. We could easily map trace logs to spec behaviors because the code and spec were at roughly the same level of abstraction, with a close correlation between lines of Go and lines of TLA+. Most real-world specs, though, are two levels of abstraction above the code they model. This is because 1) TLA+ can do things impossible in a real system, like make truly arbitrary nondeterministic choices, and 2) the spec can simplify implementation details that donât affect the essential design. These features make specification more powerful, but also make trace validation harder.</p>
+<p>Think of this as us demonstrating a medicine works on mice, but we havenât yet done a human trial. More work is needed, work which weâre now doing at Antithesis. Stay tuned to see where it ends up.</p>
+<p>In formal specification (like with TLA+), we write highly abstract blueprints, or specifications, of systems and find bugs in those blueprints directly. Once weâve found and fixed all the bugs, we can be confident our real system isnât going to have certain design issues.</p>
+<p>But how do we know that the code we write actually corresponds to the design we verified? This is one of the big unsolved problems of formal specification, and the solution we used here trace validation (also called âtrace checkingâ). This was first publicly described in the MongoDB paper eXtreme Modeling in Practice. The authors took logged events in the production system, converted them into a sequence of states, and checked if that sequence was possible in the blueprint. If not possible, then the implementation must be doing something forbidden by the blueprint, so there is a divergence between the implementation and spec.</p>
+<p>Itâs easier to see this with a concrete example. Say we have this pseudocode as our specification:</p>
+<p>By either-or, I mean that exactly one of the two will happen each iteration, but the decision logic is an implementation detail I donât care about. This spec also has the property that, after every loop iteration, passed + failed == i.</p>
+<p>Now hereâs one conforming implementation:</p>
+<p>While the practical way this works is very different than just arbitrary incrementing variables, itâs still the same thing in essence, and we should expect that every sensor either gets added to the set or marked as broken. To do trace validation, we first add some logs to the code:</p>
+<p>We run this program and it prints âloop passed loop failedâ. We can convert that to a behavior of the spec. If we denote a state as (i, passed, failed), the corresponding sequence of states would be [(0, 0, 0), (1, 0, 0), (1, 1, 0), (2, 1, 0), (2, 1, 1)]. That is valid under the behavior, so this trace conforms to the spec.</p>
+<p>Now if we make a diverging change like this:</p>
+<p>Itâs now possible to run this and see the logs âloop loopâ. The corresponding behavior, [(0, 0, 0), (1, 0, 0), (2, 0, 0)] is impossible in the spec, so this would fail trace checking and reveal a divergence between the code and spec.</p>
+<p>Thatâs how it all works in principle, anyway. Thereâs a lot of technical challenges with getting this working practically. For example, how are we supposed to know that a network timeout may give us an invalid trace, and how are we actually supposed to trigger it? And the answer to that is a combination of the techniques that we use in Antithesis: deterministic simulation testing and fuzzing. But those are things that we talk about in detail in other articles.</p>
+<p>Please enable JavaScript in your browser to load and submit this form.</p>
+<p>Check your inbox for your confirmation message.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/train-to-paint-with-code" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://antithesis.com/blog/2026/verifying-formal-models/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

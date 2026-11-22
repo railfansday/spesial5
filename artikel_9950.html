@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tokenizers v1: encode, decode and scaling, measured</title>
+    <title>China attackers deployed AI agents that autonomously found and exploited a 0-day to take over a university server</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9950.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,57 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tokenizers v1: encode, decode and scaling, measured</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-21</p>
+        <h1>China attackers deployed AI agents that autonomously found and exploited a 0-day to take over a university server</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5311400.jpg?imageId=5311400&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="China attackers deployed AI agents that autonomously found and exploited a 0-day to take over a university server" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/tokenizers-v1/thumbnail.png" alt="tokenizers v1: encode, decode and scaling, measured" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5311400.jpg?imageId=5311400&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="China attackers deployed AI agents that autonomously found and exploited a 0-day to take over a university server" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The tokenizer has not historically been the bottleneck within ML workflows. Compute-wise, tokenization is light compared to the heavy modeling happening in the rest of the pipeline. Yet, in some cases, it has rapidly become key to accelerating (or slowing down) your machine learning work.</p>
-<p>As models become faster and workloads scale, that balance begins to shift. Training on massive datasets, serving many concurrent requests, or repeatedly processing long inputs can put enough pressure on the tokenizer that it starves the model of data.</p>
-<p>This is why we have chosen to heavily focus on performance for the upcoming version 1 of tokenizers. Tokenization should be light and should scale with your workflow. Your GPUs should never sit idle waiting for the CPU to complete its tokenization.</p>
-<p>In this article, we look at what makes v1 faster than v0.23, often by tens of times.</p>
-<p>This work was entirely possible thanks to the rest of the ecosystem. Tokenization is a very active area of open source work, and libraries such as gigatoken, tiktoken, kitoken, tokie, fastokens, wordchipper and ai-tokenizer, as well as many others, have each pushed on what a fast tokenizer can be. We read that work, and several of the ideas below reached us because another project showed they were worth trying.</p>
-<p>Before this refactor, tokenizers was nowhere near the performance it could have had, so contributing to it may not have seemed worth it. With this refactor, we hope to make clear that we intend tokenizers to be a library worth contributing to.</p>
-<p>We also thank IBM, NVIDIA, and the ExecuTorch team for contributing patches and helping us test across a wide range of hardware to broaden platform support.</p>
-<p>We showcase results for the release candidate of tokenizers v1 against other widely used alternatives. We go over single-threaded, multi-threaded, scaling across threads, per-model comparison, per-language comparison, latency, decoding throughput, memory heap, as well as crate size.</p>
-<p>We run this from the tokbench repository, and add a command to rerun the benchmarks on your hardware if you would like to do so.</p>
-<p>v1 will produce the same token IDs as v0.23. The goal was to preserve the output, the API, the vocabulary and the merge ranks, and improve everything that can be improved. That includes breadth. The library stays general across tokenizer families rather than specialising on BPE, so v1 loads everything v0.23 loaded.</p>
-<p>A tokenizer converts text into the list of integers a model reads. tokenizers runs that conversion in four stages. Normalization applies operations such as lowercasing or Unicode normalization to the raw text. Pre-tokenization splits the text into smaller pieces called pre-tokens. The model turns each pre-token into tokens and maps them to IDs in its vocabulary. Post-processing adds any special tokens the model expects.</p>
-<p>The model stage is where most of the work described here happens. Eight of the ten model families measured in this article use byte pair encoding, or BPE. BPE starts from the bytes of a pre-token and repeatedly joins the highest ranked adjacent pair until no ranked pair remains. The ranking is learned when the tokenizer is trained and ships with it, so the same text always produces the same IDs. A merge never crosses a pre-token boundary. The other two families use WordPiece and Unigram, the two other model types the library supports.</p>
-<p>The tokenization pipeline page documents the four stages. Tokenization algorithms documents BPE, WordPiece and Unigram.</p>
-<p>Each stage was worked on. These are the changes that mattered:</p>
-<p>BPE models use a regular expression to split the input text into smaller, easier to process chunks called pre-tokens. Merges happen inside a pre-token and never across the boundary between two of them, so this split decides what the rest of the pipeline sees.</p>
-<p>That regular expression is a fixed parameter of the model. It ships with the tokenizer and never changes at runtime, so there is no need for a general-purpose regex engine to interpret it on every encode. An equivalent splitting function can be written by hand, once, for the pattern a given model actually uses.</p>
-<p>A hand-written function can then use the SIMD instructions (single instruction, multiple data) of a modern CPU, which apply one operation to many bytes at once and suit UTF-8 text well. bitcannon views the input's bytes as parallel streams of bits, so boundaries fall out of boolean operations across whole registers instead of a scan that advances one character at a time. It decides 64 bytes per register operation. The same idea drives Parabix for text processing and simdjson for JSON.</p>
-<p>This depends on recognising the pattern. A handful of grammars cover most byte-level BPE models, and a tokenizer whose pattern is not among them keeps the regex path and none of this speed-up. That is why the gains above vary as much as they do.</p>
-<p>Real text contains many repeated words. Because BPE always produces the same token IDs for a given pre-token, v1 can save the result after processing it once. A thread-local cache maps each pre-token's bytes to its token IDs, allowing later occurrences to skip the merge process.</p>
-<p>Naturally, as the input grows, the number of unique words can grow more slowly than the total number of words. Repeated words then account for an increasing share of the input. New words still appear, which accounts for the occasional misses in the animation below.</p>
-<p>Caching works best when the input contains repeated pre-tokens. Input with few repeated pre-tokens can pay for lookups without receiving many hits.</p>
-<p>The next major cost comes from the BPE merge loop. For each pre-token, the loop repeatedly finds the highest-priority adjacent pair and merges it. The previous implementation allocated new memory for every call and built a new priority queue for every pre-token.</p>
-<p>v1 reuses a scratch buffer owned by the caller, removing those repeated allocations. It stores symbols in a flat array and links adjacent symbols by their positions in that array, which makes updates during merging cheaper. It also processes a batch of pre-tokens in a single model call.</p>
-<p>Each candidate pair is also packed into a single 64-bit value, with the merge rank in the high bits. Comparing two candidates is then just comparing two integers, and "no merge here" is the largest possible value, so the loop finds its next merge without a branch.</p>
-<p>Small differences in benchmark design can produce large differences in tokenizer performance. We used the following rules to keep the comparison consistent across engines.</p>
-<p>Repeatedly encoding one document can be faster than encoding a stream of distinct documents on the same build. The first approach measures performance when the entire document is already represented in the cache. The second measures performance on new input while allowing previously seen pre-tokens to remain cached.</p>
-<p>Both conditions are sometimes described as "warm," even though they measure different workloads. Our headline results use distinct documents, and the complete corpus is too large to fit in the cache. Tokenizer benchmarks should identify which workload they use because the choice can dominate the result.</p>
-<p>Across the ten model families v1's encode path covers, it encodes text 3 to 30 times faster than v0.23 with one thread on an Apple M4 Max. The low end is t5-base, the high end gpt2. It scales at 76% of linear across eight workers. Throughout these changes, v1 produces exactly the same token IDs as the released library.</p>
-<p>The overall improvement comes from several changes working together: a hand-written splitter in place of a regex engine, a cache that answers a repeated word without merging it again, a merge loop that never touches the allocator, and one model call per batch of pre-tokens instead of one per pre-token. Each reduces the work done at a different point in the pipeline.</p>
-<p>The next priority is support for more model families. We will move additional models onto the new merge loop before 1.0.0. Once the release candidates stabilize, the next step will be bringing about the improvements within the transformers library and the rest of the ecosystem which depend on the tokenizers library.</p>
-<p>This post is generated from tokbench results and will be updated as support expands.</p>
-<p>A release candidate for v1 is on crates.io. The API you call is the one you already call, so the only thing that changes is which build you install.</p>
-<p>Training is behind a default-on feature that pulls a C++ dependency with it. If you only need to encode, turn it off to exclude the training implementation:</p>
-<p>Encoding is unchanged: same call, same ids.</p>
-<p>Every figure in this post was measured against this crate. The Python bindings wrap the same code and are built from bindings/python, but they add per-call overhead that none of these measurements include.</p>
-<p>The benchmarks in this post cover the completed release-candidate work listed first. The remaining sections show what is still required for 1.0.0 and what we plan to explore afterward.</p>
-<p>This work is in the Rust pre-release on crates.io:</p>
-<p>Will have to try it out. Data seems real good.</p>
+                <p>'Agents kept adapting for nearly a full day without human direction,' Amazon CISO said</p>
+<p>Suspected Chinese spies deployed AI agents which worked autonomously to find a zero-day in an open source application and then abuse the flaw to break into university networks, gaining full control of a server, according to Amazon CISO CJ Moses.</p>
+<p>The China-linked attacker used Cairn, an open source, penetration-testing framework that has become increasingly popular with cybercriminals who use the AI tool to carry out multi-stage intrusions with no human assistance.</p>
+<p>In this case, the agents found and exploited a zero-day MONAI Label, an open-source medical imaging AI application. Amazon notified the project's maintainers of the vulnerability, and they released a fix and a security advisory.</p>
+<p>On September 10, Amazon's Threat Intelligence Team found a server with a publicly hosted instance of Cairn that provided visibility into the campaign targeting universities in East Asia, outside Mainland China, Moses said in a Friday report shared with The Register.</p>
+<p>The campaign occurred over a period of 48 hours beginning on September 8, and the prompts were written in Simplified Chinese, with timestamps in executed scripts configured to China Standard Time.</p>
+<p>Before the AI agents found and exploited the zero day, however, they tried to break into another university’s Redis server over about 16 hours and 148 sequential actions, including abusing Redis's replication feature to load unauthorized code, escaping its scripting sandbox, writing to its configuration files, and corrupting its memory.</p>
+<p>None of these were successful, and when those actions failed, the agents also attempted a Log4Shell injection against a different service, a server-side request forgery (SSRF) attack against a vulnerability in a co-located Qdrant instance, and several credential sprays against PostgreSQL, SSH, and other tools.</p>
+<p>Meanwhile, a separate operation running for more than 6 hours targeted a university GPU server with another credential-spray attack, compiling a list of 80 real user names found across the school’s public websites, academic papers and other documents.</p>
+<p>"Neither operation succeeded, yet together they show that the agents kept adapting for nearly a full day without human direction," Moses wrote.</p>
+<p>Then the AI agents found the zero-day path traversal vulnerability in MONAI Label, and this time they were able to gain access to the server.</p>
+<p>"The agents identified the application's framework, mapped its API endpoints, and found an upload endpoint with a filename parameter," Moses wrote. They tested that parameter for path traversal, and the parameter was vulnerable. In about 11 minutes, the agents went from mapping the application’s API to arbitrarily writing files on the server."</p>
+<p>Later, the agents abused the same flaw to execute a Python reverse shell running as root.</p>
+<p>In another session, after the agents discovered the zero-day, the human operator provided them with a proxy that tunneled into a second university network, and connected to a server running the same vulnerable code.</p>
+<p>Amazon's discovery follows an earlier report by Gambit Security's threat intelligence team that also documented a Chinese operator using Cairn to carry out at least 105 attacks, and managing to compromise, "to varying degrees," at least 27 companies.</p>
+<p>This campaign also occurred in September. In addition to Cairn, the attacker used two other open source AI harnesses to steal credit card records and other sensitive data from a Fortune 500 hospitality company, a major US airline, a large private US industrial supplies distributor, and a US online fashion retailer, and other companies.</p>
+<p>"Together, these cases show that this autonomous AI agent framework is being adopted in both espionage and criminal operations," Moses wrote. ®</p>
+<p>If a service falls in the forest and nobody hears it...</p>
+<p>Just don't expect complex, coherent, or always correct answers</p>
+<p>PARTNER CONTENT: As carriers tighten underwriting, a backup job marked green is no longer enough. Here’s the evidence underwriters expect</p>
+<p>It isn't only systems on Earth suffering technical problems</p>
+<p>Pre-digital tech can't be transformed and automated</p>
+<p>Bot-based buying is here or not, depending on where you stand in the Amazon empire</p>
+<p>Security shop buys the hand that feeds it</p>
+<p>Selected customers can put Dragonfly AI200 through its paces on Cirrascale's cloud</p>
+<p>AI has birthed some truly colossal supers, they just aren't on the Top500</p>
+<p>Nvidia unveils an HPC-optimized Rubin GPU to challenge AMD's 288 teraFLOPS MI430X</p>
+<p>Ride-hailing biz says stolen credentials allowed crooks to help themselves to driver's license data</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>Canonical's stretch goal is to make the immutable OS standard in 30.04 – without retiring the traditional distro</p>
+<p>Cheap tiny e-readers and the perils of LLM-generated drive-by pull requests – plus much more</p>
+<p>Devuan-based distro swaps Wayland for XLibre and i3, with Xfce waiting if the tiling gets tiresome</p>
+<p>Version 4.0 of Redmond’s cloudy OS is free to use in its cloud. Repeat. Free to use</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Only a minority want to ban it. Plus plenty of updates on 16 projects</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/tokenizers-v1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/security/2026/11/20/china-attackers-deployed-ai-agents-that-autonomously-found-and-exploited-a-0-day-to-take-over-a-university-server/5311382" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
