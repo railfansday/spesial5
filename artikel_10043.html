@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</title>
+    <title>AWS Weekly Roundup: AWS Lambda Web Functions, Amazon S3 on the Vercel Marketplace, and more (October 19, 2026)</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10043.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,40 +15,36 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</h1>
+        <h1>AWS Weekly Roundup: AWS Lambda Web Functions, Amazon S3 on the Vercel Marketplace, and more (October 19, 2026)</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2023/08/13/AWS-WIR-default.png" alt="AWS Weekly Roundup: AWS Lambda Web Functions, Amazon S3 on the Vercel Marketplace, and more (October 19, 2026)" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://d2908q01vomqb2.cloudfront.net/da4b9237bacccdf19c0760cab7aec4a8359010b0/2023/08/13/AWS-WIR-default.png" alt="AWS Weekly Roundup: AWS Lambda Web Functions, Amazon S3 on the Vercel Marketplace, and more (October 19, 2026)" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our previous posts - Easy FunctionGemma finetuning with Tunix on Google TPUs and Autonomous LLM post-training with Tunix on TPUs - we showed how Google Tunix streamlines Supervised Fine-Tuning (SFT) and single-turn Group Relative Policy Optimization (GRPO) on Cloud TPUs. Real-world AI agents, however, rarely finish their job in a single turn. They have to reason over partial observations, invoke tools, observe environment feedback, and adapt their strategy across multiple steps. So in this post, we will walk through how to train a multi-turn, tool-using LLM agent using Tunix's agentic reinforcement learning pipeline on Cloud TPU v6e-8. You can find the complete code in this GitHub repository.</p>
-<p>We will revisit the Plane Strike board game from an earlier TensorFlow/JAX reinforcement learning blog, replacing the custom MLP policy with Gemma 4 E2B in thinking mode on a single Cloud TPU v6e-8 host. Plane Strike is played on a 6x6 grid (A1 to F6) where one 8-cell plane is hidden in one of 4 orientations. Each turn, the agent sees the result of its previous strike and the raw visible board (. untried, X hit, O miss), thinks through candidate placements, and calls the strike(cell="...") tool to strike one cell. The game ends when all 8 plane cells are hit, or after 23 strikes.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>Although google/gemma-4-E2B-it has decent spatial reasoning and tool calling capabilities, out of the box, it wins only 9.4% of games on held-out boards (averaging 22.44 strikes). After 100 steps of agentic GRPO with Tunix, its win rate reaches 95% while cutting the average game length to ~16 strikes.</p>
-<p>We set up the multi-turn RL pipeline in four modular components:</p>
-<p>Let's look at the key steps for each piece.</p>
-<p>In env.py, we subclass Tunix's BaseTaskEnv to implement PlaneStrikeEnv. Each environment instance receives a task dictionary with a seed that fixes the hidden plane position so all 8 rollouts in a GRPO group play the exact same board:</p>
-<p>On each turn, _step_impl evaluates the struck cell index against the hidden board, updates the visible grid, computes the step reward (summed into the trajectory-level reward over the episode), and returns EnvStepResult(observation, reward, done, info).</p>
-<p>For standard multi-tool agents, tunix.rl.agentic also provides ready-to-use ToolEnvironment, ToolAgent and ToolManager abstractions out of the box so we don't have to write custom message/observation plumbing unless we need custom turn control.</p>
-<p>In Gemma 4, tool schemas are declared in the system prompt inside <|tool>declaration:...<tool|>, and a model turn that calls a tool ends with:</p>
-<p><|tool_response> is one of Gemma 4's native stop tokens: the model pauses there and waits for response:strike{value:<|"|>...<|"|>}<tool_response|>, then continues generating its next thought and tool call within the same assistant turn.</p>
-<p>In strike_tool.py, we define StrikeTool(BaseTool) and subclass Tunix's Gemma4ChatTemplateParser to append the tool declaration to the system prompt and render "tool" messages as in-turn responses:</p>
-<p>In agent.py, PlaneStrikeAgent(ConversationAgentBase) translates between environment observations and model messages.</p>
-<p>When the model finishes a turn, tool_strike ignores everything inside <|channel>thought...<channel|> and parses the final answer after <channel|>; only a final answer with a single valid strike call counts as a valid board coordinate (otherwise INVALID_ACTION is returned). If the model stopped at <|tool_response>, the next board observation is appended with role="tool" so the model continues its turn:</p>
-<p>In train_planestrike.py, we configure Tunix's asynchronous vllm rollout engine, RLEngine, and GRPOLearner:</p>
-<p>Multi-turn agentic RL is often bottlenecked by variable-length rollout generation, so we set rollout_vllm_server_mode to true to enable continuous asynchronous multi-turn rollouts via vllm-tpu and enable_prefix_caching to true to true to cache the growing multi-turn conversation history. Since we are using a v6e-8 single host, the actor model, the reference model, and the rollout workers share the 8 chips.</p>
-<p>We then pass our actor, tokenizer, ClusterConfig, GRPOConfig (loss_algo="gspo-token", advantage_estimator="rloo", exact_token_continuity=True to preserve exact token IDs across multi-turn rollouts without retokenization drift), agent, and environment into RLEngine and PlaneStrikeGRPOLearner:</p>
-<p>All of these enable us to launch the 100-step training job with:</p>
-<p>Over 100 steps (8 boards x 8 games per step), the agent learns both reliable tool calling and spatial deduction:</p>
-<p>With Tunix's tunix.rl.agentic abstractions, vllm-tpu, and GRPOLearner, multi-turn, tool-using agentic RL on Cloud TPUs is easy and efficient. Check out the planestrike-gemma4-rl GitHub repository and read the Tunix documentation to train your own agentic model with Tunix and Google TPUs.</p>
-<p>Agent Anomaly Detection: Safeguarding agents across other clouds</p>
-<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
-<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
-<p>Check what your AI agents do before they do it, with Semantic governance policies</p>
+                <p>AWS is the world's most comprehensive cloud, enabling organizations to accelerate innovation, reduce costs, and scale more efficiently</p>
+<p>Migrate to modernize → Modernize to unlock data → unlock data to run AI</p>
+<p>Get started with one of these featured services or browse all</p>
+<p>From startups to enterprises, find AWS solutions scaled to your needs. Access tailored resources, pricing models, and support levels.</p>
+<p>Nothing last week added a new kind of compute. What it did instead was shorten the distance between the code you already have and that code being live. AWS Lambda learned to run a plain HTTP server with no adapter in front of it, and Amazon S3 became something you can provision from inside the tool you were already using, without opening the AWS Management Console. Different services, same direction.</p>
+<p>The counterweight arrived on Thursday. As it gets easier to put things into production, it matters more that you can say what those things are allowed to do, and this week’s most interesting read is about exactly that. Now, let’s get into this week’s AWS news…</p>
+<p>HeadlinesAWS Lambda Web Functions is a new form factor that runs a standard HTTP web application on Lambda without rewriting it into an event handler. You take a port-listening server built with Express, Hono, Fastify, or Next.js, run aws lambda-web deploy, and get back a live HTTPS URL in under a minute. No adapters, no infrastructure to set up first, no framework lock-in. Lambda now has three form factors on the same Firecracker isolation, which compose inside one application: Event Functions (the model you already know) for async work, Web Functions for the user-facing layer, and MicroVMs for stateful sandboxes running untrusted code.</p>
+<p>Two details make this more than repackaging. Each execution environment handles up to 128 concurrent requests, so a burst of traffic shares warm environments instead of mapping one request to one environment, and billing meters the CPU time your code actually uses rather than wall-clock time. For server-side rendering, API backends, and inference endpoints streaming tokens, where most of the elapsed time is spent waiting, that changes the arithmetic. Adding --regions to the same deploy command replicates your code and configures latency-based routing behind a single global URL, and you can split traffic across revisions by weight for a canary rollout. It’s available in five Regions, running Node.js 24 on Arm64 with VPC connectivity. The AWS Compute Blog has a longer walkthrough, and Amazon CloudFront can now use a Web Function endpoint as an origin with origin access control.</p>
+<p>The week’s other headline isn’t a launch. Trust in Depth: giving agents more autonomy without losing control makes an argument I keep running into in practice: putting a person in the loop for every agent action works at small scale and then quietly stops working, because people asked to check everything stop catching what matters. The alternative is four questions answered at four moments, which AWS calls scope, know, bound, and observe. The part worth sitting with is that an agent’s limits belong outside its own reasoning, in Amazon Bedrock AgentCore policies enforced at the gateway, because an agent cannot turn off a control it does not run. AWS has run automated reasoning in production for more than a decade, including AWS Identity and Access Management at more than 2.1 billion requests per second, and the case here is for pointing it at the rules you write for agents.</p>
+<p>Last week’s launches
+         Here are some launches and updates from this past week that caught my attention:</p>
+<p>For a full list of AWS announcements, be sure to keep an eye on the What’s New with AWS page.</p>
+<p>Other AWS news
+         Here are some additional posts and resources that you might find interesting:</p>
+<p>Upcoming AWS events
+         Check your calendar and sign up for upcoming AWS events:</p>
+<p>Join the AWS Builder Center to connect with builders, share solutions, and access content that supports your development. Browse here for upcoming AWS-led in-person and virtual events and developer-focused events.</p>
+<p>That’s all for this week. Check back next Monday for another Weekly Roundup!</p>
+<p>This post is part of our Weekly Roundup series. Check back each week for a quick roundup of interesting news and announcements from AWS!</p>
+<p>Daniel Abib is a senior specialist solutions architect at AWS, focused on generative AI and Amazon Bedrock — and passionate about serverless. He helps startups and enterprises build AI-powered applications and modernize with cloud-native architectures. A three-time Ironman finisher and four-time re:Invent speaker, he brings the same endurance mindset to building cloud solutions.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/multi-turn-agentic-reinforcement-learning-with-tunix-and-gemma-4-on-google-tpus/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://aws.amazon.com/blogs/aws/aws-weekly-roundup-aws-lambda-web-functions-amazon-s3-on-the-vercel-marketplace-and-more-october-19-2026/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

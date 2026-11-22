@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Token Pooling-Aware Training for Multi-Vector Embedding Models</title>
+    <title>Microsoft Fixes Nearly 1,100 Security Vulnerabilities</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9773.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,74 +15,71 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Token Pooling-Aware Training for Multi-Vector Embedding Models</h1>
+        <h1>Microsoft Fixes Nearly 1,100 Security Vulnerabilities</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Token Pooling-Aware Training for Multi-Vector Embedding Models" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/train-sentence-transformers/st-hf-thumbnail.png" alt="Token Pooling-Aware Training for Multi-Vector Embedding Models" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Multi-vector embedding models give each query token its own opportunity to find a match in a document. This makes them wonderfully expressive for search, but those document vectors add up quickly. A corpus with millions of documents can contain hundreds of millions of vectors!</p>
-<p>Token pooling makes these representations smaller by merging similar token vectors. The more aggressively I compress them, however, the easier it becomes to lose something useful. Pooling-aware training teaches the encoder to preserve the information that matters when its vectors are merged, helping you retrieve better from the same storage budget.</p>
-<p>In this post, I'll explain how pooling works, train a model for compressed retrieval with Sentence Transformers, and explore the resulting quality and storage tradeoff. With pool_factor=4, my normally trained model retains 94.6% of its unpooled NanoBEIR nDCG@10, with a 4x reduction in document vectors. Token pooling-aware training raises that retention to 97.8% at the same storage budget! Let's see how.</p>
-<p>This post builds on pooling-aware training studied in Stefan Josef's Learn to Pool and LightOn's pooling regularization study, which also explores targeted training and adaptive budgets. Here, I'll focus on understanding the method and putting it to work with a short, reproducible Sentence Transformers example.</p>
-<p>Pooling-aware training improves retrieval quality at the same vector budget. Details below.</p>
-<p>A single-vector embedding model compresses an entire document into one vector. Multi-vector models such as ColBERT instead keep a collection of contextual token vectors, allowing different parts of a query to match different parts of a document.</p>
-<p>For example, a query about a laptop with a long battery life can find evidence about the laptop in one part of a document and battery endurance in another. With MaxSim scoring, each query vector selects its best matching document vector, and those scores are added together:</p>
-<p>MaxSim⁡(Q,D)=∑q∈Qmax⁡d∈Dq⊤d
-\operatorname{MaxSim}(Q, D) = \sum_{q \in Q} \max_{d \in D} q^\top d
-MaxSim(Q,D)=q∈Q∑​d∈Dmax​q⊤d</p>
-<p>Even with the 2-bit or 4-bit residual quantization supported by Fast-PLAID, storing hundreds of vectors per document adds up. At 4 bits per residual coordinate, 200 vectors of 128 dimensions require 12.8 KB of quantized residuals per document, or 12.8 GB across a million documents. Pooling each document to 50 vectors reduces that to 3.2 GB, at the same dimensionality and precision.</p>
-<p>The useful observation is that many document vectors can be similar. Several tokens might describe closely related concepts, creating an opportunity to represent them together.</p>
-<p>HierarchicalTokenPooling groups similar token embeddings using Ward hierarchical clustering. Starting with one group per token vector, it repeatedly merges the two groups that cause the smallest increase in how spread out the vectors are within their groups. This spread is measured by the sum of squared distances from each vector to its group's mean, so Ward's method favors compact groups of similar vectors.</p>
-<p>These merges build a hierarchy of progressively larger groups, letting us choose a level of compression that fits our budget. We then represent each group by its mean and normalize the resulting vectors again, ready for MaxSim scoring.</p>
-<p>You can make compression proportional to document length:</p>
-<p>With pool_factor=4, documents retain approximately one quarter of their original vectors, so longer documents can keep proportionally more capacity. By default, the first token is protected from merging and pooling applies only to document embeddings, leaving query embeddings unchanged.</p>
-<p>HierarchicalTokenPooling offers three alternative controls:</p>
-<p>This distinction matters when document lengths vary. With pool_factor=4, a longer document can retain approximately one quarter of its vectors, allowing its representation to grow with its content. With distance_threshold, the vector count can grow when more distinct embeddings need to be preserved.</p>
-<p>Adaptive pooling uses a shared distance threshold to merge similar embeddings more aggressively while preserving more vectors for documents with distinct content. It can be used with any multi-vector model, including one trained without a pooling-aware objective.</p>
-<p>Rather than choosing a threshold manually, you can calibrate it for a target average vector count. Given a representative sample of your corpus in calibration_documents:</p>
-<p>Calibration only needs document embeddings and returns a threshold you can reuse when indexing. The target is an average, so individual documents can receive more or fewer than 16 vectors. The achieved average can also change on another corpus.</p>
-<p>Pooling can already be useful on an ordinary multi-vector model. The difficulty appears when a document contains a distinction that matters for retrieval, but merging its vectors makes that distinction harder to recover. The original training objective never required the model to work with these compressed representations. But, you can teach it to do exactly that.</p>
-<p>If you've used Matryoshka embeddings, the training principle will feel familiar. Matryoshka applies a retrieval objective at several embedding widths, teaching smaller prefixes to remain useful. Pooling-aware training applies the objective to representations with fewer token vectors.</p>
-<p>For my example, each training batch contributes two losses:</p>
-<p>L=12Lunpooled+12Lpooled
-\mathcal{L} = \tfrac{1}{2}\mathcal{L}_{\mathrm{unpooled}} + \tfrac{1}{2}\mathcal{L}_{\mathrm{pooled}}
-L=21​Lunpooled​+21​Lpooled​</p>
-<p>The first term teaches the model to retrieve with its full representations. The second teaches it to arrange its token embeddings so that useful matches survive pooling. Both objectives update the same encoder, giving it feedback about retrieval before and after compression.</p>
-<p>Ward clustering makes discrete decisions about which tokens belong together. During training, HierarchicalTokenPooling uses a straight-through estimator to pass gradients from pooled vectors back to their member tokens, without differentiating the cluster assignments. The encoder can then learn from retrieval errors made with its pooled representations.</p>
-<p>MultiVectorTokenPoolingLoss wraps an existing multi-vector retrieval loss and applies it using your chosen poolers:</p>
-<p>CachedMultiVectorMultipleNegativesRankingLoss supplies the retrieval objective. It teaches each query to score its relevant document above the negative documents in the batch. By default, it uses model.similarity, using the model's similarity setting (MaxSim in this example) and kernel settings. A model configured with similarity_fn_name="meanmaxsim" would also use MeanMaxSim during training.</p>
-<p>Gradient caching allows the encoder to process small mini-batches while retaining a larger set of in-batch negatives. My training script uses mini-batches of 64 with a training batch size of 256.</p>
-<p>MultiVectorTokenPoolingLoss adds the compression objective. Here, None means that one variant uses the original embeddings, while pooling supplies the factor-4 variant. The two weights average their losses. Pooling variants reuse the computed token embeddings, so each additional pooler adds clustering and scoring work without requiring a separate encoder pass for that variant.</p>
-<p>The poolers can also be custom BaseTokenPooling implementations that preserve gradients through their input embeddings. You can adapt the training objective to the representation you want to deploy.</p>
-<p>Replace the factor-4 pooler with your chosen deployment configuration, or include several poolers and choose weights for their losses.</p>
-<p>The complete training script includes the dataset, trainer, validation loss, and small retrieval evaluations during training. From a checkout of the repository, run both variants locally with uv:</p>
-<p>The script declares its training and kernel dependencies, so uv installs them for you. Compatible kernels are enabled automatically.</p>
-<p>You can also train on a cloud GPU with Hugging Face Jobs. Install the CLI and log in with a token that can run Jobs and upload models:</p>
-<p>This runs the pooling-aware variant on an A10G GPU with a four-hour time limit. Passing HF_TOKEN as a secret lets the script upload the trained model to your Hub account when training finishes. To run the ordinary-loss baseline as well, repeat the command with --baseline after the script URL.</p>
-<p>You can accelerate MaxSim scoring, Ward clustering, and supported backbone operations with kernels. Install the training and kernel dependencies:</p>
-<p>In the training example above, replace the model and pooler initialization before constructing the loss:</p>
-<p>Hierarchical poolers inherit the model's kernel settings by default, so you only need to enable kernels on the model.</p>
-<p>Sentence Transformers selects compatible kernels for your setup and uses the existing implementation wherever a replacement isn't available. For example, the default MaxSim kernel scores queries against documents without building the full token similarity matrix in memory, but it does require CUDA and Triton.</p>
-<p>The default Ward clustering kernel considerably speeds up hierarchical clustering by running on CUDA instead of the CPU. We're talking about 30-150x faster than SciPy depending on the setting.</p>
-<p>Let's load the pooling-aware model and retrieve with compressed document embeddings. Kernel settings aren't saved with the model, so add use_kernels=True when loading if you'd like to use them for inference too:</p>
-<p>The pooler compresses the document embeddings after the encoder's forward pipeline, reducing the total from 58 vectors to 16 while leaving query embeddings unchanged. Mars still receives the highest similarity score, followed by Jupiter and Venus, so the ranking is preserved despite storing far fewer document vectors.</p>
-<p>You can change pool_factor at inference to explore a different storage budget with the same trained model. For repeated use, you can also pass token_pooling=pooling when initializing MultiVectorEncoder to make it the runtime default. The pooler's tasks still control which inputs are compressed (e.g. only documents).</p>
-<p>To investigate, I trained two models from answerdotai/ModernBERT-base, each with a fresh 128-dimensional token projection:</p>
-<p>Both runs use one epoch over the same 120,000 MS MARCO triplets, seed 42, and matching initialization and optimization settings. The training token cap is 300, and short queries are expanded to at least 32 token positions to provide additional contextual query vectors. Only the loss differs between the two experiments, and I didn't run a hyperparameter search.</p>
-<p>I evaluated both models on NanoBEIR@13, reporting mean nDCG@10 (%). The figure compares ordinary and pooling-aware training with pool factors of 2, 3, 4, and 6, alongside unpooled retrieval. The table also includes fixed caps and adaptive thresholds, showing how the training benefits transfer to other pooling settings.</p>
-<p>For adaptive pooling, I calibrated a separate threshold for each encoder and NanoBEIR corpus, using its unpooled document embeddings to match the average vector counts under caps of 64, 32, and 16. Short documents bring those averages below their respective caps.</p>
-<p>At the trained pool_factor=4, nDCG@10 improves from 49.03 to 51.23, while storing 74.8% fewer document vectors than unpooled retrieval. This increases score retention from 94.6% to 97.8%, where retention is the pooled mean nDCG@10 divided by each model's own unpooled mean. Unpooled retrieval also improves, from 51.84 to 52.39.</p>
-<p>The gains extend to fixed caps and adaptive pooling, even though training used only the full representation and proportional pooling. At an average of 29.58 vectors per document, adaptive pooling retains 97.3% of the pooling-aware model's unpooled score while storing 84.7% fewer document vectors. The normally trained model retains 93.3% at the same budget.</p>
-<p>If index size is your main concern, I would reach for these options in this order:</p>
-<p>If the model's default dimensionality is larger than 128, I would consider Matryoshka truncation and fine-tuning earlier as well. These approaches can be combined, so evaluate the resulting index size and retrieval quality with your search engine and corpus.</p>
-<p>MultiVectorMatryoshkaLoss trains token embeddings to remain useful after truncation. You can wrap it with MultiVectorTokenPoolingLoss to train for both smaller dimensions and fewer document vectors, reusing the encoder's embeddings across the compression settings.</p>
-<p>Try the complete training example, choose a budget that matters for your application, and compare it with a matched ordinary-loss run. The accompanying evaluation script measures unpooled retrieval, caps of 64, 32, 16, 8, and 4 vectors, and pool factors of 2 through 6, so you can plot the quality and storage tradeoff for your own model.</p>
-<p>With a few extra lines in the training objective, a smaller document representation becomes something the model actively learns to use. That opens up an exciting amount of room to make multi-vector retrieval more practical!</p>
+                <p>Microsoft did another four-digit patch drop today, releasing updates to fix almost 1,100 security vulnerabilities in its Windows operating systems and supported software. This month’s Patch Tuesday addresses 63 critical flaws — including a zero-day in Microsoft Outlook — and comes amid important security updates from other software makers, including Adobe, Apple, Google and Mozilla.</p>
+<p>Image: Shutterstock.com. Diorama by @zepp1969.</p>
+<p>November’s patch release from Redmond tackles 1,093 vulnerabilities, fixing 63 “critical” flaws that can be exploited to seize control over a Windows system with little or no help from users. Nearly half of those critical bugs are remote code execution vulnerabilities. Overall, 535 of the flaws addressed this month allow an attacker to elevate their privileges on a vulnerable device.</p>
+<p>This latest round of updates means Microsoft has shipped more than 5,100 security patches so far this year, a staggering number considering that a year ago Microsoft was averaging around 100 patches per month. Microsoft credits advances in artificial intelligence for helping to find (and fix) such a large volume of security bugs in recent months. Last month, Microsoft pushed more than 1,400 fixes.</p>
+<p>According to Redmond, just one of the flaws is already seeing active exploitation: CVE-2026-124194, a spoofing bug in Outlook. The advisory for CVE-2026-124194 says it affects Microsoft 365 Apps for Enterprise and editions of Microsoft Office.</p>
+<p>Several other major software makers pushed security updates this week to fix critical weaknesses in their products. Apple on Monday released out-of-cycle security updates to fix at least nine vulnerabilities in iOS/iPadOS, macOS, watchOS and visionOS. Among the weaknesses reportedly fixed in Apple’s release include an iMessage flaw that could let a remote attacker join a group chat and receive its messages; the updates also fix a separate iMessage flaw that could let someone added to a group access messages sent before they joined.</p>
+<p>Lee Neely, an instructor at the SANS Institute, noted that Apple backported the fix to iOS 18.</p>
+<p>“I take notice when Apple releases fixes to more than two versions,” Neely wrote in a SANS newsletter today. “You really need to get to version 27.2.1 of their OSes and push folks who are holding onto devices which cannot run the current version. The best plan often involves setting an upgrade date for old hardware. Run through all your Apple devices and make sure everything is up to date, don’t assume the fixes went out automatically.”</p>
+<p>Google this week released Chrome version 157.0.8103.50, which resolves nine security holes, including CVE-2026-125350, the sixth zero-day vulnerability this year for Chrome (this bug also is being patched in Chromium-based browsers like Edge). The latest Chrome version follows its November 3 release, which fixed 213 vulnerabilities. A new version of Mozilla Firefox out today (Firefox 160) resolves almost 100 CVEs, about half of them high severity.</p>
+<p>Adobe today released patches for at least 110 vulnerabilities across a range of products, with nearly half of the flaws rated high severity. Adobe said there is no evidence any of the security holes it addressed this month are being actively exploited.</p>
+<p>Chris Goettl, vice president of product management at Ivanti, said it’s easy for security teams at large enterprises to feel overwhelmed by the volume and criticality of patches from Microsoft lately. But he notes that while some 95,000 vulnerabilities have been assigned CVEs this year across all vendors, only 217 have so far this year been added to the Known Exploited Vulnerabilities (KEV) list maintained by the U.S. Cybersecurity and Infrastructure Security Agency (CISA).</p>
+<p>“Roughly four in ten of this year’s exploited vulnerabilities sit in operating systems, endpoint software, browsers, and server platforms, which a continuous patch strategy can close quickly,” Goettl said.”The rest calls for exposure management alongside patching, especially the 44% that sit in edge devices and IT management or remote access tools, the internet-facing systems that hold privileged access. Teams that can quickly identify those assets, confirm exposure and act on confirmed exploitation can focus on the small slice of vulnerabilities attackers are actively using, while the rest stays on the normal patch cadence.”</p>
+<p>Please don’t neglect to back up any important data if you haven’t recently; generally speaking, this is a task best accomplished before applying operating system updates. As ever, if you experience any issues installing this month’s bundle of love from Microsoft, please drop a comment about it in the space below.</p>
+<p>This entry was posted on Tuesday 10th of November 2026 04:55 PM</p>
+<p>Thank you as always.  Your concern and actions for others is very much appreciated by all, including those not aware of it.
+With respect, John Royal</p>
+<p>I wonder whether a goal of a bug-free Windows is mathematically possible, or whether there will always be residual “bugs” in the form of some marginal configurations and conditions that can never be made fully fault-safe.</p>
+<p>I’m sure it’s possible to have bug-free software, but I’ve never seen it in anything but very simple programs.  There are ALWAYS bugs.  (I worked in software QA/testing for 20 years…)</p>
+<p>There WERE always bugs because humans are fallible, easily distracted, of differing skill level, etc..  Machines will eliminate 99.9% of all bugs moving forward.</p>
+<p>How will we know? Will we have to ask the machines?</p>
+<p>well, if that wasn’t sarcastic, Jojo, it should be.  Think of an AI coder as a very fast intern-level coder who copies and pastes a lot.</p>
+<p>Now.  But a year from now, it could be better than any super experienced programmer in the world.  This is what so many making comments like yours misses.</p>
+<p>AI is like a 2 year old baby now.  Next year it may be like a 16 year old.  The year after, like a 40 year old with an IQ of 300.</p>
+<p>Suggested reading:
+The avalanche that hit math is coming for AI development
+Why I now expect superintelligence by 2030
+Dwarkesh Patel
+13 Nov 2026
+https://www.dwarkesh.com/p/rsi</p>
+<p>” it could be better than any super experienced programmer in the world. ”</p>
+<p>On broad-strokes sure, yet (and increasingly I’d imagine, given the theft) specialized knowledge isn’t necessarily going to be shared by the best (*corporately owned and operated, legally speaking) minds in the field, thus the AI LLMs would not necessarily be training on that specific knowledge base by default.  So you’ll get competent general output I’m sure, but the really fine-grained expertise or specific techniques therein?  And you still have to have someone checking the work who knows what it is, you can’t just trust there’s no additional AI slop hallucinated into hidden spiels.  As smart as AI is or even ‘can’ become, you still need someone smart enough to correct it.  Or, you know, doom.</p>
+<p>there were quite a lot of bug-free programs — yes  even shareware and freeware — back when coding was something done by people who got good at coding because they fit the stereotype of what geeks used to be, and because resources were so damn precious that the best programmers were painstakingly and lovingly working on programs all alone that they didn’t want to or could not share without a monetary or reputational cost, and talent was something recognized by smallish cabals most computer-careered people would shun or eschew or use and then give them like $300 for then earn millions, hundreds of millions  or billions of dollars off of thanks to vulture-like vc’s and banks who have confused their original business models with the get rich fast crowd. banks may have had their issues til the mid-19th century or so, but when they started to confuse themselves and their wants with what they had no business being involved in (separating church and state was not “just” about protestants/jews/etc. and the presidency!) or “investing in”.</p>
+<p>In short, the more resources you think you have to waste, the worse any field gets, until it is bloated and corrupt.</p>
+<p>My favourite two computer games were DOS games written in mostly assembly and (iirc) C. They ran on a computer with a meg of ram and on a 10 meg hard drive. Not a single bug in either. I can still even pull them out and play them in a vm. One was under 100kb as a dos exe, the other a whopping 383kb or so. not tetris clones. original. none of their programmers got really rich but they clearly knew what they were doing and their stuff was tight.</p>
+<p>I cannot imagine they would want an MS job or the other way around. But afaik both still ate damn good, low-level coders.</p>
+<p>Excellent reporting, as usual. Thank you BK.</p>
+<p>Well, if nothing else AI has created a mess of monthly updates on many platforms now. Some crazy times for sure.</p>
+<p>unfair. people want all their software and apps and drivers built in and baked in now.  the more you demand the more you gotta pay (in time, money, code, employee compensation for setting up the automated patching you also now all pay for software for.)</p>
+<p>I’m waiting for someone to write a story about how closing all these bugs has cut-off ways that the world’s 3-letter spy/security agencies took advantage of and how they are now more constrained at gaining intelligence.</p>
+<p>All these fixes should also make hacking a lot more difficult.</p>
+<p>Nearly eleven hundred vulnerabilities in one Patch Tuesday is a good moment to ask how any IT shop is supposed to prioritize. The teams that cope best treat patching as a budgeting problem – fixed maintenance windows, explicit risk acceptance for the long tail, and surge capacity reserved for the exploited entries – rather than trying to clear the whole list every month. Reading the details of what got fixed matters less than knowing which of your exposed services map to the CVEs that are already being scanned for in the wild.</p>
+<p>people need to stop confusing everything that “deserves” a patch with an exploitable “bug”. lots of little bugs that get fixed that cause freezes or slow things down or code having dangling extraneous pointers or whatever is annoying, sometimes costs a couple of people time or money, but is rarely an “emergency”. Rarely do patch Tuesdays wind up involving more than a few, at most, bugs in a microsoft patch set. but it looks impressive and it sucks if you don’t keep up with your patching.</p>
+<p>Question:  Are all of these “fixes” ONLY in Windows 11 and its associated products?
+Or, are they counting other Windows versions and their associated products?</p>
+<p>I uninstalled Adobe Reader from my computer the other day because it uses AI by default. It was telling me “this document is complex, do you want me to simplify it for you”? How would they know if they hadn’t already read it.</p>
+<p>So, following the principle of removing any app that I am not actually using, and don’t really need, I uninstalled it.</p>
+<p>Now I have an additional reason to be satisfied with that decision.</p>
+<p>I wonder if this has anything to do with the massive Microsoft outage happening right now.  It’s 12:40PM PST.</p>
+<p>‘403 Forbidden’ on most content here when using Proton VPN.</p>
+<p>What’s the likelihood that the O365 CVE patch is causing the global O365 outage?</p>
+<p>Microsoft is almost certainly using AI to fix bugs in their backoffice systems too. Sooner or later, something goes wrong. It turns out it is sooner than one might expect.</p>
+<p>It’s interesting that AI is helping Microsoft uncover vulnerabilities at such a massive scale. But finding bugs faster also creates a new challenge for IT teams that have to test and deploy all these patches. I wonder whether AI-powered vulnerability discovery will eventually outpace organizations’ ability to keep their systems updated.</p>
+<p>After patch of Win10 home system, i’m getting repetitive notifications of SrTasks.exe denied access. I don’t do backups, always roll the bones. Is there a way to stop these notices?</p>
+<p>AI has been writing most code for most products for a while now. Is there any way to tell what fraction of these vulnerabilities come from AI-generated code vs. human-written code? And what can we expect down the line as AI takes over more fully — ever larger numbers of bugs and fixes or the opposite or something in between?</p>
+<p>Your email address will not be published. Required fields are marked *</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/token-pooling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://krebsonsecurity.com/2026/11/microsoft-fixes-nearly-1100-security-vulnerabilities/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
