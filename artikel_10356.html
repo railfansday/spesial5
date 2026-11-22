@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore</title>
+    <title>Unlocking Agentic RL Training for GPT-OSS: A Practical Retrospective</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10356.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore</h1>
+        <h1>Unlocking Agentic RL Training for GPT-OSS: A Practical Retrospective</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_46a3ec16c3.jpg" alt="How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_46a3ec16c3.jpg" alt="How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>A self-hosted LLM gateway sits between your app and the model provider, so every call pays for one extra hop. We measured that cost for three open-source gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each one ran on the same machine, in front of the same OpenAI model. LiteLLM added 61 to 67 ms to every non-streaming call. AcruxCore added 15 to 24 ms. Langfuse's number could not be told apart from zero.</p>
-<p>The bigger lesson was about the measurement itself. Before we controlled for it, one OpenAI network address moved our results by more than any gateway did.</p>
-<p>Each number is the median time a gateway added to a direct OpenAI call, with its 95% interval in brackets. A gateway can log each call, and logging takes time, so we ran the test three times with three logging levels.</p>
-<p>The direct call took 781 to 831 ms at the median, so even LiteLLM's cost is under 9% of a short call. Read the tables this way:</p>
-<p>The obvious test is to time 100 calls through the gateway, time 100 direct calls, and compare the two medians. That test gives the wrong answer, for two reasons.</p>
-<p>The first reason is noise. OpenAI's own response time moved by hundreds of milliseconds between calls in our runs. The direct call's p95 was 1,047 to 1,233 ms against a median near 800 ms. A gateway that adds 20 ms is hidden inside that spread unless the test removes it.</p>
-<p>The second reason is the network path to OpenAI. It does not stay the same between a direct client and a gateway, and that difference can be larger than the gateway itself.</p>
-<p>api.openai.com resolves to more than one address. From our network, DNS returned two Cloudflare addresses, and one was much farther away than the other. We measured both with a script that pins one address at a time:</p>
-<p>On a connection that is already open, both addresses answer in the same time. On a new connection, the far address adds about 250 ms, because the TCP and TLS handshakes take that much longer.</p>
-<p>A gateway keeps its connection to OpenAI open between calls. It pays the setup once and then stays on whichever address it reached first. A client that opens a new connection for each call pays the setup again on every call. How much it pays depends on which address DNS returns that time.</p>
-<p>Node's built-in fetch closes an idle connection after about 4 seconds. So a test client that calls OpenAI every few seconds reconnects on almost every call. In our first, uncontrolled run, the Langfuse gateway came out 43 ms faster than calling OpenAI directly. A gateway cannot be faster than the call it forwards. The direct client paid for new connections, and the gateway did not.</p>
-<p>The fix has two parts. First, pin api.openai.com to one address on every path. In Docker, that is an extra_hosts entry on each gateway container:</p>
-<p>Second, let the direct client keep its connection open, as a gateway does. With undici, the HTTP client behind Node's fetch, that is a custom Agent:</p>
-<p>We then listed each container's open connections to confirm that every path used the same address. The edge-check script is in the repository linked at the end, and it takes about a minute to run from your own network.</p>
-<p>This advice also applies outside benchmarks. If your app calls OpenAI directly from Node, keep the connection open between calls. Otherwise some of your calls pay the handshake, and on a far address that costs about 250 ms.</p>
-<p>Each test sent 150 rounds after 5 warm-up rounds. One round calls OpenAI directly and through each gateway, once without streaming and once with streaming. The order rotates every round, so no path always goes first or last.</p>
-<p>For each round, the script takes the gateway's time minus the direct call's time in that same round. Calls in one round are made within a few seconds of each other, so a slow moment at OpenAI hits all four paths together and cancels out of the difference. The script then reports the median of the 150 differences.</p>
-<p>The interval comes from a bootstrap. The script draws 150 differences at random, with replacement, and takes their median. It repeats that 2,000 times, and the middle 95% of those medians is the interval. This is a shortened version of the script's function:</p>
-<p>An interval that includes zero means the test could not separate the gateway's cost from zero. That is what the Langfuse rows show. It does not prove that the cost is zero.</p>
-<p>Every call used OpenAI gpt-6-luna with reasoning_effort: "none", the same short prompt and a cap of 5 output tokens. A short answer keeps the model's own time small, so more of the measured time belongs to the path. Each streamed call measured the time to its first token. Each non-streamed call measured the time to the full response.</p>
-<p>All three gateways did real work on every call, which made the comparison fair:</p>
-<p>The three logging levels mapped to these settings:</p>
-<p>The machine was an AMD Ryzen 9 5900X with 62 GB of RAM, running Fedora Linux and Docker 29.9. All three stacks ran on it at once, and the test was run on 10 November 2026.</p>
-<p>LiteLLM added 61 to 67 ms to the full response, but only 9 to 43 ms to the first streamed token. The first token arrives as soon as the model starts to answer, so time spent before that point shows up in both numbers. The larger cost without streaming suggests that most of LiteLLM's extra time is spent after the model has answered. We did not profile LiteLLM to confirm this.</p>
-<p>Logging level made no clear difference for any gateway. Adding LiteLLM's Langfuse callback did not raise its cost. AcruxCore's median rose from 15 ms with logging off to 24 ms with full logging, but its intervals overlap across all three runs. AcruxCore's median is 16 to 24 ms above Langfuse's, and those intervals overlap too, so this test does not rank the two of them.</p>
-<p>If 60 ms per call matters to you, as in a chat app that makes several model calls per user message, LiteLLM's cost is real and repeatable. Langfuse and AcruxCore stayed near or within the noise. If your calls take several seconds, any of the three costs less than OpenAI's own variation from one call to the next.</p>
-<p>Before you trust a gateway number, your own or anyone else's, check two things. Was each gateway compared with a direct call in the same round? And did the direct client keep its connection open on the same OpenAI address as the gateway? Without both, the result measures the network path and not the gateway.</p>
-<p>The scripts, Compose files and raw results are on GitHub: scripts/comparison/langfuse-gateway-vs-litellm-vs-acruxcore.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/how-much-latency-does-a-self-hosted-llm-gateway-add-langfuse-vs-litellm-vs-acruxcore/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/LinkedIn/gpt-oss-agentic-rl" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

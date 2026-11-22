@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Six Password Reset Vulnerabilities and How to Prevent Them</title>
+    <title>Debugging Go Applications with Visual Studio Code</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9710.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,43 +15,100 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Six Password Reset Vulnerabilities and How to Prevent Them</h1>
+        <h1>Debugging Go Applications with Visual Studio Code</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/rTWUJruTtNPLEFdAVVbytdGa5uJ2-bt82bvb.png" alt="Six Password Reset Vulnerabilities and How to Prevent Them" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxzuzkfl438paskpjroka.png" alt="Debugging Go Applications with Visual Studio Code" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/rTWUJruTtNPLEFdAVVbytdGa5uJ2-bt82bvb.png" alt="Six Password Reset Vulnerabilities and How to Prevent Them" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fxzuzkfl438paskpjroka.png" alt="Debugging Go Applications with Visual Studio Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Autonomous security testing powered by AI agents. Powerful. Accurate. Actionable. hackerme.ai</p>
-<p>Autonomous security testing powered by AI agents. Powerful. Accurate. Actionable. hackerme.ai</p>
-<p>Autonomous security testing powered by AI agents. Powerful. Accurate. Actionable. hackerme.ai</p>
-<p>This is an example, not a report from a customer. Imagine a support inbox: someone never asked for a password reset, but they received a "your password was changed" email, and now their login no longer works. Their old password was long and unique. Nobody guessed it.</p>
-<p>Nobody needed to. A reset flow is a way into an account without the current password, by design. A valid reset link may let whoever holds it set a new password. Whether that is enough to take the account depends on other controls: a second factor at the reset step, a prompt to re-authenticate, a notification the real owner sees in time, session invalidation after the change, or a token that has already expired or been used.</p>
-<p>OWASP calls this functionality "a common source of vulnerabilities" even though it "looks straightforward and easy to implement" (OWASP Forgot Password Cheat Sheet). The usual weak points sit at six places in the flow. Run the active tests only on systems you own or have written permission to test.</p>
-<p>When someone types an address into "Forgot password", the response should not reveal whether an account exists. OWASP's Authentication Cheat Sheet lists "We just sent you a password reset link" and "This email address doesn't exist in our database" as incorrect responses, and gives the correct one: "If that email address is in our database, we will send you an email to reset your password" (OWASP Authentication Cheat Sheet).</p>
-<p>The message is the easy part. The Forgot Password Cheat Sheet also asks for responses that "return in a consistent amount of time," for example by sending the email asynchronously instead of exiting early for unknown addresses. A page that answers in a few milliseconds for unknown addresses and noticeably later for real ones tells an attacker the same thing as a different message.</p>
-<p>Then rate-limit the endpoint. OWASP recommends per-account rate limiting or a CAPTCHA, because otherwise an attacker can flood a user's inbox. Return the same 429 Too Many Requests whether or not the account exists (RFC 6585, section 4), or the limiter itself becomes an enumeration oracle. Do not lock the account: OWASP notes that a forgotten-password attack should not produce a lockout, because that lets anyone deny access to users whose names they know.</p>
-<p>Many frameworks make it easy to build an absolute URL from "the current host". In a reset email, that convenience is the vulnerability. PortSwigger describes password reset poisoning: an attacker submits a reset request for the victim with a Host header pointing at a domain they control, the site sends a genuine token, and the link inside points at the attacker. If the victim clicks it, or a mail scanner fetches it, the token is delivered to the attacker (PortSwigger: Password reset poisoning).</p>
-<p>OWASP's instruction is direct: "Don't rely on the Host header while creating the reset URLs." Use one configured HTTPS base URL per environment, and reject host names you do not serve. Treat X-Forwarded-Host the same way: trust it only from your own proxy.</p>
-<p>OWASP lists the properties every reset token needs: generated with a cryptographically secure random number generator, long enough to resist brute force, linked to an individual user, invalidated after use, stored securely, and expiring after an appropriate period.</p>
-<p>Here is a minimal sketch in Python that follows those properties. It is something to adapt, not a drop-in library.</p>
-<p>secrets.token_urlsafe(32) uses Python's module for security tokens, which documents 32 bytes (256 bits) of randomness as sufficient for the typical case (Python docs: secrets). Never use random, timestamps, user IDs or sequential values. Store only a hash, so a leaked database does not contain working links. For a long random token, a fast hash such as SHA-256 is a reasonable choice; slow password hashing is meant for secrets people choose (OWASP Password Storage Cheat Sheet). Issuing a new token should burn older ones for that user. An expired, used or unknown token should produce the same generic error page.</p>
-<p>The sketch is single-process and in-memory. In a real application, two requests can redeem the same token at once, so marking it used must be one atomic database operation that succeeds only if it changes exactly one unused, unexpired row.</p>
-<p>The token sits in a URL, and URLs travel.</p>
-<p>OWASP asks reset pages to send Referrer-Policy: no-referrer. When no policy is set, browsers default to strict-origin-when-cross-origin, which sends only the origin on cross-origin requests (MDN: Referrer-Policy). A missing header is not proof that the token leaks to third parties in current browsers. It is a missing layer: the default still sends the full URL on same-origin requests, and a looser policy elsewhere on the site would apply.</p>
-<p>Analytics, chat widgets and session-replay tools on the reset page can read location.href. The cleanest pattern is a reset page with no third-party scripts. Mail scanners can also open the link before the user does. If a GET burns the single-use token, the real user may find it "already used". Show the form on GET, and consume the token only on POST.</p>
-<p>If an attacker already had a session, a new password alone does not remove them. OWASP recommends invalidating existing sessions, or asking the user whether to do so, and advises against signing the user in automatically after the reset. The Session Management Cheat Sheet lists a completed password change among the events that should require reauthentication (OWASP Session Management Cheat Sheet).</p>
-<p>Send a notification that the password was changed, without the password in it, as OWASP recommends. In the example above, that email is what turned a silent change into a support ticket. Include a way to report "this wasn't me" that does not depend on the account's current password.</p>
-<p>Use two test accounts you control, and staging where possible. We have not run the commands below against a live site.</p>
-<p>Submit the form for a real test address and for an address that does not exist, and compare status, visible message, size and timing. You want the same status and message for both. A "no such user" error is a leak. Small size differences can come from a CSRF token; timing needs many requests before it means anything.</p>
-<p>In staging, send the same request with a foreign Host (and again with X-Forwarded-Host) and read the email that arrives. If the link points at the foreign host, that header is being trusted. A 404 or 421 from the proxy only shows that this request was refused; read the link-building code as well.</p>
-<p>With a test account, reuse a spent link, use the older of two links, wait past expiry, and open the page with GET before submitting the form. The last check shows whether a GET burns the token. Look at the reset page for Referrer-Policy and third-party scripts. After a reset, a second browser that was already signed in should be signed out or asked to authenticate again.</p>
-<p>If every step behaved as intended for these test accounts, this flow did what you asked when you tested it. Other recovery paths, and the difference between staging and production, still need their own review.</p>
-<p>We are the HackerMe team, and we build a free scanner for public pages and headers. It cannot read reset emails or token storage.</p>
-<p>Autonomous security testing powered by AI agents. Powerful. Accurate. Actionable. hackerme.ai</p>
+                <p>Debugging is an essential part of software development. It helps developers understand how an application behaves during execution, identify unexpected behaviour, trace errors, and fix bugs.</p>
+<p>Go provides several debugging capabilities through Delve (dlv), a debugger specifically designed for Go applications. Visual Studio Code integrates with Delve through the official Go extension, providing a graphical interface for debugging Go programs.</p>
+<p>This document serves as a practical reference for debugging Go applications using VS Code and Delve.</p>
+<p>Delve (dlv) is a debugger designed specifically for the Go programming language.</p>
+<p>It allows developers to pause program execution, inspect variables, examine function calls, investigate go-routines, and step through code to understand what is happening internally.</p>
+<p>Unlike relying entirely on print statements (fmt.Println) or application logs, a debugger allows you to inspect the application's state at a particular point during execution.</p>
+<p>Go applications use go-routines extensively for concurrency. Delve understands Go's runtime and provides debugging capabilities suited to Go's execution model.</p>
+<p>VS Code uses Delve behind the scenes to provide its debugging functionality.</p>
+<p>Before debugging Go applications in VS Code, ensure the following are installed:</p>
+<p>The extension provides Go language support, formatting, testing, code navigation, and debugging integration.</p>
+<p>Ensure your Go binary directory is included in your system's PATH.</p>
+<p>You can also install or update Delve directly from VS Code:</p>
+<p>Note: The Go extension can also prompt you to install or update Delve when you first start a debugging session.</p>
+<p>VS Code provides a built-in debugging interface that allows you to debug Go applications without manually interacting with the Delve terminal.</p>
+<p>You can access the debugging interface by:</p>
+<p>If your project does not have a debugging configuration, VS Code can generate one automatically.</p>
+<p>Run and Debug → create a launch.json file → Go</p>
+<p>This creates a .vscode directory containing a launch.json file.</p>
+<p>Open the Go file or package you want to debug.</p>
+<p>VS Code will use Delve to build and launch the application.</p>
+<p>The launch.json file defines how VS Code should start or attach to a Go application during debugging.</p>
+<p>Some applications require environment variables to run correctly.</p>
+<p>This configuration starts the application with the specified environment variables.</p>
+<p>Important: Avoid committing real credentials, passwords, API keys, or other secrets to launch.json. Use environment files or your organization's approved secrets management approach.</p>
+<p>A breakpoint tells the debugger where to pause program execution.</p>
+<p>Instead of allowing an application to execute all its instructions, you can pause it at a specific point and inspect what is happening.</p>
+<p>A red dot indicates that a breakpoint has been created.</p>
+<p>You can also use F9 to toggle a breakpoint on the current line.</p>
+<p>Pause execution whenever the application reaches a particular line.</p>
+<p>Useful when investigating unexpected behaviour in a function.</p>
+<p>Pause execution only when a specified condition evaluates to true.</p>
+<p>This is useful when a function is called repeatedly but you only want to investigate a particular case.</p>
+<p>Pause execution whenever a particular function is called.</p>
+<p>Useful when you know which function is responsible for unexpected behaviour but do not know exactly where to place a breakpoint.</p>
+<p>Log information to the Debug Console without pausing program execution.</p>
+<p>Useful when you want to inspect values without interrupting the application's execution.</p>
+<p>Once execution reaches a breakpoint, you can control how the application continues.</p>
+<p>VS Code provides several execution controls.</p>
+<p>These controls are particularly useful when tracing execution across multiple functions.</p>
+<p>One of the most useful debugging capabilities is being able to inspect variables while an application is paused.</p>
+<p>VS Code provides several ways to do this.</p>
+<p>While debugging, hover your mouse over a variable in the source code.</p>
+<p>This is useful when you want to quickly inspect a variable without opening another panel.</p>
+<p>The Variables section in the Run and Debug panel displays:</p>
+<p>You can expand objects and structures to inspect their individual fields.</p>
+<p>The Debug Console allows you to evaluate expressions while the application is paused.</p>
+<p>You can also inspect more complicated expressions supported by Delve.</p>
+<p>The Watch section allows you to monitor specific variables or expressions.</p>
+<p>The debugger automatically evaluates these expressions as execution pauses and the selected stack frame changes.</p>
+<p>This is useful when investigating variables whose values change throughout execution.</p>
+<p>VS Code can display variable values directly in the editor while debugging.</p>
+<p>You can enable this through your VS Code settings:</p>
+<p>Although VS Code provides a graphical debugging interface, Delve can also be used directly from the terminal.</p>
+<p>This is particularly useful when debugging applications in environments where VS Code is unavailable.</p>
+<p>Navigate to the Go package directory and run:</p>
+<p>This compiles the current package and starts a debugging session.</p>
+<p>The program is loaded but has not necessarily started executing.</p>
+<p>This workflow allows you to start an application, pause execution, inspect variables, and investigate the call stack.</p>
+<p>Delve can also be used to debug Go tests.</p>
+<p>This is particularly useful when a test fails unexpectedly and you need to understand why.</p>
+<p>You can also open a test file and start debugging using F5.</p>
+<p>This allows you to investigate test execution using breakpoints and variable inspection.</p>
+<p>Sometimes an application is already running, and you want to investigate it without starting another instance.</p>
+<p>VS Code supports attaching to an existing process.</p>
+<p>A basic local attach configuration looks like this:</p>
+<p>When the debugging session starts, VS Code allows you to select a running process.</p>
+<p>Alternatively, you can specify a known process ID (PID).</p>
+<p>Important: Attaching to an existing process has platform and permission requirements. The target binary must also contain suitable debugging information.</p>
+<p>Compiler optimizations and function inlining can sometimes make debugging more difficult.</p>
+<p>When debugging an existing binary, build it using:</p>
+<p>This can make variable inspection and stepping through code more predictable.</p>
+<p>Note that these flags are primarily useful for debugging builds, not normal production builds.</p>
+<p>When investigating a bug in a Go application, the following workflow provides a useful starting point.</p>
+<p>A useful principle: You do not need to memorize every debugger command or configuration option. Understand what the debugger can do, know where to find the relevant settings, and refer to the documentation when necessary.</p>
+<p>The following resources were used when preparing this reference guide:</p>
+<p>Debugging Go Programs with Delve – Campoy's Go Tooling Workshop</p>
+<p>Debugging – Go Extension for Visual Studio Code</p>
+<p>How To Debug Go Code with Visual Studio Code – DigitalOcean</p>
+<p>Visual Studio Code – Debugging Documentation</p>
+<p>Documentation note: Debugger features and configuration options can change between versions. Consult the official Go extension and Delve documentation when troubleshooting version-specific behaviour.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/six-password-reset-vulnerabilities-and-how-to-prevent-them?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/nebulascout/debugging-go-applications-with-visual-studio-code-3n0h" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

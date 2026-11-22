@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Removing binder.c</title>
+    <title>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9916.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,152 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Removing binder.c</h1>
+        <h1>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The final talk at Kangrejos 2026 was about the removal of the C implementation
-of Android's
-
-Binder driver, the primary interprocess communication mechanism
-used on Android devices. Carlos Llamas announced that he had deleted the C
-code to general applause, and then shared some insights about what went into
-replacing the C implementation. Alice Ryhl, who has worked on the Rust
-implementation for some years, added her own thoughts about what the most
-difficult and interesting parts of the transition were.</p>
-<p>Binder was added to the kernel in 2008, Llamas said, as an interprocess
-communication mechanism for Android devices. Its design originated in
-
-BeOS, but
-it has grown significantly since then. It provides a rich set of operations for
-allowing processes to communicate with the minimum amount of overhead. It also,
-therefore, presents a large attack surface for Android. Many complicated chained
-attacks against Android have involved Binder at one step or another, Llamas
-explained. Google's internal "red team" (the team dedicated to proactive
-security research) deemed Binder to be the most vulnerability-dense component in
-the entire operating system, with more CVEs per line than anywhere else.</p>
-<p>That made it an obvious candidate for porting to Rust, Llamas said. Binder was the first user
-of Rust in the kernel, he added, although Ryhl did not
-
-publicly post the first version
-of what became the Rust implementation until 2023, well after the Rust experiment started
-in 2021. All told, the effort took more than
-five years. Binder is used for every single screen touch, permission check,
-and cross-application message on Android, which runs on more than three billion
-devices. In total, it works out to hundreds of billions of Binder transactions
-per second, globally, he added. That scale meant that even the smallest discrepancy between the
-interface provided by the C version and the one provided by the Rust version
-would cause problems and regressions for some use case.</p>
-<p>One particularly tricky aspect has been performance, Ryhl said. Throughput
-doesn't matter that much; what matters is the tail latencies. Most
-screen frames on Android have a Binder transaction in the critical path of the
-frame, she explained. So, a difference of two microseconds on average is not a
-real problem, but if Binder is ever twenty milliseconds slower, even once
-in a while, people will notice and care.</p>
-<p>The actual algorithms that the C and Rust implementations use are identical, she
-continued, so there are no large differences in throughput. But, because Rust
-handles locking differently, there were problems with the tail latency
-from lock contention that she had to debug. For example, one user-reported
-traceback showed Binder attempting to take a mutex that was held by another
-process. That process was preempted, and did not resume executing for twenty
-milliseconds, well past the sixteen millisecond budget to render a single frame.</p>
-<p>It was a classic case of priority inversion. To solve the problem in Binder, Ryhl moved
-as many operations out from under the lock as possible, and was able
-to replace it with a spinlock, which made the problem go away. The equivalent
-lock in the C implementation was already a spinlock: "I deviated from C
-Binder, and pow. It has eighteen years of accumulated quirks."</p>
-<p>Eventually, however, the Rust implementation was good enough for most use cases.
-And the C implementation was still producing new vulnerabilities every time
-someone tried to introduce a new feature. Eventually, Llamas and Ryhl decided to
-only add new features to the Rust implementation, in order to motivate people to
-switch and to avoid headaches from the C implementation. That policy has
-resulted in the Rust version becoming faster than the C version,
-because Ryhl was able to introduce an algorithmic improvement that reduced the
-number of needed system calls, a change that had been considered too complex for
-the C implementation. Now that the C implementation has been deleted, there are
-more of those coming, she promised.</p>
-<p>Another area that proved difficult was dealing with tracepoints. Users aren't
-supposed to rely on the presence or behavior of most kernel-internal
-tracepoints, but they do. This meant that Ryhl had to copy
-the existing tracepoints in Binder as a de facto part of the driver's API. That
-even extended into some of the data structures involved in the driver. In one
-case, she said, there was a reference-counted structure that had a slightly
-different reference count in the Rust implementation, because the Rust code was
-holding an additional pointer to the structure. That turned out to be a
-problem for one particular piece of client code, since it relied on checking the
-reference count via a tracepoint in order to determine when the C implementation
-had reached a particular state.</p>
-<p>There was also a lot of toolchain support needed, Ryhl continued. The Rust
-implementation had to work with kernel address-space layout randomization
-(KASLR), control-flow integrity (CFI), and profile-guided optimization.
-Production Android kernels are built with all of those enabled, and since they impact code
-generation, the Rust code needed to account for them.</p>
-<p>Llamas then went into more detail about the deployment plan that will be used
-to convert users to the Rust implementation. A major problem with just rolling
-the Rust implementation out is the existence of
-
-vendor hooks: custom
-tracepoints used to inject vendor-specific behavior into the kernel. The Rust
-implementation of Binder was not able to reproduce those in every case, and
-therefore many vendors are stuck on the C implementation until they update their
-code. That's going to be a slow process.</p>
-<p>Old stable
-versions of the kernel will continue to have the C Binder, and receive security
-fixes, which gives the various Android vendors a little bit of leeway until
-they're forced to update. After the conference, the patch removing the C
-implementation
-
-was merged as part of the 7.4 merge window, so that is the
-version past which the Rust implementation is required. 7.3 is the designated
-long-term-support release for 2026.</p>
-<p>One person asked whether this would pose a problem for people compiling
-the kernel with GCC. Miguel Ojeda responded that many distributions are using a
-workaround for the current lack of Rust support in GCC: they are building
-the C side of the kernel with GCC, and the Rust side with LLVM. He said that he
-had advised against compiling the kernel in that way, because it is "a
-complete hack", though people who use it are unlikely to complain about
-being forced onto Clang. Greg Kroah-Hartman added that it will take months or
-years to learn about anyone who has problems with the Rust version of the
-driver, given how slowly Android vendors update their kernels. Furthermore, the
-removal is a single patch that can be cleanly reverted, if someone needs
-to continue using the C version.</p>
-<p>Llamas thought that it was worth considering what the removal process should
-look like for other code that gets ported to Rust. He asked what people thought
-should happen to the C version of converted drivers on long-term-support
-branches. Ojeda said that the process would be exactly the same as the existing
-policy for replaced C code. The only difference
-between Rust and C in long-term-support releases is that the Rust maintainers
-backport fixes for soundness problems, he said.
-Kroah-Hartman told Llamas not to worry about code that has been replaced:
-"Just delete it. I take patches for subsystems that have been deleted. It's
-fine."</p>
-<p>With that declaration, the session, the conference, and the presence of the C
-Binder driver in the kernel were all over. Binder is the first nontrivial component
-in the
-kernel to be ported to Rust, and its journey has revealed several pitfalls that
-don't apply to new drivers written in Rust from scratch. Still, the most
-difficult problems were not Rust-specific; they were the compatibility problems
-that any rewrite would face. Whether any other kernel components will find the hassle
-of a rewrite worth it, and how long they will take to accomplish it, remains to
-be seen.</p>
-<p>[ Thanks to the Linux Foundation, LWN's travel sponsor, for supporting my travel
-to Kangrejos. ]</p>
-<p>Note: you can avoid this step in the future by logging
-        into your LWN account.</p>
-<p>Note: you can avoid this step in the future by logging
-        into your LWN account.</p>
-<p>Copyright © 2026, Eklektix, Inc.
-            This article may be redistributed under the terms of the
-              Creative
-              Commons CC BY-SA 4.0 license
-            Comments and public postings are copyrighted by their creators.
-            Linux  is a registered trademark of Linus Torvalds</p>
+                <p>The pace of open-source text-to-speech (TTS) model releases has been incredible. On the Hugging Face Hub (as of Sep 30, 2026) there are more than 8K TTS models available 🚀</p>
+<p>Evaluation, however, hasn't kept pace: it remains fragmented and unstandardized. The gold standard is human preference scores such as MOS or MUSHRA (more on metrics). To this end, several arena-based leaderboards have established themselves as useful reference points for the community:</p>
+<p>These arenas compare models by presenting users with TTS outputs from two models, and asking them to choose one over the other. After collecting a sufficient number of votes, an Elo score is computed to rank models, typically with the Bradley–Terry model (see Voice Arena methodology).</p>
+<p>While human preference is the ultimate decider, arenas cannot scale to keep up with the pace of TTS releases. This may partly explain why open-source models are underrepresented on arena-style leaderboards: as of Sep 30, 2026, only 16 of the 92 models on Artificial Analysis are open-weights, with a similar skew on Voice Arena. This likely reflects practical factors: adding an API model requires little more than an API key, whereas an open model must be hosted and served by the arena operator, and commercial providers have more reason to seek placement than open-source authors. Another limitation with arena-style evaluation is voter consistency: no arena can ensure that the same voters with the same criteria of “better” can consistently evaluate models over time. Even the preferences of a single person change over time (“A man cannot step into the same river twice” as famously said by Heraclitus).</p>
+<p>To this end, we've built the Open TTS Leaderboard, which uses objective metrics to evaluate models on complementary aspects of performance:</p>
+<p>By relying on objective metrics evaluating a model drops from a couple weeks (for collecting votes) to a couple hours ⚡</p>
+<p>Importantly, the Open TTS Leaderboard does not replace human preference ranking. ASR-based WER provides a proxy for intelligibility, while speaker similarity estimates voice identity preservation. Neither directly measures naturalness, expressiveness, or listener preference. Nevertheless, they can even inform voting-based leaderboards which models to include in their evaluations.</p>
+<p>Our intention with this leaderboard is for it to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. The next few sections give an overview of main features of the Open TTS Leaderboard.</p>
+<p>From the default view of the leaderboard, models are ranked by macro-average WER on the English splits of Seed TTS Eval (paper) and CV3 Eval (zero shot) (paper).</p>
+<p>hexgrad/Kokoro-82M, Supertone/supertonic-3, and fishaudio/s2-pro lead the pack on English WER when averaged on these two splits, while the Pareto plots visualize which models strike a good balance between WER, batched inference (RTFx), and size.</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>k2-fsa/OmniVoice, fishaudio/s2-pro, and FunAudioLLM/Fun-CosyVoice3-0.5B-2512 are strong multilingual models.</p>
+<p>By toggling “Voice cloning”, the models that support this functionality (on the selected languages) can be compared.</p>
+<p>Moreover, a SIM column for speaker similarity now appears in the table, as well as two more Pareto plots for visualizing the tradeoff between SIM, batched inference, and size.</p>
+<p>The average WER of some models, such as bosonai/higgs-tts-3-4b and openbmb/VoxCPM2, improve under voice cloning, namely when a reference audio is provided.</p>
+<p>Numbers only tell part of the story, and as mentioned earlier human preference is the ultimate decider. From the “Listen” tab, you can compare the generated outputs that are behind the metrics, to find which model(s) you prefer!</p>
+<p>Pick the language/dataset you're interested in, whether you want to compare voice cloning, and optionally pick the models or listen to outputs from a random selection.</p>
+<p>The “Listen” tab fills an important gap in existing TTS leaderboards: a space to explore model outputs of various models.</p>
+<p>You can even give feedback on the generated outputs. As we collect more votes from the community, we may include this data on the leaderboard. So vote! But please login with your HF account to help us weed out spam/bots.</p>
+<p>The “Streaming” tab compares the streaming capabilities. Models are ranked by TTFA (time-to-first-audio), which quantifies how long a user waits after probing a model in order to obtain audio that can be played. This is important for voice agents and other interactive apps.</p>
+<p>For streaming models (✅ under “Streaming API”) it's the time until the first audio chunk arrives. For non-streaming models, it's the time until the whole utterance is generated, because playback can't start any earlier. Every model runs one audio at a time (batch size 1), on the same 50 English prompts from CV3-Eval, on the same hardware and in its default voice. We drop the first 3 runs as warm-up and report the median TTFA across the rest.</p>
+<p>The default view compares performance on an H200 GPU. Results are also available for CPU for a small (but growing) set of models!</p>
+<p>kyutai/pocket-tts is a great model for streaming on both GPU and CPU!</p>
+<p>The goal of the Open TTS Leaderboard is not only to keep up with the incredible pace of TTS model releases, but to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. Let us know which datasets, models, and metrics you want to see!</p>
+<p>We will soon open-source the evaluation scripts, much like the Open ASR Leaderboard repo, so that you can directly provide your feedback and suggestions via GitHub Issues and PRs! Let's shape TTS evaluations together 🤗</p>
+<p>Compare two TTS voices to find the most human‑like</p>
+<p>Explore speech‑recognition model performance across languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
+<p>Glad this board splits multilingual TTS quality from voice-cloning identity instead of one aggregate green.</p>
+<p>The check I'd keep reading: whether the ranking still holds when you hold language/domain fixed versus when cloning is the axis. Otherwise teams optimize the easier subscale and still call the result "SOTA TTS."</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has movie box audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>Open TTS Leaderboard is an open evaluation platform designed to make multilingual text-to-speech and voice-cloning models easier to compare at scale. Traditional TTS arenas usually let users listen to outputs from two models and choose the one they prefer. Those votes can then be used to calculate an Elo-style score, often through approaches such as the Bradley–Terry model, giving users a simple way to understand how different systems perform based on human preference.</p>
+<p>Human feedback remains an important part of evaluating speech quality, but relying only on arena-style voting can be difficult as new TTS models are released at a rapid pace. Open-source models can also face practical barriers because they generally need to be hosted and served by the evaluation platform, while API-based commercial models can be added more easily. This can result in open-weight systems being less visible on public leaderboards. Another challenge is consistency: people's preferences and listening criteria can change over time, meaning that votes collected months apart may not always represent exactly the same standards.</p>
+<p>Open TTS Leaderboard aims to address these challenges by providing a scalable and transparent space for evaluating multilingual TTS and voice-cloning systems. The goal is to make comparisons easier to reproduce, expand coverage of open models, and provide useful evaluation signals alongside human preference. By bringing together scalable testing and community feedback, the project can help researchers, developers, and users better understand how speech models perform across different languages, voices, and use cases.</p>
+<p>GitHub repo with the eval scripts is public! https://github.com/huggingface/open-tts-leaderboard</p>
+<p>Compare two TTS voices to find the most human‑like</p>
+<p>Explore speech‑recognition model performance across languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lwn.net/Articles/1102982/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-tts-leaderboard" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
