@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Sizing GPU Memory for a RAG Service: KV Cache, Context and Concurrency</title>
+    <title>Give sandboxed agents live web access with the Firecrawl kit for Docker Sandboxes</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10170.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,58 +15,40 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Sizing GPU Memory for a RAG Service: KV Cache, Context and Concurrency</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Give sandboxed agents live web access with the Firecrawl kit for Docker Sandboxes</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Screenshot_2026_11_18_183005_7d7eb59768.png" alt="Sizing GPU Memory for a RAG Service: KV Cache, Context and Concurrency" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.docker.com/app/uploads/2025/03/image.jpg" alt="Give sandboxed agents live web access with the Firecrawl kit for Docker Sandboxes" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_Screenshot_2026_11_18_183005_7d7eb59768.png" alt="Sizing GPU Memory for a RAG Service: KV Cache, Context and Concurrency" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.docker.com/app/uploads/2025/03/image.jpg" alt="Give sandboxed agents live web access with the Firecrawl kit for Docker Sandboxes" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>A retrieval-augmented generation (RAG) app is usually drawn as a language model plus a vector database. When it goes live, the part that fails first is rarely the retrieval. It is GPU memory on the generation model, because a model that loads fine for one request can run out of memory when several users send long questions at once.</p>
-<p>This article shows how to estimate that limit before you deploy, with a short script you can run, and then covers what else in the pipeline can slow responses down.</p>
-<p>Serving a model takes more than its weights. The GPU also holds:</p>
-<p>the key-value (KV) cache, which grows with the length of every active request</p>
-<p>memory used by the inference runtime itself</p>
-<p>SitePoint's guide to running a local LLM on 10GB of VRAM makes the same point for a single desktop GPU: the usable budget is the total VRAM minus overhead, and the KV cache grows with the context window, so the real model budget is smaller than the number on the box.</p>
-<p>For a RAG service, the KV cache matters even more. Retrieved passages are pasted into the prompt, so every request carries a long context, and every concurrent request holds its own cache.</p>
-<p>The cache size per token depends on the model's architecture: two tensors (keys and values) for every layer, for every KV head. This script turns those numbers into a rough limit on concurrent requests:</p>
-<p>def kv_bytes_per_token(layers, kv_heads, head_dim, dtype_bytes=2):</p>
-<p># Keys and values, for every layer, for one token.</p>
-<p>return 2 *layers *kv_heads *head_dim *dtype_bytes</p>
-<p>def max_concurrent(vram_gb, weights_gb, ctx_tokens, per_token, reserve_gb=2.0):</p>
-<p>budget = (vram_gb - weights_gb - reserve_gb) * GIB</p>
-<p>return int(budget // (ctx_tokens * per_token))</p>
-<p>per_token = kv_bytes_per_token(32, 8, 128)</p>
-<p>print(per_token // 1024, "KiB per token")</p>
-<p>n = max_concurrent(24, 16, ctx, per_token)</p>
-<p>print(ctx, "tokens ->", n, "concurrent requests")</p>
-<p>For a 24 GB GPU holding about 16 GB of fp16 weights with 2 GB kept in reserve, it prints:</p>
-<p>The numbers are estimates. Real runtimes add their own overhead, and the architecture values come from the model's configuration file, so read them from the model you actually use. The pattern is what matters: doubling the context length halves the number of requests that fit. A RAG prompt that stuffs in ten retrieved chunks costs real capacity.</p>
-<p>Serving runtimes do not simply crash when the cache is full. The vLLM documentation on optimization and tuning explains that when KV cache space is insufficient for all batched requests, the engine preempts some of them and recomputes them later, which can hurt end-to-end latency. Its suggested remedies include giving the cache more memory, reducing the number of concurrent sequences or batched tokens, or sharding the model across GPUs.</p>
-<p>So the symptom of undersizing is often not an error. It is slow, uneven responses under load. Test with realistic prompt lengths and several simultaneous users, not a single request.</p>
-<p>Embedding and ingestion have a different profile from generation. Embedding is often lighter than serving a large language model, and some teams run it on CPU. Document parsing, chunking and tokenization also run on CPU, so a fast GPU cannot make up for a slow CPU upstream. SitePoint's tutorial on a local RAG system for private documents walks through chunking, embeddings, vector storage and reranking, and is a good map of which stages run where.</p>
-<p>RAM: vector indexes, document loaders and caches all live in system memory, so large collections need more of it.</p>
-<p>Storage: model files, indexes, logs and backups add up. Fast storage shortens model loading and re-indexing.</p>
-<p>Network: if the vector database, application server and model server sit in different places, latency adds to every request.</p>
-<p>Two layouts are common. A single instance runs everything and is simplest for prototypes and internal tools. Separated services put ingestion and retrieval on smaller machines and keep the GPU for generation, which scales better as traffic grows.</p>
-<p>Memory estimates only hold if the GPU memory is really yours. On a shared or time-sliced GPU, other workloads can take memory and compute away from your service, which makes capacity hard to plan. Hosting providers describe this in different terms, such as passthrough, vGPU, MIG and time-slicing. For a view of how one GPU hosting provider explains those allocation methods, GPU Mart's GPU virtualization guide compares them. It is a hosting company's page, so confirm any provider's claims about isolation and performance with your own load test.</p>
-<p>Whatever provider you choose, ask these questions:</p>
-<p>Is the physical GPU assigned to you exclusively, or partitioned or time-sliced?</p>
-<p>Do you have root access to install your own drivers, CUDA libraries and containers?</p>
-<p>Which minimum commitments, regions and support terms apply?</p>
-<p>A small stack can run as a handful of containers: an API service for request handling and prompt assembly, an ingestion worker, a vector database and a model server. Keeping them separate lets you monitor each one's memory and CPU use and move the heavy one to bigger hardware without rewriting the rest.</p>
-<p>For a service that stays up all month, a fixed monthly term is easier to forecast than hourly capacity. Hourly capacity suits testing quantization settings or processing a one-off document batch.</p>
-<p>Is GPU memory always the bottleneck for RAG?</p>
-<p>Not always. Generation usually hits memory first, but slow parsing, a small CPU or a distant vector database can dominate response time.</p>
-<p>Does quantization solve the memory problem?</p>
-<p>It shrinks the weights, but the KV cache still grows with context length and concurrency. Test with your real prompt sizes.</p>
-<p>It depends on volume. Small workloads can run on CPU, while a large ingestion job may benefit from a GPU for a limited time.</p>
-<p>Size a RAG service for the worst realistic moment, not the single-request demo. Estimate the KV cache from the model's architecture, remember that long retrieved contexts reduce how many requests fit, watch for preemption under load, keep CPU, RAM, storage and network in the plan, and find out whether the GPU is exclusive or shared. The script above is small, but it turns a vague worry about memory into numbers you can check.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>A coding agent in Docker Sandboxes runs inside an isolated VM, the sandbox controls which hosts it can reach, and credentials stay on the host behind a proxy. The same controls keep the agent from opening a docs page, reading a changelog, or looking up an API that shipped after its training cutoff, so it writes code against the version it remembers. The usual fix is to widen the allowlist until the agent can fetch anything, which hands back most of what the sandbox took away.</p>
+<p>The Firecrawl kit gives the agent web search, page scraping, and site crawling through one added host, api.firecrawl.dev, and every page comes back as clean markdown.</p>
+<p>The Firecrawl kit is a mixin (kind: mixin): it extends whichever workload you already run rather than defining a new sandbox. Its descriptor, firecrawl/firecrawl.yaml, declares four typed capabilities:</p>
+<p>The kit adds to the sandbox’s allowlist and does not narrow it, so everything else is set by your global sbx policy. Docker’s balanced preset allows package registries, GitHub, and a curated list of vendor domains, and returns a 403 for general websites, including most documentation sites, so Firecrawl is the agent’s route to those. Under deny-all, it is the agent’s only web host.</p>
+<p>Kits are experimental and in Early Access, so the kit format and sbx commands may change. The steps below are current for October 2026; the repository README carries the latest.</p>
+<p>Kit: docker.io/firecrawl/sbx-kit-firecrawl:1.0.0 on Docker Hub, for linux/amd64 and linux/arm64. Source: github.com/firecrawl/firecrawl-docker-sandbox.</p>
+<p>1. Store the key once on the host. The command prompts for the key. Service secrets are global by default, so every sandbox that requests the firecrawl service can use it once you approve. The kit never sees the value; the proxy injects it at request time.</p>
+<p>2. Start a sandbox with the kit. The kit is an ordinary OCI image with its descriptor in the manifest, so a version tag is all you need. Each --kit adds a mixin to the workload, and the trailing . mounts your project directory.</p>
+<p>On the first run, sbx asks you to approve sending the firecrawl credential to api.firecrawl.dev. Accept the defaults. The credential is required: with no secret stored, sbx refuses to create the sandbox instead of letting the agent hit a 401 mid-task. A detached or CI run cannot answer the approval prompt, so approve interactively once or write the binding to ~/.config/sbx/credentials.yaml first.</p>
+<p>3. Give the agent a task that needs the live web. Documentation sites are blocked under balanced, so this one has to go through Firecrawl.</p>
+<p>The kit’s instructions tell the agent to scrape blocked hosts through Firecrawl, so it calls fc.scrape(...) unprompted. Its response, trimmed:</p>
+<p>4. Verify each layer. In the same session, ! runs shell commands inside the sandbox.</p>
+<p>Expected: FIRECRAWL_API_KEY=proxy-managed. A real fc-... value here means the key came from somewhere other than the kit.</p>
+<p>Expected: the page as markdown, starting with # Changelog and the latest version heading. The same URL returns a 403 to curl from inside the sandbox, so output here proves the SDK, the credential, and the network rule at once.</p>
+<p>The kit also describes itself inside the sandbox. This prints the published descriptor, and the agent instructions sit next to it as firecrawl-context.md:</p>
+<p>Running from source. To review or modify the kit before you run it, clone the repository and point --kit at the firecrawl/ directory; sbx builds source kits on demand:</p>
+<p>With the kit installed, the agent can look things up on the web while it works. The sandbox only needs to talk to one new address, api.firecrawl.dev, and Firecrawl fetches the pages for it. This matters because the default balanced policy blocks most documentation sites. Without the kit, you’d have to allow each site one by one, and every new site you allow makes the sandbox a little less locked down.</p>
+<p>Without the kit, you had a choice to make. The default balanced policy blocks most documentation sites, so you could either leave the agent working from what it remembered, or allow sites one by one and loosen the sandbox a little each time. The kit avoids that choice. Your Firecrawl API key stays on your machine, behind the proxy, and the agent still reads the web as it is today.</p>
+<p>The result is fewer made-up APIs, fewer failed upgrades, and less time spent correcting an agent that was confidently out of date.</p>
+<p>The kit is published under the firecrawl organization on Docker Hub as firecrawl/sbx-kit-firecrawl, with source, changelog, and CI on GitHub under Apache-2.0. The SDK pin is verified against PyPI’s package hashes at install time, and every release passes Docker’s kit-tck conformance suite in CI. Review the descriptor and allowlist before running it, as with any kit.</p>
+<p>Pull the kit from Docker Hub: hub.docker.com/r/firecrawl/sbx-kit-firecrawl. Issues and feature requests go to the GitHub repository.</p>
+<p>Docker launches a new brand built on trust. Learn why Docker is evolving for AI agents, what stays the same, and how to run agents securely with Docker.</p>
+<p>Docker publishes fixed images for both Java4Shell and the NGINX HTTP/2 in the Docker Hardened Images (DHI) catalog.</p>
+<p>Learn how Docker AI Governance secures agentic AI with sandbox policies, MCP tool governance, and audit visibility to support controlled AI agent workflows.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/sizing-gpu-memory-for-a-rag-service-kv-cache-context-and-concurrency/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.docker.com/blog/docker-sandboxes-firecrawl-web-access/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

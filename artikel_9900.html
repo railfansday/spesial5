@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</title>
+    <title>Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9900.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,93 +15,255 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/anydecisionmodel/banner.png" alt="Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/meta-muse-spark-open/thumbnail.png" alt="Welcome Muse Spark Open: open-weight frontier multimodal mixture-of-experts model from Meta" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/anydecisionmodel/banner.png" alt="Introducing AnySpeechRecognizer and AnyDecisionModel: Open Models for Speech and Decisions on Apple Platforms" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Muse Spark Open is an open-weight model from Meta. The mixture of experts model brings text, images, audio, and video into a model with approximately 816 billion parameters, around 42 billion active per token, and a context window of up to one million tokens. It generates text, giving developers a common interface for asking questions about different kinds of input.</p>
-<p>Following Muse Glimmer, Muse Spark Open introduces a mixture-of-experts architecture at a much larger scale, and the most capable US open-weights model to date.</p>
-<p>Meta trained Muse Spark Open for agentic coding: reading a codebase, writing and debugging code, and calling tools. It also takes images, audio, and video as input, so the same model can read a screenshot, listen to a voice note, or watch a screen recording while it works on your code. This post shows you how to run it, how to fine-tune it, and what we built with it. Find all the models here.</p>
-<p>Meta describes Muse Spark Open as a coding-optimized model trained on real developer workflows such as multi-file refactors and long debugging sessions. Muse Spark Open is an agentic focused model that plans, acts, observes, and self-corrects over long tasks, including browsing the web with images.</p>
-<p>The checkpoint repositories are Muse-Spark-Open-816B-A42B and Muse-Spark-Open-816B-A42B-NVFP4.</p>
-<p>Muse Spark Open is the full-size model of the Muse series of models. Muse Glimmer, which Meta released in August, is a small dense model from the same series, ideal for running locally. Both models use the same tokenizer and vocabulary. The chat template follows the Muse Glimmer template, with additions for the new modalities. In Muse Spark Open the input embedding and the output layer are separate matrices of about 1.66B parameters each.</p>
-<p>The language model has 62 layers and a hidden dimension of 8192. Each layer has 128 query heads and 16 key-value heads (grouped-query attention). Each head has 64 dimensions. The attention block has an output gate and an output normalization layer. The model also applies normalization to the queries and the keys (QK-norm). Each block combines its input and its output through a learned residual gate, not through a plain sum.</p>
-<p>Muse Glimmer uses one dense feed-forward network in each layer. Muse Spark Open replaces this dense network with a Mixture-of-Experts (MoE) block. Each MoE block has 256 experts, and a router selects 8 experts for each token. Each expert is a feed-forward network that projects from 8192 to 4096 dimensions and back to 8192, then applies its own normalization to its output. The experts hold ~97% of the total model parameters.</p>
-<p>Only 8 experts run per token, so the model computes each token with about 42B parameters. All 256 experts stay in memory, so deployment needs the memory of an 816B-parameter model, but runs at the much faster speed of a 42B model. The BF16 checkpoint is about 1.5 TB in safetensors format. The NVFP4 checkpoint stores the parameters in 4-bit precision with negligible loss in accuracy, specifically for NVIDIA Blackwell GPUs. In transformers, the BF16 checkpoint runs across 4 nodes of 8 H200 GPUs with tensor parallelism (TP=32) and the NVFP4 runs on a single B200 node. If you want to deploy Muse Spark Open, check out the llama.cpp, vLLM, and SGLang recipes below.</p>
-<p>A perception encoder converts images and video frames into tokens for the language model, just like Muse Glimmer. The encoder has 1.8B parameters, 50 layers, a hidden dimension of 1536, and 16 attention heads. It splits each image into 14×14 patches and produces features with 4096 dimensions. Position information comes from learned absolute embeddings and 2D RoPE. The feed-forward network in each layer uses LayerNorm and GELU. Every fourth layer and the last layer use full attention, and the other layers use sparse attention.</p>
-<p>Muse Glimmer 30B uses an encoder with the same architecture. The design follows the  Perception Encoder work from Meta. Video input goes through the same encoder as images.</p>
-<p>Muse Spark Open accepts audio as input through its audio encoder. An audio tokenizer converts the audio into tokens, and the chat template marks the audio position with <|audio|> tokens. The encoder emits one audio token every 80 ms, which yields 12.5 tokens per second. So let’s say, you have an audio of 10 seconds, the number of input audio tokens would be 125.
-The encoder itself is a convolutional pyramid where each stage consists of a patch embedder of different patch sizes and 2 convolutional blocks of 1d kernels of size 7 with stride of 1. These stages are repeated for patch sizes of [16, 6, 5, 4]. At the end of the final stage, the temporal frames are fed to a final block of RMSNorm → linear projection → RMSNorm.</p>
-<p>The context window is 1M tokens at inference. The configuration sets max_position_embeddings to 1,048,576. This includes image, video, and audio tokens in the same window as text.</p>
-<p>Grouped-query attention keeps the KV cache small for a model of this size. Each token adds 2 × 16 heads × 64 dimensions × 62 layers = 126,976 values to the cache. In BF16, this is about 250 KB per token and about 266 GB for a full 1M-token context.</p>
-<p>The Muse Spark Open implementation provides MuseSparkForConditionalGeneration for text generation from multimodal inputs and MuseSparkProcessor for preparing conversations. The processor combines the tokenizer, image and video processors, audio feature extractor, and chat template.</p>
-<p>Use a DistributedConfig to configure the parallelism settings. tp_size is the number of devices across which the dense layers are sharded, and ep_size is the number of devices across which the experts are distributed.</p>
-<p>You can initialize the model and processor as follows.</p>
-<p>Prepare the conversation, then pass the messages to processor.apply_chat_template, enabling add_generation_prompt=True, tokenize=True, return_dict=True, and return_tensors="pt". Pass the processor output to model.generate and decode the newly generated tokens, excluding the input prefix. The processor has a lever for the reasoning effort, mapping symbolic levels (low/medium/high/xhigh) to the integers the model itself accepts (16, 64, 256, 512). Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task. You can also set a numeric effort by including a line like Reasoning strength: 1 in the system prompt.</p>
-<p>The Muse Spark Open processor expands each image marker into the number of patch tokens required by the processed image, surrounded by image boundary tokens. This expansion keeps the text positions aligned with the visual features passed to the model. The processor also handles multiple images within a single prompt.</p>
-<p>Video prompts include frame timing as well as visual content. The processor handles videos with audios in them (which is an upgrade from Muse Glimmer thanks to the audio encoder). The processor downsamples video frames and audio to align frames together. By default, videos are sampled to 2 FPS, capped at 96 frames. You can modify this by setting the fps of the video processor:</p>
-<p>As a general rule of thumb, videos are frames in temporal sequence, and the more you downsample, the more you will lose frames in between specific events, so you need to keep fps high if you want more accurate generations. However, there’s a trade-off because you will require more memory and increase latency for prefill. The frames are interleaved with text input that states timestamps (e.g. “Time: 3.5s”). To enable passing in videos with audio, pass load_audio_from_video=True to apply_chat_template.</p>
-<p>Preserve the video's metadata when preparing inputs with return_metadata=True so the processor can assign the correct framerate.</p>
-<p>The Muse Spark Open audio tower consumes a raw waveform. The processor expects mono audio at 24 kHz and pads the waveform to a multiple of 1,920 samples, corresponding to one audio embedding per 80 milliseconds. Audio supplied directly to the processor at another sample rate must first be resampled. You can do this by using the load_audio util of transformers. load_audio uses torchcodec, librosa or torchaudio backends, so make sure to have one of these installed locally before running inference.</p>
-<p>If you want to simply use apply_chat_template with messages though, this is all handled for you under the hood:</p>
-<p>The processor inserts the matching number of audio tokens between audio boundary markers. It also returns a mask identifying real samples, allowing the model to exclude padded audio embeddings.</p>
-<p>Muse Spark Open can do text-only and multimodal tool calling. You can make the model call tools as follows.</p>
-<p>Muse Spark Open uses a channel-based chat template (Harmony, first introduced by gpt-oss). Note that you don’t have to know about the internals, but it’s useful to check the channels the model routes to, in case you get low quality outputs. In the input message below:</p>
-<p><|start|>assistant is intentionally left open, it’s the model that chooses recipient with to= . The model has different recipients, e.g. self asks the model to reason,</p>
-<p>self is for reasoning, commentary are comments before and between tool calls visible to the end user, user is the final response.Tool-call routing is parsed as follows (assuming you have passed tools to apply_chat_template:</p>
-<p>Muse Spark Open is integrated in llama.cpp and comes in the prebuilt binaries. You can install this with following command:</p>
-<p>You can start the server as follows with quant suffix attached to model ID:</p>
-<p>The repository containing quants is here. Once the server has started, you can head to localhost:9931 to chat with the built-in WebUI. From the web UI you can add audio and images for inference and adjust the reasoning lever.Note that turning off reasoning is not possible with Muse Spark Open, so keep the model reasoning at “low” if you want to consume less tokens to solve an easier task.We tested quants on Mac M3 Ultra (512GB). An imatrix-calibrated 2-bit quant runs at 18 tokens/s, with plenty of room free for the KV cache (304 GB used by the model).</p>
-<p>You can also query the server as follows. Feel free to check out the API reference for multimodality, tool calls and more.</p>
-<p>llama.cpp team ships different quantized versions. We have tested Q2_K, Q4_K_S and Q_8 on Apple Silicon chips. You can run each quant by adding the quant id as suffix, llama serve -hf ggml-org/Muse-Spark-Open-816B-A42B:Q2_K.</p>
-<p>The Muse Spark Open integration for SGLang supports text, image, audio, and video inputs. The NVFP4 reference configuration runs across four GB300 GPUs.</p>
-<p>From the SGLang integration environment, download the checkpoint from the Hugging Face Hub and start the server:</p>
-<p>The checkpoint includes the chat template, which we pass explicitly. The launcher configures the Muse reasoning and tool-call parsers.</p>
-<p>Send a request through the OpenAI-compatible API:</p>
-<p>The response separates the reasoning trace in reasoning_content from the final answer in content.</p>
-<p>The Muse Spark Open reference integration for vLLM supports text and image inputs with the NVFP4 checkpoint that require blackwell series GPUs.</p>
-<p>After installing the reference plugin and its dependencies, download the checkpoint from the Hugging Face Hub and launch the server:</p>
-<p>This configuration sets a 128K-token serving context. The plugin supplies the model implementation, checkpoint loader, and reasoning and tool-call parsers.</p>
-<p>Send a request using the same Hub model ID:</p>
-<p>Muse Spark Open is available in oMLX and mlx-lm today. oQ quants optimized for oMLX are available in 3-bit and 4-bit, ready to use right away.</p>
-<p>We tested the oQ3e quant on an M3 Ultra (512 GB). The model takes about 344 GB, leaving room for the KV cache, and runs at about 225 tok/s prefill and 21 tok/s generation with a 1024-token prompt and 128 generated tokens.</p>
-<p>Once you download the model through the oMLX interface, you can chat with it in the built-in chat UI. From the chat UI you can add images and adjust the reasoning effort on the fly, from low to xhigh. The model’s reasoning shows up as a collapsible thinking block, separate from the final answer.</p>
-<p>Note that it's not possible to turn reasoning off, and the default (Auto) uses xhigh. Set it to “low” if you want to use fewer tokens on easier tasks.</p>
-<p>The language model is also available in this PR of the official mlx-lm repository. You can run it on the same high-quality oQ3e quant like this:</p>
-<p>This is a big model, even the 3-bit quantization requires more than 256 GB of RAM, as explained above. You can also run distributed inference across multiple computers, please refer to the documentation for details.</p>
-<p>You can deploy Muse Spark Open on Inference Endpoints with a pre-validated SGLang recipe for the NVFP4 variant which runs on either 8 × NVIDIA RTX Pro 6000 98 GB with 131072 context length, or with 8 x NVIDIA H200 141GB if you want 1048576 context length instead.</p>
-<p>To deploy, run one command with the Hugging Face CLI:</p>
-<p>Or open endpoints.huggingface.co/new/meta-models/Muse-Spark-Open-816B-A42B-NVFP4 and select Create Endpoint.</p>
-<p>The endpoint exposes an OpenAI-compatible API with both Chat Completions API at /v1/chat/completions and Responses API at /v1/responses.</p>
-<p>Any OpenAI-compatible client works with the same URL and your Hugging Face token as the API key.</p>
-<p>You can fine-tune the 816B checkpoint with the TRL SFTTrainer. This section shows how we fine-tuned it with TRL on 8 nodes of 8 H100 GPUs. The recipe trains LoRA adapters on the attention layers. The experts stay frozen. The full script is in the TRL examples.</p>
-<p>First, we need to split the model across 64 GPU devices. Given the large size of the model, we need to parallelize it across multiple axes. We shard the model with FSDP and split the experts across GPUs, using DistributedConfig, which tells transformers how to split the model when it loads:</p>
-<p>In the snippet above, fsdp_size=64 shards the model across all 64 GPUs with FSDP2, and ep_size=8 splits the 256 experts of each layer into 8 groups. Transformers sends each token to the GPU that holds its expert, so each GPU trains on its own slice of the batch.</p>
-<p>Now, we can configure the SFTConfig for our training run. We’ve performed a simple task here to adapt the model’s chat template on an open source dataset, but you could apply it to your own use case.</p>
-<p>The core parts here are packing=True which joins examples into 2048-token sequences without padding. A block-diagonal mask keeps the examples separate. save_only_model=True saves the adapter and no optimizer state, because the trainer cannot resume a model that was sharded at load time. LoraConfig targets the four attention projections and the 256 experts of each layer stay frozen.</p>
-<p>Then we can run this command across each node:</p>
-<p>We trained for 500 steps, which took about 2 hours on 64 H100s, at about 8,000 tokens per second. Mean token accuracy rose from 72% to 84% and the loss fell from 1.26 to 0.57, which signals a good fine-tuning run.</p>
-<p>Muse Spark Open is a coding and agentic model. We wanted to see that for ourselves, so we tried a mixture of multi-modal and agentic tasks that use the model's image and audio inputs. Everything below is something you can run or fork.</p>
-<p>We combined 2-bit quantized Muse Spark open (served on llama.cpp) with the Pi coding agent to generate and iteratively improve 3D assets in Three.js. You can find the prompt here, as the model is quantized it requires a bit more steering. We get 18 TPS on llama.cpp on Mac Ultra.</p>
-<p>We initially describe the asset, and Pi uses the model to generate Three.js code for the asset, renders the result in a browser, and captures screenshots from multiple angles. It then sends those images back to the same model on llama server for visual feedback. Pi uses that feedback to edit the code and repeats the process.</p>
-<p>We tested Spark on computer use tasks and were amazed by the performance, so we have built a lean demo that also serves to teach you how a computer use agent works. You can also further customize this for your needs. This is both an educational example and something you can run in a few lines. You can find it here.</p>
-<p>Muse Spark NVFP4 Browser Agent with OpenEnv and HF Sandboxes</p>
-<p>Hugging Face Sandboxes are sandboxes built on Hugging Face Jobs for easy code execution. The demo consists of three components:</p>
-<p>where the remote sandbox contains the environment and the browser as illustrated below.</p>
-<p>You can easily try this with a few steps, described in the example. Start Inference Endpoint with Muse Spark Open (NVFP4 works well too!), add your endpoint URL as environmental variable, publish your OpenEnv server in Spaces and also provide that, then you can run the agent loop.
-Muse Spark Open sees the previous actions, system prompt, url and the screenshot of the browser to take an action, and nothing else (no DOM, no HTML code, nothing) so it’s a truly multimodal browser demo.</p>
-<p>Finally, we wanted to push Spark’s agentic multimodality to the limits, so we set up this space that combines the model’s audio, image, and agentic properties into a browser agent. We give the model a general description of a thing we need and it interacts with the integrated browser to find options on Amazon.</p>
-<p>Muse Spark Open takes the voice input and reasons over the type of product that meets the descriptions, searches for it on Amazon, and selects the most appropriate based on criteria.</p>
-<p>Muse Spark Open is a full-size open-weight model from the Muse series. Start with the BF16 or NVFP4 checkpoint, or try one of the great llama.cpp quants. If you build something with Muse Spark Open, share it, and tell us in the repository’s discussions.</p>
-<p>Talk to Muse Spark and watch a browser work</p>
-<p>i wish if i can run huge models like this on a phone or 4vram</p>
-<p>Talk to Muse Spark and watch a browser work</p>
+                <p>Language models can do a lot.
+They write, summarize, translate, and call tools.
+But they're only a small part of what machine learning can do.</p>
+<p>Say a customer calls your support line.
+First, you want to know what they said (speech recognition).
+Then, you want to decide where to send them (decision).
+You could hand both to a language model,
+but there are models built for each that are
+better, faster, and less expensive.</p>
+<p>In our AnyLanguageModel 1.0 recap,
+we looked at a year of local and hosted models in Swift.
+With AnyLanguageModel and swift-huggingface now on their 1.x releases,
+we're extending the same approach to speech and decisions:
+familiar Swift APIs with a choice of model.</p>
+<p>Both packages can download open models from the Hugging Face Hub
+and run them on device.</p>
+<p>Computers have been transcribing speech for decades,
+and in the past few years, they've gotten very good at it.
+Apple platforms already have an API for it.
+macOS 26 and iOS 26 introduced SpeechAnalyzer,
+Apple's new speech-to-text API.
+You add modules such as SpeechTranscriber and SpeechDetector to an analyzer,
+give it a file or a stream of audio buffers,
+and read results from async sequences as they arrive.
+AssetInventory installs the models,
+so your app decides when downloads happen.</p>
+<p>It's a well-designed API,
+but the only engine behind it is Apple's.
+AnySpeechRecognizer keeps the API and lets you choose the engine:</p>
+<p>The package mirrors SpeechAnalyzer, SpeechTranscriber, DictationTranscriber,
+SpeechDetector, and AssetInventory,
+with Apple's Speech framework as the default engine.
+If your code uses that shared API, changing the import is enough.
+To use Parakeet instead,
+change only how you create the transcriber:</p>
+<p>The steps for installing assets, running the analyzer,
+and reading results stay the same.
+The README
+has a complete example
+and lists the differences
+from Apple's framework.</p>
+<p>Parakeet v3 is NVIDIA's Parakeet TDT 0.6B v3.
+It's a polyglot:
+it recognizes 25 European languages and works out which one it's hearing,
+so you don't pass a locale.</p>
+<p>Parakeet Ultra is Moondream's post-trained take on v3.
+It was more accurate in most of our measurements.</p>
+<p>Parakeet Unified is NVIDIA's
+English-only Parakeet.</p>
+<p>All three Parakeets run on the package's own Core ML runtime,
+which supports file and live input, volatile results, word timing,
+and word confidence.</p>
+<p>Qwen3-ASR is Alibaba's speech model,
+in 0.6B
+and 1.7B sizes.
+It recognizes 30 languages and 22 Chinese dialects,
+including Mandarin, Cantonese, Japanese, and Korean, which Parakeet doesn't cover.
+It detects the language automatically, or you can set one:</p>
+<p>Qwen3-ASR gives one final result for each segment of up to 40 seconds,
+without volatile results, word timing, or confidence.
+It runs on the GPU and is slower than Parakeet,
+so it's better suited to transcribing files than live input.</p>
+<p>To add another engine, implement SpeechRecognitionModel for its configuration
+and SpeechRecognitionExecutor for one module's session.
+The README includes a small provider
+that reports placeholder text to help you get started.</p>
+<p>To run these models in apps,
+we converted them to Core ML and published them on the Hub:</p>
+<p>Each repository records its source checkpoint
+and a checksum for every file,
+and the package pins it to a fixed revision.
+The Parakeet repositories add an 8-second encoder for live input,
+which cuts live analysis time by about a third
+at the cost of a somewhat higher word error rate.
+The repository also has the conversion workflows,
+most of which follow FluidInference's mobius scripts,
+and checks each conversion against the original model.</p>
+<p>Downloads happen only when your app asks for them:
+about 600 MB for each Parakeet, plus about 590 MB for the live encoder,
+0.9 to 2.4 GB for Qwen3-ASR, and about 250 MB for Sortformer.
+Files go in the standard Hugging Face cache,
+so a Mac app outside the sandbox shares them with Python and other Hugging Face tools.</p>
+<p>When you transcribe a conversation,
+you often want to know who said what.
+That's speaker diarization,
+and Apple's Speech framework doesn't have a module for it,
+so AnySpeechRecognizer adds one.
+SpeakerDiarizer runs NVIDIA's
+Streaming Sortformer
+on Core ML alongside an Apple or Parakeet transcriber,
+on the same timeline:</p>
+<p>The diarizer tracks up to four speakers,
+even when they talk over each other.
+A SpeakerTimeline collects its results
+and attributes each timed word to a speaker,
+so you can print a transcript by speaker turn.
+Like image support in AnyLanguageModel,
+this goes beyond what Apple's API offers today.</p>
+<p>The diarizer uses Sortformer v2 by default.
+You can also choose v2.1,
+which NVIDIA trained with more meeting data
+and which was more accurate on meetings in our measurements, too.</p>
+<p>We measured the package with its hear command-line tool
+on an M4 Max Mac Studio with macOS 27.0.1.
+Here are the word error rates on LibriSpeech files of 3 to 8 minutes:</p>
+<p>Parakeet transcribes an hour of audio
+in about 20 to 40 seconds from a file,
+or about 1.5 to 2.5 minutes live,
+with about 100 MB of memory once Core ML has compiled the model.
+Qwen3-ASR is much slower and needs a few gigabytes of memory.
+Meetings are hard for everyone:
+on AMI recordings, where people talk over each other,
+every engine we tested had a word error rate above 23%.</p>
+<p>These numbers come from one machine and a few datasets,
+so measure with your own hardware and audio.
+hear evaluate works on your own files,
+and the repository's natural-speech-eval.py tool
+reproduces these measurements.
+So far, we've tested only on macOS 27, not on an iPhone.</p>
+<p>Next, we'd like to add more engines, including Core AI on macOS 27 and iOS 27.</p>
+<p>AnyDecisionModel is a different story.
+There's no Apple framework to map onto,
+and decision models aren't new, exactly.</p>
+<p>It's only a decision model if it comes from the Décision region of France;
+otherwise, it's sparkling zero-shot classification.</p>
+<p>What's new is the name, a lot of hype,
+and a crop of models trained to make decisions.
+We think that's where things are going,
+so we wanted a Swift API that's ready for them.</p>
+<p>Apps often ask language models to make decisions.
+Is this message urgent?
+Which team should handle this ticket?
+How frustrated is this customer?
+The usual approach is to prompt a language model
+and parse the text that it generates.
+That gives you one answer,
+but doesn't show the probabilities it assigned to the alternatives.</p>
+<p>Here's what a decision looks like in Swift:</p>
+<p>urgent is a Double.
+team is a Choice<Department> containing the selected case,
+a probability for each option, and a confidence value.
+anger is a Score containing the expected level,
+a probability for each level, and a confidence value.
+Because Department conforms to Choosable,
+team.value is a Department that you can use in an exhaustive switch.</p>
+<p>If you've used Foundation Models or AnyLanguageModel,
+the model-and-session pattern will look familiar.
+A DecisionSession holds a single state, which can be text or JSON,
+and every question is about that state.
+Questions are independent:
+an answer never becomes input to a later question.
+To ask several questions at once,
+pass them to decide(_:) as a batch.</p>
+<p>For each question, the MLX backend builds a prompt
+with a one-token label for each allowed answer,
+then reads the probability of each label from one forward pass.</p>
+<p>Emoji Magnet is a macOS app with a text field above a pile of 343 emoji.
+Type a phrase, such as "things you wear",
+and the emoji that match rise out of the pile.
+Refine it to "things you wear in winter",
+and the emoji that no longer match fall back.</p>
+<p>The app has no built-in keyword rules;
+the model decides everything at inference time.
+When you pause typing, it asks the model one yes-or-no question for each emoji,
+for example:</p>
+<p>The session's state holds the phrase.
+The demo above uses the hosted Jev backend,
+which answers all 343 questions in one request,
+so the emoji settle in about half a second for each phrase.
+Without a TYPESAFE_AI_API_KEY, the app runs Qwen3 4B on your Mac with the MLX backend.
+That backend uses prefix caching to evaluate the state once,
+then answers 16 questions per forward pass.
+On an M4 Max, a group of 16 takes about 0.45 seconds after the model loads.
+A full pass over all 343 emoji takes about 10 seconds,
+and each group's results appear as soon as they arrive.</p>
+<p>Emoji Magnet is in the AnyDecisionModel-Examples repository.</p>
+<p>Reading next-token probabilities works with general-purpose language models,
+but those models weren't trained to make decisions.
+Cloudflare's Clef models
+are an example of a newer approach:
+a model with a trained decision head
+that turns a state and a schema of typed questions into decisions,
+returning probabilities for all allowed options across the questions
+in one forward pass.
+Clef-Flash is the 9B variant.</p>
+<p>AnyDecisionModel runs Clef-Flash on a Mac with MLX:</p>
+<p>You use the same sessions and questions,
+but MLXHeadDecisionModel reads each decision from Clef's trained decision head
+instead of from next-token probabilities.
+The 4-bit model is a 6.2 GB download,
+and its model card recommends a Mac with at least 16 GB of memory.
+Clef can read images and video,
+but this backend accepts only text and JSON states.</p>
+<p>Raw probabilities from language models are often overconfident.
+The local backends accept a Calibration,
+which applies a temperature to every answer and a bias to yes-or-no answers.
+Use separate datasets to fit the calibration and evaluate the results.</p>
+<p>Language models can also favor an option because of its position in a list.
+On the MLX, Core AI, and llama.cpp next-token backends,
+turn on rotationDebiasing to ask a choice question
+once for each rotation of the options and average the probabilities.
+That costs one prompt evaluation per rotation.</p>
+<p>Each local choice and score also includes a confidence value
+based on the entropy of its probabilities.
+It measures how concentrated the probabilities are,
+not whether the answer is right,
+so check the error rate on your own data before you pick a threshold.
+The next-token backends' diagnostics report how much probability
+the model assigned to the allowed answers.
+A low value means it assigned most of the probability elsewhere.</p>
+<p>The next-token backends label answers "yes" and "no", A to Z, or 0 to 9,
+so a choice can have at most 26 options, and a score at most 10 levels.
+Decision heads have no such limit.</p>
+<p>Like AnyLanguageModel, the package uses Swift package traits.
+Without traits, it has no third-party dependencies.
+You get the core types and the Jev and Ollama backends,
+which also build on Linux.
+Enable the MLX, CoreAI, or Llama trait for the local backends.</p>
+<p>Both packages require Swift 6.2 or later and macOS 26 or iOS 26 or later.
+The Parakeet and Sortformer runtimes and the MLX backend require Apple silicon.
+AnyDecisionModel's MLX build tasks use Xcode's Swift 6.4 or later
+and the Metal toolchain; Core AI requires Xcode 27 and an OS 27 runtime.</p>
+<p>For now, AnyDecisionModel's CoreAI trait can't be combined with AnySpeechRecognizer,
+because coreai-kit 0.7.3 requires swift-huggingface below 1.0
+and AnySpeechRecognizer requires 1.x.</p>
+<p>Each README has more examples and details about requirements and backends.
+AnySpeechRecognizer also includes a command-line tool, hear,
+that transcribes local files, labels their speakers, and evaluates the results.
+Every hear command requires --backend apple, --backend parakeet, or --backend qwen;
+run hear prepare with the same backend and model options before analysis
+to install the needed assets.</p>
+<p>Try them in your apps and tell us what works and what doesn't.
+Issues and pull requests are welcome on both repositories.</p>
+<p>Thanks to NVIDIA for Parakeet, Sortformer, and NeMo, to Moondream for Parakeet Ultra,
+to FluidInference, whose FluidAudio and mobius projects
+documented the conventions that the Parakeet runtime and the Core ML conversions follow,
+to Cloudflare for Clef,
+and to everyone who contributed to AnyLanguageModel,
+whose patterns both packages borrow.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/meta-muse-spark-open" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/anydecisionmodel" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

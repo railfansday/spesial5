@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Article: Building Reliability into the Cloud: Observability as the Control Plane for Multi-Region Failover</title>
+    <title>Advice for the next 100 Rust GUIs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9912.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,97 +15,137 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Article: Building Reliability into the Cloud: Observability as the Control Plane for Multi-Region Failover</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Advice for the next 100 Rust GUIs</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://res.infoq.com/articles/observability-control-plane-failover/en/headerimage/header-1795002929606.jpg" alt="Article: Building Reliability into the Cloud: Observability as the Control Plane for Multi-Region Failover" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://res.infoq.com/articles/observability-control-plane-failover/en/headerimage/header-1795002929606.jpg" alt="Article: Building Reliability into the Cloud: Observability as the Control Plane for Multi-Region Failover" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>A monthly overview of things you need to know as an architect or aspiring architect.</p>
-<p>Learning budget left this year? Use it for a QCon conference or a live InfoQ certification cohort, if your employer's policy allows. 
-
-                            Explore your options.</p>
-<p>Facilitating the Spread of Knowledge and Innovation in Professional Software Development</p>
-<p>Unlock the full InfoQ experience by logging in! Stay updated with your favorite authors and topics, engage with content, and download exclusive resources.</p>
-<p>In this episode, Christopher "CRob" Robinson, CTO of OpenSSF, Akrites, and chief security architect of the Linux Foundation, explores the state of software supply chain security amid multiple security incidents and explains how tools like Scorecard, the Security Baseline framework, and SLSA help harden software.</p>
-<p>Jayesh Bhayani discusses Tesco’s decade-long enterprise transformation from fragmented legacy systems to a unified cloud-edge platform. He explains how aligning system, talent, and process modernizations allowed Tesco to scale mission-critical retail operations to millions of customers, while sharing practical lessons on build vs. buy, cloud cost management, and preparing for agentic commerce.</p>
-<p>Nicholas Matsakis shares why AI makes Rust the ideal choice for modern production systems, skipping steep adoption hurdles via compiler guardrails. He discusses Symposium - an open-source, agent-oriented toolchain from the Rust Foundation - and demonstrates how the Agent Client Protocol (ACP) standardizes agent-to-tool extensibility across diverse enterprise developer workflows.</p>
-<p>Henry Wilson shares actionable tools from the BBC Sounds re-architecture to help senior engineering leaders drive technical strategy. He discusses building buy-in, navigating active resistors, using RFCs and ADRs, and balancing tradeoffs - showing that effective software architecture is fundamentally about communication, relationship-building, and organizational influence.</p>
-<p>The panelists explore how engineering teams adapt delivery architectures, pipelines, security, and governance for AI-assisted development. They share practical strategies for verifying AI-generated code, solving testing and deployment bottlenecks, maintaining human oversight, and measuring AI’s true impact on software velocity, quality, reliability, and operational cost.</p>
-<p>Work through your production AI decisions with senior engineers from other companies. Apply their perspectives to challenges from your own work.Online. Register Now.</p>
-<p>Compare team design, delivery flow, AI roles, and metrics with experienced practitioners. Online. Register Now.</p>
-<p>Building RAG pipelines or AI agents? Work through retrieval, context, evals, and reliability decisions with experienced practitioners.Online. Register Now.</p>
-<p>Distributed systems, decentralized decisions, platform engineering, and AI architecture. Online. Register Now.</p>
-<p>What's working across AI, architecture, and leadership, from the teams doing it. Register. Early bird ends Nov 10.</p>
-<p>Production AI across agents, context, evals, security, and infrastructure, from the senior engineers building it.Register. Early bird ends Nov 10.</p>
-<p>What early-adopter teams have proven in production, across 15 engineering tracks. Register. Early bird ends Nov 10.</p>
-<p>Learn from the decisions and trade-offs behind AI systems already running in production.Registration open.</p>
-<p>InfoQ Homepage
-Articles
-Building Reliability into the Cloud: Observability as the Control Plane for Multi-Region Failover</p>
-<p>Nov 20, 2026
-								
-								
-								
-									
-									16
-									min read</p>
-<p>I almost titled this section The Failure I Should Have Expected, and honestly, that would have been the more accurate title. The conditions were all there. I just hadn't looked at them as a system that would eventually fail, only as infrastructure that had been working fine so far. My team owned a Terraform execution platform. The registry was backed by S3, which is standard stuff. Nothing else exotic was added. One morning the dashboard lit up, showing registry failures and artifacts not downloading. We declared an incident and started the usual process of elimination.</p>
-<p>Two hours into our investigation, I was still convinced we had done something wrong. Perhaps we had a misconfigured bucket policy or added a permissions boundary incorrectly. Hopefully, this problem was  embarrassingly fixable. I kept going back to our changes, our config, and our code. The problem wasn't in any of those places.</p>
-<p>The actual cause took hours to surface. S3 signed URLs worked fine. You could manually call one and download an artifact without issue. But Terraform calls those URLs in sequence. When it resolves module dependencies, it fires a bunch of them back-to-back. Some of those requests were silently failing. Not all of them failed and not  in any consistent pattern, just... some, which was enough, to break the pipeline. From every dashboard we viewed, it looked like a registry bug, rather than an S3 bug.</p>
-<p>December 15–16, 2026.
-Examine how senior practitioners run agents, evals, model serving, and AI-assisted engineering in production, including what failed and what changed. Register Now.</p>
-<p>We found the real cause by building a controlled test environment on my laptop. The failures were intermittent and appeared only in production, where experimenting is discouraged, so I needed a safe way to reproduce them. I wrote a small Terraform configuration that downloads modules from our registry, the same path our pipelines use, and ran it under a load test. I also checked out the Terraform source and added logging for HTTP request and response headers. Logging exposed an easy-to-miss detail. Terraform hands module downloads to HashiCorp's go-getter library, which sends a HEAD request to each signed URL before the GET, to check whether the download can be resumed. The load test reproduced the failure within ten minutes; the logs traced it to that HEAD request rather than to our registry. I proposed that a recent change in how AWS handled the HEAD request was producing the downstream 404.</p>
-<p>This hypothesis was initially not obvious even to their support personnel. I substantiated it with clear reproduction steps and diagnostic evidence. After they escalated internally to their architecture team, they confirmed that a recent change in request handling was the root cause and rolled back the change, restoring expected behavior. The lesson I took from this situation was when a managed dependency fails intermittently, reproduce your client's exact call pattern outside of production and instrument the client, not just the server.</p>
-<p>Detection took a few hours. Recovery took nearly twenty-four hours, most of which was spent on support calls proving the issue was on their end waiting for AWS to acknowledge other customers were affected and waiting for the rollback to ship. Once AWS rolled back the S3 deployment, concurrent signed URL requests stabilized and the registry recovered without any changes on our end.</p>
-<p>The mechanism here, signed URLs, concurrency, isn't the important part. The important part is the assumption I had been running on without examining it, that cloud infrastructure is reliable by default. That 99.99 percent is essentially "always works". I had treated the SLA like a guarantee rather than a statistical claim about a distribution with a tail I just hadn't seen yet.</p>
-<p>Fifty-two minutes and thirty-six seconds of downtime per year. Considering the scale at which we were operating, hitting that window was not a matter of if, because I already had and more than once. I just hadn't treated it as evidence that my design needed to change.</p>
-<p>Every organization I have worked for has made the same mistake and I bet that yours has too. Someone builds an observability system early on. They care about it. The dashboards are thoughtful, the alerts are calibrated, and the runbooks are linked. Then the system grows, engineers move on, haphazardly adding and wiring  in new services without anyone updating what came before. The people who built the original dashboards aren't around to update them and the people who are around are nervous to touch something they didn't build and don't fully understand. Alerts drift out of calibration and dashboards start showing issues nobody on the current team knows how to interpret.</p>
-<p>Then something breaks at a bad hour and the person on call opens Grafana and spends twenty minutes just trying to figure out what they are seeing. I have been in that position. The problem runs deeper than knowledge. It is a design failure, not a skills gap. The dashboards were built as a reporting layer, something that shows you what is happening. But they were never connected to anything that does something about what is happening. The human is still the bridge between signal and response.</p>
-<p>The mistake has nothing to do with tooling choice, query language, or dashboard layout. The mistake is treating observability as a way to inform humans rather than a way to drive system behavior. The difference is significant in practice. In reporting, a human receives an alert, interprets it under stress at a bad hour, decides what to do, and acts. In a control plane, the system receives and evaluates the signal against a defined policy, acts, and tells the human what happened. One of those scales with your headcount and on-call rotation, while the other breaks the moment both are stretched thin.</p>
-<p>None of the tooling required for this design is new. Prometheus has had alerting rules and webhook routing for years. Terraform can reconfigure routing weights. The components all exist; they just haven't been wired together with automation as the explicit goal. The pattern is the same at every scale, from pod autoscaling to regional failover: observe, decide, act, and confirm.</p>
-<p>I have run Prometheus and Grafana stacks across hundreds of services, large builds and deployment pipelines, with thousands of executions per day. These tools are powerful but carry an operational cost teams consistently underestimate. Consider that expertise concentrates. When the person who really knows the stack leaves, calibration drifts silently until something breaks at the worst possible moment. Treat your observability stack with the same ownership model as your production services with regular reviews, real failure testing, and collective ownership that does not expire when the original author leaves.</p>
-<p>Figure 1. Observability as a reporting layer vs. a control plane.The difference is whether a human or the system bridges signal to response. (Source: created by author.)</p>
-<p>I have never worked with anyone who needed a whitepaper to understand why multi-region matters. Instead, they needed an outage. After a major regional failure hit one of our cloud providers, the conversation about moving the Terraform registry to active-active architecture happened. The registry is called during every pipeline execution: every build, every deployment, and every release. When it goes down, every build, every deployment, and every release across every team stops with it. The blast radius of that dependency is much larger than it looks on an architecture diagram; it took a real outage for that to land viscerally for everyone involved.</p>
-<p>We chose active-active, not active-passive. The reason for this choice comes up less often in architecture discussions than it should. We wanted the secondary region under real production load before we needed it for failover.</p>
-<p>Active-passive looks good in diagrams. The failure mode is subtle and tends to surface at the worst possible time. The passive region has never handled your actual traffic. Its configuration has drifted unnoticed. Caches are cold and downstream dependencies haven't been exercised under anything close to real load. You have tested it in staging, maybe, with synthetic load that doesn't match your real traffic profile. When you fail under pressure, during an active incident with people watching, you discover all of these issues simultaneously.</p>
-<p>I have been on that incident bridge. It is a specific kind of unpleasantry. You are trying to recover from one problem while discovering a second set of problems you didn't know you had. Active-active costs more. You have to keep regions in sync. Data consistency under partition requires careful thought. But when a region degrades, you shift load in a system that has been running in two regions all along, not making a leap of faith into an untested environment. We ran 50/50 under normal operation, which gave us continuous validation. Both regions were exercised constantly under real load. But 50/50 is the steady state, not the failure state. When a region actually degrades, traffic shifts to 100/0.</p>
-<p>That transition is what you are building toward and it has to be tested deliberately. We ran chaos testing specifically for this situation. Cut one region entirely, verify the other absorbs full load cleanly, and confirm recovery when it comes back. If you haven't tested the 100/0 state, you haven't tested your disaster recovery (DR) system. Instead, you have tested your routing config. Multi-region is expensive to build and maintain. For a critical build-time dependency like this registry, it was the right call. But it should be a deliberate decision, not a default assumption.</p>
-<p>Two failure modes in this design are worth being honest about, because neither shows up in a clean chaos test. The first is a failure that is not regional at all. The S3 incident hit both regions at the same time, because both depended on the same S3 behavior. Regional failover cannot fix that problem. Failover shifts traffic to the other region, which is failing the same way, so failover triggers there too and traffic shifts back. The automation keeps moving traffic between two broken regions and adds noise to an incident it cannot resolve. Route 53 behaves the same way at the DNS layer. When every weighted record is unhealthy, it returns all of them rather than none. When both regions degrade together, the cause is a shared dependency. The correct automated response is to hold traffic where it is and page a human.</p>
-<p>The second failure mode is a health check that reports the wrong thing. Our /health endpoint confirmed that the application process was running, not that it could do its job. If the backend database in one region goes down, the application keeps answering /health with 200 OK while real requests fail. This is exactly the case for which regional failover exists, but Route 53 sees a healthy endpoint and keeps sending traffic to the broken region. The confirmation Lambda checks the same endpoint, so it would also report a failover into that region as successful. A health check has to exercise the functionality the service delivers, such as a lightweight database read, not just confirm the process is up. Deep checks carry their own risk. If the dependency they test is shared by both regions, they bring back the first failure mode.</p>
-<p>DNS TTL is the single most common DR misconfiguration I have seen in otherwise well-designed systems and it is worth addressing directly. TTL controls how long a resolver caches a DNS record before requerying. If the setting is too high (e.g.,  three hundred seconds, six hundred seconds, or whatever the module default happened to be) and your failover logic can fire correctly, then your routing weights can update correctly and clients will keep hitting the degraded region for minutes because their resolvers haven't expired the old record. The failover executed correctly, but the traffic never moved because resolvers were still serving the cached record.</p>
-<p>If the setting is too low, then you have built an overreactive system. A transient latency spike triggers a DNS change. The issue resolves thirty seconds later. Now you have regions flip-flopping and amplifying instability that would have cleared on their own. The right TTL is a deliberate number, chosen against your RTO, your health check interval, and your false positive tolerance. Most teams are running whatever default Infrastructure as code (IaC) module was set years ago. They don't know what that number is until they are debugging a failover that didn't go the way they expected.</p>
-<p>Figure 2. DNS TTL and failover timing. A weight change that fires correctly can still leave traffic stranded in the degraded region until resolver caches expire. (Source: created by author.)</p>
-<p>What separates DR systems that actually work from those existing only on paper is automation with confirmation, not just detecting failure, but acting on it and verifying the action succeeded. Most teams that have invested seriously in DR have detection, such as alerts that fire when error rates spike or health checks fail. Fewer have built the response layer, the automated action that runs when the signal fires. Fewer still have built the confirmation layer, the part checking whether or not the response actually worked.</p>
-<p>This last piece matters more than people realize. Automated failover without confirmation is a system taking an action and then going quiet. Did the secondary region receive the traffic? Did DNS propagate before the TTL window? Are the downstream dependencies there responding correctly? A system capable of answering these questions by continuing to observe after acting is one you can trust. A system that only fires and then goes silent is an untested hypothesis.</p>
-<p>The pattern looks like this in practice: A Prometheus alerting rule evaluates a composite signal, error rate above threshold AND p99 latency elevated AND sustained for a defined window. This observation is important. Single-metric alerts are noisy. A transient spike fires them constantly for things that resolve on their own in a minute or two. The composite condition with a duration requirement indicates you only trigger degradation that has actually persisted.</p>
-<p>Most implementations stop at the alert. Here the alert is the entry point to an automated chain. How traffic moves depends on the topology. In an active-active setup, Route 53 does the switching. Each regional record carries a weight and a health check. When a region's health check fails, Route 53 stops returning that record, so traffic shifts to the healthy region with no custom code. In an active-passive setup, the alert drives the switch. Alertmanager routes it to a webhook, which invokes a Lambda function that flips the Route 53 failover record to the secondary region. In both cases, the alert also triggers a confirmation Lambda that polls the target region's health endpoint until it confirms the region is returning healthy responses. The human receives a notification only after the Lambda confirms the loop completed successfully. Detection, action, and confirmation form one connected loop. Observability drives the action and then verifies the outcome.</p>
-<p>Figure 3. The detect–act–confirm loop. Prometheus fires, Route 53 shifts traffic, Lambda polls until the target region confirms healthy, then notifies the team. (Source: created by author.)</p>
-<p>That confirmation loop, in practice, looks like this:</p>
-<p>The loop does not close until the health check returns 200. If it never does, the function returns unconfirmed and that signal itself becomes an alert, not a silent failure.</p>
-<p>This is a Terraform configuration for the Route 53 side. Both regions carry equal weight and Route 53 stops returning a region's record when its health check fails:</p>
-<p>The by (region) clause is what makes this rule region-aware. It evaluates the composite signal independently per region, so when one region degrades while the other remains healthy, the alert fires with the specific region label that tells the automation exactly which region is degraded.</p>
-<p>The for: 90s is doing real work there. Without it, this alert fires on blips. With it, the alert fires only when something has been consistently degraded for a minute and a half, which is a meaningfully different situation.</p>
-<p>Finally, there is testing. The most effective practice I know for thorough testing is the game day,  a scheduled exercise where the team deliberately injects real failures into production systems and works through detection, response, and recovery in real time, with the people who would handle a real incident in the room. It is not a runbook walk-through in staging.</p>
-<p>Game days find the human gaps as reliably as they find technical ones. Who actually has decision authority when you cannot reach the incident commander? Where is the runbook for this failure mode, exactly? Does everyone know? The first time most teams run one, the answer to these questions is uncomfortable. That is the point. Finding it during a game day costs an afternoon.</p>
-<p>The validation that teams most consistently skip is testing that the confirmation layer correctly recognizes a successful failover and stops taking action. People test that the failover fires. They rarely test what happens if it fires and the system thinks it didn't work. That is a real path to cascading failures you created yourself.</p>
-<p>The S3 incident wasn't something I had modeled. Nobody had a runbook for "S3 silently breaks concurrent signed URL requests under load following an internal deployment". The assumption that underpins a lot of how we build systems, that the infrastructure below us is basically reliable, is fine most of the time, which is exactly why it is so rarely questioned.</p>
-<p>Three steps will turn your failover plan into a working system. First, pick one alert that pages a human today and wire it to an automated response with a confirmation step. Second, put your secondary region under real production traffic before you need it for failover. Third, on your next game day, test the confirmation layer, not just the trigger. Verify that the system recognizes a successful failover and stops acting. If you haven't validated all three, you have a plan, not a system.</p>
-<p>Infrastructure will fail, and the next failure will probably be one you haven't seen before. Whether a person has to piece together a response manually or the system handles it was decided long before the incident started.</p>
-<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
-        
-			View an example</p>
-<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
-		
-			View an example</p>
-<p>Test your approach against the decisions and trade-offs of senior practitioners running agents, evals, model serving, and AI-assisted engineering in production.
-                
-                See what worked, what failed, and what they would do differently. Bring those lessons back to your team to make better-informed architecture and delivery decisions.</p>
-<p>InfoQ.com and all content copyright © 2006-2026 C4Media Inc.</p>
+                <p>This is a followup to Advice for the next dozen Rust GUIs, published 4.5 years ago.
+The world is different in many ways, but some of the advice there is still valid.
+There have been roughly 20 Rust GUI toolkits announced since that blog post (see 2026 survey), but also a recent rapid acceleration of interest in Rust GUI, fueled by AI.</p>
+<p>The motivation to build GUI apps in Rust remains strong.
+Many shipping GUI apps suffer from poor performance, especially when built with cross-platform technology.
+GUI toolkits shipped by platforms have largely stagnated, and system vendors remain uninterested in solving the cross-platform problem, so Electron has grown in popularity.
+RAM remains expensive and the focus is shifting to mobile, so bloat has real consequences.
+Building high-performance UI in Rust is a practical alternative.</p>
+<p>Adoption of Rust UI in the past few years has been slow.
+Few flagship apps use Rust for their UI.
+One of the most notable is the Zed editor, built on their own GPUI framework.
+It proves that shipping Rust UI is practical, and indeed, GPUI is emerging as a major choice for AI-driven rewrites, most notably Discord.
+My personal sense is that GPUI is well suited to the Zed use case, and shipping in a real project boosts its visibility and credibility quite a bit, but it’s not necessarily the ideal choice for more general purpose applications.
+Among other things, its 2D rendering engine is well suited to a text editor, but lacks full gradient support, blending, filters, and other features expected of a renderer in the same class as Vello or Skia.</p>
+<p>The reasons for slow adoption may be melting away.
+Writing Rust code is harder than languages more traditionally used for UI (TypeScript, Kotlin, Swift), and finding engineers skilled in both Rust and UI is challenging.
+But AI is changing the game.
+There’s evidence that the LLM cost of writing Rust code is not significantly higher than other languages, and there is reason to believe that in large codebases, Rust will be more maintainable because its type system helps enforce invariants.
+So if all languages have roughly the same cost, then why not go with one that has a dramatically better combination of safety and performance?</p>
+<p>For these reasons, Rust is rapidly becoming the language for AI rewrites of existing codebases.
+But there is still no consensus on the strategy for the UI layer.
+I predict there will be a small explosion of trying lots of different things.</p>
+<p>My 2022 blog post had a large section on “native,” first pointing out that the term has no clear meaning, and more broadly pointing out that “native” UI toolkits are simply choices among many, and should be evaluated on the important quality criteria.</p>
+<p>I think this is largely still true, but it depends greatly on which platform is being targeted.
+Windows still has no clear native choice (see Microsoft Hasn’t Had a Coherent GUI Strategy Since Petzold) and on Mac there is a bit of fragmentation between AppKit and SwiftUI.
+However, SwiftUI has performance issues (see Michael Tsai blog from 2025) and so it is clearly possible to do better on the performance front.</p>
+<p>While desktop UI has remained stagnant, the situation on mobile is a bit different.
+Platforms continue to invest, and there are many fine details that are important for an app to look and feel native.
+One very notable example is Liquid Glass on iOS – if you use UIKit or SwiftUI, you can get that with little effort, but apps built with cross-platform toolkits won’t quite seem right.
+In addition, making gesture recognition, scroll dynamics, and IME 100% match the platform are not yet fully solved problems.</p>
+<p>Thus, for mobile, an extremely viable path is to use the native toolkit for UI but do the common “business logic” in Rust.
+I’m not sure about the business logic, but for the UI, this is the decision that Shopify has made recently, abandoning React Native.
+I believe 1Password has this architecture.
+This is also the "Phoenix" plan for Discord on mobile, while using GPUI on desktop.</p>
+<p>That said, there's been considerable progress in trying to build mobile UI entirely in Rust.
+Below is a short screencast of the editor demo in android-view.
+You can see that a lot of IME functionality works, including swiping, moving the cursor by rolling the space bar, and deleting in semantic chunks.
+Not shown in the video below, but composition regions (needed for CJK) also work, and there's basic accessibility through AccessKit.</p>
+<p>One of the big unsolved problems as of the 2022 blog post was text layout.
+It is of course a hard problem to get right.
+I’m pleased to say that the ecosystem now has a good solution, in the form of Parley.
+It’s gotten there as a result of sustained investment from Google, Canva, and Dioxus (now Cognition), as well as contributions from the community.
+It seems to be used in the majority of new Rust UI toolkits.
+In addition, to help mitigate the risk of monoculture, Cosmic Text is a viable alternative.</p>
+<p>AccessKit was just getting started in 2022, but is now solid infrastructure as well, and used by most UI toolkits.
+I should note, though, there is a difference between a good integration and a box ticking exercise.
+And there is more work to be done, for example to make rich text editing fully accessible.
+One other problem I'd like to see addressed is performance degradation when accessibility is enabled.
+This is a problem for egui in particular, as it has to build and diff a tree each animation frame, undercutting the benefits of its underlying immediate mode design.</p>
+<p>One topic I talked about extensively in the 2022 blog post is leveraging the system compositor.
+This issue is even more pressing today, especially with the increased importance of video.
+You really want a video playing in a hardware accelerated layer when possible, and on low end devices it’s the only hope for getting smooth frame rates.</p>
+<p>There has been some progress, notably the subduction library, but it certainly isn’t commonly integrated into UI toolkits yet.
+To do it well is a challenging problem, as the capabilities provided by the platform vary widely.
+Ideally there’s a rich and high level interface, something like CALayer on Apple platforms, and polyfills to implement that interface as well as possible on other platforms.
+On Android, when the task is something simple, like overlaying some GUI controls on a video, it would use SurfaceFlinger layers, but when it involves more sophisticated compositing, it would run shaders on the GPU.</p>
+<p>This is absolutely something we should build, ideally as a high quality community project rather than something with dozens of vibe-coded forks.
+But even in the latter case it’s better for it to exist than not.</p>
+<p>One of the challenges of the Rust UI ecosystem is that different applications have different needs.
+The idea of a single, unified UI for completely general purpose use may be behind us, especially now that LLMs can optimize and fine tune for specific use cases.</p>
+<p>That’s been playing out architecturally in the choice between immediate mode and retained mode.
+Immediate mode is very appealing because it’s less total code and seems quite a bit simpler.
+And for some applications (most especially development support for games) it works well.
+However, I am concerned it won’t scale especially well.
+In short, it’s good at the first 90%, but it makes the second 90% harder.
+To be considered really production-ready, it has to establish stable widget identities to build and update the accessibility tree, and it has to reliably cache expensive intermediate artifacts such as text layouts (simple immediate mode often gets around this by cutting corners in text layout, which may be fine for gamedev).
+And of course, it pulls strongly towards a model of re-rendering everything every frame rather than exploiting layers in the compositor.</p>
+<p>For this reason among others, I am not impressed by the choice of the ArtCraft projects to use egui.
+I do think egui is a really good implementation of the immediate mode paradigm in Rust, and it does solve a number of problems (including accessibility, something mainline Iced does not yet support), but it wouldn’t be my first choice for productivity and design applications.
+The egui README is quite honest on the advantages and disadvantages, and is worth consulting.</p>
+<p>One theme that’s emerging from trying to do LLM-assisted software engineering well is having clearly scoped modules, ideally with solid specifications of what the module does.
+Within a module, given clear objectives such as performance and robustness against adverse inputs, an LLM can do very well.</p>
+<p>This philosophy is in tension with what has historically worked well.
+People reasonably choose a UI toolkit based on how good it looks.
+In particular, Apple UI frameworks have an immense amount of design knowledge baked in, especially in the defaults.
+With very little effort, it’s possible for a developer to make an app that looks and feels like a Mac app, even if not very polished.</p>
+<p>I think in the future we should be moving toward a separation of design and execution.
+Both are hard problems, but very different.
+I’m especially excited about how much room there is to improve the execution side when really optimizing.
+As discussed in the 2022 blog post, the computer science core of a UI toolkit is an incremental computation engine.</p>
+<p>Having a good spec at the interface between design and execution is critically important.
+As a general strategy, I suggest adapting web standards, but not following them slavishly.
+Web standards are an impressive and important artifact.
+A huge amount of time and energy has gone into producing them, and there’s also a lot of care to making things work cross-platform.
+The extensive WPT tests are the true magic of the spec, aiding correctness in the multiple high quality open source implementations.
+All this goes a long way to explaining why Electron is popular.</p>
+<p>That said, strictly adhering to web standards has serious downsides.
+DOM is slow and memory-intensive; a lighter weight tree representation with a bulk mutation interface might serve the need of GUI apps better.
+Full CSS style resolution and layout is also expensive, though CSS is a rich and powerful way to describe styling.
+A subset of CSS carefully curated for efficiency might be useful.
+I’ve done experiments in implementing selectors as an efficient state machine that supports incremental evaluation, at the expense of fancier CSS features such as sibling selectors.</p>
+<p>The Web is also lacking a solid way to represent virtualized lists, a core feature of every efficient UI toolkit.
+A spec here requires nailing down the interface with the data model, preserving incrementality.</p>
+<p>Blitz, as a modular browser engine, is well placed to serve as the cornerstone of hybrid approaches borrowing heavily from Web specs, but also adapting them to be higher performance and more tightly integrated with platform capabilities.
+As just one example, it’s possible to start with Stylo as the CSS selector engine, and then replace it with a leaner, more efficient CSS engine if that proves to be practical.</p>
+<p>One good example of separation of concerns into smaller modules is the Xilem/Masonry split.
+The Xilem reactive layer was designed to be independent of the actual elements it controls, and indeed it has instantiations both for DOM (which, among other things, is the infrastructure for the squircle interactive demo) and Masonry widgets.
+Masonry, on the other hand, was designed to be independent of the reactive layer and indeed the language for the layer above it.</p>
+<p>By contrast, SwiftUI mashes together the low level widget implementation, the reactivity framework, and the language as well; Swift runtime reflection is part of the execution engine.
+Obviously SwiftUI has had a lot farther reach than Xilem, but my argument today is that we should reconsider assumptions as things are rapidly changing.</p>
+<p>Given a UI design encoded in a certain way – which can be code, data, or a combination of the two in a DSL – an engine has a number of opportunities to optimize the execution of that design.
+Perhaps a lot of this section is gilding the lily, as a straightforward evaluation of the design in optimized Rust code will outperform almost any shipping GUI.
+But I’m interested in the limits of what performance is possible.
+Can we get silky smooth UI even on low end Android phones?
+I think the answer is yes, and the question worth exploring.</p>
+<p>One useful tactic may be separating out the static from the dynamic parts of the design, and precomputing the static parts.
+That in no way precludes the design having dynamic parts; it's just that it may be possible to avoid the cost of a fully dynamic implementation.</p>
+<p>Another fruitful avenue for optimization is optimizing the use of layers, to be composited either using the system compositor or a lightweight GPU-accelerated polyfill.
+Using layers effectively can dramatically improve performance, mostly by avoiding re-rendering of parts of the interface that haven't changed.
+However, layers have a RAM cost, and using too many layers can actually slow things down, as allocating new layers has to go through calls to the underlying system.
+Getting this right is a tricky optimization problem, and a good use of either measurement or analysis.
+UI toolkits generally either use heuristics, which are not always perfect, or explicit hints (like .drawingGroup() in SwiftUI or RepaintBoundary in Flutter).</p>
+<p>For a deeper dive into performance questions, see A Critique of GPUI.
+Ideally, there aren't huge performance differences between UI toolkits, as all low hanging fruit should be picked.
+We expect implementations of system languages to be quite comparable in performance, but still tolerate wide discrepancies in GUI performance.</p>
+<p>Thanks to Nico Burns for reviewing an earlier draft of this post.</p>
+<p>This website's content is licensed under a
+                            
+                                Creative Commons Attribution 4.0 International License
+                            .</p>
+<p>All code used in this website is available under the Apache-2.0 license.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.infoq.com/articles/observability-control-plane-failover/?utm_campaign=infoq_content&utm_source=infoq&utm_medium=feed&utm_term=global" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://linebender.org/blog/next-100-guis/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

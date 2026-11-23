@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>C++26 is done (again)! — Trip report: November 2026 ISO C++ standards meeting (Búzios, Brazil)</title>
+    <title>Fixing Google’s Feedburner problem, and caching that half works</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9947.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,40 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>C++26 is done (again)! — Trip report: November 2026 ISO C++ standards meeting (Búzios, Brazil)</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Fixing Google’s Feedburner problem, and caching that half works</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
+            <img src="https://joshua.hu/assets/img/social/fixing-google-feedburner-cache-problem-atom-rss.png" alt="Fixing Google’s Feedburner problem, and caching that half works" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://joshua.hu/assets/img/social/fixing-google-feedburner-cache-problem-atom-rss.png" alt="Fixing Google’s Feedburner problem, and caching that half works" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p><a href="https://lobste.rs/s/fjueso/c_26_is_done_again_trip_report_november">Comments</a></p></p>
+                <p>In a previous post, I talked about how Google’s Chrome Releases blog was serving stale results on its Atom feed, and had set up a redirect from its RSS feed (which was serving up-to-date results) to … the stale Atom feed. This meant results were up to a few days old. This was particularly annoying because my CCBot parsed the blog’s feed to notify me (Opera!) about Chromium vulnerabilities which were fixed. When I wrote that post, the Atom feed was days behind:</p>
+<p>And the RSS feed (which historically was serving fresh results) was redirecting to the Atom feed:</p>
+<p>Well, lo and behold, a few days ago I came to discover that the RSS feed could still be accessed, if you added a secret parameter, ?redirect=false:</p>
+<p>Since we can now pull in fresh results from the Chrome Releases blog, it means that CCBot can start working properly again. Its source is still on GitHub, and I’m sure Opera still uses it (lol).</p>
+<p>In terms of the feed caching problem I also previously wrote about, where the Feedburner Atom feed refused any caching techniques which RSS feeds typically allow to be utilized, it turns out the redirect=false feed supports them. Sort of.</p>
+<p>Feedburner itself hasn’t changed at all. It still doesn’t send an ETag, it still ignores If-Modified-Since, and it still tells everybody not to cache anything:</p>
+<p>It’s also still serving outdated results. For example, on the 30th of October, a post published at 07:58 PT was still missing from the Feedburner feed nearly two hours later.</p>
+<p>The redirect=false feed, on the other hand, does respond with 304 Not Modified. Sometimes. Because of course it’s inconsistent. The same request, with an If-Modified-Since in the future, made twelve times in a row:</p>
+<p>Looking at the date and age headers, we see the first request in each second gets a full 200, and every request after it in that same second gets a 304 with an age: 0 header.</p>
+<p>age is the header a cache adds when it answers with its own stored copy instead of asking the server behind it. The feed is served with cache-control: public, must-revalidate, proxy-revalidate, max-age=1, so whatever sits in front of Blogger’s blogger-renderd server (presumably some Google frontend) is allowed to keep a copy for one second. While that copy is fresh, the cache handles the If-Modified-Since itself, correctly, and replies with a 304. Once it has expired, the request goes through to blogger-renderd, which ignores If-Modified-Since completely and sends back the whole feed.</p>
+<p>Adding a cache-busting parameter to the URL makes every request miss the cache, and then it’s a 200 every single time:</p>
+<p>So for anything that polls the feed every few minutes, the one-second copy will always have expired by the time the next request comes in, and If-Modified-Since never gets a 304.</p>
+<p>What’s also interesting is that If-None-Match does work on the redirect=false feed. The catch is that you get an ETag if and only if you ask for a compressed response (wtf). Without Accept-Encoding: gzip, there’s no ETag at all:</p>
+<p>Asking for only br or zstd doesn’t help, because the server doesn’t support them, so it sends the feed uncompressed, without an ETag.</p>
+<p>Once you have the ETag, sending it back in If-None-Match gets a 304 every time, even with the cache-busting parameter (so these all come from blogger-renderd itself), and with or without --compressed:</p>
+<p>This saves quite a bit, which I had originally intended and wanted to do. The full feed is 1,725,860 bytes uncompressed and 57,817 bytes gzipped, and a 304 is practically nothing. Feedburner still sends 55,792 gzipped bytes (1,615,960 uncompressed) every time.</p>
+<p>All of this is different to what I found in my original post. Back then, the blogger.com URL was still served by the old GData API (that’s what the sunset and link headers in that post were about), and it answered If-Modified-Since with a 304. Those headers are gone now, and the responses come from server: blogger-renderd (see the redirect=false response at the start of this post), which is the same server that handles the blog’s own feeds on chromereleases.googleblog.com.</p>
+<p>That’s probably also the real reason for the redirect in my last post. The documentation I quoted in my original post said that the old GData feed URLs would keep working, but that “the response is the same as blogspot.com feeds”. The Chrome Releases blog’s own feeds were already redirecting to Feedburner at the time (that’s Blogger’s “Post feed redirect URL” setting), so once the GData API was finally switched off, the blogger.com URL started redirecting too. So it probably wasn’t me emailing Feedburner’s support after all, too bad.</p>
+<p>redirect=false is how you get around that setting, and it’s not quite as undocumented as I originally thought: a Feedburner help page about Google Webmaster Tools mentions http://mybloggerblog.blogspot.com/feeds/posts/default?redirect=false as a feed URL format that “should always work” for Blogger users.</p>
+<p>Oh, and the “RSS feed” I’ve been talking about in these posts is actually an Atom feed (content-type: application/atom+xml), and the real RSS version is accessed with ?alt=rss&redirect=false, which behaves exactly the same way on both blogger.com and chromereleases.googleblog.com.</p>
+<p>Another interesting thing is that every one of the blog’s feed URLs redirects to http://feeds.feedburner.com/GoogleChromeReleases, with http, not https, even when the feed itself was requested over https:</p>
+<p>That means a feed reader that starts off on https://chromereleases.googleblog.com/feeds/posts/default gets downgraded to plain HTTP when it follows the redirect, and instead of sending it back to https, Feedburner just serves the whole feed over plain HTTP:</p>
+<p>So, if you’re polling a Blogger feed that’s redirected to Feedburner, use ?redirect=false, ask for gzip, keep the ETag, and send it back as If-None-Match. Python’s requests (as used by CCBot) already asks for gzip by default, so it’s only the last two you need to do yourself.</p>
+<p>In other news, CCBot 1.1.2 has been published!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://herbsutter.com/2026/11/21/c26-is-done-again-trip-report-november-2026-iso-c-standards-meeting-buzios-brazil/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://joshua.hu/fixing-google-feedburner-cache-problem-atom-rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

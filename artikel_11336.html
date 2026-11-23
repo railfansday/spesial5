@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Accelerating PyTorch distributed fine-tuning with Intel technologies</title>
+    <title>Introducing Pull Requests and Discussions 🥳</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11336.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,60 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Accelerating PyTorch distributed fine-tuning with Intel technologies</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Introducing Pull Requests and Discussions 🥳</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/36_accelerating_pytorch/04_four_nodes.png" alt="Accelerating PyTorch distributed fine-tuning with Intel technologies" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/36_accelerating_pytorch/04_four_nodes.png" alt="Accelerating PyTorch distributed fine-tuning with Intel technologies" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>For all their amazing performance, state of the art deep learning models often take a long time to train. In order to speed up training jobs, engineering teams rely on distributed training, a divide-and-conquer technique where clustered servers each keep a copy of the model, train it on a subset of the training set, and exchange results to converge to a final model.</p>
-<p>Graphical Processing Units (GPUs) have long been the de facto choice to train deep learning models. However, the rise of transfer learning is changing the game. Models are now rarely trained from scratch on humungous datasets. Instead, they are frequently fine-tuned on specific (and smaller) datasets, in order to build specialized models that are more accurate than the base model for particular tasks. As these training jobs are much shorter, using a CPU-based cluster can prove to be an interesting option that keeps both training time and cost under control.</p>
-<p>In this post, you will learn how to accelerate PyTorch training jobs by distributing them on a cluster of Intel Xeon Scalable CPU servers, powered by the Ice Lake architecture and running performance-optimized software libraries. We will build the cluster from scratch using virtual machines, and you should be able to easily replicate the demo on your own infrastructure, either in the cloud or on premise.</p>
-<p>Running a text classification job, we will fine-tune a BERT model on the MRPC dataset (one of the tasks included in the GLUE benchmark). The MRPC dataset contains 5,800 sentence pairs extracted from news sources, with a label telling us whether the two sentences in each pair are semantically equivalent. We picked this dataset for its reasonable training time, and trying other GLUE tasks is just a parameter away.</p>
-<p>Once the cluster is up and running, we will run a baseline job on a single server. Then, we will scale it to 2 servers and 4 servers and measure the speed-up.</p>
-<p>Along the way, we will cover the following topics:</p>
-<p>For best performance, we will use Intel servers based on the Ice Lake architecture, which supports hardware features such as Intel AVX-512 and Intel Vector Neural Network Instructions (VNNI). These features accelerate operations typically found in deep learning training and inference. You can learn more about them in this presentation (PDF).</p>
-<p>All three major cloud providers offer virtual machines powered by Intel Ice Lake CPUs:</p>
-<p>Of course, you can also use your own servers. If they are based on the Cascade Lake architecture (Ice Lake's predecessor), they're good to go as Cascade Lake also includes AVX-512 and VNNI.</p>
-<p>To leverage AVX-512 and VNNI in PyTorch, Intel has designed the Intel extension for PyTorch. This software library provides out of the box speedup for training and inference, so we should definitely install it.</p>
-<p>When it comes to distributed training, the main performance bottleneck is often networking. Indeed, the different nodes in the cluster need to periodically exchange model state information to stay in sync. As transformers are large models with billions of parameters (sometimes much more), the volume of information is significant, and things only get worse as the number of nodes increase. Thus, it's important to use a communication library optimized for deep learning.</p>
-<p>In fact, PyTorch includes the torch.distributed package, which supports different communication backends. Here, we'll use the Intel oneAPI Collective Communications Library (oneCCL), an efficient implementation of communication patterns used in deep learning (all-reduce, etc.). You can learn about the performance of oneCCL versus other backends in this PyTorch blog post.</p>
-<p>Now that we're clear on building blocks, let's talk about the overall setup of our training cluster.</p>
-<p>In this demo, I'm using Amazon EC2 instances running Amazon Linux 2 (c6i.16xlarge, 64 vCPUs, 128GB RAM, 25Gbit/s networking). Setup will be different in other environments, but steps should be very similar.</p>
-<p>Please keep in mind that you will need 4 identical instances, so you may want to plan for some sort of automation to avoid running the same setup 4 times. Here, I will set up one instance manually, create a new Amazon Machine Image (AMI) from this instance, and use this AMI to launch three identical instances.</p>
-<p>From a networking perspective, we will need the following setup:</p>
-<p>Now, let's provision the first instance manually. I first create the instance itself, attach the security group above, and add 128GB of storage. To optimize costs, I have launched it as a spot instance.</p>
-<p>Once the instance is up, I connect to it with ssh in order to install dependencies.</p>
-<p>It looks like a lot, but there's nothing complicated. Here we go!</p>
-<p>First, we download and install the Intel OneAPI base toolkit as well as the AI toolkit. You can learn about them on the Intel website.</p>
-<p>Then, we download and install the Anaconda distribution.</p>
-<p>We log out and log in again to refresh paths. Then, we create a new conda environment to keep things neat and tidy.</p>
-<p>Installing PyTorch and the Intel extension for PyTorch</p>
-<p>Next, we install PyTorch 1.9 and the Intel extension toolkit. Versions must match.</p>
-<p>Then, we install some native dependencies required to compile oneCCL.</p>
-<p>Next, we clone the oneCCL repository, build the library and install it. Again, versions must match.</p>
-<p>Next, we install the transformers library and dependencies required to run GLUE tasks.</p>
-<p>Finally, we clone a fork of the transformersrepository containing the example we're going to run.</p>
-<p>To get a baseline, let's launch a single-node job running the run_glue.py script in transformers/examples/pytorch/text-classification. This should work on any of the instances, and it's a good sanity check before proceeding to distributed training.</p>
-<p>This job takes 7 minutes and 46 seconds. Now, let's set up distributed jobs with oneCCL and speed things up!</p>
-<p>Three steps are required to run a distributed training job:</p>
-<p>Listing the nodes of the training cluster</p>
-<p>On the master instance, in transformers/examples/pytorch/text-classification, we create a text file named hostfile. This file stores the names of the nodes in the cluster (IP addresses would work too). The first line should point to the master instance.</p>
-<p>Next, we need to set some environment variables on the master node, most notably its IP address. You can find more information on oneCCL variables in the documentation.</p>
-<p>The following changes have already been applied to our training script (run_glue.py) in order to enable distributed training. You would need to apply similar changes when using your own training code.</p>
-<p>Setup is now complete. Let's scale our training job to 2 nodes and 4 nodes.</p>
-<p>On the master node, I use mpirunto launch a 2-node job: -np (number of processes) is set to 2 and -ppn (process per node) is set to 1. Hence, the first two nodes in hostfile will be selected.</p>
-<p>Within seconds, a job starts on the first two nodes. The job completes in 4 minutes and 39 seconds, a 1.7x speedup.</p>
-<p>Setting -np to 4 and launching a new job, I now see one process running on each node of the cluster.</p>
-<p>Training completes in 2 minutes and 36 seconds, a 3x speedup.</p>
-<p>One last thing. Changing --task_name to qqp, I also ran the Quora Question Pairs GLUE task, which is based on a much larger dataset (over 400,000 training samples). The fine-tuning times were:</p>
-<p>It looks like the speedup is pretty consistent. Feel free to keep experimenting with different learning rates, batch sizes and oneCCL settings. I'm sure you can go even faster!</p>
-<p>In this post, you've learned how to build a distributed training cluster based on Intel CPUs and performance libraries, and how to use this cluster to speed up fine-tuning jobs. Indeed, transfer learning is putting CPU training back into the game, and you should definitely consider it when designing and building your next deep learning workflows.</p>
-<p>Thanks for reading this long post. I hope you found it informative. Feedback and questions are welcome at julsimon@huggingface.co. Until next time, keep learning!</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/accelerating-pytorch" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/community-update" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

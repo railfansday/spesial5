@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB</title>
+    <title># Advanced SQL Concepts Using a Hospital Management Dataset.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9780.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,317 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1># Advanced SQL Concepts Using a Hospital Management Dataset.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/2jqChkrv03exBUgkLrDzIbfM99q2-pj0221n.jpeg" alt="Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F93j32vkgcv6yjd7e9fhw.png" alt="# Advanced SQL Concepts Using a Hospital Management Dataset." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/2jqChkrv03exBUgkLrDzIbfM99q2-pj0221n.jpeg" alt="Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F93j32vkgcv6yjd7e9fhw.png" alt="# Advanced SQL Concepts Using a Hospital Management Dataset." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>The question that started Lattiq: why do collaborative editors all feel so brittle? You open Google Docs on the Tube, it spins until you come back above ground, and sometimes it eats your last sentence on the way. The whole assumption is that the server is canonical. Your browser is a dumb terminal that happens to have some cached pixels.</p>
-<p>Local-first reverses that assumption. The canonical document lives in your browser. The server, if there is one, is an optimisation: a way to sync with other collaborators when both of you happen to be online. When you go offline, nothing is lost because nothing was ever relying on the connection. When you come back, the CRDT handles the merge without a server arbitrating.</p>
-<p>Lattiq is an editor built on that premise. Lexical handles the editing, Yjs handles the CRDT, IndexedDB handles the local persistence, and a thin WebSocket layer handles the sync. This post is how those pieces fit together and why each one is load-bearing.</p>
-<p>A CRDT is a data structure with a mathematical property: any two copies that have seen the same set of edits will converge to the same state, regardless of the order in which the edits arrived. You can make changes offline, I can make changes offline, we come back online, our two divergent copies merge automatically, and neither of us needs a central server to resolve the conflict. For text specifically, Yjs uses a position-based structure (Yjs calls it Y.Text, built on YATA) that keeps each insert pinned to its logical position, not its character index, so two people typing in the same paragraph do not overwrite each other.</p>
-<p>The alternative is operational transform, which is what Google Docs uses. OT also converges, but only with a central server that orders every operation. If the server is down, you cannot meaningfully edit. CRDTs do not need that arbiter.</p>
-<p>For a local-first editor, the CRDT choice is what makes the rest of the architecture possible. Without it you would have to build a conflict resolution UI, and nothing kills a collaborative product faster than a conflict resolution UI.</p>
-<p>The whole thing hinges on getting one sequence right:</p>
-<p>If you render the editor before IndexedDB has finished loading, Lexical bootstraps on an empty document. IndexedDB's content arrives a moment later and merges into the empty doc, which causes visible flicker, lost cursor position, and sometimes duplicated content. If you connect the WebSocket before IndexedDB loads, you get a race between remote content arriving and local content loading, and which one wins depends on network latency.</p>
-<p>The Lattiq hook does this sequence explicitly:</p>
-<p>Two small details worth flagging. The dynamic import('y-indexeddb') is because IndexedDB does not exist during server rendering in Next.js; a top-level import would crash the build. The guard if (docRef.current !== doc) return is for React StrictMode, which double-invokes effects in development to catch stale closures. Without the guard, the cleanup from the first invocation runs while the second invocation is still loading IndexedDB, and the wrong Y.Doc gets persisted.</p>
-<p>Each document gets its own IndexedDB database, named lattiq-doc-{id}. This keeps them cleanly isolated and means deleting a document is a single indexedDB.deleteDatabase call.</p>
-<p>Lexical's CollaborationPlugin takes a Provider, which is an object that implements connect(), disconnect(), event subscription, and exposes an Awareness instance for cursor state. The normal implementation is a WebSocket provider that talks to a Yjs-aware server. Lattiq uses two: a real WebSocket provider when the server is reachable, and a LocalProvider stub when it is not.</p>
-<p>It immediately reports "synced" and "connected" because there is nothing to sync with. The Awareness instance is real, so even in offline mode the local cursor renders correctly. To the rest of the editor code, there is no difference between running offline against a LocalProvider and running online against a WebSocket provider. That interchangeability is the point of the abstraction.</p>
-<p>The factory passed to Lexical picks one or the other:</p>
-<p>Both providers are backed by the same Y.Doc. Switching between them does not fork the document.</p>
-<p>Users need to know whether their changes are saved. The naive approach is a "saved" / "unsaved" boolean, which hides too much nuance. Lattiq exposes a five-state machine:</p>
-<p>The distinction between local-only and offline matters. local-only means we never successfully connected this session, so the user is offline but has not lost anything. offline means we were connected, then the connection dropped, so any changes made after the drop are queued locally and will upload on reconnect.</p>
-<p>The state transitions are driven by the WebSocket provider's status events:</p>
-<p>Flickering between statuses on a flaky connection is worse than a wrong status, which is why connecting and reconnecting events do not change the UI. The display only updates on resolved transitions.</p>
-<p>Yjs ships with a second protocol on top of the document CRDT: Awareness. Awareness tracks ephemeral state (cursor position, user name, user colour, selection range) that does not need to be part of the persistent document. It broadcasts on the same WebSocket channel but is stored in memory, not in the Y.Doc.</p>
-<p>The consequence is that when you reconnect, the document merges with the server, but the Awareness state resets. That is the right default: stale cursors from two hours ago are not useful. But it means you have to re-broadcast your Awareness state on every reconnect, which the providers handle automatically as long as you set it once on connect:</p>
-<p>doc.clientID is a random number Yjs assigns per document session. Using it modulo 100 gives a short, stable display name for the session without requiring auth. Real authentication would replace this with the user's actual name and a persistent colour per user.</p>
-<p>One oddity worth knowing: @lexical/yjs internally expects the cursor colour field to be named color (American spelling, at the top level of awareness state) because that is what Lexical's initLocalState writes. Lattiq uses colour in its own user sub-object for the custom presence UI, but passes color via the CollaborationPlugin prop for the cursor rendering. Two spellings for the same value, different consumers, both required.</p>
-<p>The WebSocket server is surprisingly simple: it maintains one Y.Doc per room (in memory plus a backing store), and on each incoming Yjs binary message, it applies the message to the room's Y.Doc and broadcasts it to every other client in the room.</p>
-<p>Yjs provides the y-websocket package, which is a reference implementation. Lattiq uses a thin wrapper over that plus a custom reconnection strategy (capped at maxReconnectAttempts: 10, exponential backoff) because the default tries forever and eats battery on mobile.</p>
-<p>The room is namespaced by document ID (doc-${docId}), so different documents are completely isolated. A user in one document cannot see or affect another.</p>
-<p>A flaky tube journey that would break a Google Docs session does nothing to a Lattiq session. The editor stays responsive the whole time. Changes save locally instantly. When the connection comes back, the sync happens in the background and the UI moves from offline to syncing to synced without interrupting the user.</p>
-<p>More importantly, the offline case is not a degraded mode. It is the canonical mode. The server is the optimisation layer, not the source of truth. That inversion is what makes the whole architecture feel different from a traditional collaborative editor, and it is what makes local-first editors trustworthy in a way that purely online ones never quite are.</p>
-<p>CRDTs are the thing that makes this possible. Everything else, IndexedDB, the Provider abstraction, the state machine, is just careful plumbing around the central guarantee: your edits converge with everyone else's, always, regardless of network conditions, and regardless of ordering.</p>
-<p>An editor that survives the Tube is the minimum standard.</p>
-<p>How I Fixed Retrograde Timing, Aspect Orbs, and Caching in My Astrology Engine</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
+                <p>Structured Query Language (SQL) is one of the most important tools used by data analysts, data scientists and data engineers to extract, structure, manipulate and analyse data within relational databases. Within a hospital management system, SQL can be used to look at patient data, track admissions, calculate costs of treatments, look at doctor performance and produce reports.</p>
+<p>In addition to basic commands like SELECT, INSERT, UPDATE and DELETE, there are many additional tools available to help you perform more complex data analysis. Four very important concepts to understand are window functions, SQL joins, Common Table Expressions (CTEs) and subqueries.</p>
+<p>This article will explain what they are, how they work, when to use them and how they can be used to solve real world problems in a hospital setting. Examples using SQL will be given for each concept, including an explanation of the query and what you would expect to see.</p>
+<p>Assumptions about the data: As the exact data from the hospital and attached class notes isn't visible within this message, examples have been created using a sample hospital database. This will include tables such as patients, doctors, departments, admissions and payments. The queries use general SQL syntax which should be widely supported, but some features may depend on the database you're using. You can change the table and column names to match those in your class dataset.</p>
+<p>The window function allows you to perform calculations on sets of related rows. These functions work slightly differently to standard aggregate functions. Window functions calculate values for each row of data based on the specified set/ window of data.</p>
+<p>A hospital administrator may want to know:</p>
+<p>What is the ranking of doctors based on how many patients they see?</p>
+<p>The OVER() clause tells SQL which rows a window function should consider when performing its calculation.</p>
+<p>Example:
+SELECT
+    admission_id,
+    patient_id,
+    admission_cost,
+    AVG(admission_cost) OVER () AS hospital_average_cost
+FROM admissions;</p>
+<p>PARTITION BY divides the result set into separate groups. A window function then performs its calculation independently within each group.</p>
+<p>Example: Calculate the average admission cost for each department.</p>
+<p>SELECT
+    admission_id,
+    department_id,
+    admission_cost,
+    AVG(admission_cost) OVER (
+        PARTITION BY department_id
+    ) AS department_average_cost
+FROM admissions;</p>
+<p>Explanation: The admissions will be grouped by department_id and each admission will have a column showing the average cost of admissions for their department, but we won't aggregate into one row.</p>
+<p>For example: If the average cost of admissions in the Cardiology department is KSh 20,000, each admission in Cardiology will have a column with the value KSh 20,000.</p>
+<p>Within OVER(), ORDER BY determines the order in which rows are ranked or processed by the window function.</p>
+<p>Example: Rank admissions by cost, from highest to lowest.</p>
+<p>SELECT
+    admission_id,
+    admission_cost,
+    ROW_NUMBER() OVER (
+        ORDER BY admission_cost DESC
+    ) AS cost_position
+FROM admissions;</p>
+<p>Explanation: The highest priced admission gets value 1, then next highest gets value 2 etc. Even if two admission prices are the same, the ROW_NUMBER() function will still assign unique values. This may lead to an arbitrary ordering of the results unless we have a tiebreaker.</p>
+<p>The window frame determines which of the rows in the window are included in the calculation for the current row. This is useful when performing running totals, moving averages or rolling calculations.
+Common window frames are:</p>
+<p>ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW will start from the first row in the window up to and including the current row.
+ROWS BETWEEN 2 PRECEDING AND CURRENT ROW will take the current row and the previous 2 rows.
+ROWS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING Will take from the current row up to and including the last row in the window.</p>
+<p>Example: Calculate a running total of hospital admissions revenue.</p>
+<p>SELECT
+    admission_id,
+    admission_date,
+    admission_cost,
+    SUM(admission_cost) OVER (
+        ORDER BY admission_date, admission_id
+        ROWS BETWEEN UNBOUNDED PRECEDING
+                 AND CURRENT ROW
+    ) AS running_revenue
+FROM admissions;</p>
+<p>Explanation: The SQL will sort the admissions based on the admission date and admission ID. It will then add up the admission fee and give us a running total. The first row will show the cost, the second will show the running total up to that point etc.</p>
+<p>If the admission costs are 5000KSh, 8000KSh and 2000KSh respectively, the SQL will return:</p>
+<p>The difference between having an ORDER BY clause inside the OVER() function and having it at the end of your SQL is that it will decide the order in which the calculations happen. Whereas having an ORDER BY clause at the end of your SQL will decide how the data will appear.</p>
+<p>Window functions can be divided into ranking functions, navigation functions, value functions, and aggregate window functions</p>
+<p>Gives a unique sequential number to each row in a window starting at 1.</p>
+<p>Can be used to see the earliest admission, pick the most recent entry per patient or to eliminate duplicated entries by ranking.</p>
+<p>To give a sequential count of admissions per patient.</p>
+<p>SELECT
+    patient_id,
+    admission_id,
+    admission_date,
+    ROW_NUMBER() OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date DESC, admission_id DESC
+    ) AS admission_number
+FROM admissions;</p>
+<p>Sorts your data into a specific order and assigns each row a number. If two rows have the same value they will be given the same rank, however there will be gaps between the next ranks.</p>
+<p>It can be useful to find out which of your doctors are performing the best or which department makes the most revenue, whilst allowing for the same ranks.</p>
+<p>SELECT
+    doctor_id,
+    SUM(admission_cost) AS total_revenue,
+    RANK() OVER (
+        ORDER BY SUM(admission_cost) DESC
+    ) AS revenue_rank
+FROM admissions
+GROUP BY doctor_id;</p>
+<p>Purpose: This function ranks your data (like RANK()) without leaving gaps between duplicate values.</p>
+<p>Why it's useful: Useful if you want to rank departments or doctors in a hospital that have the same level of performance, consecutively.</p>
+<p>SELECT
+    doctor_id,
+    SUM(admission_cost) AS total_revenue,
+    DENSE_RANK() OVER (
+        ORDER BY SUM(admission_cost) DESC
+    ) AS dense_revenue_rank
+FROM admissions
+GROUP BY doctor_id;</p>
+<p>Split the ordered rows into a certain number of roughly equal buckets.</p>
+<p>Hospitals can split patients into 4 categories based on cost. Doctors can be compared based on the quartile of work they do. Patients can be split into groups based on how long they stay in.</p>
+<p>SELECT
+    patient_id,
+    admission_cost,
+    NTILE(4) OVER (
+        ORDER BY admission_cost
+    ) AS cost_quartile
+FROM admissions;</p>
+<p>What it does: Retrieves a value from a preceding row in the ordered window without requiring a self-join.</p>
+<p>Why it is used: It helps compare a patient's current admission cost with their previous admission cost or compare a department's monthly revenue with the previous month.</p>
+<p>SELECT
+    patient_id,
+    admission_date,
+    admission_cost,
+    LAG(admission_cost) OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date, admission_id
+    ) AS previous_admission_cost
+FROM admissions;</p>
+<p>What it does: Retrieves a value from a following row in the ordered window.</p>
+<p>Why it is used: It can help examine the next scheduled appointment, the next admission, or a future record in a patient's treatment history.</p>
+<p>SELECT
+    patient_id,
+    admission_date,
+    admission_cost,
+    LEAD(admission_cost) OVER (
+        PARTITION BY patient_id
+        ORDER BY admission_date, admission_id
+    ) AS next_admission_cost
+FROM admissions;</p>
+<p>A Join in SQL is used to combine data from two or more tables. In relational databases, data is stored in tables to avoid duplication.</p>
+<p>For example a hospital could have a patients table containing information about their patients, a doctors table containing information about their doctors and an admissions table containing information about when they admitted them. Using a join you can write a query to bring together all of this data (patients name, doctors name and admittance date).</p>
+<p>Function:
+Returns only rows which meet the joining criteria of both tables.</p>
+<p>Use:
+If you wish to produce a report which only contains admissions which have an existing patient record this function can be used.</p>
+<p>Example:
+SELECT
+    p.patient_id,
+    p.patient_name,
+    a.admission_id,
+    a.admission_cost
+FROM patients AS p
+INNER JOIN admissions AS a
+    ON p.patient_id = a.patient_id;</p>
+<p>Function: Returns all the rows from the left table, and any matching rows from the right table. If there are no matching rows in the right table then all columns in the right table will be NULL.</p>
+<p>Use: Can be useful in situations where Hospital Management want to see a list of all the patients that are registered with them even if they have never been admitted.</p>
+<p>Example:
+SELECT
+    p.patient_id,
+    p.patient_name,
+    a.admission_id,
+    a.admission_cost
+FROM patients AS p
+LEFT JOIN admissions AS a
+    ON p.patient_id = a.patient_id;</p>
+<p>It will return all records from the right table and any matched records from the left table. If there is no match then the columns from the left table will show as NULL.</p>
+<p>This can be useful if we want to keep all admission records in the hospital.</p>
+<p>Example:
+SELECT
+    p.patient_id,
+    p.patient_name,
+    a.admission_id,
+    a.admission_cost
+FROM patients AS p
+RIGHT JOIN admissions AS a
+    ON p.patient_id = a.patient_id;</p>
+<p>What it does: Returns matching rows and any unmatched rows from both tables. Any missing rows will show as NULL.</p>
+<p>Why it can be used: To help match patients to admissions, orphan admissions and patients with no admissions.</p>
+<p>SELECT
+    p.patient_id,
+    p.patient_name,
+    a.admission_id,
+    a.admission_cost
+FROM patients AS p
+FULL OUTER JOIN admissions AS a
+    ON p.patient_id = a.patient_id;</p>
+<p>What it does: This function creates a Cartesian product of two tables. Basically it matches every row of the first table to every row in the second table.</p>
+<p>Why you would want to do this: Can be useful to create combinations, for example all departments in a hospital with each month they reported.</p>
+<p>SELECT
+    d.department_name,
+    m.month_name
+FROM departments AS d
+CROSS JOIN (
+    SELECT 'January' AS month_name
+    UNION ALL
+    SELECT 'February'
+) AS m;</p>
+<p>It joins a table with itself but with different aliases.</p>
+<p>You can use this when you have a hierarchical relationship between pieces of data, for example joining hospital staff to their manager.</p>
+<p>SELECT
+    e.employee_name AS employee,
+    m.employee_name AS manager
+FROM employees AS e
+LEFT JOIN employees AS m
+    ON e.manager_id = m.employee_id;</p>
+<p>A Common Table Expression (CTE) is a temporary result set that can be referenced by name in a statement using the WITH clause.</p>
+<p>They help break down complicated SQL queries into simpler manageable parts as they let us create some intermediate results to be referred to by their name.</p>
+<p>In a hospital setting CTEs can be used to aggregate admission information, find out how much money departments make, see which cases are most expensive and produce reports in a hierarchy.</p>
+<p>WITH patient_costs AS (
+    SELECT
+        patient_id,
+        SUM(admission_cost) AS total_cost
+    FROM admissions
+    GROUP BY patient_id
+)
+SELECT
+    patient_id,
+    total_cost
+FROM patient_costs
+WHERE total_cost > 20000;</p>
+<p>A query can define multiple CTEs, allowing each step to build on a previous one.</p>
+<p>WITH patient_costs AS (
+    SELECT
+        patient_id,
+        SUM(admission_cost) AS total_cost
+    FROM admissions
+    GROUP BY patient_id
+),
+ranked_patients AS (
+    SELECT
+        patient_id,
+        total_cost,
+        DENSE_RANK() OVER (
+            ORDER BY total_cost DESC
+        ) AS cost_rank
+    FROM patient_costs
+)
+SELECT
+    patient_id,
+    total_cost,
+    cost_rank
+FROM ranked_patients
+WHERE cost_rank <= 5
+ORDER BY cost_rank, patient_id;</p>
+<p>Explanation:
+patient_costs will calculate the total cost for each patient.
+ranked_patients will assign a dense rank to the patients based on their total cost.
+The final query will return the top 5 ranked patients.
+We expect to see a list of the most expensive patients. As it uses dense rankings there may be more than 5 rows returned as some patients may tie in the top 5 unique rankings.</p>
+<p>This can be useful to provide to management. Each part has a clear purpose.</p>
+<p>A recursive CTE uses recursion to query hierarchical or sequential data. This is often used to navigate organisational structures or category trees.</p>
+<p>A recursive CTE will usually consist of:
+An anchor member that provides initial data.
+A recursive member which queries the previous result to get the next level of data.
+A terminating condition where no further data is returned.</p>
+<p>This is a query within another query in SQL. This can help you to use the results of one query as a value, list of values or a table for another query.</p>
+<p>Subqueries can help you compare values with averages, filter out information using a relevant set of data or perform calculations on your data to give you your final results. This can be useful in hospital reports.</p>
+<p>What they do: Return a single value (usually 1 row and 1 column)</p>
+<p>Why they are used: To compare each record against a single calculated value (such as the average cost of admission in the whole hospital).</p>
+<p>Example:
+SELECT
+    admission_id,
+    patient_id,
+    admission_cost
+FROM admissions
+WHERE admission_cost > (
+    SELECT AVG(admission_cost)
+    FROM admissions
+);</p>
+<p>The inner query finds the average cost of admissions. The outer query then shows all admissions where the cost is higher than the average.</p>
+<p>Admissions that have an admission cost higher than the average of all admissions.</p>
+<p>As these queries only return a single row of data, if they return more than one row in a situation where only 1 should be returned, many SQL systems will throw an error. If they return zero rows, they will usually return a NULL value.</p>
+<p>They are executed outside of the current row context of the outer query because their query does not refer to any columns</p>
+<p>Why use them? To pre-calculate a value such as a threshold or find a list of relevant IDs before applying filters in the outer query.</p>
+<p>What they do: You will have a reference to a column from the outside query. This means the outcome of the subquery will change based on the current row from the outer query.</p>
+<p>Why they are useful: This can be useful when you want to compare a record against other records within the group. For instance looking at admissions where the cost is higher than the average for that department.</p>
+<p>This allows you to nest subqueries, so you can have multiple levels of filtering/calculation.</p>
+<p>They are useful when you need to find a group and compare data within this group or to it.</p>
+<p>Find patients with an admission in the department with the highest average admission cost.</p>
+<p>Purpose: To test if a value exists in a list of values returned from a subquery.</p>
+<p>Use: This can be useful if you want to find patients that are part of a group e.g. Patients admitted to a certain department.</p>
+<p>Example:
+SELECT
+    patient_id,
+    patient_name
+FROM patients
+WHERE patient_id IN (
+    SELECT patient_id
+    FROM admissions
+    WHERE admission_cost > 20000
+);</p>
+<p>Functionality:
+Checks that the sub-query returns at least one row.</p>
+<p>Usage:
+Useful for checking there are patients with at least one admission or departments with at least one related doctor.</p>
+<p>Example:
+SELECT
+    p.patient_id,
+    p.patient_name
+FROM patients AS p
+WHERE EXISTS (
+    SELECT 1
+    FROM admissions AS a
+    WHERE a.patient_id = p.patient_id
+);</p>
+<p>What it means: Compares a value to one or more values in a subquery. At least one of the comparison conditions must evaluate to TRUE.</p>
+<p>Why you would use it: You could use this to find admissions that had higher costs than at least one department's average.</p>
+<p>What it does: Compares a value with every value returned by a subquery.</p>
+<p>Why it is used: It can identify admissions whose costs exceed the averages of all departments.</p>
+<p>SQL window functions, joins, CTEs and subqueries are vital to analyse relational data. They all have their own uses but can be combined to perform complex analysis.
+Window functions can be used to rank, total up, average and compare data without losing any rows of data.
+Joins allow you to join together related data from multiple tables. This helps you find matching and non-matching data.
+CTEs help break down complex queries into digestible parts. They can also be used for recursive analysis of hierarchical data.
+Subqueries allow you to use the output of one query within another. Helping filter, compare and calculate.
+These concepts can be used in a Hospital setting to answer questions such as how many patients were admitted, how much each department costs, how much was spent on treatments and more. As a data scientist/data engineer it is useful to understand these concepts as you need to make sure you are pulling back the correct information, understanding the relationships between data and performing the correct calculations to get reliable analysis.</p>
+<p>The most important thing is not knowing the SQL syntax but understanding what you are trying to do, what type of query to write and correctly interpreting your results.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/building-a-local-first-collaborative-editor-with-yjs-lexical-and-indexeddb?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/nyamatari_brian_c41e0c389/-advanced-sql-concepts-using-a-hospital-management-dataset-3o0f" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Setting Up AWS Control Tower? These SCP and Networking Mistakes Can Cost You Hours</title>
+    <title>In Security, Words Matter as Much as Tools, Maybe More</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9845.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,94 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Setting Up AWS Control Tower? These SCP and Networking Mistakes Can Cost You Hours</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>In Security, Words Matter as Much as Tools, Maybe More</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/32AseWXDmnVYvDJURoDWsEBuJzT2-gx039ew.png" alt="Setting Up AWS Control Tower? These SCP and Networking Mistakes Can Cost You Hours" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt36f1afcfa92ff2c5/6af766db3c02eaba0a4aae0d/cyber_talk_ATHVisions_Getty.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="In Security, Words Matter as Much as Tools, Maybe More" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/32AseWXDmnVYvDJURoDWsEBuJzT2-gx039ew.png" alt="Setting Up AWS Control Tower? These SCP and Networking Mistakes Can Cost You Hours" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt36f1afcfa92ff2c5/6af766db3c02eaba0a4aae0d/cyber_talk_ATHVisions_Getty.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="In Security, Words Matter as Much as Tools, Maybe More" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Most landing-zone guides stop after "click Set up landing zone". This one keeps going. By the end, you will have a working multi-account AWS environment where every account has one job, the rules are enforced by Service Control Policies, and the network is owned by one account and shared with the others. Each rule is tested from the command line, so you can prove it holds.</p>
-<p>Everything here was built in a real organization, including the parts that went wrong: an SCP that broke DNS, an "allow list" SCP that allowed everything, and a RAM share that failed for 40 minutes. The fixes are part of the steps and are collected in the Troubleshooting section.</p>
-<p>This is part 1 of a series. Part 2 sets up the Build account (CodeCommit, ECR with cross-account pull, and CodeBuild inside the shared VPC), and part 3 runs the application on ECS in Dev and Production.</p>
-<p>Seven accounts, grouped into Organizational Units (OUs), each with one responsibility:</p>
-<p>The "must not" rules matter as much as ownership: each one becomes a Deny statement in an SCP, so it holds even for an administrator inside that account.</p>
-<p>An AWS account is a hard boundary for IAM permissions, billing, service quotas, and the blast radius of mistakes. When dev, prod, networking, and CI/CD share one account, a developer who needs the dev cluster easily ends up with access to production, and costs can only be split with careful tagging. Separate accounts give you these boundaries for free, and OUs let you apply the same rules to a group of accounts at once: every account you add to the Workloads OU later inherits its guardrails.</p>
-<p>The design follows one principle, ownership: for any resource, it should be obvious which account owns it and who is allowed to change it. The network belongs to the Network account, images belong to the Build account, and the running application belongs to the workload account. Images are built once and only pulled by Dev and Production, so Production runs exactly what was tested in Dev.</p>
-<p>This article builds only Dev and Production. A Staging account can be added later in exactly the same way.</p>
-<p>Control Tower itself is free, but the services it enables are not. Approximate monthly costs in eu-central-1 for this setup:</p>
-<p>The NAT gateways are almost all of the bill. If you build this only to learn, follow the Cleanup section when you are done, or delete the NAT gateways between sessions.</p>
-<p>Control Tower creates the organization structure, the two shared accounts in the Security OU, an organization-wide CloudTrail trail, and AWS Config in every enrolled account. Everything later in this article builds on it.</p>
-<p>Before you start: if IAM Identity Center is already enabled in the management account, Control Tower must be set up in the same Region. Choose the home Region carefully. Changing it later means decommissioning the landing zone.</p>
-<p>Sign in to the management account and open AWS Control Tower → Set up landing zone.</p>
-<p>On the first page, choose your home Region and Automatic account enrollment. With automatic enrollment, accounts that join the organization later (and accounts you move between OUs) get the Control Tower baseline and controls without manual enrollment.</p>
-<p>On the second page, keep the recommended Sandbox OU. It is a place for experiments with fewer restrictions, and we will also use it to test new SCPs before they reach other OUs.</p>
-<p>Next, Control Tower asks for the two shared accounts in the Security OU:</p>
-<p>The setup takes about 35 minutes. You can follow each step on the landing zone page:</p>
-<p>Control Tower created the Security and Sandbox OUs. Create the other three under Root in Control Tower → Organization → Create resources → Create organizational unit: Infrastructure, Deployments, and Workloads. Create them through Control Tower, not the Organizations console, so that they are registered and get the Control Tower controls.</p>
-<p>If you expect many workloads, you can nest OUs later, for example Workloads/web and Workloads/ai, and attach different policies to each.</p>
-<p>Use Control Tower → Account Factory → Create account for each workload account:</p>
-<p>Account Factory provisions accounts one at a time, so creating all four takes a while. When it's done, Control Tower → Organization should show every OU as Registered and every account as Enrolled:</p>
-<p>Control Tower configures IAM Identity Center. It creates groups such as AWSControlTowerAdmins, AWSSecurityAuditors, and AWSLogArchiveViewers, and permission sets such as AWSAdministratorAccess, AWSPowerUserAccess, and AWSReadOnlyAccess. In every enrolled account, your user gets AWSAdministratorAccess directly, while the AWSControlTowerAdmins group only gets AWSOrganizationsFullAccess. That direct assignment is how I sign in everywhere in this article:</p>
-<p>For a team, don't give everyone administrator access. Create groups by role and assign each group only to the accounts it needs:</p>
-<p>In the console: IAM Identity Center → Groups → Create group, then AWS accounts → select the accounts → Assign users or groups → choose the group and the permission set. The same assignment from the CLI:</p>
-<p>For the command line, add one profile per account to ~/.aws/config, then sign in once with aws sso login --sso-session lz. One sign-in covers all profiles:</p>
-<p>Tip: use the role name that you actually see in the access portal. In my organization the management account has AdministratorAccess while member accounts have AWSAdministratorAccess. A wrong role name fails with "ForbiddenException: No access".</p>
-<p>Also check that no AWS_ACCESS_KEY_ID or AWS_SESSION_TOKEN environment variables are set in your shell. The CLI uses them whenever a command has no --profile, so a single forgotten flag silently runs that command against a completely different account. I had exactly this situation, with keys for an unrelated organization in my shell.</p>
-<p>Service Control Policies (SCPs) are guardrails in AWS Organizations. They define the maximum permissions available to IAM users and roles in the accounts of an OU, regardless of what their IAM policies allow.</p>
-<p>We use them to enforce the Region, to block dangerous actions (leaving the organization, disabling security services), to enforce ownership (only the Network account builds connectivity), and to remove risky shortcuts (root user, long-lived access keys). SCPs say "what's possible", IAM policies say "who can do it".</p>
-<p>We don't attach our policies to the Security OU. Control Tower manages the Audit and Log Archive accounts and already protects them with its own guardrails (the aws-guardrails-* policies you can see in the list).</p>
-<p>Every Deny statement below has an exception for the AWSControlTowerExecution role and the stacksets-exec-* roles. Control Tower uses these roles to manage the accounts, and blocking them would break enrollment and drift repair.</p>
-<p>Go to AWS Organizations → Policies → Service control policies → Create policy, and name it BaselineGuardrails :</p>
-<p>The Network account owns connectivity. FullAWSAccess already allows that, so we only add what it must not do: run applications or CI/CD.</p>
-<p>The Build account owns pipelines and container images. It must not create its own network connectivity (Transit Gateway, peering, VPN, Direct Connect) and must not run application services or databases.</p>
-<p>Dev and Production run the application. They may attach their VPC to a Transit Gateway shared by the Network account, but cannot build their own connectivity, create ECR repositories, push images, or create pipelines. Images are built once in the Build account and only pulled here.</p>
-<p>Select the policy → Actions → Attach policy, and choose the OU:</p>
-<p>Leave FullAWSAccess attached. Our policies only take permissions away from it.</p>
-<p>The final picture for the Workloads OU should be: FullAWSAccess, the Control Tower aws-guardrails-* policy, BaselineGuardrails, and WorkloadsECSPolicy:</p>
-<p>Always test SCPs right after attaching them. EC2 supports --dry-run, which checks permissions without creating anything:</p>
-<p>The error message names the exact SCP that denied the request, which makes troubleshooting much easier. Section 7 has a script that tests all guardrails at once.</p>
-<p>Tip: before attaching a new SCP to a production OU, attach it to the Sandbox OU or a test account first. A wrong Deny statement affects every account in the OU immediately.</p>
-<p>With the guardrails in place, we can build the network. The Network account owns all VPCs, subnets, route tables, NAT gateways, and internet gateways. Dev, Production, and Build don't create VPCs. They receive subnets from the Network account through AWS Resource Access Manager (RAM).</p>
-<p>One shared VPC for everyone would put Dev and Production on the same network. Instead, each environment gets its own VPC, shared only with its own account, and we don't need a Transit Gateway yet.</p>
-<p>Before creating anything, plan the IP ranges. VPCs that may need to be connected later (with Transit Gateway or peering) must not overlap. Control Tower created a VPC in every account with the same 172.31.0.0/16 range, and these VPCs can never be connected to each other.</p>
-<p>We reserve a /16 range for each environment:</p>
-<p>Each environment VPC uses two Availability Zones and three subnet tiers:</p>
-<p>The app subnets are larger (/20, about 4,000 addresses) because every ECS task on Fargate gets its own IP address. Production uses the same layout with 10.20.x.x. The build VPC needs only two public and two private subnets (10.30.0.0/24, 10.30.1.0/24, 10.30.16.0/20, 10.30.32.0/20).</p>
-<p>Control Tower's Account Factory created an empty VPC named aws-controltower-VPC in every new account. We don't need them, so delete them in the Network, Build, Dev, and Production accounts (VPC → Your VPCs → select aws-controltower-VPC → Actions → Delete VPC).</p>
-<p>To prevent Control Tower from creating these VPCs in future accounts, go to Control Tower → Account Factory → Network configuration → Edit, and set the maximum number of private subnets to 0.</p>
-<p>Sign in to the Network account, open VPC → Create VPC, and choose VPC and more. This wizard creates the VPC, subnets, route tables, internet gateway, NAT gateway, and VPC endpoints in one step.</p>
-<p>Expand Customize subnets CIDR blocks and enter the CIDRs from the table above. The wizard's defaults would give the public subnets /20 ranges, which wastes addresses we want to keep for ECS tasks.</p>
-<p>ECS tasks in private subnets need outbound access to pull container images, send logs, and call external APIs. This is the job of the NAT gateway. The wizard offers three options:</p>
-<p>We make a different choice per environment:</p>
-<p>For prod, choose Regional instead of Zonal. There is no AZ selection for a regional NAT gateway, because AWS manages its availability across zones:</p>
-<p>Choose S3 Gateway. Gateway endpoints are free. Amazon ECR stores image layers in S3, so most of the traffic when ECS pulls an image goes through the endpoint instead of the NAT gateway, which reduces NAT data processing costs.</p>
-<p>We don't create interface endpoints (ECR, CloudWatch Logs, STS) yet. At about $0.01 per hour per AZ each, five of them in two AZs cost more than the NAT gateway they would replace.</p>
-<p>Keep DNS hostnames and DNS resolution enabled.</p>
-<p>Before creating the VPC, check the Preview panel on the right. It shows every resource the wizard will create. You should see six subnets, one internet gateway, one NAT gateway, and private route tables with a 0.0.0.0/0 route to the NAT gateway.</p>
-<p>Click Create VPC. Creating the NAT gateway takes a minute or two.</p>
-<p>Open the VPC and look at the Resource map tab. It shows the whole design on one screen: six subnets in two AZs, the public route table pointing to the internet gateway, and the private route tables pointing to the NAT gateway and the S3 endpoint.</p>
-<p>Repeat the same steps for prod (10.20.0.0/16, Regional NAT gateway) and build (10.30.0.0/16, 2 public and 2 private subnets, Zonal NAT gateway in 1 AZ).</p>
-<p>First, allow RAM to share resources within the organization. In the management account, open Resource Access Manager → Settings and enable Enable sharing with AWS Organizations. Without this setting, resources can only be shared through invitations.</p>
-<p>Now, in the Network account, open Resource Access Manager → Resource shares → Create resource share:</p>
-<p>When I created the first share, it failed with this error, even though organization sharing was enabled a few minutes earlier:</p>
-<p>The message suggests waiting for onboarding to finish, but mine still failed after 40 minutes, from every account. The real hint came from the CLI: sharing with the organization as principal returned UnknownResourceException: Organization o-xxxxxxxx. RAM had never imported the organization, even though the Organizations console listed RAM as a trusted service.</p>
-<p>The fix was to reset RAM trusted access from the management account:</p>
-<p>Run this only before you have any resource shares. Disabling trusted access affects existing organization-based shares. After the reset, sharing worked within a minute.</p>
-<p>Before that, I ruled out our own SCP by detaching BaselineGuardrails from the Infrastructure OU for a minute. A good habit in a governed account: rule out your own SCPs first. The error message names the denying SCP, as in this example where the region lock blocks CloudTrail in us-east-1:</p>
-<p>Sign in to the Dev account and open VPC → Subnets. The shared subnets appear with the Network account as the owner.</p>
-<p>Guardrails are easy to get subtly wrong, so I keep a script that checks the important rules in one run. It only uses read-only calls and EC2 --dry-run, so it never creates anything:</p>
-<p>The "allow" checks matter too: a guardrail that blocks too much is also a bug, like my first region lock that broke Route 53. Run the script after every SCP change.</p>
-<p>Every problem I hit while building this part, in one place:</p>
-<p>If you built this only to learn, delete it in this order. Participants must remove their resources from shared subnets before the owner can delete them.</p>
-<p>Dev, Production, and Build accounts: delete anything you launched into the shared subnets, including security groups.</p>
-<p>Network account: delete the three RAM shares. Then delete the NAT gateways and release their Elastic IP addresses (this stops most of the cost), and delete the three VPCs.</p>
-<p>Management account: detach and delete the four custom SCPs. To remove everything, decommission the landing zone in Control Tower, then close the member accounts. Closed accounts stay suspended for 90 days.</p>
-<p>We now have a landing zone where every account has one clear job, and the boundaries are enforced rather than just documented:</p>
-<p>Benchmarking AWS Amplify, Lambda, Web Functions, and ECS for Next.js</p>
+                <p>From talking cloud security to using AI, cyber leaders are finding that clear, disciplined communication is now a front-line defense capability across the enterprise.</p>
+<p>The best tool cyber teams can wield to defend their organizations has nothing to do with tech; it's how they talk. Whether the audience is the C-suite, the development team, or the sheepish user who just fell for a phish, communications savvy is increasingly mission-critical.</p>
+<p>During a Dark Reading Virtual Event panel I recently put together to talk tech, tools, integration, and frameworks, called "Key Tools & Technologies for Locking Down Your Cloud," SANS instructor Ahmed AbuGharbia urged cybersecurity teams to "learn the language of the cloud" to build credibility with IT, and to do the same for developers. We discussed technology and products, too, but I was surprised at the amount of time that was spent on stressing the importance of communication and language when it comes to having effective conversations with vendors, executives, and users.</p>
+<p>My other panelist, Theresa Lanowitz, a principal analyst at Omdia, detailed the distinction between security "of" the cloud and security "in" the cloud, noting that under existing shared responsibility models, cloud service providers assume responsibility "of" the cloud itself, rather than what organizations decide to put "in" the cloud.</p>
+<p>Related:Why Holiday Security Can't Wait for Black Friday</p>
+<p>This wasn't the first time I had noticed a shift in the way security practitioners focus on a commitment to using effective language.</p>
+<p>A couple of weeks ago I sat in several sessions at the ISC2 Strategic Conference in Denver that spent a remarkable amount of time on strategies for clearly communicating risk and documenting those exchanges in much the same way as they would any other log, piece of evidence, or asset. In the past, these conversations would have been more focused on translating tech talk into corporate speak. CISOs have worked for a long time on how to talk to leadership about risk and budget; it's been an ongoing conversation for several years. However, emphasis on how cyber teams can learn to ask the right questions not just of leadership, but pertinent people both inside and outside the business, feels like a fresh effort. Using precise language and presenting strategic (not just technical and tactical) concepts effectively is no longer being discussed as a nice thing for security pros to be able to do, but critical to fundamental enterprise defense.</p>
+<p>For example, CISO and expert Laura Vaughn has cleverly broken down threat modeling into 4 Simple Questions on a White Board. Her strategy distills years of experience and technical expertise into plain language anyone can understand, like, "What [cyber incident] would hurt most on Monday morning?" That honed language helps get teams to the heart of the threats, and helps them understand the work that needs to happen next. That all saves time and money, and eliminates the scariest risks first. Other deceptively simple questions she suggests asking include, "Who hacks organizations like ours and how?" And, "What is the cheapest control?" Smart comms informs and focuses the technical work.</p>
+<p>Related:As Test Takers Turn to AI, Exam Security Plays Catch-Up</p>
+<p>Likewise, technologist and attorney Daniel B. Garrie, CEO of Law and Forensics, presents language as a frontline defense, and coaches CISOs and cyber leaders on the finer points of contract negotiations. He advocates rigorous documentation of communications on risk and defense decisions, so those decisions would be defensible later, and so that transparency can help drive cybersecurity across the organization.</p>
+<p>The introduction of AI is also requiring cybersecurity teams to pick their words carefully. AI has put a language interface between the user and compute operations that benefits those who can ask the best questions. Likewise, experts across the cyber sector urge caution around using humanizing language to describe AI agents or attribute human motivation to their actions.</p>
+<p>Related:Attackers in Binance Breach Targeted Known Weakness, Missing Controls</p>
+<p>Being an expert communicator is no longer a skill that's nice to have in cybersecurity; it's fundamental to enterprise defense. Be precise in the words you choose, and meet your audiences where they are. You might be surprised to find it's becoming the most powerful tool you or your organization could ever deploy against the next threat.</p>
+<p>[Virtual Event] Cybersecurity Outlook 2027</p>
+<p>Just in time for the new year, Cybersecurity Outlook 2027 will look ahead at some of the newest threats posed by cybercriminals and nation-states, as well as evolving technologies that may help mitigate those threats as AI proliferates.  You'll hear from some of the cybersecurity industry's leading analysts and experts, as well as researchers who have been examining the next wave of cyber threats, AI-driven technologies and other cybersecurity tools to help organizations defend their multi-cloud and hybrid environments.</p>
+<p>Award-winning journalist and senior editor at Dark Reading reporting across diverse media platforms, including podcasts and video. Becky is passionate about delivering insightful, high-quality information and storytelling that informs and engages the cybersecurity community. Her specific focus is on the intersection of cybersecurity and public policy and its impact on the enterprise.</p>
+<p>As the host and producer of the recently Azbee-recognized Dark Reading Confidential podcast, she presents compelling conversations with industry leaders, exploring the latest trends and challenges in cybersecurity. Becky is also the moderator Dark Reading's popular editorial webinars, and oversees Dark Reading's Commentary section, curating expert perspectives intended to drive meaningful dialogue. Additionally, she is the host of Dark Reading's Black Hat News Desk, delivering timely and in-depth coverage right from the heart of one of the industry's most important events.</p>
+<p>Beyond editorial responsibilities, Becky is a regular writer and reporter for Dark Reading, contributing articles that delve into the evolving cybersecurity landscape.</p>
+<p>Prior to joining Dark Reading, Becky honed her expertise as a cybersecurity reporter for Threatpost, where she covered breaking news and emerging threats in the digital security space.She holds a BA in political science from the University of Arizona, and a BA in journalism from the Walter Cronkite School of Journalism at Arizona State University.</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/setting-up-aws-control-tower-these-scp-and-networking-mistakes-can-cost-you-hours?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/cybersecurity-operations/security-words-matter" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

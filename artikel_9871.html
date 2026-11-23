@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</title>
+    <title>Gliver completes the Guix desktop</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9871.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,55 +15,164 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-22</p>
+        <h1>Gliver completes the Guix desktop</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many ML practitioners have some intuition about how to make models run fast, but fewer know how to analyze why a model is slow. In Part 1 of this series, you will learn how to systematically analyze inference performance and identify where the time is spent.</p>
-<p>This post starts from scratch and assumes no prior profiling experience. The walkthrough uses AWS Trainium, a purpose-built AI chip for deep learning training and inference workloads, and TorchNeuron, its open source native PyTorch backend. TorchNeuron supports standard PyTorch workflows on Trainium, including eager execution, torch.compile, and standard PyTorch APIs, with minimal code changes. Additionally, TorchNeuron integrates with Neuron Kernel Interface (NKI) to enable custom operators and performance optimization for Trainium hardware. By the end, you should know:</p>
-<p>Before you profile a workload, it helps to understand how Neuron integrates with PyTorch.</p>
-<p>The Neuron backend uses PyTorch's PrivateUse1 extension point. This mechanism lets an accelerator integrate with the framework without adding a dedicated dispatch key such as cuda. The torch_neuronx package works with upstream PyTorch to register Neuron as a native backend for PyTorch code. For details about this extension mechanism, see Facilitating New Backend Integration by PrivateUse1.</p>
-<p>You use two objects to profile a Neuron workload:</p>
-<p>The modes parameter selects the data streams to capture, such as device instructions and runtime traces. The capture_enabled_for_nc parameter selects the NeuronCores to trace. Setting correlate_device_time=True propagates device time from the trace into the key_averages() table, where you can compare CPU and Neuron device time. For the complete parameter reference and available ProfileMode values, see the NeuronConfig Profile Modes documentation.</p>
-<p>Neuron Explorer is a browser-based viewer for the system trace, device timeline, and per-engine breakdown. You can access it through an SSH tunnel or the Visual Studio Code extension. In this post, you use Explorer to confirm what key_averages() reports numerically and inspect what happens between dispatches.</p>
-<p>After profiling, the output directory contains the system trace and, when you capture device data, matched .neff and .ntff files. The Neuron Executable File Format (NEFF) contains the compiled Neuron executable, while the matching NTFF contains its hardware instruction trace. The files share a numeric hash that identifies them as a pair. To open the profile in Neuron Explorer, upload the complete output directory for a system or combined profile. For a device-only profile, upload the matching .neff and .ntff files individually. See Step 5: Upload your profile for the UI and command-line instructions.</p>
-<p>For this first analysis, you profile RMSNorm, a small operation with a clear sequence of arithmetic and reduction operations.</p>
-<p>You profile three implementations of the same operation:</p>
-<p>The scripts use the same inputs, profiler configuration, and schedule so the results are directly comparable.</p>
-<p>All scripts to reproduce this work are available in the torch-neuronx examples directory.</p>
-<p>Start by writing RMSNorm with individual PyTorch operations. Each line maps to one or more ATen operations and can create intermediate tensors.</p>
-<p>Call the profiler with two arguments required for the Neuron backend:</p>
-<p>The schedule uses wait=2, warmup=1, and active=1 across four prof.step() calls. This records one warm iteration without including initial setup overhead.</p>
-<p>Call torch.neuron.synchronize() inside the profiler loop. Without this synchronization, the profiler can export before the device finishes and leave the Neuron time column empty.</p>
-<p>After profiling finishes, inspect the key_averages() table. Sort by self_privateuse1_time_total to place the operations with the highest device cost first. The table shown here is filtered to the RMSNorm operations that report Neuron device time. The full key_averages() output also includes CPU-side events such as allocations and host-to-device transfers.</p>
-<p>The key averages table shows that three aten::mul calls account for the largest share of Neuron device time.</p>
-<p>The table shows which ATen operations ran, how often they ran, and how much time they spent on the CPU and Neuron device. aten::mul has the highest total device time because the function performs three multiplications.</p>
-<p>Each row maps directly to the function. aten::mul runs for x * x, x * rms, and the final multiplication by weight. aten::mean reduces the last dimension. aten::add adds the epsilon value and triggers a host-to-device copy because the scalar starts on the CPU. aten::rsqrt computes the reciprocal square root.</p>
-<p>Neuron Explorer follows an aten::mul operation from framework dispatch through runtime scheduling to execution on the Neuron hardware lanes.</p>
-<p>In Explorer, time flows from left to right and the event lifecycle flows from top to bottom. Each ATen operation follows the same pattern: creation in the framework lane, scheduling in the runtime lane as nrta_execute_schedule, and device execution in the hardware lane as nc_exec_running.</p>
-<p>The system trace view organizes events into lanes. In the Default grouping mode, labels follow the pattern instance/PID/subsystem/identifier:</p>
-<p>In eager mode, each operation runs independently. Use the dependency chain viewer to follow aten::mul.Tensor from the framework layer through runtime scheduling to device execution.</p>
-<p>The dependency chain viewer highlights the lifecycle of one operation across the framework, runtime, and hardware lanes.</p>
-<p>Replace the individual operations with PyTorch's built-in rms_norm function. Neuron lowers the operation to one fused kernel:</p>
-<p>The fused RMSNorm appears as one device operation in the key averages table.</p>
-<p>The fused RMSNorm follows one framework-to-hardware path instead of dispatching each arithmetic operation separately.</p>
-<p>In the naive implementation, each operation crosses the dispatch boundary independently and follows its own framework-to-runtime-to-hardware path. In the fused implementation, one Python call covers the complete computation. The trace contains one dispatch and one hardware event, with no gaps between component operations.</p>
-<p>For the final example, compile the original naive RMSNorm function with torch.compile.</p>
-<p>With @torch.compile(backend="neuron"), TorchDynamo captures the Python bytecode as an FX graph and AOTAutograd lowers it to ATen operations. The Neuron backend receives the complete graph instead of dispatching each operation separately. It fuses the operations, optimizes memory access, and compiles the graph into a single NEFF artifact. The artifact runs as one hardware dispatch.</p>
-<p>The compiled function appears as one Torch-Compiled Region in the key averages table.</p>
-<p>The compiled graph follows one path through runtime scheduling and hardware execution.</p>
-<p>The table shows one device execution, as in Profile 2, but the code takes a different path. Instead of calling a purpose-built fused operation, the compiler discovers the fusion from the original Python function. In this run, the Neuron time is comparable to torch.rms_norm, at 375 μs compared with 403 μs.</p>
-<p>Both torch.rms_norm and torch.compile fuse RMSNorm into one kernel dispatch. In these runs, either approach takes about one-sixth of the naive implementation's device time. Fusion removes the gaps between hardware executions and avoids materializing intermediate values such as x_sq and mean_sq between separately dispatched operations.</p>
-<p>key_averages() shows which operations consume device time, while its full output also reveals CPU-side setup and transfers. Explorer provides the corresponding visual trace. You can follow one operation from framework dispatch through runtime scheduling to hardware execution and see the gaps that fusion removes.</p>
-<p>You can use the same workflow on larger models: find a hotspot in the table, verify it in the trace, and then determine whether a fused operation or torch.compile can reduce its cost.</p>
-<p>In Part 2, we will move into the device-level profile. You open the NEFF, inspect the TensorEngine, VectorEngine, and direct memory access (DMA) breakdown, and place the kernel on the roofline to determine whether it is compute-bound or memory-bound.</p>
-<p>Special thanks to Aritra Roy Gosthipaty for the inspiration to begin this series, and to my peers Pinak Panigrahi, Samir Araujo, Akhil Azhikodan, Esha Lakhotia and the rest for reviewing!</p>
+                <p>By Christine Lemmer-Webber on Sun 22 November 2026</p>
+<p>There's a bit of irony in the title. At the time of writing,
+Gliver,
+a Guile based window manager for Wayland in the style of
+StumpWM and
+Emacs, isn't yet in
+Guix. There is, however,
+an open PR to add Gliver to Guix.
+However, what that patch is really waiting on is
+an upcoming release of Gliver
+which will solve many bugs.</p>
+<p>Notably, that release will be 0.0.5. If that sounds early, Gliver
+still is early. There are bugs, and you will probably have to file
+issues for some that you discover. There are also some noticeable
+missing features. But it doesn't matter. Gliver is everything I want
+from a desktop experience, and I suspect for many of the kinds of
+people who read my blog, it will be for them as well.</p>
+<p>Gliver might not be for everyone. But if the following appeals to you:
+a live-hackable, written in Guile Scheme, tiling window manager which
+looks good, feels good, and whose codebase is
+understandable
+and, indeed, encourages you to understand and explore it, Gliver is
+for you.</p>
+<p>I think Anna Liberty's
+Towards Understandable Software
+is a must-read. Call it a counter-vision to the
+vibe bobsled.
+Anna lays out that software should be more understandable, not less,
+and easy to participate in even for people with no programming
+background. While Gliver doesn't itself try all the approaches Anna
+lays out, it is an understandable codebase.</p>
+<p>Furthermore, Gliver is participatory. Gliver invites you to learn
+its internals and explore it. By default, Gliver's describe-key
+functionality opens a window where you can type the command you are
+thinking of, and it will show you what key it is bound to... but you
+can also type in a key sequence, and it'll show you what command that
+runs.</p>
+<p>More than that, by default Gliver opens a unix domain socket in
+~/.local/state/gliver/repl.sock. You can connect to this, say with
+Geiser. You are live! You know that
+command you just looked up with the above describe-key interface? Why
+not try running it at the REPL! Hey, how does it work? Well Geiser
+already has a feature for that; by default typing M-.
+(geiser-edit-symbol-at-point) will jump you right to the definition,
+and you can explore how that code works! You can run commands manually
+at the REPL, you can inspect the state of the system, you can hack
+away, you can take the useful things you have learned and add them to
+your init.scm file so that the next time Gliver starts things are
+more the way you want them than last time. But of course there's no
+need to wait, this is a lisp style system! You can eval those changes
+and apply them immediately and carry on your way.</p>
+<p>Maybe this all sounds pretty technical, and even technically
+elite. And I think Gliver is probably not very accessible to
+non-scheme-hackers. But on the other hand, it could help you become
+a Scheme hacker.</p>
+<p>When I started using Emacs, I was not a programmer. By extending
+Emacs, I became a programmer. (My background is not in CS; I was an
+interdisciplinary humanities student.) Emacs invites you to explore
+how it works by customizing it. My entire career would not have likely
+happened if Emacs did not welcome me into this process.</p>
+<p>Gliver takes the same approach. But instead of Emacs Lisp, which is a
+hackable but honestly not really great lisp, it uses Guile Scheme,
+which is lovely. And notably, this is the same language as Guix.</p>
+<p>There is more I want to say on this, and I will in a future article.
+In many ways I think Blender is also an interesting example of
+reflective software in action, and actually does expose some of the
+ideas such as visual programming for non-programmers in a way that
+Emacs and Gliver don't, with great success too. But that's to discuss
+later.</p>
+<p>But as for the choice to switch. I have gotten tired of using systems
+that feel like they know better than I do. I have spent
+most of my days using GNOME, but without
+getting too much into it, I have been burnt way too many times by a
+paternalistic attitude which seems at the center of its design
+philosophy. When I did the latest upgrade and found out that custom
+application launcher shortcuts did not work anymore, and I could not
+figure out for the life of me why, I decided I didn't actually care to
+try to solve the problem this time. I was going to try something
+else.</p>
+<p>Which is when I re-discovered Gliver. Thanks to
+ebeem for working on Gliver and
+jfred for having been an earlier
+adopter than I was and who helped me with some messy
+this-isnt-yet-packaged trickiness.</p>
+<p>I suppose I've already said most of it, but a few more details.
+One interesting aspect of Gliver is that it uses
+River, which is a Wayland
+compositor which is designed as a framework for building window
+managers on top of. Building small window managers had become a lot
+harder to do with the move from X11 to Wayland; River provides a
+common foundation that makes it much more possible.</p>
+<p>Gliver allegedly supports different tiling modes, but I don't use
+them, I just use manual tiling. I like splitting up my screens the way
+I like them. I know I want this thing here and that thing
+there. Gliver shines at this kind of manual flow. It also has multiple
+"tabbed" windows stacked in each pane of the frames (in Gliver, each
+of those panes is called a "container"). You can move around what
+workspace and container a window "belongs to" with
+keybindings. Personally I bound <super>-x to be a keymapping with
+sub-bindings for splitting things up with the same equivalent keys as
+they are in emacs, since those mappings are burned into my brain.</p>
+<p>The default theme is very nice. You can customize its colors but black
+and purple is exactly my jam already.</p>
+<p>There are some rough edges. I have filed a number of issues for the
+things I've encountered. But one of the most noticeable is that there
+are several commands you might find for launching shell commands or
+creating new workspaces where you would expect to be prompted.  For
+example, here's one of Gliver's commands for running a shell command:</p>
+<p>Nice, these look like good commands, let's bind them to keys in our
+config! But oh wait, nothing happens! That's strange, they work at the
+REPL, why don't they work when bound to a key?</p>
+<p>The simple answer is that #:interactive (string) part you see above,
+which indicates that Gliver's UI should be asking you for a prompt and
+letting you type in something, simply isn't implemented yet! So when I
+say there are some missing features, there really are some missing
+features.</p>
+<p>But this all may be changing very quickly. ebeem is working on a
+refactor of the GUI system to be more of a functional reactive
+programming type system, inspired by Flutter.
+When that lands, I expect a number of bugs to be fixed, and a number
+of missing features like the above to land.</p>
+<p>This does lead to the funny situation that to create a new workspace,
+I have to do it at the REPL! That's okay. It'll be fixed, and for now,
+it's a nice reminder that running things at the REPL is something I
+can absolutely do at any time with Gliver, which I appreciate.</p>
+<p>Speaking of the GUI, what GUI toolkit is it using, you may wonder?
+The answer is: it kind of has its own thing! Gliver has FFI bindings
+to Cairo for its vector graphics and
+Pango for fonts. That's it! It seems to
+be a good enough foundation for the rest it is using and doing.</p>
+<p>Now, how am I running Gliver at all when it isn't in Guix? The funny
+thing is that for now, I am running out of a git checkout of Gliver.
+I start up and sacrifice the not-so-proverbial
+Cow window manager and replace it
+live with Gliver in a terminal like so:</p>
+<p>Which is basically the trick in the Gliver README, just starting with
+a cow sacrifice first. Pretty ugly though, it'll be nicer when Gliver
+is just packaged in Guix.</p>
+<p>Gliver is nice. It feels good, it works well. And it's participatory,
+understandable software. It's also very early. It might not be for
+everyone, but it has elements of a vision for a future I'd like to see
+for everyone.</p>
+<p>If you like the idea of a scheme'y lisp machine using Guix as your
+operating system distribution but have found that the desktop
+experience was missing, well, Gliver is now here! And soon, packaged
+in a Guix near you.</p>
+<p>And, I suspect, once it is... well, we'll be seeing most of the Guix
+community moving over. It's too exciting and too nice not to!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/amazon/profiling-torchneuron-part-1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dustycloud.org/blog/gliver-completes-the-guix-desktop/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
