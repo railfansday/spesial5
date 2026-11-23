@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Our top-ranked cookie recipes: Eight cookies that have stood the test of time.</title>
+    <title>Simple Sudoku Solver in Verilog</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9772.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,75 +15,220 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Our top-ranked cookie recipes: Eight cookies that have stood the test of time.</h1>
+        <h1>Simple Sudoku Solver in Verilog</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://www.kingarthurbaking.com/sites/default/files/2026-04/Classic-Chocolate-Chip-Cookie-10.jpg" alt="Our top-ranked cookie recipes: Eight cookies that have stood the test of time." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.kingarthurbaking.com/sites/default/files/2026-04/Classic-Chocolate-Chip-Cookie-10.jpg" alt="Our top-ranked cookie recipes: Eight cookies that have stood the test of time." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Every time you, a reader, posts a comment, it gives me a chance to reflect on the recipe. When the comment is positive, I'm proud and happy; my kid just scored the winning goal!</p>
-<p>When a recipe gets a not-so-good comment, I'm bummed. Bad report card. Thankfully, most of our reviewed recipes get four or five stars. And some get LOTS of four- and five-star reviews. These are our straight-A students; our all-stars. The recipes you want to bookmark for the math team's next bake sale.</p>
-<p>To make this, you'll need: Callebaut Semisweet Chocolate Chips</p>
-<p>To make this, you'll need: King Arthur Pure Vanilla Extract</p>
-<p>To make this, you'll need: Tablespoon Scoop</p>
-<p>To make this, you'll need: Indonesian Cinnamon</p>
-<p>To make this, you'll need: King Arthur Pure Vanilla Extract</p>
-<p>Get the recipe: American-Style Vanilla Biscotti</p>
-<p>To make this, you'll need: Sparkling Sugar</p>
-<p>To make this, you'll need: Pure Almond Extract</p>
-<p>Transform your favorite bread loaf into shareable rolls.</p>
-<p>Top tips from the Things Bakers Know podcast.</p>
-<p>See our complete collection of Recipes posts.</p>
-<p>Facebook
-
-
-
-TikTok
-
-
-
-Instagram
-
-
-
-Threads
-
-
-
-Pinterest
-
-
-
-LinkedIn
-
-
-
-YouTube
-
-
-
-
-
-
-
-
-
-
-Reddit
-
-
-
-
-
-
-
-
-
-Substack</p>
+                <p>Welcome back to another round of Simple Sudoku Solvers! If you
+are unfamiliar with the series, I suggest you start with the
+first post or by perusing the backlog. Last time, in assembly,
+we told the CPU exactly what to do, one instruction at a time. Today we
+go one level lower and build the machine directly in Verilog.</p>
+<p>Verilog is a hardware description language. You donât write a program
+that will at some point run on hardware. Instead, you describe a
+circuit, and the compiler turns that description into gates and
+flip-flops. Weâll run it in a simulator, because I donât have a Sudoku
+chip lying around (future work), but the solver is real hardware in the
+sense that a synthesis tool accepts it and tells us how many gates it
+would take. Still counts, even with sim2real TBD.</p>
+<p>The solver is about 145 lines, plus 40 lines of ceremony to feed it a
+puzzle and print the result. You can run it with
+iverilog -o sudoku sudoku.v && vvp sudoku, using Icarus Verilog. I
+didnât test it anywhere else. As always, the code is on GitHub.</p>
+<p>Season three is about solvers, specifications, and constraints, and
+somehow also about hardware and the lowest of low levels. Thatâs because
+hardware is possibly the purest version of a specification (and, to be
+quite honest, because I felt like it).</p>
+<p>I think this was the strangest episode so far, for me. I donât mean
+that in a bad way.</p>
+<p>If youâve never read Verilog before, here is what you need for this
+post.</p>
+<p>A module is a circuit with inputs and outputs.
+wire [8:0] x is a bundle of nine wires, numbered 8 down to
+0. reg is a bit of a misnomer: itâs a value we assign in a
+procedural block, and whether it becomes an actual register is actually
+dependent on our usage of it.</p>
+<p>There are two kinds of blocks we care about. always @*
+describes combinational logic. Its outputs are a pure function of its
+inputs, and they change whenever the inputs do. Think of it as a very
+big expression.</p>
+<p>always @(posedge clk), on the other hand, describes
+sequential logic. It runs once at every rising clock edge, and the
+<= assignments inside it all happen together at the end
+of that edge. Thatâs where all our state lives.</p>
+<p>for loops exist, but in synthesizable code they are
+unrolled completely. A loop over 81 cells is 81 copies of its body. Keep
+that in mind, it will matter. Itâs also very cool, so itâs worth keeping
+in mind anyway.</p>
+<p>The board is the same 81 cells as always, but since hardware doesnât
+really do arrays of bytes, it is one 324-bit vector, with four bits per
+cell and 0 for an empty cell:</p>
+<p>We have three input wires and output regs (remember, not
+necessarily registers). Thatâs the whole interface of our chip.</p>
+<p>We put a puzzle on the puzzle wires, hold
+start for one cycle, and wait until done goes
+high (think in currents). Then, if solved is set,
+board has the answer. Otherwise, the board is
+unsolvable.</p>
+<p>Reading a cell is a slice, which we wrap in a small function.</p>
+<p>Slices work like in many other languages, except that the operators
++: and -: encode a direction from the start
+index. Here, we say âstart at 4 * i and take the next
+4 bitsâ.</p>
+<p>Units are the 27 rows, columns, and boxes we always care about. We
+describe them with a function that tells us which cell is the
+k-th member of unit u:</p>
+<p>The first 9 are the rows, then come the columns, and the icky
+expression at the end there is the box arithmetic with our usual set of
+magic numbers.</p>
+<p>Fun fact: this looks like it does division at runtime, but it
+doesnât. We only ever call it with constants from unrolled loops, so the
+synthesis tool computes all of it ahead of time (much like an optimizing
+compiler would). What is left is just the wiring, and the box arithmetic
+decides which wires connect.</p>
+<p>Like in many previous installments, we track digits as bitmasks. And
+like in our assembly episode, when itâs convenient we use the trick
+where digit d lives in bit d, and an empty
+cell lands in bit 0, which we throw away:</p>
+<p>In hardware this is a decoder, four wires in, ten wires out, one of
+them lights up. Dropping bit 0 is just not connecting it. We donât need
+a branch, and in this case not even an instruction. These sorts of
+tricks are annoying the higher up the stack we go, but they come
+naturally to us when weâre thinking in circuits and currents.</p>
+<p>We also need the opposite direction, from a single bit back to a
+digit, and a popcount:</p>
+<p>We are back to having to write our own popcount, regretfully, but it
+doesnât have to be smart. Itâs a chain of adders in the end, unrolled by
+our magical synthesis tool again.</p>
+<p>This is where Verilog differs from everything else weâve done!</p>
+<p>The following block is combinational. Every clock cycle, it looks at
+the whole board and computes, for all 81 cells at the same time,
+everything the solver could want to know.</p>
+<p>Thatâs quite a few symbols, but it almost looks familiar I think.</p>
+<p>For each of the 27 units we or together the digits it
+contains into seen. While we do that, we check if a digit
+was already there, and if so, the unit has a clash. No
+other solver in the series has needed this check so far, and youâll see
+in a minute why we need it now. Hint: it has to do with the parallel
+nature of the system.</p>
+<p>The candidates are the usual not-yet-taken numbers, and we compute
+them for all cells. We end up with four answers:</p>
+<p>This reads much like the solver loop weâve written many times, but it
+works completely differently, because there is no loop. The circuit that
+is synthesized has 81 candidate calculators and a long chain of
+comparators for the minimum that are all settling at once.</p>
+<p>Why the clash check? Here, because of parallelism,
+forced fills in every forced cell in the same cycle. If two
+cells in the same unit are both set to the same number, we write both of
+those in the same cycle and nothing checks at the end. Instead, we check
+the unit for duplicates at the next cycle, and treat a clash like any
+other unsolvable branch.</p>
+<p>So weâve successfully parallelized our work, including our mistakes!
+Fun!</p>
+<p>Since there is no recursion, the search becomes a state machine with
+three states:</p>
+<p>RUN propagates and branches, BACK
+backtracks, and HALT is the stop condition.</p>
+<p>For backtracking we need a stack. The entry has the board before a
+guess, the cell we guessed in, and the candidates we havenât tried
+yet:</p>
+<p>Every guess fills at least one cell, so the search canât go deeper
+than 81, and 81 entries are enough to hold our search tree. Math!
+Logic!</p>
+<p>Unfortunately, we have to pay for every entry in hardware, no matter
+if we end up using it or not.</p>
+<p>I originally called the second array cell, but it turns
+out cell is a reserved word in Verilog. Itâs used for
+configurations, which I had never heard of before. Shows what I know.
+Iâm just documenting this because where is a bit of an odd
+name, I think, but I didnât think to pull out the thesaurus1.</p>
+<p>Anyway, time to look at the actual states.</p>
+<p>Side note: the first cycle is spent initializing, then we fall
+through to our case structure.</p>
+<p>RUN is our whole solver as an if chain. If
+the board is dead, we backtrack. If there are forced cells, we fill all
+of them and come back next cycle to continue our work. If the board is
+full, weâre done and set HALT and all our stopping
+variables.</p>
+<p>Otherwise we dance. pick is the candidate mask of the
+MRV cell:</p>
+<p>We push the current board, the cell, and the remaining candidates,
+and then write the lowest candidate into the board.
+pick & -pick isolates the lowest set bit, and
+pick & (pick - 1) clears it, so together they split the
+mask into what to try now vs.Â what to try later. Thatâs my official
+favorite trick from the last episode making a second appearance as a
+subtractor and a row of and gates.</p>
+<p>This is also the place that tripped me up most when I was learning
+Verilog for this: all of these <= assignments happen
+together at the clock edge. We write board into the stack
+and change one cell of board in the same cycle, and the
+stack still gets the old board, because everything on the right-hand
+side was read before the edge. The timing is very explicit, and my
+intuitions are still very much developing.</p>
+<p>The BACK state looks at the top of the stack:</p>
+<p>If the stack is empty, weâve tried everything, and there is no
+solution.</p>
+<p>If the top entry has no candidates left, we pop it and stay in
+BACK, so the next cycle looks at the entry below. So we do
+one backtracking step per cycle, at worst 81 times. This seems wasteful
+at first, but itâs actually beautiful in its simplicity I find.</p>
+<p>Otherwise we restore the saved board, try the next candidate, and go
+back to RUN. The entry stays on the stack with one fewer
+candidate, ready to come back if this oneâs a dud, too.</p>
+<p>This, too, is the same copy-and-restore dance number from assembly,
+but itâs copying a board in one cycle. A register that is 324 bits wide
+is just 324 flip-flops that all load at the same time. If you design the
+board you can do whatever, it turns out.</p>
+<p>And thatâs it! Weâve solved the board!</p>
+<p>Our usual hard puzzle takes 7,639 cycles. The puzzles from the
+repository take between 5 cycles (easy) and 411 cycles (evil), and a
+puzzle with two 8s in the first row is rejected in 2 cycles, because the
+clash check catches it right away.</p>
+<p>That number is hard to compare with the other episodes. If the
+circuit ran at 1 MHz, 7,639 cycles would be about 7.5 milliseconds. But
+I havenât placed and routed it, so I donât know how fast it could really
+be made2. The 81 comparator chain we built
+above would probably be the limit, but again, I have no intuitions on
+how to measure this.</p>
+<p>The simulation, on the other hand, is slow. Icarus simulates every
+wire of that circuit on every cycle, and running the hard puzzle takes
+about 11 seconds on my machine. That makes it the slowest solver in the
+series by a wide margin, beating even Agda. Thatâs not a fair
+comparison, but I think itâs funny anyway, because we came to the land
+of speed and wires and ended up with the slowest simulations of the
+series.</p>
+<p>As for size, I let the genie guide me and ran the solver through Yosys targeting Lattice
+iCE40, a family of small FPGAs that hobbyists like. It comes out at
+about 35,000 lookup tables and 28,000 flip-flops, almost all in the
+stack. That is a lot more than any iCE40 chip Iâve found has, so weâd
+need a bigger FPGA, or a stack in block RAM, which would cost us a cycle
+per access.</p>
+<p>If you want to build this circuit, be my guest! Do send pictures
+and/or measurements, though, please.</p>
+<p>We built a Sudoku solver out of (simulated) wires and flip-flops, and
+made the thing nicely parallel. Through our little state machine, we
+also added a new tool to our bag of tricks. Time will tell if we need it
+again.</p>
+<p>I still think this one fits the season better than it might have
+seemed on paper. We really did specify Sudoku in hardware, in a way, in
+a very lop-sided chip.</p>
+<p>In the next episode, we stop writing search code entirely once again:
+we hand the constraints to z3 and let it find the answer for us, much
+like in Prolog and miniKanren, but differently. See you there!</p>
+<p>2. Synthesis turns the description into gates.
+Placing and routing then decide where on the chip each gate goes and how
+the wires run between them, and only then do you know how long a signal
+takes to get through the slowest path, which sets the maximum clock
+speed through the annoyances of physics. I didnât do that step by hand,
+and I donât know whether there is a tool for doing it automatically for
+me.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.kingarthurbaking.com/blog/2026/10/01/best-cookie-recipes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://blog.veitheller.de/Simple_Sudoku_Solvers_SIII%2C_EIII%3A_Verilog.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

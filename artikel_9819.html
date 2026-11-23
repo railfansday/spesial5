@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB</title>
+    <title>Model Routing Is Simple. Until It Isn’t.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9819.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB</h1>
+        <h1>Model Routing Is Simple. Until It Isn’t.</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/2jqChkrv03exBUgkLrDzIbfM99q2-pj0221n.jpeg" alt="Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/642ee6f6ffd6084c6a620985/ibA2XHLJsqDH9VAL-3ou-.png" alt="Model Routing Is Simple. Until It Isn’t." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/2jqChkrv03exBUgkLrDzIbfM99q2-pj0221n.jpeg" alt="Building a Local-First Collaborative Editor With Yjs, Lexical, and IndexedDB" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/642ee6f6ffd6084c6a620985/ibA2XHLJsqDH9VAL-3ou-.png" alt="Model Routing Is Simple. Until It Isn’t." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>The question that started Lattiq: why do collaborative editors all feel so brittle? You open Google Docs on the Tube, it spins until you come back above ground, and sometimes it eats your last sentence on the way. The whole assumption is that the server is canonical. Your browser is a dumb terminal that happens to have some cached pixels.</p>
-<p>Local-first reverses that assumption. The canonical document lives in your browser. The server, if there is one, is an optimisation: a way to sync with other collaborators when both of you happen to be online. When you go offline, nothing is lost because nothing was ever relying on the connection. When you come back, the CRDT handles the merge without a server arbitrating.</p>
-<p>Lattiq is an editor built on that premise. Lexical handles the editing, Yjs handles the CRDT, IndexedDB handles the local persistence, and a thin WebSocket layer handles the sync. This post is how those pieces fit together and why each one is load-bearing.</p>
-<p>A CRDT is a data structure with a mathematical property: any two copies that have seen the same set of edits will converge to the same state, regardless of the order in which the edits arrived. You can make changes offline, I can make changes offline, we come back online, our two divergent copies merge automatically, and neither of us needs a central server to resolve the conflict. For text specifically, Yjs uses a position-based structure (Yjs calls it Y.Text, built on YATA) that keeps each insert pinned to its logical position, not its character index, so two people typing in the same paragraph do not overwrite each other.</p>
-<p>The alternative is operational transform, which is what Google Docs uses. OT also converges, but only with a central server that orders every operation. If the server is down, you cannot meaningfully edit. CRDTs do not need that arbiter.</p>
-<p>For a local-first editor, the CRDT choice is what makes the rest of the architecture possible. Without it you would have to build a conflict resolution UI, and nothing kills a collaborative product faster than a conflict resolution UI.</p>
-<p>The whole thing hinges on getting one sequence right:</p>
-<p>If you render the editor before IndexedDB has finished loading, Lexical bootstraps on an empty document. IndexedDB's content arrives a moment later and merges into the empty doc, which causes visible flicker, lost cursor position, and sometimes duplicated content. If you connect the WebSocket before IndexedDB loads, you get a race between remote content arriving and local content loading, and which one wins depends on network latency.</p>
-<p>The Lattiq hook does this sequence explicitly:</p>
-<p>Two small details worth flagging. The dynamic import('y-indexeddb') is because IndexedDB does not exist during server rendering in Next.js; a top-level import would crash the build. The guard if (docRef.current !== doc) return is for React StrictMode, which double-invokes effects in development to catch stale closures. Without the guard, the cleanup from the first invocation runs while the second invocation is still loading IndexedDB, and the wrong Y.Doc gets persisted.</p>
-<p>Each document gets its own IndexedDB database, named lattiq-doc-{id}. This keeps them cleanly isolated and means deleting a document is a single indexedDB.deleteDatabase call.</p>
-<p>Lexical's CollaborationPlugin takes a Provider, which is an object that implements connect(), disconnect(), event subscription, and exposes an Awareness instance for cursor state. The normal implementation is a WebSocket provider that talks to a Yjs-aware server. Lattiq uses two: a real WebSocket provider when the server is reachable, and a LocalProvider stub when it is not.</p>
-<p>It immediately reports "synced" and "connected" because there is nothing to sync with. The Awareness instance is real, so even in offline mode the local cursor renders correctly. To the rest of the editor code, there is no difference between running offline against a LocalProvider and running online against a WebSocket provider. That interchangeability is the point of the abstraction.</p>
-<p>The factory passed to Lexical picks one or the other:</p>
-<p>Both providers are backed by the same Y.Doc. Switching between them does not fork the document.</p>
-<p>Users need to know whether their changes are saved. The naive approach is a "saved" / "unsaved" boolean, which hides too much nuance. Lattiq exposes a five-state machine:</p>
-<p>The distinction between local-only and offline matters. local-only means we never successfully connected this session, so the user is offline but has not lost anything. offline means we were connected, then the connection dropped, so any changes made after the drop are queued locally and will upload on reconnect.</p>
-<p>The state transitions are driven by the WebSocket provider's status events:</p>
-<p>Flickering between statuses on a flaky connection is worse than a wrong status, which is why connecting and reconnecting events do not change the UI. The display only updates on resolved transitions.</p>
-<p>Yjs ships with a second protocol on top of the document CRDT: Awareness. Awareness tracks ephemeral state (cursor position, user name, user colour, selection range) that does not need to be part of the persistent document. It broadcasts on the same WebSocket channel but is stored in memory, not in the Y.Doc.</p>
-<p>The consequence is that when you reconnect, the document merges with the server, but the Awareness state resets. That is the right default: stale cursors from two hours ago are not useful. But it means you have to re-broadcast your Awareness state on every reconnect, which the providers handle automatically as long as you set it once on connect:</p>
-<p>doc.clientID is a random number Yjs assigns per document session. Using it modulo 100 gives a short, stable display name for the session without requiring auth. Real authentication would replace this with the user's actual name and a persistent colour per user.</p>
-<p>One oddity worth knowing: @lexical/yjs internally expects the cursor colour field to be named color (American spelling, at the top level of awareness state) because that is what Lexical's initLocalState writes. Lattiq uses colour in its own user sub-object for the custom presence UI, but passes color via the CollaborationPlugin prop for the cursor rendering. Two spellings for the same value, different consumers, both required.</p>
-<p>The WebSocket server is surprisingly simple: it maintains one Y.Doc per room (in memory plus a backing store), and on each incoming Yjs binary message, it applies the message to the room's Y.Doc and broadcasts it to every other client in the room.</p>
-<p>Yjs provides the y-websocket package, which is a reference implementation. Lattiq uses a thin wrapper over that plus a custom reconnection strategy (capped at maxReconnectAttempts: 10, exponential backoff) because the default tries forever and eats battery on mobile.</p>
-<p>The room is namespaced by document ID (doc-${docId}), so different documents are completely isolated. A user in one document cannot see or affect another.</p>
-<p>A flaky tube journey that would break a Google Docs session does nothing to a Lattiq session. The editor stays responsive the whole time. Changes save locally instantly. When the connection comes back, the sync happens in the background and the UI moves from offline to syncing to synced without interrupting the user.</p>
-<p>More importantly, the offline case is not a degraded mode. It is the canonical mode. The server is the optimisation layer, not the source of truth. That inversion is what makes the whole architecture feel different from a traditional collaborative editor, and it is what makes local-first editors trustworthy in a way that purely online ones never quite are.</p>
-<p>CRDTs are the thing that makes this possible. Everything else, IndexedDB, the Provider abstraction, the state machine, is just careful plumbing around the central guarantee: your edits converge with everyone else's, always, regardless of network conditions, and regardless of ordering.</p>
-<p>An editor that survives the Tube is the minimum standard.</p>
-<p>How I Fixed Retrograde Timing, Aspect Orbs, and Caching in My Astrology Engine</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
+                <p>Building a router into your agent sounds like an easy win. Send simple requests to cheaper models, reserve expensive ones for harder tasks, or route by specialty — Claude for code, Gemini for multimodal, and so on. A classifier or heuristic makes the call, costs go down, performance stays up. Done.</p>
+<p>Except it’s not. Most routing systems assume that model selection is a classification problem. In our experience building routing into agentic systems, what looks like a model-selection problem quickly becomes a systems optimization problem. Three dimensions made this surprisingly hard for us.</p>
+<p>We expected GPT-4.1 to be cheaper than Claude Sonnet 4.6. It wasn’t.</p>
+<p>Across 417 tasks on the AppWorld Test Challenge using the same CodeAct agent, Sonnet cost $79 total ($0.19/task) while GPT-4.1 cost $155 ($0.37/task) — nearly double. On paper, this makes no sense. GPT-4.1’s token pricing is lower on both input and output, and Sonnet takes roughly three times as many reasoning steps to finish the same tasks. By sticker price alone, GPT-4.1 should win easily.</p>
+<p>The explanation? Caching — something most routing discussions ignore entirely.
+Agent workloads tend to reuse large chunks of context across steps. When cache hit rates are high, effective input costs drop dramatically. Sonnet’s lower cache-read pricing meant it benefited disproportionately from this pattern, enough to overcome both its higher base pricing and its longer trajectories.</p>
+<p>The takeaway: actual cost depends on the interaction between the model, the workload, and the serving infrastructure. A router that only looks at pricing sheets is optimizing against the wrong numbers.</p>
+<p>A common routing strategy is to estimate how hard a task is and send harder tasks to stronger models. Intuitive, but it breaks down in two ways.</p>
+<p>First, difficulty is often invisible at routing time. A request like "summarize this contract" looks simple, but might trigger retrieval, compliance checks, tool use, and multiple rounds of refinement before it’s done. Meanwhile, a highly technical prompt might be handled efficiently by a smaller specialized model. You often don’t know how hard a task actually is until execution is underway.</p>
+<p>Routers aren’t solving one problem. They’re constantly juggling cost, quality, latency, compliance, and reliability all at once.</p>
+<p>It’s tempting to think about latency purely in terms of model size — bigger models are slower, smaller ones are faster. But what the user actually experiences depends on much more than that.</p>
+<p>Routing itself adds overhead. Infrastructure factors — which hardware a model is running on, whether the cache is warm, how busy the endpoint is — often dominate end-to-end response times. A theoretically faster model can still produce a slower experience if the serving conditions aren’t right.</p>
+<p>Then there’s routing granularity. Routing once per task adds minimal overhead. But routing at every step — which gives you more flexibility to adapt mid-execution — means every additional decision point introduces latency and operational complexity.</p>
+<p>A router that ignores the serving system is optimizing against the wrong reality.</p>
+<p>These lessons shaped how we built our router. The key shift: we stopped treating routing as a classification problem and started treating it as an optimization problem. Rather than asking "which model is best for this task?", our algorithm optimizes across cost, quality, and latency simultaneously — while staying lightweight enough to avoid becoming a bottleneck itself.</p>
+<p>The figure below shows the result on the AppWorld Test Challenge with a CodeAct agent. Each blue square is a different configuration of our router, tracing out a cost-accuracy frontier. The important thing isn't any single point — it's that the router gives you a range of operating points to choose from depending on whether you want to prioritize cost, latency, or accuracy. Configuration 1 (latency-optimized) lands at 84% accuracy for $93 and 83s — a 21% cost reduction and 9% latency reduction compared to running Opus alone, with only a 4% accuracy drop. Configuration 2 pushes cost even lower.</p>
+<p>Notice that a standard difficulty-based router (the teal diamond) lands in a similar accuracy range but at higher cost — it doesn't explore the full tradeoff space the way an optimization-based approach can. And because the optimization itself is lightweight (roughly 6 ms and 2 kB of memory per task), the router doesn't become the bottleneck we warned about earlier.</p>
+<p>The lesson we took away from this work is that routing isn’t really about choosing models. It’s about optimizing systems. Models are one variable — an important one, but just one among caching behavior, infrastructure state, compliance constraints, and workload patterns.</p>
+<p>When routing works well, it’s rarely because it found the "best" model for a given task. It’s because it found the best operating point for the entire system. That’s a harder problem than classification, but it’s the one worth solving.</p>
+<p>We’ll be sharing more about the technical details behind our approach in a follow-up post. In the meantime, if you’re building routing into your own agentic systems, we’d love to hear what tradeoffs you’re running into.</p>
+<p>This post was influenced by numerous conversations with colleagues, whose thoughtful questions, feedback, and insights helped refine our thinking.</p>
+<p>So I've always felt that model routing is a false proposition; it should have been part of the harness all along.</p>
+<p>Agreed, routing should disappear into the harness and just be part of the system's execution logic. Our goal is exactly that—making model choice an intrinsic capability rather than a separate concern.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/building-a-local-first-collaborative-editor-with-yjs-lexical-and-indexeddb?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ibm-research/model-routing-is-simple-until-it-isnt" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

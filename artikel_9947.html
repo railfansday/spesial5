@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Fixing Google’s Feedburner problem, and caching that half works</title>
+    <title>Arnis turns any place on Earth into a Minecraft world</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9947.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,40 +15,123 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Fixing Google’s Feedburner problem, and caching that half works</h1>
+        <h1>Arnis turns any place on Earth into a Minecraft world</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://joshua.hu/assets/img/social/fixing-google-feedburner-cache-problem-atom-rss.png" alt="Fixing Google’s Feedburner problem, and caching that half works" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2026/11/692880266-19c28791-dea3-4df2-beab-3916036a4d0b.png?fit=1280%2C720" alt="Arnis turns any place on Earth into a Minecraft world" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://joshua.hu/assets/img/social/fixing-google-feedburner-cache-problem-atom-rss.png" alt="Fixing Google’s Feedburner problem, and caching that half works" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2026/11/692880266-19c28791-dea3-4df2-beab-3916036a4d0b.png?fit=1280%2C720" alt="Arnis turns any place on Earth into a Minecraft world" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In a previous post, I talked about how Google’s Chrome Releases blog was serving stale results on its Atom feed, and had set up a redirect from its RSS feed (which was serving up-to-date results) to … the stale Atom feed. This meant results were up to a few days old. This was particularly annoying because my CCBot parsed the blog’s feed to notify me (Opera!) about Chromium vulnerabilities which were fixed. When I wrote that post, the Atom feed was days behind:</p>
-<p>And the RSS feed (which historically was serving fresh results) was redirecting to the Atom feed:</p>
-<p>Well, lo and behold, a few days ago I came to discover that the RSS feed could still be accessed, if you added a secret parameter, ?redirect=false:</p>
-<p>Since we can now pull in fresh results from the Chrome Releases blog, it means that CCBot can start working properly again. Its source is still on GitHub, and I’m sure Opera still uses it (lol).</p>
-<p>In terms of the feed caching problem I also previously wrote about, where the Feedburner Atom feed refused any caching techniques which RSS feeds typically allow to be utilized, it turns out the redirect=false feed supports them. Sort of.</p>
-<p>Feedburner itself hasn’t changed at all. It still doesn’t send an ETag, it still ignores If-Modified-Since, and it still tells everybody not to cache anything:</p>
-<p>It’s also still serving outdated results. For example, on the 30th of October, a post published at 07:58 PT was still missing from the Feedburner feed nearly two hours later.</p>
-<p>The redirect=false feed, on the other hand, does respond with 304 Not Modified. Sometimes. Because of course it’s inconsistent. The same request, with an If-Modified-Since in the future, made twelve times in a row:</p>
-<p>Looking at the date and age headers, we see the first request in each second gets a full 200, and every request after it in that same second gets a 304 with an age: 0 header.</p>
-<p>age is the header a cache adds when it answers with its own stored copy instead of asking the server behind it. The feed is served with cache-control: public, must-revalidate, proxy-revalidate, max-age=1, so whatever sits in front of Blogger’s blogger-renderd server (presumably some Google frontend) is allowed to keep a copy for one second. While that copy is fresh, the cache handles the If-Modified-Since itself, correctly, and replies with a 304. Once it has expired, the request goes through to blogger-renderd, which ignores If-Modified-Since completely and sends back the whole feed.</p>
-<p>Adding a cache-busting parameter to the URL makes every request miss the cache, and then it’s a 200 every single time:</p>
-<p>So for anything that polls the feed every few minutes, the one-second copy will always have expired by the time the next request comes in, and If-Modified-Since never gets a 304.</p>
-<p>What’s also interesting is that If-None-Match does work on the redirect=false feed. The catch is that you get an ETag if and only if you ask for a compressed response (wtf). Without Accept-Encoding: gzip, there’s no ETag at all:</p>
-<p>Asking for only br or zstd doesn’t help, because the server doesn’t support them, so it sends the feed uncompressed, without an ETag.</p>
-<p>Once you have the ETag, sending it back in If-None-Match gets a 304 every time, even with the cache-busting parameter (so these all come from blogger-renderd itself), and with or without --compressed:</p>
-<p>This saves quite a bit, which I had originally intended and wanted to do. The full feed is 1,725,860 bytes uncompressed and 57,817 bytes gzipped, and a 304 is practically nothing. Feedburner still sends 55,792 gzipped bytes (1,615,960 uncompressed) every time.</p>
-<p>All of this is different to what I found in my original post. Back then, the blogger.com URL was still served by the old GData API (that’s what the sunset and link headers in that post were about), and it answered If-Modified-Since with a 304. Those headers are gone now, and the responses come from server: blogger-renderd (see the redirect=false response at the start of this post), which is the same server that handles the blog’s own feeds on chromereleases.googleblog.com.</p>
-<p>That’s probably also the real reason for the redirect in my last post. The documentation I quoted in my original post said that the old GData feed URLs would keep working, but that “the response is the same as blogspot.com feeds”. The Chrome Releases blog’s own feeds were already redirecting to Feedburner at the time (that’s Blogger’s “Post feed redirect URL” setting), so once the GData API was finally switched off, the blogger.com URL started redirecting too. So it probably wasn’t me emailing Feedburner’s support after all, too bad.</p>
-<p>redirect=false is how you get around that setting, and it’s not quite as undocumented as I originally thought: a Feedburner help page about Google Webmaster Tools mentions http://mybloggerblog.blogspot.com/feeds/posts/default?redirect=false as a feed URL format that “should always work” for Blogger users.</p>
-<p>Oh, and the “RSS feed” I’ve been talking about in these posts is actually an Atom feed (content-type: application/atom+xml), and the real RSS version is accessed with ?alt=rss&redirect=false, which behaves exactly the same way on both blogger.com and chromereleases.googleblog.com.</p>
-<p>Another interesting thing is that every one of the blog’s feed URLs redirects to http://feeds.feedburner.com/GoogleChromeReleases, with http, not https, even when the feed itself was requested over https:</p>
-<p>That means a feed reader that starts off on https://chromereleases.googleblog.com/feeds/posts/default gets downgraded to plain HTTP when it follows the redirect, and instead of sending it back to https, Feedburner just serves the whole feed over plain HTTP:</p>
-<p>So, if you’re polling a Blogger feed that’s redirected to Feedburner, use ?redirect=false, ask for gzip, keep the ETag, and send it back as If-None-Match. Python’s requests (as used by CCBot) already asks for gzip by default, so it’s only the last two you need to do yourself.</p>
-<p>In other news, CCBot 1.1.2 has been published!</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Louis Erbkamm built the first prototype in his free time. Now GitHub Copilot helps him maintain it alone.</p>
+<p>Louis Erbkamm knows his way around Arnis, the smallest town in Germany, but he’s never set foot in it.</p>
+<p>I know where the shops are. Where the boats are… I know the city pretty well, but I haven’t been there yet.</p>
+<p>Arnis is also the name of his open source project, which takes real-world data from OpenStreetMap and other sources to turn places you know into Minecraft worlds you can freely explore. Since Louis started Arnis in 2022, it’s reached close to 900,000 downloads from GitHub and about 70 contributors.</p>
+<p>Louis grew up playing Minecraft and started coding at 13, always looking for ways to bring code into the game. Arnis began as a fun diversion combining Minecraft with geospatial data, and it went on GitHub, where he already kept his side projects. He finished the first prototype within two weeks while on a break from school.</p>
+<p>That first version was Python written by hand, built only on OpenStreetMap, and generating a town took a while. He needed somewhere real to test it, so he looked up towns in Germany, where he lives, and found Arnis. A small town helped while early generation was slow.</p>
+<p>Arnis has a lot of buildings, it has streets, it has waters, it has all kinds of different elements that are useful to test with.</p>
+<p>The project didn’t have a name yet, so it borrowed the town’s unique moniker.</p>
+<p>When Arnis added elevation, its worlds stopped being flat, and geospatial specialists from all over showed up with ideas on how best to integrate it. They started discussions on their own, and Louis says that’s exactly what he needed.</p>
+<p>Bigger calls happen in the open too: before porting Arnis from Python to Rust, Louis opened discussions on GitHub to hear different perspectives. Contributors have since translated Arnis into about 20 languages and built major features of their own.</p>
+<p>The best thing that has happened to me is essentially this big community on GitHub to see actually people from all kinds of different fields coming together to work on something that I started as a side project.</p>
+<p>Some features start on a walk. Louis noticed how many trash bins there were in his city, and there were none in his generated worlds.</p>
+<p>Minecraft has no dedicated bins, so he took the question to the community, and together they found a block that fit. Placing one follows the same path as everything else: for the area a user selects, Arnis queries OpenStreetMap for every mapped element, then looks up each element’s coordinates and type.</p>
+<p>If an element isn’t mapped, Arnis can’t place it. For structures too detailed for the map to describe, like the Statue of Liberty in New York, or Christ the Redeemer in Rio de Janeiro, Arnis converts 3D models into Minecraft blocks.</p>
+<p>As the sole maintainer, Louis reviews every pull request himself, and they stack up. He usually spends evenings or weekends working on Arnis, which means the community has to wait for him to be done with work for the day.</p>
+<p>He uses GitHub Copilot to get an overview of open issues and bugs from the latest release, see how many people are running into them, trace where a bug came from in the codebase, and create a fix. Since he brought AI into the project, he says, code reviews and documentation have both increased.</p>
+<p>I could delegate those annoying and boring tasks to Copilot, while I could still have a look at those really cool topics that are related to the development of it.</p>
+<p>Big features arrive as big pull requests.</p>
+<p>Louis opens a large pull request in the GitHub Copilot app for a first overview and a performance review, with Copilot running in the background looking for small changes that would cut memory usage or generation time.</p>
+<p>It takes just one wrong calculation in street lights, for example, to make the generation time of an entire city much slower.</p>
+<p>He also keeps a mental list of the areas of the codebase that need extra care whenever someone changes them, and he has written the same warnings out by hand over and over.</p>
+<p>I’m starting a few sub agents with the GitHub Copilot app to have a look specifically at those cases, and to come up with corner cases to test to make sure that we do not introduce any regressions into new releases.</p>
+<p>He likes that the terminal, his files, the code changes and the pull request all sit in one app next to the chat.</p>
+<p>Louis’s favorite use of Arnis is in schools, where teachers have generated their city or a neighborhood park.</p>
+<p>Some turn it into a contest: every student starts from the same generated area, improves a nearby park or playground using Arnis and Minecraft, and the class looks at the results together.</p>
+<p>Recent releases have gone beyond the bounds of Earth, adding the Moon and Mars. Louis wants Arnis to stay easy to use while getting closer to reality, with more detail in less time, and he would like to see it in more schools.</p>
+<p>Download Arnis from github.com/louis-e/arnis, pick a place on the map, choose where to spawn, and click Start Generation: within a few minutes, the world is ready to open in Minecraft. Louis suggests a place you know, like your hometown or somewhere memorable you’ve been, such as the Grand Canyon or Niagara Falls. Then look for what’s missing.</p>
+<p>So maybe you see a bench that was not generated even though it is there.</p>
+<p>Map it on OpenStreetMap, or tell Louis if it’s a bug and he will fix it.</p>
+<p>Discover how we built the open Agent Host Protocol to keep your agent sessions accessible across editors, apps, phones, and the cloud.</p>
+<p>Agent skills capture repeatable engineering work in files teams can review and reuse, while tools, project context, and permissions remain specific to the host that runs them.</p>
+<p>Introducing Replica and the Open Source Accessibility Framework, new open source projects for collaboration and inclusion.</p>
+<p>In the Codename MDASH pilot, GitHub and Microsoft turned thousands of raw AI findings into 99 checked, private reports with suggested fixes for six widely used open source projects. Maintainers have already fixed more than half.</p>
+<p>Git is releasing updates addressing six security vulnerabilities affecting clones, reference handling, merges, binary patches, and imports. Here is what users need to know.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://joshua.hu/fixing-google-feedburner-cache-problem-atom-rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/open-source/maintainers/arnis-turns-any-place-on-earth-into-a-minecraft-world/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

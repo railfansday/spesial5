@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>30yr-uptime</title>
+    <title>Reverse Engineering a Board Game</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9734.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,47 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>30yr-uptime</h1>
+        <h1>Reverse Engineering a Board Game</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
+            <img src="https://wuemeli.com/img/og-image.png" alt="Reverse Engineering a Board Game" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://wuemeli.com/img/og-image.png" alt="Reverse Engineering a Board Game" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Claude Code mod for taking care of your body
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/30yr-uptime?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1324133?app_id=339">Link</a>
-          </p></p>
+                <p>I recently received a game called âHitsterâ as a gift. Itâs a board game where you try to identify songs and guess things like when they came out, who the artist or band is, etc. Each card has a QR code that you scan using the Hitster app, which then plays the music through Spotify or Apple Music.</p>
+<p>Sadly, the app requires an Apple Music or Spotify subscription. In this blog post, Iâll go down the rabbit hole of reverse engineering the Android app and bypassing their very, very sloppy attempt at hiding the data.</p>
+<p>First, we need to understand how the game works.</p>
+<p>On the front of each card, youâll find the artist or band name, the year the song came out, and the song title. On the back, thereâs a QR code. Scanning it takes you to a URL with two things in its path: the gameâs region (DE in my case) and the card ID. The music then starts playing in the app or through Spotify.</p>
+<p>This means thereâs a mapping from Card ID â Spotify Track. There are also multiple card versions per region, so the card ID alone isnât enough to identify a song. Card ID 1 might be âWet Dreamâ in the UK, but âTage wie dieseâ in Germany.</p>
+<p>After getting the appâs APK from some sketchy Android APK download website, I used jadx to get the decompiled Java code.</p>
+<p>After digging around for a bit, I found a few JSON files under res/raw. One of them was named gameset_database_4.json, and it seemed to be encrypted.</p>
+<p>I ran a tool to identify the format, and it came back as Base64. Thatâs an encoding, so I decoded it first. The result still wasnât readable, and I guessed it was encrypted with AES or something similar.</p>
+<p>Iâd never reverse engineered an Android app before, so I just searched globally for AES. And guess what? There was a file called k43.java with the entire decryption process laid out in front of me:</p>
+<p>So letâs walk through this step by step.</p>
+<p>The function f takes two strings as inputs. The first, str, contains the Base64-encoded data, which it decodes:</p>
+<p>It then checks whether the decoded data is at least 28 bytes long:</p>
+<p>Next, it passes a bunch of data to the function o, which handles the final stage of decryption:</p>
+<p>The first argument is the first 12 bytes of the decoded data. Thatâs our IV, or nonce. The second argument is the entire decoded byte array.</p>
+<p>The third argument is where things get interesting. It takes the total length minus 28 and passes that, along with str2, to the function m. Those 28 bytes account for the 12-byte nonce and the 16-byte authentication tag.</p>
+<p>Inside m, the remaining length is converted to a string and joined with str2. That combined string is then hashed using SHA-256 to produce the AES key.</p>
+<p>So str2 isnât the AES key itself. Itâs the secret string used to derive it, and we havenât found it yet.</p>
+<p>It sets up AES-GCM with the derived key and nonce, then decrypts the data after the first 12 bytes.</p>
+<p>Thatâs the decryption process figured out. Now we just need the secret string.</p>
+<p>I was doing this in a Discord call in the Rust Language Community server, and someone pointed out that I should look for a byte array with a length of 32 bytes.</p>
+<p>I first searched for byte[32], but didnât find anything useful. I then tried this pattern:</p>
+<p>That led me to m17.java, which contained these two super cool arrays:</p>
+<p>We then tried to figure out how to turn these into something useful. After a bit of experimenting, someone suggested XORing the two arrays together. We interpreted the resulting bytes as text and got this:</p>
+<p>Using this string, I wrote a little decryptor in Rust:</p>
+<p>That gave us this awesome test.txt file with around 31,000 lines of mappings from card IDs to Apple Music and Spotify tracks, plus ISRCs, across multiple regions.</p>
+<p>We then looked around the code a little more and found out that all of this wasnât really needed.</p>
+<p>If weâd searched for an HTTPS URL first, we wouldâve landed on this:</p>
+<p>https://hitster.jumboplay.com/hitster-assets/</p>
+<p>https://hitster.jumboplay.com/hitster-assets/gameset_database.json</p>
+<p>There was the entire thing. No encryption.</p>
+<p>We spent around 18 hours chasing a file that, in the end, wasnât even a real secret.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/30yr-uptime" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://wuemeli.com/blog/reversing-hitster-game/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

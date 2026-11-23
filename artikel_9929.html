@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Beam: a 501B open model you can own, customize, and scale</title>
+    <title>GitHub availability report: October 2026</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9929.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,98 +15,143 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome Beam: a 501B open model you can own, customize, and scale</h1>
+        <h1>GitHub availability report: October 2026</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/reflection-beam/thumbnail.jpg" alt="Welcome Beam: a 501B open model you can own, customize, and scale" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://github.blog/wp-content/uploads/2025/08/wallpaper-generic-.png" alt="GitHub availability report: October 2026" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/reflection-beam/thumbnail.jpg" alt="Welcome Beam: a 501B open model you can own, customize, and scale" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://github.blog/wp-content/uploads/2025/08/wallpaper-generic-.png" alt="GitHub availability report: October 2026" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Beam by Reflection is out on Hugging Face! It is the first model from the new US lab, Reflection, and it’s open! It's a mixture-of-experts (MoEs) model with 501B parameters (23B active per token), supports text as input, has a context window of 1M tokens, and is released under the Apache 2.0 license.</p>
-<p>Beam is focused on coding and agentic use cases. It is for teams that want a frontier-scale model on their own hardware, infrastructure, or cloud, and want to customize it to their own use cases. Beam ships with its own dedicated open source Rust based harness that delivers the best performance from the model.</p>
-<p>Beam has a native transformers implementation, as well as downstream libraries like vLLM and SGLang. We’ve worked with the Reflection team to bring you inference, SFT (supervised fine tuning), and RL (reinforcement learning) recipes for you to build with this model for your needs. On top of day-0 support in transformers, SGLang and vLLM, this post shows you how to run it, how to post-train it, and what we built with it.</p>
-<p>Reflection is going to give out $10,000 Hub credits to the best projects that use Beam. All you have to do is make a thing, and share it on the Hub:</p>
-<p>If you build something with Beam, then share it on the Hub for a chance to win $10,000. All you have to do is build the space, model, or dataset repo and share it on the model’s repo page. We’ll collect all the links, select the best, and send out the credits to your Hub accounts.</p>
-<p>Beam is a text-only model built for long-context (1M context length) reasoning and agentic work. It is a sparse MoE model, where each token is computed by a small fraction of the network, so it runs at the speed of a much smaller model while keeping the capacity of a large one.</p>
-<p>The decoder has 52 layers with a hidden size of 5,120. Most layers use sliding-window attention over the previous 512 tokens; every sixth layer, and the last one, attend to the full context. That gives 43 sliding-window layers and 9 global ones.</p>
-<p>Inside the attention block (both layer types)</p>
-<p>The two kinds of layers handle position differently. Sliding-window layers use RoPE, since relative position matters most within a short window. Global layers use no positional encoding. Instead, each query is multiplied by a scaler that grows slowly with the number of visible tokens, (1 + (pos + 1) / 2048) ** 0.1. It acts as a temperature: the softmax keeps its precision as the context lengthens instead of flattening out. The implementation calls this scalable-softmax query scaling.</p>
-<p>Attention uses grouped-query attention with 48 query heads and 8 key-value heads, with RMSNorm on queries and keys. A learned sigmoid gate, computed from the layer input, scales every channel of every head before the output projection.</p>
-<p>The first 3 layers use a dense SwiGLU MLP. The other 49 replace it with a Mixture-of-Experts block of 256 experts, each a SwiGLU MLP with an intermediate size of 2,560, or about 39M parameters. The experts hold 98.4% of the model's parameters.</p>
-<p>The router follows DeepSeek-V3's group-limited scheme. It scores all 256 experts with a sigmoid, splits them into 8 groups of 32, keeps the 4 best groups (ranked by the sum of each group's top two scores), then picks the top 8 experts inside them. Beam uses the same group sizes as DeepSeek-V3 but no shared expert. Expert outputs are combined with normalized router weights and scaled by 2.5.</p>
-<p>Only 8 experts run per token, so the model computes each token with about 23B parameters. All 256 experts stay in memory, so deployment needs the memory of a 501B model but runs at the speed of a 23B one. The BF16 checkpoint is about 1 TB in safetensors format. The NVFP4 checkpoint stores most parameters in 4-bit precision for NVIDIA Blackwell GPUs, some parameters are kept in BF16 for accuracy. There are also FP8 checkpoints on the hub which are ideal for Hopper and Ampere series chips.</p>
-<p>If you want to deploy Beam yourself, check out the vLLM or SGLang recipes below.</p>
-<p>The residual connections are the most distinctive part. A standard transformer adds each sublayer output to the stream with weight 1, so the stream grows with depth.</p>
-<p>Beam counts the input embedding as step 1. At step k it adds the sublayer output with weight 1/sqrt(k) and keeps the existing stream with weight sqrt((k-1)/k). The squares of the two weights sum to one, so the stream stays at a constant scale from the first layer to the last. After all 104 additions, every sublayer output and the input embedding carry the same weight in the final hidden state.</p>
-<p>Every sublayer is also normalized before and after, and the final logits pass through a tanh softcap at ±30, computed in FP32. The implementation fixes where it computes in FP32: the router, the SwiGLU product, the norms, RoPE, the query scaling and the softcap.</p>
-<p>Hybrid attention works well for long contexts. Each layer caches 2 x 8 KV heads x 128 dims = 2,048 values per token. If all 52 layers kept every token, the cache would grow by 208 KiB per token. Only the 9 global layers keep the whole sequence. The 43 sliding-window layers hold a fixed 512-token window each and stop growing. So the cache grows by 36 KiB per token, roughly a sixth of the naive rate.</p>
-<p>These numbers are per sequence, in BF16, with the transformers dynamic cache.</p>
-<p>Here are the benchmark results across different precision levels, as provided by the Reflection team.</p>
-<p>The most practical way to serve the model is serving the NVFP4 checkpoint, which retains most of the quality of the bf16 checkpoint.  NVFP4 stores some weights in 4 bits, and this way, it shrinks the 501B parameters in BF16 from 1 TB to ~280 GB. Blackwell GPUs run NVFP4 natively but GPUs older than Blackwell like the H200 can't. The FP8 checkpoints are suitable for GPUs older than Blackwell.</p>
-<p>A B200 has 180 GB of HBM3e, so two of them (360 GB) can hold the Beam weights, with little room left for activations and the KV cache. Plan for four B200s (720 GB), which leaves plenty of room for long contexts and concurrent requests. You can also serve it on a full 8xB200 node, or on two B300s at 288 GB each, or even 8xRTX Pro 6000. If you don't have Blackwell hardware, use Inference Providers (serverless) to test Reflection.</p>
-<p>Beam comes with day-0 support in transformers, SGLang and vLLM.</p>
-<p>Install the latest version of transformers.</p>
-<p>The easiest way to run Beam is the text-generation pipeline:</p>
-<p>The pipeline returns the whole chat. The last message is Beam's reply, already parsed by the response template.</p>
-<p>Going one level lower, use AutoModelForCausalLM and AutoTokenizer.</p>
-<p>Beam's tokenizer carries a response template. parse_response reads it and turns the raw output into a message dict, with the reasoning, the answer, and any tool calls in separate fields. This avoids the usual regex for splitting reasoning from answers from tool calls. And the rules ship with the tokenizer, so the parsed structure matches what Beam was trained to produce. The chat template can pre-write part of the assistant turn, which the parser needs to see.</p>
-<p>Pass tools to parse_response as well. Beam writes tool-call arguments inline, in its own XML-style grammar, so a bare 7 could be a number or a string. With the tool schemas, the parser casts each argument to its declared type.</p>
-<p>Beam's config defines an expert-parallel plan. Expert parallelism puts each expert on one device. Attention, the dense layers, the embeddings and the LM head are replicated on every device. That is 8B parameters, or 16 GB in BF16. Load the model with a DistributedConfig:</p>
-<p>Launch the script with torchrun across 16 H200 GPUs. Each one then holds 78 GB of weights. With 8 GPUs each would hold 139 GB, which leaves no room on a 141 GB H200. The number of devices must divide the number of experts, 256.</p>
-<p>Beam has day-0 support in vLLM. The command below serves the BF16 checkpoint with tensor parallelism across 16 GPUs (two 8x H200 nodes) and exposes an OpenAI-compatible API:</p>
-<p>For faster generation, add DFlash2 speculative decoding. A small drafter model proposes up to 15 tokens ahead, and Beam checks them all in one forward pass, so each step can accept several tokens. The cost is a little extra memory for the drafter:</p>
-<p>Both commands start an OpenAI-compatible server, so you can point any OpenAI client at http://localhost:8000/v1. For additional serving configurations, see the proposed Beam recipe for vLLM.</p>
-<p>Beam also has day-0 support in SGLang. We recommend serving it with DFlash2 speculative decoding, which both commands below turn on. On Blackwell, the NVFP4 checkpoint fits on 4 B300s:</p>
-<p>On Hopper GPUs, use the FP8 checkpoint on 8 H200s instead. Only three flags change: the checkpoint, the tensor-parallel size (8 instead of 4), and the attention backend (fa3 instead of trtllm_mha, which needs Blackwell):</p>
-<p>Beam is available on Hugging Face Inference Providers, powered by Baseten, Fireworks, and Together, with more to follow soon.</p>
-<p>We’ve set up a Beam recipe for you to one click deploy in Inference Endpoints from the catalog in FP8 or NVFP4, or install with the hf cli like so:</p>
-<p>We are sharing some vibe evals of Reflection Beam-501B-A23B on five tasks, once each at low and high reasoning effort through the Reflection platform. These are vibe evals, not benchmarks. If you’re planning on using Beam, this is a great way to kick the tires and see how it behaves on specific use cases, and importantly, where it wins and loses.</p>
-<p>Below is an overview of the prompts we ran and the output traces from the hub. The complete inputs, outputs, API usage, task fixtures, graders and conversation traces are in this public Hugging Face bucket.</p>
-<p>* Low's long-context response got all code behavior and all six source citations correct. However, the response did not correspond to the parsers format, so this is partly prompt ambiguity.</p>
-<p>† Low returned the correct answer, but omitted the requested justification. High supplied a correct roots-of-unity proof, independently reviewed.</p>
-<p>Don’t take our word for it. Dig into the bucket, rewrite for your use case or project and push Beam to the limit.</p>
-<p>You can fine tune Beam for your own use cases. Here, we share some examples in TRL and Miles to get you started on supervised fine-tuning and reinforcement learning.</p>
-<p>The quickest way to adapt Beam to your own data is supervised fine-tuning with TRL's SFTTrainer. To keep memory manageable, we train LoRA adapters with PEFT rather than updating all 501B parameters:
-We used TRL’s SFTTrainer to adapt Beam to a simple goal: keep its reasoning in the language requested by the user. We fine-tuned on Multilingual-Thinking with LoRA, which trains a small set of adapter weights while keeping the base model frozen.</p>
-<p>The setup combines model sharding at load time, expert parallelism, FlashAttention 4 and sequence packing. LoRA SFT fits on a single node with 8 B300 GPUs, reaching around 19,000 tokens per second. The corresponding H100 setup uses four nodes.</p>
-<p>After one epoch of Multilingual-Thinking, Beam reasoned in the requested language on 16 out of 16 held-out prompts, compared with 3 out of 16 for the base model. This small evaluation measures language adherence, rather than the correctness of the reasoning itself.</p>
-<p>Training loss (left) and mean token accuracy (right) during a separate 500-step run on a reasoning subset of open-r1/Mixture-of-Thought, using one 8-GPU B300 node. These training metrics are from the official TRL example PR.</p>
-<p>Reflection and RadixArk built a recipe that trains the model with GRPO in Miles, in BF16. You can update the full model or use LoRA to train adapters while keeping the base weights frozen. Megatron trains, SGLang generates the rollouts, and Miles publishes the new weights to the rollout engines after each update. We reviewed the recipe.</p>
-<p>The recipe runs GRPO on DAPO-Math-17K and evaluates on AIME25. Build the image, download the data, and submit the job to a Ray cluster of twelve 8x H200 nodes:</p>
-<p>Sample: 32 prompts are passed to the model with 8 responses each. Two SGLang engines serve the rollouts on 16 GPUs each.</p>
-<p>Score: the boxed answer is checked against the label, with a soft penalty for responses near the length limit.</p>
-<p>Update: one optimizer step on all 256 samples. Group-relative advantages with truncated importance sampling, no KL or entropy penalty.</p>
-<p>Train in parallel: tensor parallelism 8, expert parallelism 8, data parallelism 8, with sequence parallelism and full recompute.</p>
-<p>Optimizer: Adam at a constant 1e-6. Gradients in BF16, master weights in FP32, moments in BF16. The optimizer state streams through node-local NVMe, so each trainer node needs 2 TB of scratch.</p>
-<p>Evaluate: AIME25 every five rollouts, eight samples per problem. A checkpoint is saved every twenty.</p>
-<p>The next rollout is generated while the current one trains, so responses are one update behind. Add --resume to continue from the last checkpoint. execute-colocate runs the same recipe on eight nodes, with every GPU training and serving in turn.</p>
-<p>You can also run GRPO with LoRA on four 8× H200 nodes: 16 GPUs for training and 16 for rollouts. The recipe trains rank-16 adapters on Beam’s attention, dense MLP, and expert layers while keeping the base weights frozen. Only adapter weights are synchronized with SGLang, and the optimizer state stays in GPU memory, removing the need for NVMe optimizer offloading.</p>
-<p>If you build something with Beam, then share it on the Hub for a chance to win $10,000. All you have to do is build a space, model, or dataset repo and share it on the model’s repo page. To inspire you, here are a few things we built.</p>
-<p>At Hugging Face we love open and local models that run native to their hardware, but building native apps on Mac can be hard! Let’s see if Beam can help us out.</p>
-<p>We asked Beam to build a native MacOS application that turns speech to text, and conveniently drops it at your cursor. We want to use MLX to get the most out of our Mac Metal and the Parakeet Model for great speech-to-text.</p>
-<p>We used Beam with the Pi coding harness to build the initial native macOS menu bar app, running Parakeet with MLX. The saved run includes follow-up prompts; the final source also includes later Codex repairs. The prompt above is a condensed version of the build requirements.</p>
-<p>You can check out the agent trace of how Beam built this in pi in this trace. If you want to try the demo out, download the source code or read the setup instructions.</p>
-<p>We wanted to see whether Beam could make faster progress by splitting a programming task across agents. We paired Beam with the open-source Pi coding agent and compared three setups: 1. one agent working alone, 2. five persistent peers collaborating through a shared Git repository, and 3. a lead agent delegating work to asynchronous subagents. The harness ran on Hugging Face jobs with inference through Reflection’s platform API.</p>
-<p>For the tasks, we used ProgramBench: agents must recreate a program from its compiled executable and documentation, without seeing its source code or the evaluator’s tests. Each setup had the same 8M API-token ceiling and two-hour solver limit per task, shared across its agents. We saved implementation snapshots and evaluated them against fixed hidden-test suites from the ProgramBench-Tests dataset.</p>
-<p>Our score-versus-latency plot shows the average fraction of tests passed. The time axis uses fixed reference rates for model tokens plus measured tool time, rather than elapsed wall time. We initially ran five tasks. The current figure shows a post-hoc subset of jq, xsv, FIGlet, and hexyl; ripgrep was excluded across all three setups because grading its saved artifacts was too slow. The published results retain all 15 original episodes.</p>
-<p>You can inspect the runs in the Trackio dashboard, explore the published result data, and reuse the study harness.</p>
-<p>Decision models are all the rage at the moment because they’re super fast and practical for many use cases. We started with Beam in Pi after Beam’s quota ran out to train and evaluate a custom decision model for developer incident triage.</p>
-<p>We wanted to see whether a coding agent could turn an incident-triage policy into a small, fast decision model. The task was to read a developer incident and choose the responsible team, its severity, and whether someone should be pinged immediately. Using Unsloth, we fine-tuned Qwen3.5-0.8B to score these choices directly.</p>
-<p>First, the workflow built a synthetic dataset containing 2.3k incidents split by incident cluster for training, calibration, and testing. We trained a LoRA adapter and decision head for three epochs, with a 4-bit backbone, on one H100 80GB on the Science Slurm cluster.</p>
-<p>For a baseline, we prompted the unadapted model with the full triage policy and ticket, without examples, and asked it to generate the three decisions as JSON. On the same 320 synthetic test tickets, the fine-tuned decision model got all three answers correct on 76.25%, versus 4.69% for prompted zero-shot. Mean ticket latency fell from 1,218.06 ms to 102.58 ms, an 11.9× speedup.</p>
-<p>If you want to try out this experiment for yourself, check out the artifact bucket which contains the data, code, checkpoints and results.</p>
-<p>Beam is a 501B open model that you can run on your own hardware and change. Start with the BF16 checkpoint, or try one of the quants FP8, NVFP4. If you build something with Beam, share it in the discussions tab.</p>
-<p>Show interactive benchmark results with downloadable data</p>
-<p>Well why don't you build something that can run on cunsumer GPU like Qwen 3.8 Flash Next for example using strata ?</p>
-<p>That’s a good question. Apart from large corporations, no one would be able to set up this model in a way that allows it to function properly—it requires 8 RTX 6000 graphics cards, which would cost around 150,000 euros in total.</p>
-<p>Thanks for sharing this! Small nit, but would you be able to add higher resolution diagrams for the model architecture figures? They come out pixelated for me (and possibly others) so I can't read the smaller annotations in the figures.</p>
-<p>This is a genuinely exciting release — 501B Apache 2.0 with 1M context is the kind of thing that makes "open" in open-source mean something again. The residual stream design with the 1/sqrt(k) weighting is a nice touch; it's the sort of architectural detail that makes a real difference at scale without being a headline feature.</p>
-<p>One question from the NLP side: the post focuses heavily on coding and agentic use cases, which makes sense for the target audience. But how does Beam handle multilingual text? I'm asking specifically because the 1M context window is exactly what you need for cross-lingual document understanding, and if the training data is skewed toward English + code, that's a gap that matters for non-English research communities.</p>
-<p>Also — is the training data or at least the data mixture documented? For a model this size under Apache 2.0, reproducibility of the training setup is part of the open-source promise, and I'd love to see it.</p>
-<p>Show interactive benchmark results with downloadable data</p>
+                <p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>Learn about artificial intelligence and machine learning across the GitHub ecosystem and the wider industry.</p>
+<p>Everything developers need to know about LLMs.</p>
+<p>Machine learning tips, tricks, and best practices.</p>
+<p>Explore the capabilities and benefits of AI code generation and how it can improve your developer experience.</p>
+<p>Resources for developers to grow in their skills and careers.</p>
+<p>Insights and best practices for building apps.</p>
+<p>Tips & tricks to grow as a professional developer.</p>
+<p>Learn how to move into your first professional role.</p>
+<p>Stay current on what’s new (or new again).</p>
+<p>Learn how to start building, shipping, and maintaining software with GitHub.</p>
+<p>Get an inside look at how we’re building the home for all developers.</p>
+<p>Discover how we deliver a performant and highly available experience across the GitHub platform.</p>
+<p>Explore best practices for building software at scale with a majority remote team.</p>
+<p>Get a glimpse at the technology underlying the world’s leading AI-powered developer platform.</p>
+<p>Learn how we build security into everything we do across the developer lifecycle.</p>
+<p>Find out what goes into making GitHub the home for all developers.</p>
+<p>Our engineering and security teams do some incredible work. Let’s take a look at how we use GitHub to be more productive, build collaboratively, and shift security left.</p>
+<p>Explore how to write, build, and deploy enterprise software at scale.</p>
+<p>Automating your way to faster and more secure ships.</p>
+<p>Guides on continuous integration and delivery.</p>
+<p>Tips, tools, and tricks to improve developer collaboration.</p>
+<p>DevOps resources for enterprise engineering teams.</p>
+<p>Learn why Gartner positioned GitHub as a Leader for the second year in a row.</p>
+<p>Keep up with what’s new and notable from inside GitHub.</p>
+<p>An inside look at news and product updates from GitHub.</p>
+<p>The latest on GitHub’s platform, products, and tools.</p>
+<p>Insights into the state of open source on GitHub.</p>
+<p>The latest policy and regulatory changes in software.</p>
+<p>Data-driven insights around the developer ecosystem.</p>
+<p>Learn how to use retrieval-augmented generation (RAG) to capture more insights.</p>
+<p>How open source is driving positive change.</p>
+<p>Organizations worldwide are incorporating open source methodologies into the way they build and ship their own software.</p>
+<p>Helpful tips on securing web applications.</p>
+<p>Learn about core challenges in DevSecOps, and how you can start addressing them with AI and automation.</p>
+<p>In October, we experienced eight incidents that resulted in degraded performance across GitHub services.</p>
+<p>We continue to share monthly updates on the work behind GitHub’s availability and reliability.</p>
+<p>The short version of October: we added substantial independently scalable Azure capacity and removed several ways that failures could escalate. However, write outages, monitoring gaps during data migrations, and a regional network disruption reinforced the need for capacity growth to be paired with safer operations, stronger isolation, and validated regional recovery.</p>
+<p>As of November 9, 140 of 151 production services and 32 of 50 MySQL primaries were running in Azure Central US. Azure served 63% of migrated-service reads, 66% of monolith reads, and 52% of Git reads. We also completed a compute expansion across all nine Central US Kubernetes clusters, more than doubling capacity.</p>
+<p>That capacity is already carrying real growth. Migrated-service traffic has increased 82% since March, with Central US absorbing the growth beyond the highest weekly-average load previously served from our existing datacenter. This gives GitHub more room to grow without pushing the original environment beyond its prior operating range.</p>
+<p>We also made several targeted reliability improvements. Actions changes increased capacity for critical Azure control-plane requests. A separate NAT-gateway mitigation reduced usage by 85%; four production jobs failed during the change, compared with approximately 800 expected without the mitigation. Connection limits and other client improvements now also reduce the chance that a dependency interruption becomes a broader reconnect storm.</p>
+<p>We removed concentrated sources of database load as well. A high-traffic GitHub Actions endpoint handling more than 250 million requests per day moved to a more efficient service path, reducing peak database reads by 85%. Requiring at least three characters before searching repository topics reduced slow or terminated queries for that pattern by approximately 98%.</p>
+<p>Reliability was still not where it needed to be. The October 7 write outages exposed an unsafe interaction between database orchestration and production routing. An October 29 Azure network disruption affected all three Central US availability zones and at least 34,128 signed-in users. More details on these and other incidents follow.</p>
+<p>The East US 3 buildout is about one week behind plan. The next phase starts with its first validated traffic ramp in the first week of December, while we continue hardening migration safety, dependency isolation, and regional recovery.</p>
+<p>The principle remains the same: availability, then capacity, then features.</p>
+<p>Duration: approximately 3 hours and 45 minutes.</p>
+<p>Customers may have seen GitHub Actions jobs on GitHub-hosted runners stay queued much longer than usual, and some workflow runs failed to start. During the worst stretch, which lasted about 90 minutes, most jobs on GitHub-hosted runners did not start within five minutes. Impact eased as we failed over to healthy regions and added capacity. Self-hosted runners were not affected. GitHub Pages sites that build with actions were slow to update, though existing sites continued to serve normally. Some customers also saw errors in repository lists, licensing and billing pages, and some Copilot features.</p>
+<p>Actions jobs stayed queued or failed to start because the service that assigns jobs to GitHub-hosted runners stopped working reliably. A partial networking failure on our cloud provider’s side disrupted some of the connections between one of our datacenter regions and the cloud-hosted databases that service depends on. Instead of failing fast, the service waited for those calls to time out. The waiting calls piled up until the service ran out of memory and restarted.</p>
+<p>Jobs then shifted to the same service in a healthy region, which did not have enough capacity for the extra demand and began failing too. At the same time, runners that went several minutes without receiving a job shut down and were slow to be replaced, so fewer runners were available to pick up jobs.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Duration: approximately 6 minutes of failed or slow requests across github.com, followed by approximately 3 hours and 30 minutes during which enterprise migrations were paused.</p>
+<p>Customers may have seen server errors or slow responses when signing in, working with repositories and pull requests, calling the API, or using GitHub Codespaces. Retrying a short time later would have succeeded, and delayed webhook deliveries caught up soon after. At the peak, about 1.3% of all requests failed or timed out, and about 6.4K organizations saw at least one failed or slow request.</p>
+<p>Migrations were paused for customers using GitHub Enterprise Importer, and were resumed once a fix was deployed.</p>
+<p>A surge in migration activity caused GitHub Enterprise Importer to send a burst of very large queries to a shared database. These queries took much longer than usual and, together with normal traffic, used all of the database’s available connections, preventing other github.com features relying on the same database from completing their requests.</p>
+<p>The importer did not reduce its load when the database became overloaded. The impact ended within minutes, once the importer finished its queued queries and the database’s connections were released.</p>
+<p>To prevent a recurrence, we paused migrations until we deployed a mitigation that runs these queries in smaller batches.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Duration: two separate write outages lasted approximately 10 minutes and 9 minutes, totaling about 19 minutes. The second was a recurrence of the first, with the same cause.</p>
+<p>Customers may have seen errors when pushing code, signing in, updating pull requests or issues, or making changes through the API. Webhooks, GitHub Apps and OAuth, actions, code scanning, codespaces, and Copilot were also affected. Viewing content was largely unaffected. Data that was already saved was not lost, and actions that failed during the outages succeeded when retried after recovery.</p>
+<p>Web and API request failures peaked at 8.9% in the first outage and 9.3% in the second, affecting more than 12,000 and more than 11,000 organizations, respectively. Some organizations may have been affected by both outages.</p>
+<p>During regular maintenance, we replaced machines that manage where database writes are sent. One new machine started with outdated records that still listed retired database servers. Once it was automatically elected leader, it published routing settings that sent writes for several core databases to those retired servers. Incorrect settings passed our existing validation and took effect immediately. Later, an automated maintenance task did not honor a pause on maintenance and triggered another election, and because the new machine had not yet been removed, it became leader again.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Duration: approximately 1 hour and 28 minutes.</p>
+<p>Customers may have seen delays in GitHub Actions workflow status updates, logs, and checks. About 5% of jobs on GitHub-hosted runners experienced delayed starts, a very small share of workflow runs failed, and some requests to the actions jobs REST API returned errors. GitHub Pages deployments and workflow and check webhook events generated by actions runs were also delayed. For part of this time, live updates on github.com and code search were degraded.</p>
+<p>An internal actions service that stores workflow logs and run status lost connections to some of its cache servers in one cloud region. Every server running that service then retried those connections at the same time. Together, those retries saturated the network connections between GitHub’s data center and that region, disrupting other services that use the same link.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Duration: approximately 6 hours and 46 minutes.</p>
+<p>Customers may have seen delays in pull request updates, GitHub Actions workflow status updates, and webhook deliveries. After a push, new commits were slow to appear on pull requests. Workflows triggered by the push started late. Status checks from actions workflows could look stuck on pull requests, which held up merges that require those checks to pass. These features recovered within about 2 to 3.5 hours.</p>
+<p>Audit log events were affected the longest. Recent activity took longer to appear when customers searched their audit logs, with delays of up to 1 hour and 50 minutes. Audit log events were fully caught up after about 6 hours and 46 minutes.</p>
+<p>Some webhook deliveries from this period may be missing from webhook delivery history, though the webhooks themselves were delivered.</p>
+<p>Some servers in our event streaming platform were close to their memory limits, and memory use on these servers grows with the number of client connections. When requests to these servers failed, new connections were opened immediately, which increased the number of connections and the memory they used. The increase in memory use slowed down and overloaded the servers.</p>
+<p>We took the overloaded servers out of service, and their traffic moved to other servers. Those servers then became overloaded too, and the problem spread to more servers over the following hour. We began rebalancing overloaded partitions onto brokers that had available capacity and this mitigated the issue.</p>
+<p>Audit logs took the longest to recover. The service that writes audit log events kept restarting on errors from the platform for more than two hours and fell further behind. Once stabilized, it could only write events at a limited rate, so the backlog took several more hours to clear.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Duration: approximately 1 hour and 32 minutes.</p>
+<p>Customers may have seen errors when using several GPT-family models in Copilot. Requests using these models in Copilot Chat in IDEs and on github.com, the Copilot CLI, Copilot code review, and the Copilot coding agent returned errors or did not complete. About one in 10 requests to the affected models failed. Other models continued to work, and choosing another model avoided the errors. Auto model selection reduced the errors by sending some requests to an unaffected model.</p>
+<p>Code scanning autofix and code quality, which are built on one specific model without an alternative model to switch to, were affected more heavily.</p>
+<p>Copilot reaches these models through an upstream model provider and uses a credential to authenticate with that provider. That credential became invalid, the provider began rejecting our requests as unauthenticated, and our service returned those rejections to clients as authentication errors. Copilot features that use these models send their requests through that provider, so they began failing at the same time.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Customers may have seen some requests to github.com hang for up to about 10 seconds and then fail with a server error. Pull request merges and Git operations over SSH and Git LFS were hit hardest. At the worst point, about 43% of merge attempts failed, compared with about 3.5% of API calls. Issues, GitHub Pages, notifications, and sign-in for GitHub Apps and OAuth apps also saw intermittent errors.</p>
+<p>A database connection pool used by many github.com services reached its limit, and for several minutes no connections were available. New requests that needed a connection waited until the connection timeout expired and then failed.</p>
+<p>The pool was already running near capacity when some update requests started holding their connections far longer than expected. Each one began writing a change, then ran a separate lookup that could take several seconds, keeping its connection reserved but unused the whole time. With little headroom, those held connections helped tip the pool over.</p>
+<p>How are we making incidents like this less likely or less impactful?</p>
+<p>Follow our status page for real-time updates on status changes and post-incident recaps. To learn more about what we’re working on, check out the engineering section on the GitHub Blog.</p>
+<p>In September, we experienced two incidents that resulted in degraded performance across GitHub services.</p>
+<p>In August, we experienced five incidents that resulted in degraded performance across GitHub services.</p>
+<p>Today, we laid out our vision for GitHub as the most comprehensive, end-to-end software delivery system in the world.</p>
+<p>See how a record year of growth reached every industry, every field, and every kind of builder in the 2026 Octoverse report.</p>
+<p>AI, agents, voice, and physical controls are shifting software development from operating tools to expressing intent—and helping developers stay focused on building.</p>
+<p>Everything you need to master GitHub, all in one place.</p>
+<p>Build what’s next on GitHub, the place for anyone from anywhere to build anything.</p>
+<p>Meet the companies and engineering teams that build with GitHub.</p>
+<p>Catch up on the key announcements shaping the future of software development.</p>
+<p>Discover tips, technical guides, and best practices in our biweekly newsletter just for devs.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/reflection-beam" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://github.blog/news-insights/company-news/github-availability-report-october-2026/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
