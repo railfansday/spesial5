@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>NixOS bring-up on an Alibaba RISC-V board</title>
+    <title>Nvidia Reinstates Jensen Huang As CEO</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9907.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,95 +15,146 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>NixOS bring-up on an Alibaba RISC-V board</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
+        <h1>Nvidia Reinstates Jensen Huang As CEO</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
+            <img src="https://a.fsdn.com/sd/topics/business_64.png" alt="Nvidia Reinstates Jensen Huang As CEO" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/business_64.png" alt="Nvidia Reinstates Jensen Huang As CEO" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In the process of scouring Alibaba for a cheap Versal devkit, I unexpectedly came into possession of a Zhihe Computing A210 RISC-V SoC.1</p>
-<p>It’s a cool board: there’s a ridiculous amount of IO exposed by the baseboard, not to mention 8 cores clocked at 1.9 GHz is nothing to sniff at for a RISC-V CPU.
-I’m not sure I could recommend buying any RISC-V SoC currently2, but all these distros that are starting to support RISC-V need to run tests somewhere that isn’t Spike/QEMU.</p>
-<p>I decided to make this board into a NixOS build server so I could learn more about the state of RISC-V support in NixOS and to get some practice in Linux bringup.</p>
-<p>My complete A210 NixOS configuration can be found here; I confirmed sound, HDMI, Bluetooth/Wi-Fi, ethernet, and the GPU were all working, but YMMV.</p>
-<p>Nix makes cross compiling to RISC-V a breeze:</p>
-<p>It really is that easy—building pkgs.hello will produce a bona fide RISC-V executable (you don’t even need a Nix file for one-off builds, just run nix build nixpkgs#pkgsCross.riscv64.hello).
-Some black magic in callPackage ensures that compile-time tools are built for buildPlatform and build artifacts are built for hostPlatform.</p>
-<p>In the process of compiling over a thousand packages I only ran into two issues: a problem with rust-bindgen using the wrong version of clang and ministream not being properly configured for cross compilation, neither of which was specific to RISC-V.</p>
-<p>That having been said, I did run into some pretty bizarre OOM issues for some of the heavy hitters like Clang and GFortran.
-I was seeing >9GB memory usage per linking process(!) when compiling from x86_64-linux, which will quickly exhaust all of your memory if you have max-jobs/cores set to sane values.
-I sidestepped this issue by temporarily nerfing build parallelism into oblivion and running the offending builds overnight:</p>
-<p>I don’t (yet) have access to a RISC-V remote Nix builder, but even if I did, it’s substantially faster to cross compile everything from my desktop.
-Cross compilation can get a little wonky with Nix flakes because you have to encode the buildPlatform in the output schema somehow, but nixosConfigurations does not allow nesting (nixosConfigurations.x86_64-linux-a210 is valid, but nixosConfigurations.x86_64-linux.a210 isn’t).</p>
-<p>My solution to this is to expose the relevant build artifacts of the NixOS configuration (ISO + flashing script) under packages.${system} by creating a “wrapper” NixOS configuration for each buildPlatform that extends nixosConfigurations.a210:</p>
-<p>This way nixosConfigurations is agnostic to buildPlatform, and cross compilation is straightforward—running nix build .#image on an x86_64-linux machine will use x86_64-linux as the buildPlatform, as one would expect.</p>
-<p>Ok, so the goal is to boot U-Boot FSBL -> OpenSBI -> U-Boot SSBL -> Linux -> NixOS userspace, using the vendor’s Buildroot scripts as reference.</p>
-<p>Using vendor forks of U-Boot/Linux/OpenSBI is a simple matter of overriding src and sprinkling in a few patches (almost always to fix compiler warnings that have been promoted to errors in the latest version of GCC/Clang in nixpkgs).
-All we really have to do is slot in the vendor kernel by setting boot.kernelPackages = pkgs.linuxPackagesFor pkgs.linuxA210;</p>
-<p>Armed with a bootloader and NixOS image, I plugged in the A210 to my MacBook and turned on Fastboot flashing mode, but to my dismay macOS refused to enumerate the device.
-Initially I figured the board was a lemon (due to it being a freebie and all), but I wasn’t ready to give up hope that easily.</p>
-<p>I pored over the datasheet looking for alternative boot methods, and I investigated using PD resistors to force QSPI boot (using NORbert in lieu of a real QSPI device) to bootstrap into Linux userspace, at which point I could flash the eMMC directly without relying on Fastboot.
-But before pulling out my soldering iron I decided to try plugging the board into a different computer, which instantly detected the board. D’oh!</p>
-<p>Ok, so Fastboot works3 and I’m able to load the flasher firmware and program eMMC (I based my Fastboot payload on openEuler’s A210 guide instead of the vendor’s script which flashes 7(!) different partitions), but after that I still got dead silence on UART.
-At this point I was pretty suspicious of my serial connection, so I decided to test it on a Pi Pico: lo and behold, it turns out leaving my BMP’s vRef pin floating was the culprit.</p>
-<p>After losing several hours and my dignity to the aforementioned skill issue, I was greeted with the following panic:</p>
-<p>Judging from the above register dump, something seems to be amiss with OpenSBI itself:</p>
-<p>This confirmed my suspicion that the illegal instruction was from an ISA extension (in this case, a vector instruction).
-Initially I didn’t understand why this occurred: why would a CPU trap on an instruction it supports?
-I consulted the ISA spec and discovered that executing a vector instruction without the vector context bits of the mstatus register configured properly will result in the exact illegal instruction exception that I was seeing.</p>
-<p>So roughly what was happening was the processor was context switching to OpenSBI where the vector context was not enabled, but certain operations like memset were optimized to use vector extensions because OpenSBI was compiled with -march=rv64gv.
-I conjecture that the vendor didn’t run into this issue because they compiled OpenSBI with a GCC toolchain that didn’t support vector instructions, but who’s to say?
-Backporting a patch that sets -march=generic did the trick, and now we’re making it into U-Boot stage 2.</p>
-<p>At this point I could boot Linux from eMMC manually, but I wanted to take the time to do things “right”.
-I prefer the more generic distro boot to the hard coded boot command the vendor came up with, so I decided to roll my own board header.</p>
-<p>Ok—now we’re able to get most of the way through the initrd before UART abruptly goes silent.
-Fortunately, the last message makes the problem pretty clear:</p>
-<p>It’s a bit of a hack, but I decided to set clk_ignore_unused on the kernel command line just to see if we could get more logs.
-Imagine my surprise when after reflashing, the board makes it all the way into NixOS userspace with no issues!
-Although I steeled my resolve to go spelunking in the device tree to find which clock was not marked as critical, I decided not to waste my time when I realized the vendor also sets clk_ignore_unused in their kernel cmdline. ¯\_(ツ)_/¯</p>
-<p>I would be remiss if I didn’t mention that running an old kernel in the current era of AI-assisted kernel vulnerability disclosures hitting LKML every other week does not exactly help me sleep better at night.
-I looked into backporting patches for Dirty Frag and co., but if the attacker has access to my tailnet I’m already cooked.</p>
-<p>So now that I can SSH in, we’re done, right?
-Well, the vendor explicitly advertises support for Vulkan/OpenGL ES, so I decided I couldn’t call this finished until I brought up the GPU.</p>
-<p>This requires support in both the kernel (a driver to talk to the actual GPU hardware) and in userspace (implementing a uniform interface like Vulkan over the device-specific API).
-For the former, The vendor opts to ship a kernel module with no source; a firmware blob (with a device tree to make sense of it) I can generally understand, but I don’t get shipping kernel modules, and here’s why:</p>
-<p>Kernel modules rely on the pertinent ABIs of the kernel being built against and the kernel the module will run on being nearly identical.
-If CONFIG_MODVERSIONS is set in your Kconfig (which it should be), the kernel will refuse to load a module if its vermagic (basically an ABI checksum) doesn’t match that of the running kernel.
-I’m using the vendor’s fork of Linux, so the vermagic matches exactly—so far so good.</p>
-<p>But comparing vermagics only checks for identical function prototypes; there are several Kconfig options that can change the size, alignment and layout of kernel data structures like struct module.
-Many of these are security or debugging related, and I’ve done enough kernel exploitation in my day to understand that there are good reasons to introduce this seemingly unnecessary binary incompatibility.</p>
-<p>The upshot is I can’t use the vendor kernel module unless I massage NixOS’s Kconfig into producing a kernel that passes Linux’s ABI compatibility smell checks.</p>
-<p>While searching for an alternative solution, I was pleasantly surprised to learn that my GPU is already supported in upstream Linux and Mesa!
-In my naïvety I thought “great, we’ll clone Linux 6.18, run make -M=$PWD/drivers/gpu/drm/imagination -C vendor-linux/lib/modules/6.6.0/build modules and we’ll have a perfectly compatible driver!”</p>
-<p>However, several changes in the DRM subsystem thwarted my attempt for a clean port, and in a fit of desperation (SLOP WARNING) I vibe ported the driver from the 6.18 kernel tree to an external module I could compile against the vendor fork of Linux 6.6.
-Adding a ton of code I did not write or understand is especially not good for software running with supervisor-level permissions; using this code feels like taping a “pwn me” sign to my back.</p>
-<p>If you’re following along, I want to emphasize that my slop driver is only for using the A210’s GPU, and if you chose to use it you should first sic your own clanker on the source to make sure I’m not punking you.4
-Alas, this is (in my opinion) still better than trying to use the prebuilt kernel module.</p>
-<p>I was getting a bit fed up with the “compile-nix copy-kernel hang” loop, so I took a few minutes to setup a MCP server for Ghidra.
-I then tasked Codex (without Daybreak) with comparing the vendor-supplied kernel module with the slop that was ported from newer Linux.</p>
-<p>The issue was identified and fixed within 3 minutes, whereas printk debugging and debugfs abuse got nowhere in several hours. 
-Static analysis for the win!</p>
-<p>After ironing out the kinks in the kernel side, we need to coax Mesa into letting us use it by setting PVR_I_WANT_A_BROKEN_VULKAN_DRIVER, after which we can successfully draw triangles!</p>
-<p>OpenGL-rendered spinning cube textured with a particular book cover</p>
-<p>HDMI capture of glmark2-es2-wayland running under Zink (context for texture)</p>
-<p>macOS USB support kinda sucks (I’ve encountered similar issues with the Altera USB-Blaster III); if a device isn’t detected, try a different computer.</p>
-<p>(In an attempt to update my USB drivers I made the generational fumble of updating to macOS 27, which makes Asahi Linux look stable in comparison.)</p>
-<p>Never assume something works just because you think it should (trust, but verify).</p>
-<p>The multitude of kernel configuration options makes kernel module API/ABI compatibility a pain; having source makes the problem tenable but still nontrivial.</p>
-<p>Overall, this was a fun (if not unexpected) project.
-I have fond memories of designing a OoO RISC-V CPU with all the bells and whistles during my time at uni, so this nerd snipe was particularly gratifying for me.</p>
-<p>It’s a bit of a shame that this machine won’t see a lot of use, but I anticipate that will change as RISC-V adoption continues to grow.
-Also, I am still flabbergasted that NixOS is completely slept on by SoC suppliers; I eagerly await the day NixOS will eat Yocto/PetaLinux/Buildroot’s lunch.</p>
-<p>I paid a frankly too-good-to-be-true price of $1.2k for an Alinx VD100, and so I was disappointed but not surprised when I instead received some random $300 RISC-V curio.
-Thankfully I was able to get a full refund and keep the board; I think the “scam” here is to write off the cost of excess inventory as misshipments instead of surplus. ↩︎</p>
-<p>I’m loathe to recommend a Microchip product, but the PolarFire SoC Discovery costs $130 and doubles as both a RV64GC SoC and an FPGA. ↩︎</p>
-<p>I couldn’t get the board to enter Fastboot mode after I flashed a bootloader, but this was fine because I could run fastboot usb 0 in U-Boot instead. ↩︎</p>
-<p>This is not to say you shouldn’t audit the other stuff too, but if you were pwned by something other than the PowerVR driver, at least you could take solace in the fact that a human (me) had the last laugh. ↩︎</p>
-<p>To call this GPU “dinky” would be an understatement; for comparison, my RX 6700 XT scores 26230 on the same benchmark. ↩︎</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>Double-dealing, circular financing, spy-schtupping man returns to helm the largest company on the stock market. I'm sure this will go well.</p>
+<p>Stockholder panic does not make for good decision making.</p>
+<p>I've worked with some of these. That made me very picky about which company I would work with. I even rescinded an offer at a pre IPO startup once I realized my new boss would be that kind of manager.</p>
+<p>A few years later I had a meeting with a sales team from that startup and I asked about that manager... he had quite the reputation of being a manipulator and impossible to work with.</p>
+<p>So those leveraged puts didn't pay out today, huh?</p>
+<p>Stockholder panic does not make for good decision making.This wasn't driven by stockholder panic. NVIDIA's stock has changed less in the past few weeks than the past few months. This was driven by what drives all power: friends in high places.</p>
+<p>Stockholder panic does not make for good decision making.</p>
+<p>This wasn't driven by stockholder panic. NVIDIA's stock has changed less in the past few weeks than the past few months. This was driven by what drives all power: friends in high places.</p>
+<p>Don't worry. The Department of InJustice has already received orders to look the other way and the YOB is going to sign a special XO protecting Nvidia and Jensen Huang from all lawsuits from pesky shareholders and disgruntled employees, including X-lovers of Huangs.</p>
+<p>But maybe it's the gruntled employees and depesky shareholders that Huang and Nvidia should still be scared of?</p>
+<p>(Of course I'm not trying to make any jokes about any YUGE cesspool formerly known as Twitter. That could be an Xjoke? But I saw a car</p>
+<p>The wrong turn was a decade ago. This is just the consequences playing out.</p>
+<p>This is outrageously corrupt behavior, and you should hold your manhood cheap for trying to normalize it.</p>
+<p>> I cannot think of another CEO of an American corporation, who facilitated massive sales of a strategic> good to a country specifically prohibited from receiving that good</p>
+<p>Arc ElectronicsVanguard InternationalHetran Inc.Global MetallurgyRigel Optics</p>
+<p>The list goes on. And if you consider the chain of events, I think the infamous Toshiba lathe is pretty adjacent if not exactly matching due to the nationality of the CEO.</p>
+<p>If you expand past CEOs there are lots more. Iran-Contra for example. Even the "father of the American revolution," Samuel Slater, was a British textile mill worker who purposely memorized British machinery designs and then popped off to the US to illegally duplicate them.</p>
+<p>He got honeypotted by a Chinese spy. There’s never been anything like it in the public domain.</p>
+<p>Nonsense. Obvious cover for moving chips to China.</p>
+<p>What? Nothing you said contradicts what I said. Alice Huang was a Chinese spy. He fucked her. That’s an absolutely classic honeypot, unless you’re supposing that Alice Huang’s status as a spy had no part to play in the fact that she fucked him, in which case you are more naive than I would have thought a human could be. And yes, I agree that Nvidia shipped chips to China via Megaspeed, and that Megaspeed was acting as cover for moving the chips. That was in China’s interests, in Alic</p>
+<p>Her being a spy or not is irrelevant because he wasn't tricked into anything.</p>
+<p>1. A honeypot is called a honeypot on the basis of the intent and methods of the spy, not the reluctance or otherwise of the target to act in a way that harms their state / entity’s interests2. You have no idea of whether Jensen Huang was or was not tricked, coerced or otherwise influenced by Alice Huang into acting in this way. You’re not inside his mind to know, and of course, neither am I or anyone bar him. He’s culpable in either case — whether he acted from malice or incompetenc</p>
+<p>I don't believe anything we were told about that, and I didn't take seriously anyone who does</p>
+<p>Clearly there has been a concerted effort to bismurch Jensen Huang's reputation. Accusations of him sleeping with a spy bases on sources who just saw a memo but aren't actually in the CIA. Anonymous stories about how he treats his executives suddenly appear on the front page of the New York Times.</p>
+<p>Stories about how his chips ended up in China or are used by Chinese AI companies appear even though the administration knew all about it and even arranged a deal where the US government got a 25% cut.</p>
+<p>It's not really "spying" or a national security risk of the administration is acquiescent in the whole affair. Sometimes spies are tolerated by governments just so they can in turn, spy on on the spies. Sometimes there are strategic considerations which make the spying issue of lesser importance.</p>
+<p>Why was he targeted? The national security issue / sex was how it was sold. The real reason possibly has to do with whether a few people can control our minds like an authoritarian regime. But they face obstacles su</p>
+<p>"My issue is picking one guy out of a crowd"</p>
+<p>He is literally alone at the top of the organizational structure. You are fully off your nut, whacko.</p>
+<p>What this guy did is pretty tame compared to the bad behavior that we tolerate from our top leaders nowadays. Actually we typically fire leaders who have undisclosed relationships and then don't reinstate them. Ask the *former* CEOs of bp, Intel, Nestle, and NBC just to name a couple.</p>
+<p>What this guy did is pretty tame compared to the bad behavior that we tolerate from our top leaders nowadays.</p>
+<p>Actually we typically fire leaders who have undisclosed relationships and then don't reinstate them. Ask the *former* CEOs of bp, Intel, Nestle, and NBC just to name a couple.</p>
+<p>- Circular financing - funding dubious start ups purely because they would buy Nvidia chips and drive up sales.- Exporting controlled hardware not just to China but ultimately to Russia, who are using it to kill Ukrainians.</p>
+<p>You think that's typical CEO behavior? I appreciate there's a lot about modern big business to be cynical about, hell most of the country appeared to be sympathetic to Luigi regardless of whether they felt his actions were right or not, but, no, most businesses are no</p>
+<p>Historically, fucking a spy is considered crossing the line, yes.</p>
+<p>Jensen Huang: firedSolution: donate $25 million to Trump's 'ballroom'</p>
+<p>Howard Lutnick: about to be firedSolution: donate $25 million to Trump's 'ballroom'</p>
+<p>The days of just being able to toss some gold bars are now past.</p>
+<p>Nvidia flat out says they had input from senior levels of the government.</p>
+<p>"Trump 'Made It A Priority' to Get Nvidia's Jensen Huang Reinstated"</p>
+<p>"[T]he president led a pressure campaign to get Huang his job back -- despite his alleged affair with a suspected Chinese spy."</p>
+<p>https://zeteo.com/p/trump-nvid... [zeteo.com]</p>
+<p>"[T]he president led a pressure campaign to get Huang his job back -- despite his alleged affair with a suspected Chinese spy."It pretty well sums up many aspects of Trump's second term: "For my [well-heeled] friends everything [for a donation], for my enemies the law." -Oscar Benavides</p>
+<p>"[T]he president led a pressure campaign to get Huang his job back -- despite his alleged affair with a suspected Chinese spy."</p>
+<p>It pretty well sums up many aspects of Trump's second term: "For my [well-heeled] friends everything [for a donation], for my enemies the law." -Oscar Benavides</p>
+<p>It’s amazing that you think that whether it was $25m or $2.5m will make a difference to how people view this. You just got your asses smoked in a mid-term where corruption was consistently a top 3 issue, and *this is what they meant*, bucko. Please please please keep doing more of it, as every bit you do means you’ll get a bigger kicking in the future.</p>
+<p>Howard Lutnick donated $25 million.https://www.the-independent.co... [the-independent.com]https://www.yahoo.com/news/pol... [yahoo.com]</p>
+<p>Brandon Lutnick, his son, donated $2.5 million.</p>
+<p>Also, 'ballroom' is in quotes for a reason. Trump is pocketing the money; taxpayers are paying for the construction.https://www.washingtonpost.com... [washingtonpost.com]</p>
+<p>There's no evidence that any secrets were leaked.</p>
+<p>It’s a national security disaster, but not in the way you describe. China would obviously always have been able to get hold of these chips and do a tear-down. That’s not hard. What’s hard is actually get production volumes of them, because those processes are hard and a tear-down doesn’t tell you everything. The problem was that actual production volumes of the chips got funnelled to China. That’s the issue.</p>
+<p>Treason against the United States, shall consist only in levying war against them, or in adhering to their enemies, giving them aid and comfort. No person shall be convicted of treason unless on the testimony of two witnesses to the same overt act, or on confession in open court.We are not at war with China, or anyone.  No matter how much I'd like to see Trump behind bars, treason will not be the reason. The same for Jensen. He was merely another idiot who, because of his status, gets a free pass.</p>
+<p>Treason against the United States, shall consist only in levying war against them, or in adhering to their enemies, giving them aid and comfort. No person shall be convicted of treason unless on the testimony of two witnesses to the same overt act, or on confession in open court.</p>
+<p>We are not at war with China, or anyone.  No matter how much I'd like to see Trump behind bars, treason will not be the reason. The same for Jensen. He was merely another idiot who, because of his status, gets a free pass.</p>
+<p>Neither has committed treason and people need to stop using that word.I disagree. People who are inclined to use that word should be encouraged to do so. It's the simplest, cleanest filter of who isn't worth the bother to pay any attention to.</p>
+<p>Neither has committed treason and people need to stop using that word.</p>
+<p>I disagree. People who are inclined to use that word should be encouraged to do so. It's the simplest, cleanest filter of who isn't worth the bother to pay any attention to.</p>
+<p>We are not at war with ChinaThat's not what the president said when he used emergency powers to bypass congress in his trade war.</p>
+<p>That's not what the president said when he used emergency powers to bypass congress in his trade war.</p>
+<p>As someone further up said, not even the Rosenberg's were tried for treason. It was espionage.</p>
+<p>Treason only occurs during time of war. That is what the Constitution says and that's what matters.  Trying to twist a meaning doesn't help the cause.</p>
+<p>Hegseth proved that nothing bad will happen.</p>
+<p>So, leaking corporate and national secrets to adversarial government is no longer grounds for termination or procsecution ?Well that one may or may not be grounds for termination. The actual investigation there is still underway so that very clearly means that wasn't the reason he was ousted.On the other hands it now appears breaking company policy on a corporate governance level no longer means it's grounds for termination... well... if you're buddy buddy with the president anyway. Most other CEOs didn't get their jobs back after they were caught with their dicks out.</p>
+<p>So, leaking corporate and national secrets to adversarial government is no longer grounds for termination or procsecution ?</p>
+<p>Well that one may or may not be grounds for termination. The actual investigation there is still underway so that very clearly means that wasn't the reason he was ousted.</p>
+<p>On the other hands it now appears breaking company policy on a corporate governance level no longer means it's grounds for termination... well... if you're buddy buddy with the president anyway. Most other CEOs didn't get their jobs back after they were caught with their dicks out.</p>
+<p>If you're smart, sell when it gets back up.  The AI money-go-round will not last much longer.</p>
+<p>So if a regular employee or middle manager did this they would straight up get fired, not to mention complete disregard to harassment law. So it's ok if you have money? And everyone else is ok with this because it improves their stock account. I get it money talks, if you let money talk long enough bag things happen.</p>
+<p>Nvidia will instalose all sexual harassment suits from now to eternity because the CEO and board have rubber stamped sexual harassment with this decision.</p>
+<p>I get that, and it's been much worse in the past (think roman empire) but don't you think we could be better than this? But we are boiling the frog in the water, at what point to elites get canned? It really comes down to the people, and everyone else is like "Oh I don't want my stock account to go down so let's get Jensen back" But this guy isn't just a loose cannon around women, Nvidia is like a stack of cards and he's the only guy that can stack it back up.</p>
+<p>So if a regular employee or middle manager did this they would straight up get fired, not to mention complete disregard to harassment law. So it's ok if you have money? And everyone else is ok with this because it improves their stock account. I get it money talks, if you let money talk long enough bag things happen.Great portmanteau there. Subtle....</p>
+<p>So if a regular employee or middle manager did this they would straight up get fired, not to mention complete disregard to harassment law. So it's ok if you have money? And everyone else is ok with this because it improves their stock account. I get it money talks, if you let money talk long enough bag things happen.</p>
+<p>It was a moral failing back when it became acceptable to grab women by the pussy.</p>
+<p>So is the rest of america, everyone doesn't want the bubble to pop, can one guy really stop that from happening?</p>
+<p>When a national security matter, treason, is left without any consequences, what poasible reason might there be for anyone to follow any laws ?</p>
+<p>A person that breaks rules by having secret affairs because no one is watching is very likely to break rules in business too when no one is watching. The real measure of a person is their conduct when they are not being watched.</p>
+<p>He lied directly to the board.He used company PR resources to lie to the shareholders in public requiring the company to publicly retract the statement.He exposed the company to criminal liability.</p>
+<p>Now that his personal affairs are (obviously) a thing of the past?(Unless ChatGPT predicts that there will be more in the future)</p>
+<p>Ever.Just like Muskie. Just like the dear leader.</p>
+<p>Huang could be absolutely riddled with security risks. It does not matter.</p>
+<p>IMHO, he was fired by the board because of security, and not because he broke the employee handbook with his other more pedestrian philandering.</p>
+<p>The almighty dollar, and a dollop of hero worship, will always win.</p>
+<p>(Oh, and the fact that potus has a decent amount of Nvidia stock doesnâ(TM)t hurt)</p>
+<p>Jensen Huang had at least three affairs he admitted to.</p>
+<p>NVidia's board unanimously accepted his resignation and unanimously declined his offer to come back.</p>
+<p>Senior levels of government applied pressure to take Jensen back, ignoring broken laws/rules/ethics</p>
+<p>NVidia's board would rather take him back than argue ethics or laws and lose money.  Wouldn't you?    Nvidia is only worth 4.01 trillion today (google "nvidia worth today"), how much could they afford to lose?</p>
+<p>Solution might be to implement less-corrupt politicians ... but where the hell will you find one of those?!?</p>
+<p>The French were always on the right side on matters like these.</p>
+<p>Nvidia corporation is on the Nasdaq stock exchange.While sophisticated investors can buy/sell options on NVDA and/or short sell shares of NVDA, normal people cannot do that.</p>
+<p>But anyone that thinks that bowing to a corrupt president's desire for his idiot friend to remain in power can do so:</p>
+<p>You can buy the Exchange Traded Mutual Fund that uses the symbol:NVD</p>
+<p>It is a x2 short, which means if NVDA goes down by 10% points, NVD is supposed to go up by 20%.   Obviously this also means if NVDA goes up by 20%, you wi</p>
+<p>Nvidia just demonstrated that they are not operating by standard business practices, and are vulnerable to (at least) peer pressure.</p>
+<p>Take your money out and put it somewhere saner. Even if the stock keeps going up, the company is worse than MS at this point.</p>
+<p>The board has just announced that they are okay with employees lying to the shareholders.</p>
+<p>Any actual capitalist should be running away as fast as they can  from such poor corporate governance.</p>
+<p>That alone is a massive risk right there. What a pathetic performance by those responsible.</p>
+<p>Only a few days ago they "rejected his offer to return"https://slashdot.org/story/26/... [slashdot.org]And now this...</p>
+<p>The US is officially an oligarchy, with the rich able to do anything and get away with it, because they have money.</p>
+<p>Once I have located where I left my shocked face, you can be sure I'll be wearing it.</p>
+<p>It's the AI bubble that's too big to pop - but it's only going to get bigger and it will pop eventually.</p>
+<p>"They not only need this, the majority of the company wanted it"Sounds like further reason to boycott the company.</p>
+<p>"It seems only parties that have no business with this company, at all, are the ones upset about his return."Doesn't seem like that at all, in fact anyone who supports law and order would be upset about it.  That's clearly not you, but then your post is almost certainly paid.</p>
+<p>"They not only need this, the majority of the company wanted it"Sounds like further reason to boycott the company.Go for it. Though it sounds like you were already doing that, so why would they care about your boycott versus the support seen from their employees, partners, shareholders, etc..?"It seems only parties that have no business with this company, at all, are the ones upset about his return."Doesn't seem like that at all, in fact anyone who supports law and order would be upset about it. ...But it DOES seem like that. Did you have business with them? Do you know of many that did have business with NVidia but are upset about his return? There are notable examples of employees, customers, and partners supporting his return to CEO. FWIW, I have no horse in this race.What does supporting law and order have to do with his</p>
+<p>"They not only need this, the majority of the company wanted it"Sounds like further reason to boycott the company.</p>
+<p>Go for it. Though it sounds like you were already doing that, so why would they care about your boycott versus the support seen from their employees, partners, shareholders, etc..?</p>
+<p>"It seems only parties that have no business with this company, at all, are the ones upset about his return."Doesn't seem like that at all, in fact anyone who supports law and order would be upset about it. ...But it DOES seem like that. Did you have business with them? Do you know of many that did have business with NVidia but are upset about his return? There are notable examples of employees, customers, and partners supporting his return to CEO. FWIW, I have no horse in this race.What does supporting law and order have to do with his</p>
+<p>"It seems only parties that have no business with this company, at all, are the ones upset about his return."Doesn't seem like that at all, in fact anyone who supports law and order would be upset about it. ...</p>
+<p>But it DOES seem like that. Did you have business with them? Do you know of many that did have business with NVidia but are upset about his return? There are notable examples of employees, customers, and partners supporting his return to CEO. FWIW, I have no horse in this race.What does supporting law and order have to do with his</p>
+<p>He wasn’t on trial, so whether uknowingly sleeping with a spy is a crime or not is irrelevant. It does, however, warrant being kicked out as CEO if you’re being specifically fucked by the spy *because you’re the CEO*.</p>
+<p>What is going on with these bizarre excuses for this behaviour all over Slashdot??</p>
+<p>Its the same excuses put out by various individuals since the worst man-baby to ever sit as president.  Its literally, as someone called it, "another tuesday."  The country is going through end-stage Roman Empire syndrome, and we're all just watching it go because there's literally nothing we can do about it.</p>
+<p>Of course there are things we can do. It's just that none of us are willing to do them.</p>
+<p>I know the point you’re making, but I think you are being rather too hasty in saying “no publicly known crime”. Publicly known is doing an awful lot of lifting under these circumstances.</p>
+<p>At minimum, all four of the following ought to be seriously investigated, but won’t be, because (t)reasons:1. Gross negligence (793(f)). Huang might have access to national-defence information through government contracts or defence-related work. If their negligence allowed that information to be comp</p>
+<p>It seems only parties that have no business with this company, at all, are the ones upset about his return.You know those "only parties" covers by far the overwhelming supermajority of the human population right? I mean I can pretty safely say that we're talking about 99.999% of people here, and that was assuming that the 100,000 who signed the letter were actually people rather than 1000 people and 99000 bots.</p>
+<p>It seems only parties that have no business with this company, at all, are the ones upset about his return.</p>
+<p>You know those "only parties" covers by far the overwhelming supermajority of the human population right? I mean I can pretty safely say that we're talking about 99.999% of people here, and that was assuming that the 100,000 who signed the letter were actually people rather than 1000 people and 99000 bots.</p>
+<p>First, I cannot read this article, "You have been blocked from The New York Times because we suspect that you're a robot. "</p>
+<p>U.S. intelligence agencies have also gathered evidence that Ms. Huangâ(TM)s business partner, Kang Wei, who was often introduced as her husband, worked with the same Chinese spy agency, the people said.</p>
+<p>Yet another NYT article that has zero facts. They've published quite a lot of them already.</p>
+<p>If the article is correct and Jensen is indeed under investigation, he must be f</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>US Intelligence Chief Predicts More Tech Outages As Systems Undergo Upgrades</p>
+<p>Anthropic's Safety-Conscious Corporate Culture Still Envisions Superintelligent AI</p>
+<p>Machines certainly can solve problems, store information, correlate,
+and play games -- but not with pleasure.
+		-- Leo Rosten</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://feyor.sh/blog/nixos-bringup-on-an-alibaba-riscv-board/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://slashdot.org/story/26/11/23/1545227/nvidia-reinstates-jensen-huang-as-ceo?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

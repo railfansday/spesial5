@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The Age of Machine Learning As Code Has Arrived</title>
+    <title>Opinion Classification with Kili and HuggingFace AutoTrain</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_11185.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,90 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The Age of Machine Learning As Code Has Arrived</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
+        <h1>Opinion Classification with Kili and HuggingFace AutoTrain</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/59_opinion-classification-with-kili/thumbnail.png" alt="Opinion Classification with Kili and HuggingFace AutoTrain" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/59_opinion-classification-with-kili/thumbnail.png" alt="Opinion Classification with Kili and HuggingFace AutoTrain" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Understanding your users’ needs is crucial in any user-related business. But it also requires a lot of hard work and analysis, which is quite expensive. Why not leverage Machine Learning then? With much less coding by using Auto ML.</p>
+<p>In this article, we will leverage HuggingFace AutoTrain and Kili to build an active learning pipeline for text classification. Kili is a platform that empowers a data-centric approach to Machine Learning through quality training data creation. It provides collaborative data annotation tools and APIs that enable quick iterations between reliable dataset building and model training. Active learning is a process in which you add labeled data to the data set and then retrain a model iteratively. Therefore, it is endless and requires humans to label the data.</p>
+<p>As a concrete example use case for this article, we will build our pipeline by using user reviews of Medium from the Google Play Store. After that, we are going to categorize the reviews with the pipeline we built. Finally, we will apply sentiment analysis to the classified reviews. Then we will analyze the results, understanding the users’ needs and satisfaction will be much easier.</p>
+<p>Automated Machine Learning is a term for automating a Machine Learning pipeline. It also includes data cleaning, model selection, and hyper-parameter optimization too. We can use 🤗 transformers for automated hyper-parameter searching. Hyper-parameter optimization is a difficult and time-consuming process.</p>
+<p>While we can build our pipeline ourselves by using transformers and other powerful APIs, it is also possible to fully automate this with AutoTrain. AutoTrain is built on many powerful APIs like transformers, datasets and inference-api.</p>
+<p>Cleaning the data, model selection, and hyper-parameter optimization steps are all fully automated in AutoTrain. One can fully utilize this framework to build production-ready SOTA transformer models for a specific task. Currently, AutoTrain supports binary and multi-label text classification, token classification, extractive question answering, text summarization, and text scoring. It also supports many languages like English, German, French, Spanish, Finnish, Swedish, Hindi, Dutch, and more. If your language is not supported by AutoTrain, it is also possible to use custom models with custom tokenizers.</p>
+<p>Kili is an end-to-end AI training platform for data-centric businesses. Kili provides optimized labeling features and quality management tools to manage your data. You can quickly annotate the image, video, text, pdf, and voice data while controlling the quality of the dataset. It also has powerful APIs for GraphQL and Python which eases data management a lot.</p>
+<p>It is available either online or on-premise and it enables modern Machine Learning technics either on computer vision or on NLP and OCR. It supports text classification, named entity recognition (NER), relation extraction, and more NLP/OCR tasks. It also supports computer vision tasks like object detection, image transcription, video classification, semantic segmentation, and many more!</p>
+<p>Kili is a commercial tool but you can also create a free developer account to try Kili’s tools. You can learn more from the pricing page.</p>
+<p>We will work on an example of review classification, along with sentiment analysis, to get insights about a mobile application.</p>
+<p>We have extracted around 40 thousand reviews of Medium from the Google Play Store. We will annotate the review texts in this dataset step by step. And then we’re going to build a pipeline for review classification. In the modeling, the first model will be prepared with AutoTrain. Then we will also build a model without using AutoTrain.</p>
+<p>All the code and the dataset can be found on the GitHub repository of the project.</p>
+<p>Let’s start by taking a look at the raw dataset,</p>
+<p>There are 10 columns and 40130 samples in this dataset. The only column we need is content which is the review of the user. Before starting, we need to define some categories.</p>
+<p>For the labeling part, we need to create a project in Kili’s platform at first. We can use either the web interface of the platform or APIs. Let's see both.</p>
+<p>From the project list page, we create a multi-class text classification project.</p>
+<p>After that, on the project’s page, you can add your data by clicking the Add assets button. Currently, you can add at most 25000 samples, but you can extend this limit if you contact the Kili sales team.</p>
+<p>After we create our project, we need to add jobs. We can prepare a labeling interface from the Settings page</p>
+<p>Although we have defined 4 categories, it is inevitable to come across reviews that should have multiple categories or completely weird ones. I will add two more labels (which are not to use in modeling) to catch these cases too.</p>
+<p>In our example, we added two more labels (Other, Multi-label). We also added a named entity recognition (NER) job just to specify how we decided on a label while labeling. The final interface is shown below</p>
+<p>As you can see from the menu at the left, it is also possible to drop a link that describes your labels on the Instructions page. We can also add other members to our project from Members or add quality measures from the Quality management pages. More information can be found in the documentation.</p>
+<p>Now, let’s create our project with Python API:</p>
+<p>At first, we need to import needed libraries</p>
+<p>(notebooks/kili_project_management.ipynb)</p>
+<p>In order to access the platform, we need to authenticate our client</p>
+<p>Now we can start to prepare our interface, the interface is just a dictionary in Python. We will define our jobs, then fill the labels up. Since all labels also could have children labels, we will pass labels as dictionaries too.</p>
+<p>We are ready to upload our data to the project. The append_many_to_dataset method can be used to import the data into the platform. By using the Python API, we can import the data by batch of 100 maximum. Here is a simple function to upload the data:</p>
+<p>It simply imports the given dataset DataFrame to a project specified by project_id.</p>
+<p>We can see the arguments from docstring, we just need to pass our dataset along with the corresponding column names. We’ll just use the sample indices we get when we load the data. And then voila, uploading the data is done!</p>
+<p>It wasn’t difficult to use the Python API, the helper methods we used covered many difficulties. We also used another script to check the new samples when we updated the dataset. Sometimes the model performance drop down after the dataset update. This is due to simple mistakes like mislabeling and introducing bias to the dataset. The script simply authenticates and then moves distinct samples of two given dataset versions to To Review. We can change the property of a sample through update_properties_in_assets method:</p>
+<p>Now that we have the source data uploaded, the platform has a built-in labeling interface which is pretty easy to use. Available keyboard shortcuts helped while annotating the data. We used the interface without breaking a sweat, there are automatically defined shortcuts and it simplifies the labeling. We can see the shortcuts by clicking the keyboard icon at the right-upper part of the interface, they are also shown by underlined characters in the labeling interface at the right.</p>
+<p>Some samples were very weird, so we decided to skip them while labeling. In general, the process was way easier thanks to Kili’s built-in platform.</p>
+<p>The labeled data is exported with ease by using Python API. The script below exports the labeled and reviewed samples into a dataframe, then saves it with a given name as a CSV file.</p>
+<p>Nice! We now have the labeled data as a csv file. Let's create a dataset repository in HuggingFace and upload the data there!</p>
+<p>It's really simple, just click your profile picture and select New Dataset option.</p>
+<p>Then enter the repository name, pick a license if you want and it's done!</p>
+<p>Now we can upload the dataset from Add file in the Files and versions tab.</p>
+<p>Dataset viewer is automatically available after you upload the data, we can easily check the samples!</p>
+<p>It is also possible to upload the dataset to Hugging Face's dataset hub by using datasets package.</p>
+<p>Let's use active learning. We iteratively label and fine-tune the model. In each iteration, we label 50 samples in the dataset. The number of samples is shown below:</p>
+<p>AutoTrain will try different models and select the best models. Then performs hyper-parameter optimization automatically. The dataset is also processed automatically.</p>
+<p>The price totally depends on your use case. It can be as low as $10 or it can be more expensive than the current value.</p>
+<p>The training is done after around 20 minutes, the results are pretty good!</p>
+<p>Now we can use this model to perform the analysis, it only took about 30 minutes to set up the whole thing.</p>
+<p>We will use Ray Tune and Hugging Face’s Trainer API to search hyper-parameters and fine-tune a pre-trained deep learning model. We have selected roBERTa base sentiment classification model which is trained on tweets for fine-tuning. We've fine-tuned the model on google collaboratory and it can be found on the notebooks folder in the GitHub repository.</p>
+<p>Ray tune is a popular library for hyper-parameter optimization which comes with many SOTA algorithms out of the box. It is also possible to use Optuna and SigOpt.
+We also used [Async Successive Halving Algorithm (ASHA) as the scheduler and HyperOpt as the search algorithm. Which is pretty much a starting point. You can use different schedulers and search algorithms.</p>
+<p>Let’s start with importing necessary libraries!
+(all the code is in notebooks/modeling.ipynb and google collaboratory notebook)</p>
+<p>We will set a seed for the libraries we use for reproducibility</p>
+<p>We can download the model easily by specifying HuggingFace hub repository. It is also needed to import the tokenizer for the specified model. We have to provide a function to initialize the model during hyper-parameter optimization. The model will be defined there.</p>
+<p>The metric to optimize is accuracy, we want this value to be as high as possible. Because of that, we need to load the metric, then define a function to get the predictions and calculate the preferred metric.</p>
+<p>After defining metric calculation and model initialization function, we can load the data:</p>
+<p>I also defined two dictionaries for mapping labels to indices and indices to labels.</p>
+<p>Now we can define the search algorithm and the scheduler for the hyper-parameter-search.</p>
+<p>We also need to tokenize the text data before passing it to the model, we can easily do this by using the loaded tokenizer. Ray Tune works in a black-box setting so I used tokenizer as a default argument for a work-around. Otherwise, an error about tokenizer definition would arise.</p>
+<p>Another utility function that returns stratified and tokenized Torch dataset splits:</p>
+<p>Now we can perform the search! Let’s start by processing the data:</p>
+<p>We performed the search with 20 and 40 trials respectively, the results are shown below. The weighted average of F1, Recall, and Precision scores for 20 runs.</p>
+<p>The weighted average of F1, Recall, and Precision scores for 40 runs.</p>
+<p>The performance spiked up at the third dataset version. At some point in data labeling, I’ve introduced too much bias to the dataset mistakingly. As we can see its performance becomes more reasonable since the sample variance increased later on. The final model is saved at Google Drive and can be downloaded from here, it is also possible to download via the download_models.py script.</p>
+<p>We can use the fine-tuned model to conduct the final analysis now. All we have to do is load the data, process it, and get the prediction results from the model. Then we can use a pre-trained model for sentiment analysis and hopefully get insights.</p>
+<p>We use Google Colab for the inference (here) and then exported the results to result.csv. It can be found in results in the GitHub repository. We then analyzed the results in another google collaboratory notebook for an interactive experience. So you can also use it easily and interactively.</p>
+<p>We can see that the given scores are highly positive. In general, the application is liked by the users.</p>
+<p>This also matches with the sentiment analysis, most of the reviews are positive and the least amount of reviews are classified as negative.</p>
+<p>As we can see from above, the model's performance is kind of understandable. Positive scores are dominantly higher than the others, just like the sentimental analysis graph shows.</p>
+<p>As it comes to the categories defined before, it seems that the model predicts most of the reviews are about users' experiences (excluding experiences related to other categories):</p>
+<p>We can also see the sentiment predictions over defined categories below:</p>
+<p>We won't do a detailed analysis of the reviews, a basic understanding of potential problems would suffice. Therefore, it is enough to conclude simple results from the final data:</p>
+<p>Important note about the plot: we haven't filtered the reviews by application version. When we look at the results of the latest current version (4.5), it seems that the interface of the application confuses the users or has annoying bugs.</p>
+<p>Now we can use the pre-trained model to try to understand the potential shortcomings of the mobile application. Then it would be easier to analyze a specific feature.</p>
+<p>We used HuggingFace’s powerful APIs and AutoTrain along with Kili’s easy-to-use interface in this example. The modeling with AutoTrain just took 30 minutes, it chose the models and trained them for our use. AutoTrain is definitely much more efficient since I spent more time as I develop the model by myself.</p>
+<p>All the code, datasets, and scripts can be found in github. You can also try the AutoTrain model.</p>
+<p>While we can consider this as a valid starting point, we should collect more data and try to build better pipelines. Better pipelines would result in more efficient improvements.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/the-age-of-ml-as-code" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/opinion-classification-with-kili" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

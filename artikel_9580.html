@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Dead-Letter Queues for Email Verification Webhooks</title>
+    <title>How Anonymized Queries and Unusual Search Patterns Distort Google Search Console Analysis</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9580.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,38 +15,37 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Dead-Letter Queues for Email Verification Webhooks</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-23</p>
+        <h1>How Anonymized Queries and Unusual Search Patterns Distort Google Search Console Analysis</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F4wqlz120cbij0dajvugh.png" alt="Dead-Letter Queues for Email Verification Webhooks" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://hackernoon.imgix.net/images/mwAtqiLCOoRDE1hRxKY8SlrMtqH3-x4836i9.png" alt="How Anonymized Queries and Unusual Search Patterns Distort Google Search Console Analysis" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F4wqlz120cbij0dajvugh.png" alt="Dead-Letter Queues for Email Verification Webhooks" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/mwAtqiLCOoRDE1hRxKY8SlrMtqH3-x4836i9.png" alt="How Anonymized Queries and Unusual Search Patterns Distort Google Search Console Analysis" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Email verification is often treated as a small REST API feature: create a token, send a message, and accept the callback. In production, the callback is a distributed-systems boundary. Providers retry, requests arrive out of order, and a valid message can become useless after its token expires.</p>
-<p>A dead-letter queue gives the service somewhere explicit to put deliveries that cannot be completed safely. It also makes failures inspectable without turning every retry into another chance to activate an account incorrectly.</p>
-<p>The webhook handler should not try to solve every problem synchronously. A provider may send a duplicate event, a downstream database can be briefly unavailable, or the message can refer to a verification token that has already expired. Treating all of those cases as HTTP 500 creates noisy retries. Treating all of them as HTTP 200 loses evidence.</p>
-<p>The endpoint can acknowledge receipt after it durably records the event. Processing then happens from a queue or worker. This keeps the public API small and makes the failure policy visible in code.</p>
-<p>Do not represent delivery with a single boolean such as processed. A small state machine is easier to query and safer to operate:</p>
-<p>Store the provider event ID, event type, received timestamp, attempt count, next attempt time, and the last error. Keep the original payload in a restricted column or object store with a retention limit. Signature material and access tokens should be redacted before logs are emitted.</p>
-<p>The provider event ID is the first idempotency key. If a sender does not provide one, derive a stable key from the verified event attributes, but document the collision tradeoff. A request ID alone is not enough because a retry normally has a new transport request ID.</p>
-<p>It is also worth separating the delivery record from the verification result. A delivery can be completed while the token is rejected because it was expired. That is a business outcome, not necessarily a failed webhook.</p>
-<p>The worker needs an atomic claim. PostgreSQL can provide it without a distributed lock:</p>
-<p>The unique index turns duplicate delivery into a harmless conflict. The lease prevents a crashed worker from holding an event forever. Keep the lease shorter than the provider's retry horizon and renew it only if processing genuinely can take longer.</p>
-<p>If completing the verification and recording an application event must be atomic, do both in one database transaction. For a separate message broker, use an outbox row in the same transaction, then publish the outbox record asynchronously. This is simpler to reason about than hoping two independent writes finish together.</p>
-<p>The service should also define what happens when a verification link is used twice. A consumed token can produce a stable already_verified result. It should not be reactivated merely because a webhook was delivered again.</p>
-<p>Retry policy belongs in the worker, not in the HTTP controller. Use bounded exponential backoff with jitter, and cap both the delay and the total attempts. For example, the delay can grow from seconds to minutes while a separate maximum age prevents an old event from being processed after its business meaning has gone stale.</p>
-<p>This function only schedules work; it does not decide whether an error is retryable. Make that decision from typed errors or explicit result codes. A signature failure, malformed JSON, or expired token is terminal; a connection reset or lock timeout can be retried.</p>
-<p>A Node.js worker should claim one event, process it with a timeout, and update the row in a finally path. If it dies, the lease expires and another worker can claim the event. Track lease recoveries because they can indicate a slow dependency or memory problem.</p>
-<p>A dead-letter queue is an operational inbox, not a second normal queue. Give each record a reason code, payload fingerprint, first-seen time, and a link to the relevant request trace. A review tool can offer three actions: mark resolved, replay after a human decision, or discard after retention requirements are met.</p>
-<p>When a test suite needs a throwaway email generator, make its mailbox lifecycle explicit in the fixture. A failed cleanup should not cause a worker to keep polling an inbox forever. Also, “tempail mail” is a common search typo, but it should remain plain text rather than becoming a misleading link.</p>
-<p>The main design decision is not whether to add a queue. It is deciding which outcomes are safe to repeat and which must stop. Once that contract is explicit, a REST API, PostgreSQL transaction, and small Node.js worker can make email verification predictable even when providers behave unpredictably.</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p>I am the founder of Groundwork (https://groundworkblog.com), on the economics of running a software business alone.</p>
+<p>I am the founder of Groundwork (https://groundworkblog.com), on the economics of running a software business alone.</p>
+<p>I am the founder of Groundwork (https://groundworkblog.com), on the economics of running a software business alone.</p>
+<p>On 3 November, my site's Search Console graph did something it had never done. Impressions jumped to 1,470 in a single day, against an average of 661 a day the week before. Two weeks later it happened again, bigger: 2,594 on 17 November and 3,138 on the 18th.</p>
+<p>I run a small publication of guides for people running a business alone. It is six months old. A spike like that, on a site that size, looks like the moment Google finally noticed you.</p>
+<p>I want to be careful here, because the first version of this story jumped to conclusions. Search Console tells you which queries showed your page and how often. It does not tell you who, or what, did the searching. So for each pattern below I have split what the data actually shows from what I think it means.</p>
+<p>What the data shows. Most of both spikes landed on two pages: a guide to bookkeeping software for freelancers and one on payroll software. The queries behind them follow a fixed sentence with words swapped in and out:</p>
+<p>Daily impressions for queries containing "to do bookkeeping for freelancers" or "payroll tools to pay a small team", against the whole site:</p>
+<p>Over 17 and 18 November, those two patterns made up 3,009 of the site's 5,732 impressions, 52%, and none of them were clicked. Most sat at positions 2 to 6. Each burst was over within three days. The grey part of the chart also rose on the 17th and 18th, so other queries contributed too; I have not traced those.</p>
+<p>What I think, but can't prove. People rarely search in a fixed sentence with one phrase rotated. Something generating query variations does: a rank-tracking or SEO tool, a scraper, or an AI system expanding one question into many searches. Search Console cannot tell me which, and I have no server-side evidence that would. What I can say is that these impressions came from no one who clicked, so they are not demand I should write for.</p>
+<p>What the data shows. Pages averaging positions 7 to 11 also showed long, conversational queries at positions 1 to 5. One, "how do bootstrapped founders build their first product?", had 62 impressions at an average position of 5.4 and no clicks in the 28 days to 5 November.</p>
+<p>What I think, but can't prove. One possible explanation is Google's AI Mode. Search Console counts AI Mode in the performance report, each follow-up question counts as a new query, and most AI Mode queries are anonymised, according to Search Engine Land's reporting on the change. Long questions ranking high with no clicks would fit a page being shown as a source inside a conversation. But nothing in my data labels a row as AI Mode, and the same pattern could come from the tools in Layer 1. I treat it as unexplained. The practical effect is real either way: a page's average position is pulled up by queries it is not really winning.</p>
+<p>What the data shows. In the 28 days to 5 November, the domain name was searched 227 times and clicked zero times. The impressions were spread across more than a dozen pages, not just the homepage.</p>
+<p>What I think, but can't prove. A person who types a site's name and sees it first usually clicks it. Zero from 227 makes me doubt these were people, but I have no way to confirm what produced them. If you measure "branded search lift" from your own data, count branded searches that end in a click, not branded impressions.</p>
+<p>What the data shows. Search Console only names some of the queries behind a page. For the pages I checked, named queries covered between 14% and 80% of each page's impressions. My best-performing page earned 20 clicks in 28 days, and every one of them came from queries Search Console did not name. When I filtered out the templated patterns with a "query does not contain" filter, that page's 20 clicks dropped to zero, because a query filter also removes the anonymised rows.</p>
+<p>What this means. This one is not inference; it is how the filter behaves: if you clean data with query filters, check page totals before and after, or you will delete real traffic along with the noise.</p>
+<p>What the data shows. The page-level view said three articles sat on page one with weak click-through rates. At query level, two of them had almost no named demand behind that position, and the third ranked 11th for its main term.</p>
+<p>What I decided. A title rewrite would have changed nothing, so I did not do one. My own click data since launch, 120 clicks, shows why position matters more than titles at this size: positions 1 to 3 earned 2.15% of impressions as clicks, 4 to 10 earned 0.65%, 11 to 20 earned 0.22%, and 21 to 50 earned 0.19%. That is a small sample from one site, so I read it as a direction, not a rule. I added internal links to the two pages with the most named searches close to page one instead.</p>
+<p>The spikes were the least important thing in the data. The useful part was what they forced me to separate: what Search Console records, and what I was tempted to read into it.</p>
+<p>Your MRR Has a Ceiling, and Churn Sets It</p>
+<p>I am the founder of Groundwork (https://groundworkblog.com), on the economics of running a software business alone.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/kevindev27/dead-letter-queues-for-email-verification-webhooks-4b96" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-anonymized-queries-and-unusual-search-patterns-distort-google-search-console-analysis?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
