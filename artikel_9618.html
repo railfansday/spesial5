@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Feature Flags at Scale: Architecture, Consistency, and Reliable Rollouts</title>
+    <title>Pinned</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9618.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,31 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Feature Flags at Scale: Architecture, Consistency, and Reliable Rollouts</h1>
+        <h1>Pinned</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/owFqON8OZ0aDm0LXUQKDkHTHaIq2-qi83e1b.png" alt="Feature Flags at Scale: Architecture, Consistency, and Reliable Rollouts" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/owFqON8OZ0aDm0LXUQKDkHTHaIq2-qi83e1b.png" alt="Feature Flags at Scale: Architecture, Consistency, and Reliable Rollouts" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Feature flags turn deployment into a reversible control decision rather than a one way release event. At small scale, that can look like a boolean wrapped around a new code path. At production scale, the mechanism becomes a distributed control system. Configuration has to propagate quickly, evaluation has to stay fast and available during network failures, targeting has to be deterministic, and every rollout has to be observable enough to stop before a partial regression turns into an incident across the whole fleet. OpenFeature describes flags as runtime decisions that can support canaries, experiments, degradation controls, and targeting based on context without a redeploy, and mature platforms separate flag management from evaluation at request time.</p>
-<p>The most important scaling boundary is the separation between a control plane and an evaluation plane. The control plane stores flag definitions, targeting rules, rollout percentages, audit data, and administrative state. The evaluation plane answers the application’s immediate question, which is which variation applies to this request. A synchronous network call from every request to a central flag service makes that service part of the application’s latency and availability budget, so production grade SDKs usually cache configuration and evaluate locally. LaunchDarkly documents server side SDKs that retrieve flag state, keep it in memory, and evaluate locally. Unleash similarly describes backend SDKs that cache configuration and apply activation strategies inside the application process.</p>
-<p>The resulting application code should stay intentionally boring. Flag evaluation belongs near the decision point, while business behavior stays in ordinary methods.</p>
-<p>The fallback value is not cosmetic. LaunchDarkly states that an SDK returns the fallback defined by the application when initialization has not finished, the flag is missing, or initialization fails. After a successful initialization, cached state can keep serving evaluations during a loss of connectivity. That behavior makes flag evaluation a local dependency with remote configuration, rather than a remote dependency on every transaction.</p>
-<p>Percentage rollout sounds probabilistic, but randomness on every request is usually the wrong implementation. A customer sent to the new checkout on one request and the old checkout on the next ends up with inconsistent state, noisy metrics, and hard to debug behavior. Mature systems instead hash a stable targeting key into a bucket and compare that bucket with the rollout threshold. OpenFeature explicitly defines a targeting key that identifies the subject of an evaluation, and notes that providers may require it for fractional evaluation. Unleash documents the same stability property and calls it stickiness. Raising a rollout percentage keeps the users already included and adds new ones, as long as the grouping input and context stay stable.</p>
-<p>A simplified implementation captures the core idea without vendor specific behavior.</p>
-<p>A threshold of 500 basis points exposes roughly five percent of the keyed population, and the same customer stays in the same cohort across requests. The exact hashing algorithm matters because changing it reshuffles exposure. LaunchDarkly and Unleash both treat cohort stability as part of rollout semantics, so hashing inputs and algorithm versions should be handled as compatibility sensitive data rather than incidental implementation details.</p>
-<p>A safe flag system needs two properties that pull against each other. Configuration changes should arrive quickly, yet a temporary loss of the configuration service should not break request processing. Streaming updates are a common answer. LaunchDarkly documents a model in which SDKs load current state, keep a streaming connection open, and receive incremental targeting changes. If the connection drops, the SDK keeps the last known flag values while it tries to reconnect. Unleash uses local caches with periodic configuration refreshes and accepts a short propagation delay in exchange for local evaluation and resilience.</p>
-<p>That design creates an explicit consistency model. Flag configuration is not instantaneous everywhere. It is eventually propagated to evaluators. The operational question becomes whether stale configuration is safer than unavailable evaluation. For most release flags, the last known good state is preferable because it preserves behavior that was previously valid. For emergency kill switches, propagation latency becomes part of incident response design, so streaming, edge relays, or tightly tuned refresh intervals may be justified. Martin Fowler’s distinction between release toggles and operational toggles reinforces this difference. Operational controls need much faster reconfiguration because their whole purpose is a rapid response in production.</p>
-<p>A percentage slider alone does not make a rollout safe. Exposure should be tied to health signals that can halt further expansion or trigger a rollback. AWS AppConfig formalizes this pattern through deployment strategies with growth rates, deployment windows, bake times, and CloudWatch alarms. An alarm during a deployment can automatically restore the previous configuration. LaunchDarkly also documents guarded rollouts that monitor selected metrics and can roll back when they detect a regression.</p>
-<p>The architectural implication is significant. Evaluation telemetry has to carry enough identity to connect application outcomes to flag decisions. OpenFeature’s observability guidance maps evaluation details such as the flag key and variant into telemetry attributes, and its hook model allows logging or telemetry logic around the evaluation lifecycle. At scale, this makes it possible to compare error rate, latency, saturation, conversion, or business specific failure metrics between exposed and unexposed cohorts without scattering custom instrumentation across every call site.</p>
-<p>Feature flags reduce release risk by adding temporary branches to production code, but those branches are not free. Every long lived flag increases the number of possible runtime states and adds to testing, debugging, and operational complexity. Fowler explicitly describes flags as inventory with a carrying cost and recommends actively retiring flags that are no longer needed. The distinction matters because a release flag that survives long after full rollout quietly becomes permanent architecture.</p>
-<p>A platform that scales therefore needs lifecycle metadata as much as targeting metadata. Ownership, creation time, intended removal date, rollout state, and last evaluation time let automation find stale flags and keep cleanup from becoming optional maintenance. Static analysis can locate flag keys in the source, while runtime telemetry can identify flags that are always true, always false, or no longer evaluated. The final removal should delete both the dead branch and the remote configuration so the codebase returns to a single authoritative path.</p>
-<p>Feature flags scale safely when they are treated as a distributed release control system rather than as scattered conditionals. The strongest architecture keeps evaluation local at request time, propagates configuration asynchronously, assigns cohorts deterministically, survives control plane failures with explicit fallbacks, ties rollout progress to production telemetry, and retires temporary branches once the release is complete. Those properties separate a convenient toggle mechanism from reliable production infrastructure. At sufficient scale, the central design goal is not only the ability to turn functionality on and off. It is the ability to change production exposure quickly while preserving latency, consistency, observability, and reversibility under failure.</p>
-<p>Distributed Locks Are More Dangerous Than They Look</p>
+                <p><p>
+            Ask the city where to go tonight with your friends
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/pinned?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1328434?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/feature-flags-at-scale-architecture-consistency-and-reliable-rollouts?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/pinned" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

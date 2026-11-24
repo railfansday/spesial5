@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
+    <title>QCon San Francisco 2026: Securing AI Agents in Production</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9796.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,67 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Rebuilding AUTOMATIC1111 with Gradio Workflow</h1>
+        <h1>QCon San Francisco 2026: Securing AI Agents in Production</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://res.infoq.com/news/2026/11/qcon-ai-agent-security/en/headerimage/header-1795213847070.jpeg" alt="QCon San Francisco 2026: Securing AI Agents in Production" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://res.infoq.com/news/2026/11/qcon-ai-agent-security/en/headerimage/header-1795213847070.jpeg" alt="QCon San Francisco 2026: Securing AI Agents in Production" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our last post, we built five small gr.Workflow graphs and hinted at what it would take to build something as complex as AUTOMATIC1111's stable-diffusion-webui. In this post we walk you through Workflow1111, where we have rebuilt most of AUTOMATIC1111's feature set as a single workflow canvas.</p>
-<p>Workflow1111 is a graph of eleven media pipelines built using seventy-three nodes. It brings together SOTA models for text-to-image, hi-resolution fix, image-to-image, prompt-matrix grids, VLM interrogate, detection-to-inpaint masks, ControlNet-style annotators, background removal, PNG Info storing, and image-to-video.</p>
-<p>You can run any of these pipelines by signing in with your Hugging Face account or providing an access token. Once you sign in, the model calls use your own quota.</p>
-<p>👉 Try Workflow1111, or duplicate the Space and start rewiring it for your own use case.</p>
-<p>All the media pipelines are built from the same four operator kinds covered in our last post and the official guide. Each node on the canvas wraps one operator, and the operator's inputs and outputs become the ports you connect edges to. As a quick reference on our four operator kinds: fn is a Python function, model is a model called through InferenceClient, space is another Gradio Space, and dataset is a row from a Hub dataset.</p>
-<p>Let's go through the pipelines one by one.</p>
-<p>This is the core pipeline. It has the controls you'd expect from A1111's txt2img tab: negative prompt, steps, CFG, seed, width and height, plus a model_id field for choosing the checkpoint. The prompt goes through a prompt-builder fn node first, which appends the selected style preset and cleans up the text, then into a model node that calls the checkpoint through Inference Providers. A post-process fn node writes the generation parameters into the PNG's metadata on the way out, which is what the PNG Info pipeline reads back later.</p>
-<p>In Automatic1111, hi-resolution fix first upscales the txt2img output and then runs a second denoising pass. Here it's a two-node detour instead. The text-to-image result goes into a FLUX.1-Kontext model node with a refine instruction ("enhance fine detail and micro-texture, keep the composition identical") and comes back sharper and larger.</p>
-<p>That same Kontext node doubles as the image-to-image tab. Upload an image, describe the change you want, and it returns the edited image.</p>
-<p>Start with a rough prompt like "A lighthouse in a storm." This pipeline sends it to a Qwen3-4B model node, and a small fn node turns the reply into a clean list of tags, capped at forty: "stormy sea, wet rocks, dramatic composition, low angle shot, volumetric lighting, ominous tone." You can connect any diffusion model node to this output to render the image.</p>
-<p>There's no custom node involved, unlike in ComfyUI. In a Gradio workflow the LLM and the diffusion model are both ordinary model operators on the same canvas.</p>
-<p>This is like AUTOMATIC1111's Interrogate button, with a VLM doing the interrogating instead of CLIP. Qwen2.5-VL looks at a night-market photo and writes a prompt that could have produced it. A ViT classifier node reads the same image and returns labels: restaurant 51.9%, tobacco shop 15.6%, toyshop 9.1%.</p>
-<p>Both nodes use the same image input, so gr.Workflow runs them in parallel and you get both answers in roughly the time it takes to run one.</p>
-<p>AUTOMATIC1111 makes you paint an inpaint mask by hand. This pipeline generates one from a detector instead. DETR finds six objects in a street photo (three people, a dog, a bicycle, and a car), and from there the workflow splits into two branches: one draws the detected boxes on the original image, the other turns them into a mask you can feed into an inpaint pipeline downstream.</p>
-<p>The drawing and the mask creation both happen locally with Pillow and NumPy. Only the detection call leaves the machine.</p>
-<p>This is like AUTOMATIC1111's prompt matrix. A base prompt, "a lone oak tree," gets combined with four suffixes (at sunrise, in a thunderstorm, under the Milky Way, in autumn fog) by a fn node, and each variant goes to its own text-to-image node. A final node stitches the four results into one contact sheet.</p>
-<p>gr.Workflow has no loop operator, so the four text-to-image nodes sit side by side on the canvas. Since they're at the same dependency depth they run in parallel, and all four images start generating at once.</p>
-<p>This is like the Extras tab in Automatic1111. There are two upscaler nodes, and they take different routes. The first is a local Lanczos resample in an fn node, which needs no network call and finishes as fast as Pillow can resize. The second is AuraSR ×4, and it's the first space node on the canvas: it calls a Space on the Hub and treats the result like any other node output.</p>
-<p>Background removal works the same way. BRIA RMBG-2.0 is another space node, so the whole model lives in its own Space and this canvas just calls it in.</p>
-<p>Canny, line art, sketch, luma-depth, and posterize are the preprocessors you'd normally get from the ControlNet extension in Automatic1111. Here, each one is a fn node written in plain NumPy, with no model behind it. On a pre-loaded example photo of a building facade, each annotator takes about half a second on CPU.</p>
-<p>There are 36 operator nodes in the app, 32 are fn nodes, and 22 of those run entirely in-process without a network call. Roughly two-thirds of the canvas keeps working if you lose your connection. Since these are regular Python functions, you can also test them directly, with no canvas, server, or GPU involved.</p>
-<p>AUTOMATIC1111 stores generation details in the PNG's parameters text chunk, and the PNG Info tab reads them back. Workflow1111 does the same. The post-process node on the text-to-image pipeline writes the metadata, and this pipeline reads it back out, including the prompt, negative prompt, steps, CFG, seed, image size, and model.</p>
-<p>The image node that PNG Info reads from also feeds a Wan 2.2 I2V A14B node, which animates it; in the demo example a sleeping fox wakes up and starts moving. There's no second upload box because one reference node can feed as many downstream pipelines as you need, so a single upload gets its metadata read and gets animated on the same canvas.</p>
-<p>So far every model call has gone to someone else's hardware, through Inference Providers or a Space. That's why you can build and run something like Workflow1111 without a GPU of your own.</p>
-<p>A fn node is just Python, though, so it can equally load a model locally and run it on your own GPU. FastVideo/fastvideo-fasth3-preview is a gr.Workflow app that does exactly that. It runs FastH3, a four-step distillation of MiniMax-H3, and generates video with a soundtrack on ZeroGPU.</p>
-<p>The whole app comes down to one bound function:</p>
-<p>ZeroGPU gives the function a GPU when it needs one, then releases it when the call is done. gr.Workflow doesn't need to know about any of that. It just calls the fn node.</p>
-<p>This isn't specific to Spaces either. Point bind= to a function that loads a local checkpoint, run .launch() on your own machine, and the Workflow1111 canvas can drive your own GPU.</p>
-<p>Every output node on the canvas becomes a REST endpoint, with no routes written by hand. Workflow1111 exposes nine of them: /image, /edited_image, /generated_prompt, /recovered_prompt, /detected_objects, /x_y_grid, /upscaled_local, /annotator_map, and /png_info.</p>
-<p>The same endpoints are also MCP tools. Launch with mcp_server=True (guide) and every output node shows up as a tool an AI assistant can call. Point Claude Code, Cursor, or any MCP client at the server URL:</p>
-<p>Now an agent can generate an image, read a prompt back out, or run detection as steps in a larger task, with no glue code. Each caller sends their own token in the X-HF-Token header, so the Space holds none of its own.</p>
-<p>AUTOMATIC1111 gave us the feature list, but the tool Gradio Workflow really gets compared to is ComfyUI, since both are node graphs. For a lot of what people want to build and ship, gr.Workflow covers the same ground.</p>
-<p>The result is a multi-model pipeline that people can open in a browser, sign into, use right away, and call from code.</p>
-<p>Workflow1111 has 73 nodes, but it started with just this:</p>
-<p>bind= turns your functions into nodes, edges= connects them, and .launch() opens the canvas in your browser so you can keep editing there. When it's ready, gradio deploy puts the whole thing on a Space. The gr.Workflow guide has the full details, including the JSON schema and every operator type.</p>
-<p>If you'd rather start from something that already works, open Workflow1111, hit Duplicate, and pick one of the eleven pipelines to change: delete nodes, swap models, rewire the flow. If you'd rather start smaller, the previous post has five workflows you can get running in about a minute each.</p>
-<p>Whatever you build, post it on X and tag @gradio. We'd be happy to amplify your workflows.</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
-<p>Really impressive breakdown the part that stands out most is how the graph structure gives you free parallelism (the prompt-matrix and interrogate examples) without any extra orchestration code. The mix of fn, model, and space node types on one canvas also makes the ComfyUI comparison land well: you get custom-node flexibility from plain Python, but zero-code REST/MCP endpoints for free. Curious how complex a canvas can get before performance or maintainability becomes a concern has anyone pushed past 73 nodes</p>
-<p>Analisis yang sangat mengesankan, bagian yang paling menonjol adalah bagaimana struktur graf memberikan paralelisme gratis (contoh prompt-matrix dan interrogate) tanpa kode orkestrasi tambahan. Perpaduan tipe node fn, model, dan space pada satu kanvas juga membuat perbandingan dengan ComfyUI tepat: Anda mendapatkan fleksibilitas node kustom dari Python biasa, tetapi endpoint REST/MCP tanpa kode secara gratis. Saya penasaran seberapa kompleks sebuah kanvas dapat dibuat sebelum kinerja atau pemeliharaan menjadi masalah, apakah ada yang pernah melampaui 73 node?</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
+                <p>A monthly overview of things you need to know as an architect or aspiring architect.</p>
+<p>Online InfoQ AI Engineering Certification (Jan 9): Building AI systems that hold up in production.
+
+                            Register Now</p>
+<p>Facilitating the Spread of Knowledge and Innovation in Professional Software Development</p>
+<p>Unlock the full InfoQ experience by logging in! Stay updated with your favorite authors and topics, engage with content, and download exclusive resources.</p>
+<p>In this episode, Christopher "CRob" Robinson, CTO of OpenSSF, Akrites, and chief security architect of the Linux Foundation, explores the state of software supply chain security amid multiple security incidents and explains how tools like Scorecard, the Security Baseline framework, and SLSA help harden software.</p>
+<p>Michael Stiefel spoke to Zhou Yu about using dynamic simulations to evaluate AI agents. One particular focus was conversational agents where actions depend on prior responses, and the non-deterministic nation of LLMs means you cannot rely on static, reference-based benchmarks. You need to test them using dynamic simulations that incorporate different personas, goals, and corner cases.</p>
+<p>Dio Rettori discusses the operational realities of enterprise AI inference. Moving beyond fast token generation, he explores why inference requires dedicated systems engineering, tackles GPU utilization pitfalls, compares on-prem versus cloud TCO, and analyzes multi-agent latency determinism. He shares why teams must embed domain ontology directly into models rather than relying solely on RAG.</p>
+<p>Henry Wilson shares actionable tools from the BBC Sounds re-architecture to help senior engineering leaders drive technical strategy. He discusses building buy-in, navigating active resistors, using RFCs and ADRs, and balancing tradeoffs - showing that effective software architecture is fundamentally about communication, relationship-building, and organizational influence.</p>
+<p>The panelists explore how engineering teams adapt delivery architectures, pipelines, security, and governance for AI-assisted development. They share practical strategies for verifying AI-generated code, solving testing and deployment bottlenecks, maintaining human oversight, and measuring AI’s true impact on software velocity, quality, reliability, and operational cost.</p>
+<p>Work through your production AI decisions with senior engineers from other companies. Apply their perspectives to challenges from your own work.Online. Register Now.</p>
+<p>Compare team design, delivery flow, AI roles, and metrics with experienced practitioners. Online. Register Now.</p>
+<p>Building RAG pipelines or AI agents? Work through retrieval, context, evals, and reliability decisions with experienced practitioners.Online. Register Now.</p>
+<p>Distributed systems, decentralized decisions, platform engineering, and AI architecture. Online. Register Now.</p>
+<p>What's working across AI, architecture, and leadership, from the teams doing it. Register. Early bird ends Nov 10.</p>
+<p>Production AI across agents, context, evals, security, and infrastructure, from the senior engineers building it.Register. Early bird ends Nov 10.</p>
+<p>What early-adopter teams have proven in production, across 15 engineering tracks. Register. Early bird ends Nov 10.</p>
+<p>Learn from the decisions and trade-offs behind AI systems already running in production.Registration open.</p>
+<p>InfoQ Homepage
+News
+QCon San Francisco 2026: Securing AI Agents in Production</p>
+<p>Nov 23, 2026
+								
+								
+								
+									
+									3
+									min read</p>
+<p>With agents now executing multi-step plans in live production environments, Walker argued that "a rogue AI agent is the same problem as a rogue human insider," one that acts with superhuman speed and persistence. Controls therefore need to work at machine speed, rather than relying on someone reviewing logs the next morning. She covered identity and credentials, boundary defence, subagent orchestration and policy-based containment.</p>
+<p>Walker described giving an agent raw human credentials as the fastest path to production failure. The agent inherits the user's authority, so a prompt injection in a document can turn that access to an attacker's purposes. She recommended explicit principals for agents, the AI equivalent of service accounts, so each agent can be provisioned and logged separately without impersonating anyone.</p>
+<p>Scoped OAuth tokens limit an agent's access in time and scope, but are immutable once issued. With credential attenuation, an orchestrator instead mints narrower tokens for its subagents, such as read-only access to logs, or read-only access to a repository between two commits when bisecting a broken build.</p>
+<p>She pointed to Eclipse Biscuit, a token format whose holders can append restrictions, but cannot remove existing ones without invalidating its signature. It takes more work than reusing human authentication infrastructure, but suits services where teams control both ends.</p>
+<p>For API keys, a proxy can give the agent a short-lived synthetic key and substitute the real one as traffic leaves, protecting it from prompt injection and exfiltration.</p>
+<p>Walker cautioned that a virtual machine protects the host, not the resources an agent can reach: an agent with network access can still delete a database. Container sandboxes, ephemeral runtimes and sidecar proxies such as Envoy give finer control over file system and network access. But "a perfectly isolated compute sandbox is not useful," she said, so teams need policies that constrain what agents do with the services they call.</p>
+<p>She also highlighted poisoned skills on public marketplaces that steal API keys and cryptocurrency wallets, citing Snyk research that found more than a third of publicly available skills had at least one security flaw.</p>
+<p>Agents also cause harm by being wrong rather than malicious. Walker described an agent that read internal SRE documentation and invoked a break-glass process intended for emergencies, having decided it was the most expedient route. Monitoring caught it, but the lesson was that organisations must distinguish agents from the people they work for, because some processes depend on a human accepting risk. For the same reason, she described computer-use agents, which drive a mouse and keyboard, as in essence impersonation, while acknowledging they solve problems that machine protocols such as MCP cannot.</p>
+<p>Asked in the question-and-answer session about tagging identities as agents, Walker said: "The biggest thing it gave us was auditability about some of these risk decisions." The distinction supports human-only rules, such as emergency access, and can help with agent-only rules, such as signed releases in regulated environments, although she noted that an agent flag alone is not enough for those.</p>
+<p>In the Q&A, she also advised security teams not to simply say no, which pushes colleagues to work around controls, but to allow experimentation where mistakes are reversible and keep human review for irreversible actions such as wire transfers.</p>
+<p>December 15–16, 2026.
+Examine how senior practitioners run agents, evals, model serving, and AI-assisted engineering in production, including what failed and what changed. Register Now.</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+        
+			View an example</p>
+<p>A round-up of last week’s content on InfoQ sent out every Tuesday. Join a community of over 250,000 senior developers.
+		
+			View an example</p>
+<p>Test your approach against the decisions and trade-offs of senior practitioners running agents, evals, model serving, and AI-assisted engineering in production.
+                
+                See what worked, what failed, and what they would do differently. Bring those lessons back to your team to make better-informed architecture and delivery decisions.</p>
+<p>InfoQ.com and all content copyright © 2006-2026 C4Media Inc.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/gradio-workflow-1111" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.infoq.com/news/2026/11/qcon-ai-agent-security/?utm_campaign=infoq_content&utm_source=infoq&utm_medium=feed&utm_term=global" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Quality IMAP, Part 2: Mailbox Concurrency</title>
+    <title>Cursor Traces Malicious Claude Code Extensions to Third-Party Breach</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9767.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,263 +15,40 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Quality IMAP, Part 2: Mailbox Concurrency</h1>
+        <h1>Cursor Traces Malicious Claude Code Extensions to Third-Party Breach</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
         
         <div class="article-body">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt0ac2db6d8dd7d25d/6afb79babb3cf32830e383ff/cursor_Erman_Gunes_shutterstock.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="Cursor Traces Malicious Claude Code Extensions to Third-Party Breach" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt0ac2db6d8dd7d25d/6afb79babb3cf32830e383ff/cursor_Erman_Gunes_shutterstock.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="Cursor Traces Malicious Claude Code Extensions to Third-Party Breach" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In the past year, we have been significantly improving the reliability and
-correctness of Aerogramme's IMAP implementation. This is the second part in a
-series discussing why implementing IMAP correctly is not so easy, and presenting
-our work on making Aerogramme's IMAP code as high-quality as we can.
-Today we focus on challenges that arise when considering concurrent
-access to a mailbox.</p>
-<p>Aerogramme is an experimental email server
-(& calendar, contacts), designed to be geo-distributed, hosted outside of
-datacenters, on refurbished hardware, and reliable even in presence of network
-issues and hardware failures. It is built on top of
-Garage and shares the same philosophy.
-Aerogramme is AI-free: we do not wish to use unethical technology and prefer to
-spend effort on careful craftmanship and community-building.</p>
-<p>This is the second post in a series in which we argue that implementing an IMAP
-server is not easy, essentially due to two classes of features that are fundamentally
-challenging to implement. In the previous
-post, we talked about the first class of
-features: fine-grained retrieval and querying of email contents. In this post,
-we talk about the second class of features that make implementing an IMAP server
-tricky: concurrent access to user mailboxes.</p>
-<p>Concurrent and distributed software are famously hard to get right; concurrency
-bugs are known to be hard to find. In our recent work on refining Aerogramme we
-have tried to approach the problem from different angles. This is the topic of
-this post: the different ways in which we have improved the correctness of
-Aerogramme in concurrent settings.</p>
-<p>This work was funded by NLNet under the "Aerogramme
-1.0" grant, and could not have been
-possible without their support.</p>
-<p>Feel free to join the Aerogramme matrix
-channel for updates or if you
-just want to chat!</p>
-<p>A core feature of IMAP is that multiple email clients can simultaneously access
-the same mailbox. For example, we may want to access our emails both from our
-phone and our computer. Concurrent access to a mailbox can also happen when a
-single client is involved: some clients (including Thunderbird) open multiple
-concurrent connections to a same mailbox to speed up processing. In any
-case, clients accessing the same mailbox should be able to coordinate between
-themselves and avoid stepping on each other's toes.</p>
-<p>Why must clients be able to coordinate when accessing the same mailbox? Assume
-that we are an email client that sends two commands to read information from a
-mailbox. Since another client can modify the mailbox in between the two
-commands, the information we read may have been invalidated by the other client
-and is now inconsistent! Clients thus need to be able to detect concurrent
-changes made by other clients. Similarly, a client that reconnects to the
-server after being offline needs to fetch the changes that happened while it was
-disconnected. This is possible thanks to mechanisms defined by the IMAP
-specification and that specifically exist because concurrent access is allowed.</p>
-<p>The overall consistency of the mailbox data must be taken
-seriously: an IMAP server exposing inconsistent views of a mailbox could result
-in a confused client deleting the wrong emails, for example.</p>
-<p>To our best knowledge, concurrent mailbox behaviors are tackled in the following
-(parts of) specifications:</p>
-<p>The base IMAP4 specification
-has few explicit mentions of concurrent mailbox access, but does talk about
-re-synchronizing disconnected clients, which can be seen as a restricted form of
-concurrent access. It defines mechanisms for assigning IDs to emails
-(UIDNEXT/UIDVALIDITY) and associated properties which can be extrapolated to
-concurrent contexts. This is relevant when concurrently adding new emails to
-a mailbox. After an email has been added to a mailbox it cannot be modified,
-so there are no issues with reading emails concurrently.</p>
-<p>The improvements that we will talk about in this post are related to these
-aspects of the base IMAP specification.</p>
-<p>As an additional complication, IMAP defines in fact two (!) email-numbering
-systems. One of these has the drawback that deleting an email can invalidate
-email IDs used in concurrent commands. This is purely a quirk of a numbering
-system that can nowadays be considered legacy, but must still be supported. This
-issue is not acknowledged in the base IMAP specification, leaving a class of
-problematic behaviors completely unspecified, but is later addressed in an
-informational RFC which
-specifies what to do in such cases.</p>
-<p>Aerogramme's latest release includes changes and bugfixes to make sure that we
-follow the recommendations of this informational RFC, but we won't enter into
-the details of these legacy quirks in this post.</p>
-<p>Email flags can be modified concurrently, but the base IMAP specification
-does not specify a mechanism for clients to coordinate around flag changes. This
-is done in the later CONDSTORE
-specification that extends IMAP
-with mechanisms to coordinate flag changes across concurrent connections.
-Aerogramme has preliminary support for CONDSTORE, but we disabled it in the last
-release, as we found out it needs a redesign to be nicer to email clients1.</p>
-<p>A later specification further
-extends IMAP and CONDSTORE by adding a more general mechanism (QRESYNC) for
-synchronizing all mailbox changes across concurrent sessions. Aerogramme
-does not supports QRESYNC at the moment2.</p>
-<p>On top of the complexity carried by the IMAP specification, Aerogramme's
-distributed infrastructure comes with its own challenges. Not only we need to
-think about concurrency at the IMAP protocol level, but also internally in
-Aerogramme: how do we handle concurrent changes to the server internal data
-storage? Can we simply take a lock or a transaction over mailbox data each time
-we need to update it, serializing all concurrent updates? The answer is no:
-things are a bit more complicated...</p>
-<p>Recall that Aerogramme is a distributed IMAP server. A typical Aerogramme
-deployment looks like this:</p>
-<p>In this schema, A nodes are Aerogramme instances running on separate servers.
-Running multiple Aerogramme nodes provides fault-tolerance: even if some of the
-nodes crash, the Aerogramme cluster stays operational as long as one node
-remains available. When an email client (a C node) connects to the "Aerogramme
-cluster" (the dashed potato), it can open a connection to any of the Aerogramme
-nodes, depending on what kind of load-balancing is implemented.</p>
-<p>Aerogramme nodes do not talk to each other directly and do not store data
-themselves. Instead, they connect a shared Garage cluster (itself
-geo-distributed with fault-tolerance properties) which stores data for the whole
-Aerogramme cluster (emails, mailbox state, etc.).</p>
-<p>This means that an Aerogramme node deals with concurrency at two levels. It must
-handle concurrent connections from email clients to a mailbox, as we
-explained before. But it must also handle concurrent changes made by other
-Aerogramme nodes to the data stored in Garage. These concurrent accesses must
-be coordinated properly so that the Aerogramme cluster exposes a consistent
-view of a mailbox (according to IMAP's consistency requirements), even when
-connecting concurrently to different nodes of the Aerogramme cluster.</p>
-<p>A central challenge in Aerogramme's design is that Garage does not provide
-locks, transactions, or anything that would require distributed consensus
-between Garage nodes. This is by design, and it allows Garage and Aerogramme to
-perform well even with non-negligible latency between nodes. The consequence for
-Aerogramme is that its nodes cannot simply reason on their shared data as if it
-was updated sequentially. The approach used by Aerogramme insteadâa convergent
-operation logâis a central part of its design. We'll talk more below on how we
-adjusted the consistency properties provided by Garage when storing that
-operation log.</p>
-<p>A basic IMAP mechanism is assigning
-IDs to emails when they are added into a mailbox. Adding emails concurrently
-can already make it tricky to assign these IDs. Our first step was to
-find a way of testing this case and to fix any bugs that we would
-find.</p>
-<p>For context, IMAP specifies that each email in a mailbox must be assigned a UID:
-a number that identifies it uniquely. UIDs are assigned in increasing order;
-this allows clients to check if new emails have been added by checking the value
-of the mailbox "next UID". On top of that, IMAP also allows the server to
-renumber the emails with different UIDs. When this happens, the IMAP server
-must increase the value of UIDVALIDITY, a global integer counter attached to
-the mailbox. Now, in Aerogramme, increasing UIDVALIDITY is done in some cases
-when emails are added concurrently in the mailbox in a way that would assign
-conflicting UIDs; an unavoidable consequence of its distributed architecture.</p>
-<p>From an IMAP client's perspective UIDVALIDITY must always increase monotonically. We
-also assume that this property must hold across all concurrent connections;
-although the specification does not say so explicitly, it is the most prudent
-assumption since a single client may open multiple connections to the same mailbox.</p>
-<p>The logical next step is to setup a
-test bench
-to ensure that it holds in practice for Aerogramme! We deployed an
-Aerogramme cluster with three nodes, running on a simulated network with added
-latency between nodes. Then:</p>
-<p>Running Aerogramme on this test bench found state synchronization bugs: bugs
-showing that Aerogrammeâs distributed state (stored in Garage) was not always
-properly synchronized between nodes and concurrent sessions. Amusingly, most of
-these bugs were not specific to the IMAP logic related to UIDVALIDITY...</p>
-<p>Fixing these synchronization bugs motivated a redesign
-of the internal read/update mailbox interface.
-In Aerogramme, the IMAP "business logic" accesses mailbox state stored
-in distributed storage using an abstract interface exposing a small number of
-operations. Before, these operations were the following (in pseudo-Rust):</p>
-<p>The synchronization bugs found during testing revealed that this interface is
-in fact error-prone and tricky to reason about:</p>
-<p>The solution was to redesign Aerogramme's mailbox state interface to provide
-more control over state synchronization: reading concurrent changes from storage
-becomes a separate operation, laying the following interface:</p>
-<p>This new interface separates local reasoning about mailbox contents from
-synchronization. This makes it easier to write the IMAP logic in a way that is
-"obviously correct". Plainly speaking, this interface provides "local" views of
-mailbox state, where a view (denoted as self above) is specific to a client
-connection. Then, get and push_op operate on the local view with sequential
-semantics and are both fast; and calls to sync mark explicitly the places in
-the code where we have to think about concurrent changes. (Note that push_op
-synchronously updates remote storage, so there is no risk of losing write by
-forgetting to run sync.)</p>
-<p>Notice that the design of this interface reflects the high-level distributed
-architecture that we described in the previous section. For instance, an
-implementation of the interface needs to "merge" the operations pushed
-concurrently with push_op when they are put together in distributed storage,
-in a way that is consistent with local views; this is backed by the "convergent
-operation log" mentioned earlier and domain-specific logic3.
-Note that this interface offers no transactional or lock-like operations;
-matching Garage's lack of consistency primitives.</p>
-<p>Most of the changes described here were part of Aerogramme
-0.4, with
-in particular #129
-implementing the refactoring of the state synchronization interface.</p>
-<p>Talking about consistency guarantees in Aerogramme raises the question: what are
-the consistency guarantees provided by Garage, its storage backend?</p>
-<p>This question is most relevant for Garage
-K2V,
-a NoSQL-inspired key-value store, which is used to store mailbox state as an
-operation log. (Garage K2V is experimental and was added in Garage for
-the needs of Aerogramme.) Mailbox state describes (among other things) email
-numbering, and as we've seen before, we want this information to be properly
-synchronized between Aerogramme nodes.</p>
-<p>Garage K2V provides read-after-write consistency4: this guarantees
-that as soon as a write is acknowledged by Garage, any subsequent read will
-see the update made by the write. In terms of Aerogramme's state synchronization
-interface, after running push_op(op);, this guarantees that sync(); get()
-returns a state that includes op on any Aerogramme node.</p>
-<p>However, it turns out that read-after-write consistency alone is not enough for
-Aerogramme. Let's think of the fact that UIDVALIDITY needs to increase
-monotonically according to the IMAP specification. This means that calling
-sync(); get() twice on any two Aerogramme nodes must return a state that is
-more recent the second time than the first. In other words, when making
-several reads to Garage K2V in sequence, we must not see time go backward. This
-means that, to ensure consistency of the UIDVALIDITY counter, Aerogramme needs
-Garage K2V to guarantee an additional consistency property called monotonic
-reads!</p>
-<p>As a result we have extended Garage K2V to provide monotonic reads consistency. Luckily,
-the design of Garage makes it possible to provide monotonic reads at only a
-small performance cost. For a reference, Martin Kleppmann's Designing
-data-intensive applications (in particular ChapterÂ 9, "Linearizability and
-quorums") helps understanding which scenarios lead to non-monotonic reads in a
-quorum-based architecture like Garage's, and what to implement to guarantee
-monotonic reads.</p>
-<p>To experimentally validate our changes, we first built a test bench that
-triggers non-monotonic
-reads on stock K2V.
-Reproducing non-monotonic reads requires variable network delays, so we deployed
-a Garage cluster with 3 nodes, on a simulated network with delay between cluster
-nodes. This test setup allows observing non-monotonic reads, by running:</p>
-<p>We then modified Garage K2V to provide monotonic reads by
-default, by
-implementing "synchronous read repair". We validated that we cannot observe
-non-monotonic reads anymore on our test bench, while they could be observed
-before this change: a good sanity check.</p>
-<p>This change in Garage K2V ensures that there are no scenarios in which a precise
-combination of network delays in the cluster results in an IMAP client observing
-non-increasing values of UIDVALIDITY. One could argue that this is unlikely to
-happen in practice; and indeed, we could not reproduce it with our simple-minded
-test bench: while we could observe non-monotonic reads with Garage K2V alone, we
-could not observe non-monotonic UIDVALIDITY on a full Garage+Aerogramme
-deployment with the same testing methodology. Nevertheless, we want Aerogramme
-to rest on strong, correct foundations as much as possible; eliminating a
-rare but possible cause of bugs was fully worth the effort.</p>
-<p>The work described here was made available as part of Garage
-2.4.0; it
-required no specific change in Aerogramme itself.</p>
-<p>We designed Aerogramme to be part of a low-tech
-computing stack meant to be robust and reliable when hosted outside of
-data-centers, and Aerogramme's geo-distributed design is part of the answer. In
-the future, we hope to expand on the values and high-level ideas behind
-Aerogramme; this will have to be for an other blogpost...</p>
-<p>The current implementation (now gated by a feature flag disabled by default) tends to disconnect clients more often than reasonable. This is correct with respect to the specification, but likely leads to bad UX in clients. We are working on a better strategy that does not require disconnecting clients.</p>
-<p>The first step would be to gather data on how many clients actually support QRESYNC today...</p>
-<p>We have not shown this "domain specific" merge logic (here, mailbox-specific) because it is a whole different topic, but it needs to be provided when instantiating the generic interface shown before with concrete state and operations.</p>
-<p>read-after-write consistency is also the key consistency guarantee provided by Garage S3.</p>
-<p>Cover by 
-	    Liam Truong 
-	    on 
-	    Unsplash
-
-            Built with Zola,
-            powered by Garage,
-            hosted by Deuxfleurs</p>
+                <p>A compromised key issued to AI infrastructure provider Fireworks was used by threat actors to access Cursor data and credentials.</p>
+<p>Cursor has traced the origins of a security incident involving a malicious version of Anthropic's Claude Code extension in its marketplace to a breach at AI infrastructure provider Fireworks.</p>
+<p>As many as 5,000 users may have downloaded the tampered extension during the roughly 11 hours it was live on Oct. 29. It was a reminder of the risk organizations face when they rely on third-party marketplaces for software applications and extensions. It also illustrates how one security lapse can lead to a cascade of subsequent breaches and supply chain attacks.</p>
+<p>When Cursor first disclosed the incident, the company said attackers had placed malicious versions of Anthropic's Claude Code extension in a cache serving its Visual Studio (VS) Code extension marketplace. Users who requested either of two specific cached versions of the extension (2.1.312 and 2.1.313) during the exposure window may have downloaded the malicious builds, the company said. The malicious extensions attempted to collect information about infected systems and establish persistent remote access, including by installing an attacker-controlled SSH key.</p>
+<p>Related:Critical PHP Flaws Allow Code Execution, but Don't Panic 'PHP2Shell'-Style</p>
+<p>Cursor quickly removed the malicious extensions, temporarily shut down its marketplace, and audited the store for signs of further tampering. Cursor also rotated its keys, rebuilt the marketplace, and worked with the cloud provider hosting the attacker's server to take it offline. The company's initial advisory, however, did not explain how the attacker might have gained access to its environment and planted the malicious extension in its extensions marketplace.</p>
+<p>In an update on Nov. 13, Cursor filled in that blank, with a detailed description of what its investigation had unearthed in the days following the Oct. 29 incident.</p>
+<p>Some of the stored session records contained credentials that had not been properly redacted. The attacker used those credentials to access what Cursor described as select SaaS tools for accessing non-production source code repositories, customer support data, emails, usage metrics, and other data.</p>
+<p>Related:Grok Bots Attempt to Access Corporate Data Without User Approval</p>
+<p>On Oct. 29, the attacker subsequently used one of the compromised credentials to tamper with the cache that Cursor uses to deliver extensions through its VS Code marketplace. The attacker inserted unauthorized copies of Anthropic's Claude Code extension in the marketplace where they remained available to users for about 11 hours.</p>
+<p>"Anthropic did not publish this copy, and this was not a vulnerability in Anthropic's product," Cursor stressed in its update. "The marketplace source, Open VSX, never had the malware. At most 5,000 users who requested specific cached versions of the extension on October 29 potentially received the malicious build."</p>
+<p>Cursor estimated that API credentials belonging to fewer than 0.01% of its customers were exposed in the incident. Historical coding-agent session records, or traces, belonging to fewer than 0.05% of users were accessed, the company said.</p>
+<p>However, the supply chain attack goes back even further than Fireworks, which itself was a victim of a third-party breach. In a Nov. 9 update, Fireworks said a cloud provider hosting the AI company's R&D systems "experienced a security incident on Oct. 23." The attackers used the access to the R&D systems to obtain sensitive data, including API keys and access tokens.</p>
+<p>Related:F-Secure Identifies 26 Ways AI Can Harm Consumers, and Where to Stop Them</p>
+<p>According to Fireworks, the available evidence linked the breach of its environment to a financially motivated cybercriminal group seeking to monetize unauthorized access to large language models. It's a practice known as LLMjacking, which Google and others have described as a rapidly emerging threat for organizations across multiple sectors in North America, Asia-Pacific, and other regions.</p>
+<p>Following the incident, Cursor said it has implemented a broad security overhaul to reduce the risk of similar compromises. Immediate steps the company has taken include cutting off Firework's access to all its shared data sets, revoking and replacing potentially exposed credentials, and rotating internal credentials. The company has also tightened restrictions on how its systems and third-party service providers can communicate with one another and expanded automated scanning for secrets across its code repositories and internal data.</p>
+<p>The Cursor incident is another indication of how the rapid adoption of AI-powered development tools and increasingly interconnected software ecosystems has exacerbated software supply chain risks. Recently, for instance, researchers uncovered more than 550 exposed secrets in Microsoft VS Code and Open VSX extension packages, including over 100 publishing tokens that could have allowed attackers to distribute malicious updates to legitimate extensions. Similarly, earlier this year researchers identified dozens of malicious GlassWorm VS Code extensions seeded in the Open VSX marketplace to steal developer credentials that attackers could use to spread poisoned software packages.</p>
+<p>Illinois-based Jai Vijayan is a veteran, award-winning technology journalist with more than 25 years of experience covering cybersecurity. His information security reporting has explored everything from ransomware, nation-state threats, and identity security to AI risk, critical infrastructure protection, software supply chain security, cloud security and emerging enterprise technologies.</p>
+<p>Over the course of his career, Jai has written news stories, feature articles, survey reports, white papers, and e-books for enterprise and technology audiences. He has also moderated panel discussions and executive roundtables featuring CISOs, security researchers, and industry leaders.</p>
+<p>His work has earned multiple industry honors, including a Joint ASBPE Excellence Award for Best Coverage of Government IT, and a Joint Jesse H. Neal Award for wireless LAN security coverage. Jai holds a Master’s degree in statistics from Bangalore University, and studied broadcasting and electronic communication at Marquette University in Milwaukee.</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://aerogramme.deuxfleurs.fr/blog/2026-quality-imap-part-2/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/application-security/cursor-malicious-claude-code-extension-third-party-breach" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
