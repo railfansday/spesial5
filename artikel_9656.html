@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>I checked Clojure&#x27;s core with Lean and found 17 unreported bugs</title>
+    <title>The 12 best recipes to bake in October: It’s peak baking season — here’s what to make.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9656.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,99 +15,104 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>I checked Clojure&#x27;s core with Lean and found 17 unreported bugs</h1>
+        <h1>The 12 best recipes to bake in October: It’s peak baking season — here’s what to make.</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://s.conao3.com/og/blog/2026/e4f733.png" alt="I checked Clojure&#x27;s core with Lean and found 17 unreported bugs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/Pumpkin-Milk-Bread_2026_Lifestyle_H_3153.jpg" alt="The 12 best recipes to bake in October: It’s peak baking season — here’s what to make." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://s.conao3.com/og/blog/2026/e4f733.png" alt="I checked Clojure's core with Lean and found 17 unreported bugs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.kingarthurbaking.com/sites/default/files/2026-09/Pumpkin-Milk-Bread_2026_Lifestyle_H_3153.jpg" alt="The 12 best recipes to bake in October: It’s peak baking season — here’s what to make." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I read Koukyosyumei's article "èåãªRustè£½OSSãLean 4ã§å½¢å¼æ¤è¨¼ãã¦ã¿ããããã¡ããã¡ããã°ãè¦ã¤ãã£ãè©±" (in Japanese; the title means "I formally verified well-known Rust OSS with Lean 4 and found a lot of bugs").
-The author ported well-known Rust projects into a form they could prove in Lean 4, and where a proof failed, they found a bug in the original code.</p>
-<p>Many people have used Clojure's persistent data structures since around 1.0, so I expected no bugs to remain.
-Still, I wanted to see whether Lean would find something there too.</p>
-<p>hirosassa/lean-verify describes a procedure for modeling a small function in Lean 4 and checking it for all inputs, so I applied it to the part of Clojure's core written in Java.</p>
-<p>I modeled integer and bit arithmetic in Lean and searched for counterexamples.
-I checked the collections with differential testing against the java.util collections, and for Java interop I compared the same call with and without a type hint.</p>
-<p>I found 17 bugs that I could not find in Clojure's JIRA or on ask.clojure.org.
-They include reduce on vector-of, the hash collision node of the HAMT, and calls to functional interfaces without a type hint.</p>
-<p>The HAMT itself showed no mismatch in 3 million operations of differential testing, and the vector tree showed none around its boundaries.
-The bugs sat in separate code outside the trees, and in places where two mechanisms meet, such as = and hashing.</p>
-<p>I used Clojure 1.12.7, released on 2026-11-18, and JDK 21.
-The links to the source point to the clojure-1.12.7 tag.</p>
-<p>The lean-verify procedure picks one function and models it as a Lean definition.
-You write a property that compares it with a naive specification computed at a wider width, and bv_decide searches for a counterexample.</p>
-<p>If you model Java's long and int as BitVec 64 and BitVec 32, the wraparound of addition and multiplication maps onto BitVec operations.
-So do the rounding of / toward zero and the sign of %.</p>
-<p>When Lean found a counterexample, I turned the value into a Clojure input and reproduced it in the original code.
-I then modeled the fixed code in Lean and proved the same property.
-Lean can only take small functions that reduce to integer and bit arithmetic, so I checked the large persistent data structures with differential testing.</p>
-<p>Each test applies the same random sequence of operations to PersistentHashMap and to java.util.HashMap and compares the results.
-For the HAMT, the keys mix partial collisions at each 5-bit level with fully identical hashes, and I ran 1,500 operations for each of 2,000 seeds.</p>
-<p>For vectors, I compared against ArrayList around 32, 1056, 32800, and 1048608, where the tree gains a level.
-The operations were conj, pop, assoc, and their transient versions.</p>
-<p>I checked whether anyone had reported each bug before.
-I searched Clojure's JIRA through its REST API and ask.clojure.org through web search and the site's own search, and found no matching report.</p>
-<p>vector-of is a vector that stores its values in primitive arrays.
-Clojure implements it in gvec.clj, written in Clojure and separate from PersistentVector.
-If you drop from one and then reduce it, the call never returns once the vector has 65505 or more elements.</p>
-<p>The cause is line 79 of gvec.clj, where the seq's reduce computes the start of the next 32-element chunk.</p>
-<p>The code uses 0xffe0 to clear the low 5 bits and round down to a multiple of 32, but the mask also clears bit 16 and everything above it.
-With 65505 elements, the last chunk starts at index 65504.
-After that chunk, the start of the next one should be 65536, but the mask turns it into 0, so reduce goes back to the start and reads the vector again and again.</p>
-<p>The 0xffe0 mask has stayed in place since the 2010 commit that added internal-reduce.
-In Lean, I wrote the property that from a position a that is a multiple of 32, the next chunk starts at a + 32.</p>
-<p>impl_ok fails with the counterexample a = 1073741792, and #eval stepImpl 65504 returns 0 as well.
-fix_ok uses (bit-not 0x1f) as the mask, and its proof goes through under the assumption that a is a multiple of 32 below 0x7fffffe0.</p>
-<p>Clojure's hash-map is a HAMT: it splits the key's hash into 5-bit pieces and uses them to walk down the tree.
-Keys whose 32-bit hashes are identical share a HashCollisionNode at the bottom of the tree, and the node finds a key among them with =.</p>
-<p>HashCollisionNode.without builds the new node with one key removed.
-It should give the new node its own hash, this.hash, but it passes the parameter hash instead.</p>
-<p>The parameter hash is the hash of the key you pass to dissoc.
-If you dissoc with a key that is = to the stored key but has a different hash, the node records the wrong hash.</p>
-<p>In Clojure, a vector is = to a Java ArrayList with the same elements, but the two hash differently.
-CLJ-1372 tracks this mismatch.</p>
-<p>In the example below, I chose a and b so that both ArrayList keys hash to 1003.</p>
-<p>When you print m3, you can see the key b, but (get m3 b) returns nil.
-After the dissoc, the node records 1867155179, the hash of [0 42].
-The next assoc then concludes that a, with hash 1003, does not collide with the node, and splits the two into separate branches.</p>
-<p>A lookup of b follows the branch for 1003 and finds only a there, so it never reaches b.
-In this example the collision node sits on the first level of the tree, so the key passed to dissoc needs the same low 5 bits as 1003, and 1867155179 has them.</p>
-<p>disj on a hash-set has the same bug, while the path through the transient dissoc! does not.</p>
-<p>I changed that line in the 1.12.7 PersistentHashMap.java to this.hash and compiled it.
-With the patched class ahead of the jar on the classpath, the same example returned :B for (get m3 b).</p>
-<p>Since Clojure 1.12, you can pass a Clojure function directly where a Java method takes a functional interface.
-CLJ-2864 removed the logic that read the function's return value as a Clojure truthy value.</p>
-<p>In prior alphas, the FI adapter returns inserted Clojure truthy return logic when adapting a Clojure function to an FI with boolean return.</p>
-<p>The compiler follows this for calls where it knows the type.
-A call without a type hint goes through reflection and uses Reflector.coerceAdapterReturn.
-That method still applies RT.booleanCast to a boolean return value, so the same .removeIf call gives a different result depending on the type hint.</p>
-<p>Wrapping the list in identity hides the type of l, so the call goes through reflection.</p>
-<p>A set used as a function returns the element itself.
-In the call with a known type, the adapter cannot turn the Long into a Boolean and throws.
-The reflective call reads the return value as true and removes the elements.</p>
-<p>Clojure 1.12 added IDrop implementations that make drop faster.
-The ones for string seqs and vector seqs add the current position and n as ints and then compare the sum with the length.
-StringSeq.drop for string seqs is one of them.</p>
-<p>The Lean model gave the counterexample i = 2147483646 and n = 2147483647.
-I changed the check to compare n with the remaining length s.length() - i.
-Under the assumptions 0 < i < s.length()= and 0 < n, Lean proved that the fixed check matches the naive specification for every 32-bit input.</p>
-<p>For assoc on the result of subvec, SubVector.assocN does not reject a negative index.</p>
-<p>The call overwrites an element of the underlying vector outside the subvec, and returns a subvec that looks unchanged.
-CLJ-962 fixed the same bug in nth, but assoc still has it.</p>
-<p>The other 12 bugs have a smaller impact, and I reproduced each of them on Clojure 1.12.7.</p>
-<p>PersistentHashMap and PersistentHashSet matched java.util.HashMap over 3 million operations that mixed persistent and transient updates.
-The tests also covered maps before an update staying unchanged, ArrayNode splits and merges, and collision nodes down to depth 7.</p>
-<p>PersistentTreeMap matched java.util.TreeMap and kept the red-black tree invariants.
-Vectors matched ArrayList around every tree boundary I tested.</p>
-<p>On the numeric side, Lean proved for 64 bits that the check Numbers uses to pick the fast path for addition and subtraction agrees with the overflow check.</p>
-<p>For multiplication, bv_decide timed out at 16 bits, so I checked 8 and 10 bits.
-I proved up to 32 bits that clojure.core/mod matches the floored remainder.</p>
-<p>Every property I proved in Lean holds for the model shown in this article.
-I checked that each model means the same thing as the Java code by comparing it with the source and with the reproduced behavior.</p>
+                <p>What do jobs, school, sports practices, and commuting have in common? They all prevent us from baking as much or as often as we’d like. But when we do get the chance, we want a slam-dunk recipe — or 12. Here’s a dozen of the favorite fall recipes we’ll be making this month: from pumpkin cake bars to spooky fudge brownies to a crowd-pleasing vegetarian quiche.</p>
+<p>It’s the Great Pumpkin, Charlie Brown! Only this version comes in cake form. The decoration is deceptively easy: Stack two small Bundts, frost the entire thing, and add a chocolate-dipped ice cream cone for the stem.</p>
+<p>Get the recipe: The Great Pumpkin Bundt Cake</p>
+<p>To make this recipe, you’ll need: Golden Wheat Flour and Pumpkin Pie Spice</p>
+<p>If you like this recipe, you may also like: Pumpkin Espresso Bundt Cake, Gluten-Free Pumpkin Cake</p>
+<p>To make this recipe, you’ll need:  Black Cocoa and Supernatural Plant-Based Food Colors</p>
+<p>These bite-sized pies are a charming addition to any occasion. The boiled cider and spices in the filling ensure a full depth of apple flavor for maximum fall vibes. If you're tight on time, swap the lattice treatment for a buttery crumb topping instead.</p>
+<p>To make this recipe, you’ll need: Boiled Cider and Apple Pie Spice</p>
+<p>If you like this recipe, you may also like: Apple Pie Bars, Tiny Apple Tarts for Two</p>
+<p>Step aside, soup: Butternut squash truly shines in this autumnal quiche. Caramelized onions finished with balsamic vinegar and fresh baby spinach round out the filling, while our Classic Single Pie Crust recipe ensures a tender, golden crust. Elevate the edges with the pie crust decorating technique of your choice.</p>
+<p>Get the recipe: Roasted Butternut Squash & Spinach Quiche</p>
+<p>To make this recipe, you’ll need: 9" Pie Pan</p>
+<p>If you like this recipe, you may also like: Vegetable Quiche, Delicata Squash Galette with Cheese and Herbs</p>
+<p>Ready to test the theory that only white flour can make rolls light and fluffy? A bit of bread flour and vital wheat gluten give these whole wheat rolls a lofty rise, while the milk, butter, and honey create a plush crumb that stays soft for days. Add a salted honey butter wash to the tops of a freshly baked batch, and you may not have any leftover.</p>
+<p>Get the recipe: Super-Soft Whole Wheat Rolls</p>
+<p>To make this recipe, you’ll need: Golden Wheat Flour and Bread Flour</p>
+<p>If you like this recipe, you may also like: Whole Grain Dinner Rolls, Soft White Dinner Rolls</p>
+<p>"Tassie" means "small cup" in Scottish, and these dainty pecan pies pack a nutty punch. The cream cheese pastry crust is cut into rounds and placed in a mini muffin pan before the pecan pie filling is spooned into each well. With only 30 minutes of hands-on time, these two dozen tassies come together quickly on a crisp fall afternoon.</p>
+<p>To make this recipe, you’ll need: Mini Muffin Pan</p>
+<p>If you like this recipe, you may also like: Easy Pecan Pie Bars, Old-Fashioned Pecan Pie</p>
+<p>Need a spooky treat, stat? You can transform a plain batch of brownies into a Halloween-themed dessert in a pinch. A simple piping technique creates a spider web effect and adds a touch of rich tang to chocolatey brownies.</p>
+<p>To make this recipe, you’ll need: 9" x 13" Pan</p>
+<p>If you like this recipe, you may also like: Fudge Brownies, Chocolate Cheesecake Brownies</p>
+<p>You’ll notice a lot of similarities between this pumpkin cake and carrot cake: moist, spiced cake, toasted walnuts, and rich cream cheese frosting. These bars are great for delighting a crowd, as this recipe yields three to four dozen bars, depending on how big you slice them. You can easily make them gluten-free, too.</p>
+<p>Get the recipe: Pumpkin Cake Bars with Cream Cheese Frosting</p>
+<p>To make this recipe, you’ll need: Pumpkin Pie Spice and Maple Syrup</p>
+<p>If you like this recipe, you may also like: Pumpkin Spice Latte Bars, Chocolate-Pumpkin Crumb Cake</p>
+<p>'Tis the season for hand pies to be mummified! A shortening-based pie crust helps the lattice strips stay together, while jam or pie filling allows for customizable flavors. Pop on a few sugar eyes, and you'll be sure to have treats instead of tricks.</p>
+<p>To make this recipe, you’ll need: Double Pastry Wheel or Pizza Cutter</p>
+<p>If you like this recipe, you may also like: Flaky Apple Hand Pies, Autumn Apple Turnovers</p>
+<p>With a luxuriously creamy maple filling and a buttery pecan crust, this cheesecake balances richness with subtle flavors. Meanwhile, the candied pecan garnish adds visual interest and a complementary crunch. Be sure to leave time for an overnight chill and keep your cheesecake from cracking with these tips. (Find more seasonal maple recipes in our Fall Flavor Edit.)</p>
+<p>To make this recipe, you’ll need: Springform Pan</p>
+<p>If you like this recipe, you may also like: Caramel Pecan Cheesecake, Maple Cream Pie</p>
+<p>No need to choose between chocolate or caramel; these cupcakes bring both bold flavors together in a luscious combination. Making caramel from scratch is worth it for the irreplaceable flavor, and those few extra steps are easily done ahead of time. Substitute in Gluten-Free Measure for Measure Flour to make these cupcakes gluten-free. (Find more seasonal caramel recipes in our Fall Flavor Edit.)</p>
+<p>Get the recipe: Chocolate Cupcakes with Whipped Caramel Frosting</p>
+<p>To make this recipe, you’ll need: Muffin Pan and Pastry Brush</p>
+<p>If you like this recipe, you may also like: Chocolate Cupcakes with Pecan Caramel , S’more Cupcakes</p>
+<p>This milk bread incorporates all the flavor and color of pumpkin, while still keeping an airy texture. You can shape the dough into pull-apart rolls or a loaf, and topping with a milk wash and pumpkin seeds adds a nutty crunch. Wrap it well at room temperature, and this bread will stay soft for days.</p>
+<p>To make this recipe, you’ll need: Round Pan or Loaf Pan</p>
+<p>If you like this recipe, you may also like: Japanese Milk Bread, Pumpkin Yeast Bread</p>
+<p>Cover photo by Patrick Marinello; food styling by Kaitlin Wayne.</p>
+<p>See our complete collection of Recipes posts.</p>
+<p>Facebook
+
+
+
+TikTok
+
+
+
+Instagram
+
+
+
+Threads
+
+
+
+Pinterest
+
+
+
+LinkedIn
+
+
+
+YouTube
+
+
+
+
+
+
+
+
+
+
+Reddit
+
+
+
+
+
+
+
+
+
+Substack</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://s.conao3.com/blog/2026/e4f733" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.kingarthurbaking.com/blog/2026/10/01/fall-recipes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

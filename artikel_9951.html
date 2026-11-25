@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>GLM-5.2: Built for Long-Horizon Tasks</title>
+    <title>Flat/non-higher-order construction of ANF via mutable holes</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9951.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,63 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>GLM-5.2: Built for Long-Horizon Tasks</h1>
+        <h1>Flat/non-higher-order construction of ANF via mutable holes</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
+            <img src="https://blueberrywren.dev/wren_glasses.png" alt="Flat/non-higher-order construction of ANF via mutable holes" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://blueberrywren.dev/wren_glasses.png" alt="Flat/non-higher-order construction of ANF via mutable holes" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>This post will describe an algorithm for constructing an ANF/similar IR from a functional-like base language with no closure usage,
+and with no related excess space requirements. This algorithm is as far as I know not new, and has apparently been known in
+imperative compilation for a while. However, I admittedly have no source for this, nor
+have I seen it described for functional-like languages.</p>
+<p>Thanks to Ryan Brewer and rpjohnst for their inspiration on this.</p>
+<p>If you are only interested in code, please skip to Implementation.</p>
+<p>First, let us describe our input and output languages. Our input language will look like this:</p>
+<p>This is meant to echo some simple functional programming language, and contains all the elements needed to demonstrate the algorithm.</p>
+<p>Our output language will look like a lexically-scoped flat ANF-style construction, with all lets at the toplevel.
+The goal is to convert from our input ml to this language.</p>
+<p>The notable addition is the Hole constructor in anf, the purpose of which will be described now.</p>
+<p>Imagine we are trying to convert the term</p>
+<p>When we arrive at the body of x, we have a conundrum. We need to put the conversion of y before x,
+so that using y is well-scoped. Hence, we must convert y before we can continue. How do we use this conversion, though?
+x's content needs to be put in the anf field of y's Let, so it's not clear how to both convert y before x and
+to use x's finished conversion in y.</p>
+<p>One "traditional" method of solving this is via continuations, where y is passed a closure representing "what to do next", after it
+converts its body. We can then put x's content in that closure, which will be invoked later. This has two main flaws:</p>
+<p>Recall that we left a Hole of anf option ref field in our anf type. I will denote a hole like this: [·].
+The central idea is that our conversion of any given ml fragment will return:</p>
+<p>When we convert x, this signals for the conversion of y. There are two steps to converting a let - we
+must first convert the "head" (2), and then the "body" (y).</p>
+<p>Converting the head will result in something of form</p>
+<p>Note that the hole is left to be filled later. This way, the conversion of y's head need know nothing about its environment.
+We represent this in code via the Hole constructor, which contains a reference to a fragment that either may be empty (None)
+or filled (Some ...).
+The conversion of the body can then proceed by first generating the expected addition, binding it to nm so it may be referenced later:</p>
+<p>We now need to get this fragment into the proper lexical scope. We can do this by plugging it into the hole left by the conversion of the head:</p>
+<p>Then, returning this fragment, the name bound (y), and the reference to the inner hole, we can continue converting x;
+First, convert the head, using the name returned by the conversion of y:</p>
+<p>And finally plug it into the hole returned by y.</p>
+<p>We are left with a final hole we can plug with Done to be explicit about the end of a control flow path.
+One disadvantage of this strategy is that it does generate many unneeded names. Most of these can be avoided by carefully special
+casing certain lets, and the rest can be eliminated via a simple folding pass.</p>
+<p>Below is a sample implementation of this algorithm, in OCaml.</p>
+<p>I recommend toying with the conversion yourself, using utop or similar.
+In the following, I will "clean up" the output slightly, as to not make it unreadable.</p>
+<p>We can then plug the returned hole, as described.
+Via some inspection, we can verify this is indeed correct, and conforms to our ANF-like form, as expected.</p>
+<p>As mentioned earlier, the large amount of duplicate names can be mitigated through strategies such as
+special casing let _ = <direct base> and folding passes.</p>
+<p>Clearly, the algorithm does not use closures, or any indirect jumps. It does not allocate any more than needed for the representation of
+the output program; there is no excessive closure allocation. I do not currently have a good way to test performance on real-world large inputs,
+but I have no reason to believe it would not perform better than an equivalent higher-order version.</p>
+<p>I believe this method should be extendable to CPS as well, although I have not tried as of the moment. The "usual" higher-order CPS
+conversion described in e.g. "Compiling with continuations, continued" looks quite similar to the higher-order presentation
+of ANF conversion, so I would be interested in whether it can be similarly massaged into a mutable form.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/zai-org/glm-52-blog" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://blueberrywren.dev/blog/anf-mutable/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

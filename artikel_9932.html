@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</title>
+    <title>NASA&#x27;s nuclear-powered Mars delivery service takes shape</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9932.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,40 +15,51 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</h1>
+        <h1>NASA&#x27;s nuclear-powered Mars delivery service takes shape</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/226873.jpg?imageId=226873&amp;x=0&amp;y=3.62&amp;cropw=100&amp;croph=84.87&amp;panox=0&amp;panoy=3.62&amp;panow=100&amp;panoh=84.87&amp;width=1200&amp;height=683" alt="NASA&#x27;s nuclear-powered Mars delivery service takes shape" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Ai-1-meta_4.2e16d0ba.fill-1200x600.png" alt="Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/226873.jpg?imageId=226873&x=0&y=3.62&cropw=100&croph=84.87&panox=0&panoy=3.62&panow=100&panoh=84.87&width=1200&height=683" alt="NASA's nuclear-powered Mars delivery service takes shape" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our previous posts - Easy FunctionGemma finetuning with Tunix on Google TPUs and Autonomous LLM post-training with Tunix on TPUs - we showed how Google Tunix streamlines Supervised Fine-Tuning (SFT) and single-turn Group Relative Policy Optimization (GRPO) on Cloud TPUs. Real-world AI agents, however, rarely finish their job in a single turn. They have to reason over partial observations, invoke tools, observe environment feedback, and adapt their strategy across multiple steps. So in this post, we will walk through how to train a multi-turn, tool-using LLM agent using Tunix's agentic reinforcement learning pipeline on Cloud TPU v6e-8. You can find the complete code in this GitHub repository.</p>
-<p>We will revisit the Plane Strike board game from an earlier TensorFlow/JAX reinforcement learning blog, replacing the custom MLP policy with Gemma 4 E2B in thinking mode on a single Cloud TPU v6e-8 host. Plane Strike is played on a 6x6 grid (A1 to F6) where one 8-cell plane is hidden in one of 4 orientations. Each turn, the agent sees the result of its previous strike and the raw visible board (. untried, X hit, O miss), thinks through candidate placements, and calls the strike(cell="...") tool to strike one cell. The game ends when all 8 plane cells are hit, or after 23 strikes.</p>
-<p>Sorry, your browser doesn't support playback for this video</p>
-<p>Although google/gemma-4-E2B-it has decent spatial reasoning and tool calling capabilities, out of the box, it wins only 9.4% of games on held-out boards (averaging 22.44 strikes). After 100 steps of agentic GRPO with Tunix, its win rate reaches 95% while cutting the average game length to ~16 strikes.</p>
-<p>We set up the multi-turn RL pipeline in four modular components:</p>
-<p>Let's look at the key steps for each piece.</p>
-<p>In env.py, we subclass Tunix's BaseTaskEnv to implement PlaneStrikeEnv. Each environment instance receives a task dictionary with a seed that fixes the hidden plane position so all 8 rollouts in a GRPO group play the exact same board:</p>
-<p>On each turn, _step_impl evaluates the struck cell index against the hidden board, updates the visible grid, computes the step reward (summed into the trajectory-level reward over the episode), and returns EnvStepResult(observation, reward, done, info).</p>
-<p>For standard multi-tool agents, tunix.rl.agentic also provides ready-to-use ToolEnvironment, ToolAgent and ToolManager abstractions out of the box so we don't have to write custom message/observation plumbing unless we need custom turn control.</p>
-<p>In Gemma 4, tool schemas are declared in the system prompt inside <|tool>declaration:...<tool|>, and a model turn that calls a tool ends with:</p>
-<p><|tool_response> is one of Gemma 4's native stop tokens: the model pauses there and waits for response:strike{value:<|"|>...<|"|>}<tool_response|>, then continues generating its next thought and tool call within the same assistant turn.</p>
-<p>In strike_tool.py, we define StrikeTool(BaseTool) and subclass Tunix's Gemma4ChatTemplateParser to append the tool declaration to the system prompt and render "tool" messages as in-turn responses:</p>
-<p>In agent.py, PlaneStrikeAgent(ConversationAgentBase) translates between environment observations and model messages.</p>
-<p>When the model finishes a turn, tool_strike ignores everything inside <|channel>thought...<channel|> and parses the final answer after <channel|>; only a final answer with a single valid strike call counts as a valid board coordinate (otherwise INVALID_ACTION is returned). If the model stopped at <|tool_response>, the next board observation is appended with role="tool" so the model continues its turn:</p>
-<p>In train_planestrike.py, we configure Tunix's asynchronous vllm rollout engine, RLEngine, and GRPOLearner:</p>
-<p>Multi-turn agentic RL is often bottlenecked by variable-length rollout generation, so we set rollout_vllm_server_mode to true to enable continuous asynchronous multi-turn rollouts via vllm-tpu and enable_prefix_caching to true to true to cache the growing multi-turn conversation history. Since we are using a v6e-8 single host, the actor model, the reference model, and the rollout workers share the 8 chips.</p>
-<p>We then pass our actor, tokenizer, ClusterConfig, GRPOConfig (loss_algo="gspo-token", advantage_estimator="rloo", exact_token_continuity=True to preserve exact token IDs across multi-turn rollouts without retokenization drift), agent, and environment into RLEngine and PlaneStrikeGRPOLearner:</p>
-<p>All of these enable us to launch the 100-step training job with:</p>
-<p>Over 100 steps (8 boards x 8 games per step), the agent learns both reliable tool calling and spatial deduction:</p>
-<p>With Tunix's tunix.rl.agentic abstractions, vllm-tpu, and GRPOLearner, multi-turn, tool-using agentic RL on Cloud TPUs is easy and efficient. Check out the planestrike-gemma4-rl GitHub repository and read the Tunix documentation to train your own agentic model with Tunix and Google TPUs.</p>
-<p>From Files to Cited Answers in One API Call: Managed Ingestion and SearchDocuments in Agent Retrieval</p>
-<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
-<p>Did the user ask for this? Securing AI agents against intent hijacking with Semantic governance policies</p>
-<p>Unlocking Stable On-Policy RL on TPU with Bitwise-Zero Train–Inference Mismatch</p>
+                <p>SR-1 Freedom gets a shorter boom and larger antennas, with roughly two years to finish design, construction, and testing</p>
+<p>NASA has settled key design choices for its planned nuclear-fission-powered spacecraft, Space Reactor-1 (SR-1) Freedom, following a mission review in October.</p>
+<p>Targeting launch in late 2028, SR-1 would be the first fission-powered spacecraft to travel beyond Earth orbit. It is designed to demonstrate nuclear electric propulsion and deliver a capsule carrying three helicopters to Mars.</p>
+<p>There have been some changes since NASA Administrator Jared Isaacman showed off the concept [PDF] at the agency's Ignition event in March. Improved shielding and spacecraft design will allow a shorter boom between the reactor and the spacecraft's main body, protecting its electronics and the SkyFall payload. The shorter boom will, according to NASA, "reduce weight, simplify assembly, and help streamline the spacecraft’s design."</p>
+<p>The revised design also includes larger X-band antenna dishes to transmit data to Earth.</p>
+<p>Decisions are still pending on how many radiator panels the vehicle needs, the output power levels of the nuclear power module, and how long the reactor will operate.</p>
+<p>Currently, the mission calls for the spacecraft to start its reactor once it has left Earth orbit and gradually ramp up power. After a period during which performance data will be sent back to Earth, the reactor will be shut down until after the SkyFall capsule, containing a trio of Mars Ingenuity-class helicopters, is delivered to Martian orbit.</p>
+<p>Solar arrays will power the spacecraft during its cruise to Mars. The fission reactor will then be reactivated to let engineers collect more data on its performance in deep space.</p>
+<p>NASA also awarded a $39.3 million contract to Johns Hopkins University's Applied Physics Laboratory to develop the heat rejection system for the nuclear power module.</p>
+<p>"Further maturation of the spacecraft plans will focus on reducing risk, simplifying the design, and staying on schedule," the agency said.</p>
+<p>The latter part regarding the schedule is certainly a challenge. Meeting the late-2028 launch target leaves roughly two years to finish designing, building, and testing the spacecraft.</p>
+<p>ESA is also targeting late 2028 for its long-delayed Rosalind Franklin rover. Missing the intended Mars departure opportunity could push SR-1 into a later launch window, although NASA has not specified a fallback schedule. ®</p>
+<p>SR-1 Freedom gets a shorter boom and larger antennas, with roughly two years to finish design, construction, and testing</p>
+<p>Update resolves work-blocking popup, but affected users may need an administrator command prompt to install it</p>
+<p>PARTNER CONTENT: PARTNER CONTENT: Hyperscalers and colos have distinct power strategies, but for both, securing flexible, fast power relies on self-generated solutions</p>
+<p>AI coding agents caught peeking at GitHub answers, stumble when JetBrains hides the crib sheet</p>
+<p>If a service falls in the forest and nobody hears it...</p>
+<p>Win4Wine runs the genuine Explorer shell atop Linux</p>
+<p>Still slinging hardware – now with added AI and attendant risks or opportunities</p>
+<p>‘It’s like the Ottoman Empire banning the printing press for Arabic so they would keep in control of the dogma,’ he says</p>
+<p>Chip boss gets his old job back, but Washington isn't done investigating one of his former flame's businesses</p>
+<p>Britain wants sovereign capability to test whether military AI will work before it gets deployed for real</p>
+<p>If the AI can't explain what it's proven, are we actually any closer to understanding?</p>
+<p>FinCEN takes systems offline and extends filing deadlines while investigating 'unauthorized access'</p>
+<p>AutoPay login and vehicle records affected, alongside limited payment information and customer service emails</p>
+<p>Four more critical vulns, including another unauthorized access flaw in vCenter</p>
+<p>No sophisticated malware or attack framework required</p>
+<p>A spatial classic Finder in the style of A/UX</p>
+<p>Canonical's stretch goal is to make the immutable OS standard in 30.04 – without retiring the traditional distro</p>
+<p>Cheap tiny e-readers and the perils of LLM-generated drive-by pull requests – plus much more</p>
+<p>Devuan-based distro swaps Wayland for XLibre and i3, with Xfce waiting if the tiling gets tiresome</p>
+<p>Version 4.0 of Redmond’s cloudy OS is free to use in its cloud. Repeat. Free to use</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/multi-turn-agentic-reinforcement-learning-with-tunix-and-gemma-4-on-google-tpus/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/science/2026/11/25/nasas-nuclear-powered-mars-delivery-service-takes-shape/5312147" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

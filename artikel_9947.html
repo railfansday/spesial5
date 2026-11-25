@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Is it agentic enough? Benchmarking open models on your own tooling</title>
+    <title>Writing a Turn Based Game Websocket Server in Haskell</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9947.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,7 +15,7 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Is it agentic enough? Benchmarking open models on your own tooling</h1>
+        <h1>Writing a Turn Based Game Websocket Server in Haskell</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
@@ -23,9 +23,49 @@
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>I’d like to share a wee pattern I’ve found useful for writing simple WebSocket apps in Haskell - specifically for my side project wordify - an open source ~ multiplayer crossword board game ~ .</p>
+<p>I have in mind websocket applications where there’s some sort of ‘resource’ that is shared between multiple websocket clients that need to be kept updated as the state changes such as:</p>
+<p>For simplicity, we’ll implement a multiplayer server for Noughts and Crosses (as we’ll call it in a parochially defiant act of patriotism against the US-centric internet :P) to illustrate the pattern.</p>
+<p>I’ll be exploring a pattern where we maintain a Map of all the Noughts and Crosses games we have in progress safely such that all the connected websockets see the same game updates.</p>
+<p>There’s a few different options for writing web apps in haskell. Yesod is the one I’m most familiar with. The canonical examples on Yesod WebSockets illustate how to use a shared broadcast TChan as the basis for a chat server (blog here, code example here.))</p>
+<p>This shared TChan broadcast channel is a useful abstraction which will form part of our implementation but unlike the materials above we’ll need to maintain multiple gmaes at once with their own channel.</p>
+<p>A naive approach might be to plonk our games in a Map GameId GameState stored in a TVar. A TVar is a mutable variable that can be updated by multiple threads (or websocket handlers) and can be updated transactionally along with other TVars (which we’ll get into later.)</p>
+<p>We’ll also set up our GameState types including our board state, our two players, channel to broadcast move updates, etc:</p>
+<p>Since we’re using a TVar each WebSocket thread can load a new game into the game map if necessary by running modifyTVar to update the map.</p>
+<p>That just won’t do though! Only one thread can update the map entries at a time, and we have aspirations of being the Internet’s go-to Noughts and Crosses server! We’ll need something that scales better than that while we’ve still got the luxury of vertically scaling one machine along our path to world domination.</p>
+<p>stm-containers to the rescue! It uses a Hash Array Mapped Trie datastructure to split the map into chunks that can be updated inside independent STM transactions allowing for more concurrency.</p>
+<p>Our next challenge is to load the game state into the game map when the first websocket connects and remove it from the map when it’s no longer needed so that we don’t run out of memory in our path to world domination.</p>
+<p>Imagine our Yesod ‘App’ type also had a GameRepository that was a data store we could use to access and persist our TicTacToe games:</p>
+<p>We will leverage this function to load the game into the cache when it’s not already populated.</p>
+<p>We will use Software Transactional Memory (STM) abstraction to ensure that if two websocket connections try to insert an entry into the game map at the same time, they both end up with the same ‘GameState’ instance so that they receive game updates on the broadcast channel.</p>
+<p>In our getGameState function, if we don’t find the game already present in our game map then we attempt to load it freshly and insert it into the map. We do this insertion inside an STM transaction via the atomically function.</p>
+<p>This means that if there is a conflict in the middle of the transaction because one or more other websocket threads have tried to load the game in another concurrent transaction, the transaction inside the atomically ‘block’ will be retried by the unsuccessful writing websocket threads. They will then read the newly inserted entry and increment the sharer count via registerSharer, meaning  that all threads are reading from the same broadcast channel.</p>
+<p>There’s an improvement we can make to make sure that multiple threads don’t try to load our game at the same time, wasting trips to the database just to throw the result away. This could happen in a thundering herd of observers to watch the latest tournament game between Noughts and Crosses grandmasters!</p>
+<p>We will use an MVar to allow a thread to lay claim to responsibility for loading the resource and signal any other threads waiting when it has done so. MVar’s readMVar function allows the caller to wait (block) until it has been populated with a value (or it will return immediately if it’s already populated with a value.)</p>
+<p>The game entry in our game map will now either be a game loaded into the cache (LoadedGame) or a game that is currently being loaded by another websocket (LoadingGame.) LoadingGame will contain an MVar that can be read to receive a signal that the other thread has completed loading the game.</p>
+<p>When we first try to retrieve a game, we have to decide the action we need to take based on the cache state, which we represent with this type:</p>
+<p>When we load a game we transactionally lay claim to loading the resource if it’s not already loaded or is currently being loaded by writing a ‘LoadingGame’ entry to cache:</p>
+<p>This is performed in an STM transaction, so if multiple threads try to insert their ‘MVar’ claiming ownership then the losers of the race will retry the transaction and see the winning thread’s claim when they read the map again. They will then block on it being populated by the winning thread using using readMVar, which serves as a signal that they can now load the game from the cache.</p>
+<p>When loading the resource we must make sure that threads don’t wait on the MVar indefinetly if an error is thrown while retrieving the game so we clean up the claim if an error occurs while trying to load the game.</p>
+<p>Our last challenge is to make sure that entries are removed from the cache when it’s safe to do so (there are no websocket subscriptions.) Our Noughts and Crosses server will be very busy with many games being started and ended and we can’t have ourselves running out of heap space due to a memory leak of games remaining in the cache!</p>
+<p>When we think of garaunteeing the safe release of scarce resources, one of the options our mind turns to is the resourcet package. This package allows us to use the type system to make sure a resource will be cleaned up when it is no longer being used. See this blog entry for more on how it works if you are unfamilar with it.</p>
+<p>We will use the resourcet package’s allocate function to register the action that must be taken when the game resource is no longer in scope (due to the websocket disconnecting or an exception being thrown.)</p>
+<p>We registered the releaseGameState function as the function that should be ran when the resource goes out of scope. It will check if there’s any sharers left, and if there are not it will remove the game from the game map.</p>
+<p>Again, the STM abstraction has served us well. The transaction inside atomically will be restarted if either the ‘gameConnections’ TVar or game map is updated by another websocket thread.</p>
+<p>If a new websocket connection retrieves the game from the cache at the same time as it is being removed in another transaction, either:</p>
+<p>Note: the conditional deletion can be achieved slightly more efficiently with stm-container’s focus function to avoid having to traverse the map a second time to do the deletion.</p>
+<p>We can now use this game ‘resource’ in our websocket handler inside runResourceT:</p>
+<p>We use race_ to spawn two green threads to manage the Websocket connection.</p>
+<p>handleOutgoingMessages will read from the shared broadcast channel and write to the websocket to inform the client of board changes.</p>
+<p>handleIncomingMessages will read from the websocket to make moves on behalf of the user. It will validate the move, update the state and write to the shared broadcast channel.</p>
+<p>When either handleIncomingMessages or handleOutgoingMessages fails on reading or writing to the socket due to it being disconnected, runResourceT will catch the error and run the releaseGameState function that we registered to run on resource deallocation in our getGameState function before rethrowing the error.</p>
+<p>If you want to see a full implementation (mostly vibe coded other than what we’ve discussed here) of our demo noughts and crosses server, I’ve uploaded it to github here. The NoughtsAndCrosses.hs file contains all the logic we’ve been discussing in this blog entry.</p>
+<p>This pattern can be applied in any situation where it’s important that multiple threads need to share the same reference to something that is dynamically loaded. This is a requirement beyond that of a traditional cache where it doesn’t particularly matter if an item is evicted from the cache (per some eviction policy) while there’s still threads holding on to it, for example.</p>
+<p>If you think you might find this pattern useful for something, I’ve published it as a library named shared-resource-cache. Source here.</p>
+<p>Note: it works slightly differently to what we’ve explored here: when there are no ‘sharers’ of the given resource, it is not cleared from the cache immediately. Instead, it is cleared when there has been no sharers for at least a configured amount of time.</p>
+<p>Feel free to send me a game invite on wordify. My username is happy0 :).</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/is-it-agentic-enough" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://blog.gordo.life/2026/04/12/haskell-websockets.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
