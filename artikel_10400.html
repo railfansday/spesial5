@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Make your ZeroGPU Spaces go brrr with ahead-of-time compilation</title>
+    <title>Cambridge scientists create a $10 chip that could put a medical lab on your wrist</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10400.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,105 +15,53 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Make your ZeroGPU Spaces go brrr with ahead-of-time compilation</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>Cambridge scientists create a $10 chip that could put a medical lab on your wrist</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/zerogpu-aoti/thumbnail.png" alt="Make your ZeroGPU Spaces go brrr with ahead-of-time compilation" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://www.sciencedaily.com/images/1920/wearable-spectrometer-chip.webp" alt="Cambridge scientists create a $10 chip that could put a medical lab on your wrist" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/zerogpu-aoti/thumbnail.png" alt="Make your ZeroGPU Spaces go brrr with ahead-of-time compilation" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://www.sciencedaily.com/images/1920/wearable-spectrometer-chip.webp" alt="Cambridge scientists create a $10 chip that could put a medical lab on your wrist" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>ZeroGPU lets anyone spin up powerful Nvidia H200 hardware in Hugging Face Spaces without keeping a GPU locked for idle traffic.
-It’s efficient, flexible, and ideal for demos but it doesn’t always make full use of everything the GPU and CUDA stack can offer.
-Generating images or videos can take a significant amount of time. Being able to squeeze out more performance, taking advantage of the H200 hardware, does matter in this case.</p>
-<p>This is where PyTorch ahead-of-time (AoT) compilation comes in. Instead of compiling models on the fly (which doesn’t play nicely with ZeroGPU’s short-lived processes), AoT lets you optimize once and reload instantly.</p>
-<p>The result: snappier demos and a smoother experience, with speedups ranging from 1.3×–1.8× on models like Flux, Wan, and LTX 🔥</p>
-<p>In this post, we’ll show how to wire up Ahead-of-Time (AoT) compilation in ZeroGPU Spaces. We'll explore advanced tricks like FP8 quantization and dynamic shapes, and share working demos you can try right away. If you cannot wait, we invite you to check out some ZeroGPU-powered demos on the zerogpu-aoti organization.</p>
-<p>Pro users and Team / Enterprise org members can create ZeroGPU Spaces, while anyone can freely use them (Pro, Team and Enterprise users get 8x more ZeroGPU quota)</p>
-<p>Spaces is a platform powered by Hugging Face that allows ML practitioners to easily publish demo apps.</p>
-<p>This works great, but ends up reserving a GPU for the Space during its entire lifetime – even when it has no user activity.</p>
-<p>PyTorch initializes the NVIDIA driver, which sets up the process on CUDA forever. This is not very resource-efficient given that app traffic is not perfectly smooth, but is rather extremely sparse and spiky.</p>
-<p>ZeroGPU takes a just-in-time approach to GPU initialization. Instead of setting up the main process on CUDA, it automatically forks the process, sets it up on CUDA, runs the GPU tasks, and finally kills the fork when the GPU needs to be released.</p>
-<p>Thanks to the Python spaces package, the only code change needed to get this behaviour is as follows:</p>
-<p>By importing spaces and adding the @spaces.GPU decorator, we:</p>
-<p>ZeroGPU currently allocates an MIG slice of H200 (3g.71gb profile). Additional MIG sizes including full slice (7g.141gb profile) will come in late 2025.</p>
-<p>Modern ML frameworks like PyTorch and JAX have the concept of compilation that can be used to optimize model latency or inference time. Behind the scenes, compilation applies a series of (often hardware-dependent) optimization steps such as operator fusion, constant folding, etc.</p>
-<p>PyTorch (from 2.0 onwards) currently has two major interfaces for compilation:</p>
-<p>torch.compile works great in standard environments: it compiles your model the first time it runs, and reuses the optimized version for subsequent calls.</p>
-<p>However, on ZeroGPU, given that the process is freshly spun up for (almost) every GPU task, it means that torch.compile can’t efficiently re-use compilation and is thus forced to rely on its filesystem cache to restore compiled models. Depending on the model being compiled, this process takes from a few dozen seconds to a couple of minutes, which is way too much for practical GPU tasks in Spaces.</p>
-<p>This is where ahead-of-time (AoT) compilation shines.</p>
-<p>With AoT, we can export a compiled model once, save it, and later reload it instantly in any process, which is exactly what we need for ZeroGPU. This helps us reduce framework overhead and also eliminates cold-start timings typically incurred in just-in-time compilation.</p>
-<p>But how can we do ahead-of-time compilation on ZeroGPU? Let’s dive in.</p>
-<p>Let's go back to our ZeroGPU base example and unpack what we need to enable AoT compilation. For the purpose of this demo, we will use the black-forest-labs/FLUX.1-dev model:</p>
-<p>In the discussion below, we only compile the transformer component of pipe since, in these generative models, the transformer (or more generally, the denoiser) is the most computationally heavy component.</p>
-<p>Compiling a model ahead-of-time with PyTorch involves multiple steps:</p>
-<p>Recall that we’re going to compile the model ahead of time. Therefore, we need to derive example inputs for the model. Note that these are the same kinds of inputs we expect to see during the actual runs. To capture those inputs, we will leverage the spaces.aoti_capture helper from the spaces package:</p>
-<p>When used as a context manager, aoti_capture intercepts the call to any callable (pipe.transformer in our case), prevents it from executing, captures the input arguments that would have been passed to it, and stores their values in call.args and call.kwargs.</p>
-<p>Now that we have example args and kwargs for our transformer component, we can export it to a PyTorch ExportedProgram by using torch.export.export utility:</p>
-<p>An exported PyTorch program is a computation graph that represents the tensor computations along with the original model parameter values.</p>
-<p>Once the model is exported, compiling it is pretty straightforward.</p>
-<p>A traditional AoT compilation in PyTorch often requires saving the model on disk so it can be later reloaded. In our case, we’ll leverage a helper function part of the spaces package: spaces.aoti_compile. It's a tiny wrapper around torch._inductor.aot_compile that manages saving and lazy-loading the model as needed. It's meant to be used like this:</p>
-<p>This compiled_transformer is now an AoT-compiled binary ready to be used for inference.</p>
-<p>Now we need to bind our compiled transformer to our original pipeline, i.e., the pipeline.</p>
-<p>A naive and almost working approach is to simply patch our pipeline like pipe.transformer = compiled_transformer. Unfortunately, this approach does not work because it deletes important attributes like dtype, config, etc. Only patching the forward method does not work well either because we are then keeping original model parameters in memory, often leading to OOM errors at runtime.</p>
-<p>spaces package provides a utility for this, too -- spaces.aoti_apply:</p>
-<p>Et voilà! It will take care of patching pipe.transformer.forward with our compiled model, as well as cleaning old model parameters out of memory.</p>
-<p>To perform the first three steps (intercepting input examples, exporting the model, and compiling it with PyTorch inductor), we need a real GPU. CUDA emulation that you get outside of @spaces.GPU function is not enough because compilation is truly hardware-dependent, for instance, relying on micro-benchmark runs to tune the generated code. This is why we need to wrap it all inside a @spaces.GPU function and then get our compiled model back to the root of our app. Starting from our original demo code, this gives:</p>
-<p>With just a dozen lines of additional code, we’ve successfully made our demo quite faster (1.7x faster in the case of FLUX.1-dev).</p>
-<p>If you want to learn more about AoT compilation, you can read PyTorch's AOTInductor tutorial</p>
-<p>Now that we have demonstrated the speedups one can realize under the constraints of operating with ZeroGPUs, we will discuss a few gotchas that came up while working with this setup.</p>
-<p>AoT can be combined with quantization to deliver even greater speedups.
-For image and video generation, the FP8 post-training dynamic quantization schemes deliver good speed-quality trade-offs.
-However, FP8 requires a CUDA compute capability of at least 9.0 to work.
-Thankfully, for ZeroGPUs, since they’re based on H200s, we can already take advantage of the FP8 quantization schemes.</p>
-<p>To enable FP8 quantization within our AoT compilation workflow, we can leverage the APIs provided by torchao like so:</p>
-<p>(You can find more details about TorchAO here.)</p>
-<p>And we can then proceed with the rest of the steps as outlined above. Using quantization provides another 1.2x of speedup.</p>
-<p>Images and videos can come in different shapes and sizes. Hence, it’s important to also account for shape dynamism when performing AoT compilation. The primitives provided by torch.export.export make it easily configurable to provide what inputs should be treated accordingly for dynamic shapes, as shown below.</p>
-<p>For the case of Flux.1-Dev transformer, changes in different image resolutions will affect two of its forward arguments:</p>
-<p>We start by defining a range in which we want to let the (latent) image resolutions vary.
-To derive these value ranges, we inspected the shapes of hidden_states in the pipeline with respect to varied image resolutions. The exact values are model-dependent and require manual inspection and some intuition. For Flux.1-Dev, we ended up with:</p>
-<p>We then define a map of argument names and which dimensions in their input values we expect to be dynamic:</p>
-<p>Then we need to make our dynamic shapes object replicate the structure of our example inputs. The inputs that do not need dynamic shapes must be set to None. This can be done very easily with PyTorch tree_map utility:</p>
-<p>Now, when performing the export step, we simply supply transformer_dynamic_shapes to torch.export.export:</p>
-<p>Check out this Space that shows how to use both quantization and dynamic shapes during the export step.</p>
-<p>Dynamic shapes is sometimes not enough when dynamism is too important.</p>
-<p>This is, for instance, the case with the Wan family of video generation models if you want your compiled model to generate different resolutions.
-One thing can be done in this case: compile one model per resolution while keeping the model parameters shared and dispatching the right one at runtime</p>
-<p>Here is a minimal example of this approach: zerogpu-aoti-multi.py. You can also see a fully working implementation of this paradigm in the Wan 2.2 Space.</p>
-<p>Since the ZeroGPU hardware and CUDA drivers are perfectly compatible with Flash-Attention 3 (FA3), we can use it in our ZeroGPU Spaces to speed things up even further. FA3 works with ahead-of-time compilation. So, this is ideal for our case.</p>
-<p>Compiling and building FA3 from source can take several minutes, and this process is hardware-dependent. As users, we wouldn’t want to lose precious ZeroGPU compute hours. This is where Hugging Face kernels library comes to the rescue. It provides access to pre-built kernels that are compatible for a given hardware. For example, when we try to run:</p>
-<p>It tries to load a kernel from the kernels-community/vllm-flash-attn3 repository, which is compatible with the current setup. Otherwise, it will error out due to incompatibility issues. Luckily for us, this works seamlessly on the ZeroGPU Spaces. This means we can leverage the power of FA3 on ZeroGPU, using the kernels library.</p>
-<p>Here is a fully working example of an FA3 attention processor for the Qwen-Image model.</p>
-<p>So far, we have been compiling the full model. Depending on the model, full model compilation can lead to significantly long cold start times. Long cold start times make the development experience unpleasant.</p>
-<p>We can also choose to compile regions within a model, significantly reducing the cold start times, while retaining almost all the benefits of full model compilation. Regional compilation becomes promising when
-a model has repeated blocks of computation. A standard language model, for example, has a number of
-identically structured Transformer blocks.</p>
-<p>In our example, we can compile the repeated blocks of the Flux transformer ahead of time, and propagate the compiled graph to the remaining repeated blocks. The Flux Transformer has two kinds of repeated blocks: FluxTransformerBlock and FluxSingleTransformerBlock.</p>
-<p>You can check out this Space for a complete example.</p>
-<p>💡 For Flux.1-Dev, switching to regional compilation reduces the compilation time from 6 minutes to just 30 seconds while delivering identical speedups.</p>
-<p>Once a model (or even a model block) is compiled ahead of time, we can serialize the compiled graph module
-as an artifact and reuse later. In the context of a ZeroGPU-powered demo on Spaces, this will significantly
-cut down the demo startup time by skipping the compilation time.</p>
-<p>To keep the storage light, we can just save the compiled model graph without including any model parameters
-inside the artifact.</p>
-<p>Check out this collection that shows a full workflow of obtaining compiled model graph, pushing it
-to the Hub, and then using it to build a demo.</p>
-<p>ZeroGPU within Hugging Face Spaces is a powerful feature that enables AI builders by providing access to powerful compute. In this post, we showed how users can benefit from PyTorch’s ahead-of-time compilation techniques to speed up their applications that leverage ZeroGPU.</p>
-<p>We demonstrate speedups with Flux.1-Dev, but these techniques are not limited to just this model. Therefore, we encourage you to give these techniques a try and provide us with feedback in this community discussion.</p>
-<p>Acknowledgements: Thanks to ChunTe Lee for creating an awesome thumbnail for this post. Thanks to Pedro and Vaibhav for providing feedback on the post. Thanks to Angela Yi from the PyTorch team for helping us with AOT guidance.</p>
-<p>generate a video from an image with a text prompt</p>
-<p>I’m unable to resume my private ZeroGPU Space, KarelKiryu/chromia-private.</p>
-<p>My account is on the free plan, was created on September 25, 2026, and has a verified email address. This is my only Space.</p>
-<p>The Space was starting and executing model initialization earlier today. After I paused it, attempting to resume it through either the web interface or HfApi.restart_space() returns:</p>
-<p>The API returns HTTP 403. Uploading code to the private Space still succeeds, and hf auth whoami confirms that I’m authenticated as its owner, KarelKiryu.</p>
-<p>I also tried hf spaces zero-gpu quota, but that endpoint returns HTTP 403 with “Authorization error”, so I cannot check the remaining quota.</p>
-<p>The current ZeroGPU documentation states that free personal accounts with a verified email and an account older than 30 days can host up to two ZeroGPU Spaces.</p>
-<p>Could you clarify whether this free hosting allowance includes private Spaces, and why resuming this Space now requires PRO?</p>
-<p>Restart request ID:Root=1-6af784d1-099bb25b3d8b153e07252de8;45372567-e02a-4467-be9a-65f5861c6b39</p>
-<p>generate a video from an image with a text prompt</p>
+                <p>A new optical sensor costing just $10 could bring laboratory-level precision to wearable health monitors, potentially allowing people to track blood glucose without needles. The technology could also transform food testing, industrial quality control, and environmental monitoring.</p>
+<p>Researchers at the University of Cambridge and GlitterinTech (a start-up founded by the same research group) have developed a new type of optical spectrometer that combines exceptional accuracy with a remarkably small size and low cost. Measuring just centimeters across, the device could be incorporated into portable electronics and wearable health technology. Its potential applications range from monitoring important health markers in real time to identifying materials and detecting changes in chemical composition.</p>
+<p>Optical spectrometers work by analyzing light to reveal information about the substances it interacts with. They are essential tools in medicine, manufacturing, chemical testing, and environmental research. However, making these instruments smaller has traditionally meant compromising their performance. Compact spectrometers often have limited measurement ranges, reduced resolution, or lower accuracy, making them better suited to identifying substances than performing precise measurements.</p>
+<p>The researchers believe their new design could overcome these limitations. Known as a convolutional spectrometer, it uses a mathematical principle called the convolution theorem to analyze light in a fundamentally different way. According to the team, this approach delivers performance that surpasses existing types of spectrometers in several key areas, including designs based on light dispersion, Fourier transforms, and computational reconstruction.</p>
+<p>A New Way to Analyze Light With Extraordinary Precision</p>
+<p>Traditional spectrometers generally separate incoming light into its component wavelengths or use complex calculations to reconstruct its spectrum. The new device takes another approach by performing a mathematical operation called convolution directly on the incoming light.</p>
+<p>To accomplish this, the researchers arranged optical components with repeating spectral responses in a sequence. These components can include unbalanced Mach-Zehnder interferometers or micro-ring resonators. By adjusting them in proportion to one another, the system can shift its response to different wavelengths in a controlled, linear fashion. Fast Fourier transforms are then used to accurately recover the light spectrum.</p>
+<p>"The key insight was to go back to the mathematics and ask whether there was a fundamentally cleaner way to retrieve spectra," said Dr. Chunhui Yao, a lead author of the study. "By using the convolution theorem directly in the optical domain, we avoid many of the limitations that have held miniaturized spectrometers back. This gives us high precision, strong noise tolerance, and very low computational overhead, all in a compact and low-cost system."</p>
+<p>The researchers built the spectrometer using a silicon nitride photonic platform and integrated it with onboard electronics. It operates across a broad range of near-infrared wavelengths (1200-1700 nm) and can collect and process measurements in less than a second.</p>
+<p>Another important advantage is its ability to expand its measurement capabilities without major hardware changes. Because the system uses repeating optical patterns, its spectral bandwidth can theoretically be extended almost without limit. Adding more optical components in sequence can also increase its resolution exponentially.</p>
+<p>A $10 Sensor That Could Transform Food Testing and Healthcare</p>
+<p>To evaluate the device outside purely theoretical measurements, the researchers tested it on a variety of materials and substances. The results demonstrated its potential for applications that normally depend on larger, more expensive laboratory instruments.</p>
+<p>When used to identify plastics, pharmaceuticals, coffee, flour, and tea, the spectrometer achieved a 100% classification success rate in the reported tests. It also measured concentrations in water-based and organic solutions with accuracies of approximately 0.01%, exceeding the performance of commercial benchtop spectrometers in those experiments.</p>
+<p>The healthcare demonstrations were particularly promising. Under conditions designed to reflect real physiological environments, the device accurately measured several human biomarkers, including skin moisture, blood alcohol, blood lactate, and blood glucose.</p>
+<p>The researchers also demonstrated noninvasive glucose tracking over an extended period in one participant. Although further testing would be needed before the technology could become a practical medical product, the finding suggests a possible route toward monitoring blood sugar without repeatedly piercing the skin.</p>
+<p>"These biomedical demonstrations are particularly exciting," said Prof. Qixiang Cheng, who led the project. "What makes this work stand out is not just performance in the lab, but technical readiness. Dr. Chunhui Yao's contribution was crucial in translating a mathematical concept into a fully packaged, robust system that operates reliably across temperature extremes and real-world conditions. That combination is what opens the door to practical deployment."</p>
+<p>The sensor also demonstrated impressive resistance to temperature changes. It continued operating reliably between -20°C and 80°C, an unusually wide temperature range for a miniature spectrometer. This durability could be especially valuable for wearable devices, factory equipment, and sensors operating outdoors.</p>
+<p>Why a Simpler Design Could Be a Major Breakthrough</p>
+<p>The new spectrometer's advantages extend beyond its accuracy, size, and price. Its internal design also reduces the amount of computing power needed to analyze incoming light.</p>
+<p>Many existing miniature spectrometers depend on complicated calibration procedures and demanding algorithms to reconstruct spectral information. These methods can become unreliable when measurements contain noise, and they often require substantial processing resources.</p>
+<p>The Cambridge team's convolution-based approach avoids much of this complexity. Because the measurements follow a linear mathematical relationship, the system can recover spectra rapidly and consistently while using relatively little computational power.</p>
+<p>"This is a beautiful example of how elegant engineering can unlock real impact," said Prof. Richard Penty, who contributed to the photonic system design and integration. "The architecture is simple, scalable, and manufacturable, yet it delivers precision that rivals or exceeds much larger instruments. Dr. Chunhui Yao played a central role in bringing together the photonic design, system integration, and experimental validation that made this possible."</p>
+<p>Its relatively simple construction could also make the technology easier to manufacture on a large scale, potentially bringing sophisticated optical measurements to devices where conventional spectrometers would be too bulky or expensive.</p>
+<p>Bringing Laboratory-Grade Measurements to Everyday Devices</p>
+<p>The researchers envision a future in which accurate optical sensing becomes a routine feature of everyday technology rather than something largely confined to specialized laboratories.</p>
+<p>In industrial settings, inexpensive spectrometers could be installed throughout manufacturing facilities to continuously check material composition and product quality. Similar sensors could monitor food freshness, identify substances, and analyze environmental conditions on a much larger scale than is currently practical.</p>
+<p>Healthcare could see equally significant changes. Compact sensors might eventually enable wearables to measure hydration levels, detect signs of alcohol intoxication, track biomarkers related to physical fitness, or continuously monitor glucose levels for people managing diabetes.</p>
+<p>"Our vision is to make spectrometry as ubiquitous as temperature or motion sensing," added Prof. Qixiang Cheng. "This work shows that high-quality spectral information doesn't have to be confined to the laboratory -- it can be embedded directly into the technologies people use every day."</p>
+<p>As photonic technology becomes smaller and more advanced, the convolutional spectrometer provides a promising example of how mathematical insights and practical engineering can make sophisticated scientific instruments simpler, cheaper, and more accessible. By combining high precision with a device that costs around $10, the researchers have opened a potential path toward a new generation of smart sensors capable of measuring the hidden chemistry of our bodies and surroundings.</p>
+<p>Materials provided by University of Cambridge. Original written by Michael Shuff. Note: Content may be edited for style and length.</p>
+<p>Researchers Just Sent an Unblockable Message Through a Solid Wall Using Gravity</p>
+<p>Your Personality May Be Partly Written in Your DNA, Massive Study of 1 Million People Reveals</p>
+<p>A Tiny Region of the Brain Could Hold the Key to Understanding Early Alzheimerâs Symptoms</p>
+<p>Two Overlooked âForever Chemicalsâ Linked To More Than Double the Risk of Liver Cancer</p>
+<p>Stay informed with ScienceDaily's free email newsletter, updated daily and weekly. Or view our many newsfeeds in your RSS reader:</p>
+<p>Keep up to date with the latest news from ScienceDaily via social networks:</p>
+<p>Tell us what you think of ScienceDaily -- we welcome both positive and negative comments. Have any problems using the site? Questions?</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/zerogpu-aoti" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sciencedaily.com/releases/2026/10/261022081312.htm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

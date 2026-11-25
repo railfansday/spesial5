@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>tday.com</title>
+    <title>Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9575.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>tday.com</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/vsMwqfBg4GPMoQwiy2fZDNfdse92-8m03mln.jpeg" alt="Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/vsMwqfBg4GPMoQwiy2fZDNfdse92-8m03mln.jpeg" alt="Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Ask your coding agent for a narrated demo of any feature
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/tday?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1328270?app_id=339">Link</a>
-          </p></p>
+                <p>Last week, we spent almost four hours tracking down a login bug that made zero sense on paper.</p>
+<p>Our dashboard users signing in with Google or Discord were getting thrown into an infinite redirect loop. They would hit sign in, pick their Google account, authorize it, watch the screen flash for a second, and then land right back on the empty login form.</p>
+<p>No error message. No red toast. No failed requests in Chrome's network tab. Nothing in the console either.</p>
+<p>Meanwhile, plain old email-and-password logins worked perfectly. Same database, same API server, same users. If an account logged in with a password, it went straight to the dashboard. If that exact same account clicked "Sign in with Google", it got kicked right back to square one.</p>
+<p>To explain why this happened, you have to look at how we split our frontend and backend. The client dashboard runs on one subdomain, and the core API runs on another.</p>
+<p>When someone signs in with an email and password, the frontend just fires an asynchronous POST request to our auth endpoint. The API checks the credentials, returns a 200 with the user profile and session data right in the JSON response body, and the frontend JavaScript saves that into localStorage and routes to the dashboard.</p>
+<p>OAuth can't do that because the initial handoff isn't an in-page fetch request. The user gets bounced to Google's consent screen on google.com, and Google bounces them back to our API callback route on our API subdomain.</p>
+<p>During initial development, this worked every single time. We created test accounts, clicked through OAuth, and landed on the dashboard without an issue.</p>
+<p>The bug only showed up when we started testing with older, heavily used accounts.</p>
+<p>When one of us tried to log in with an account we had been using for weeks across multiple laptops and phones, the redirect loop kicked in immediately.</p>
+<p>But we checked our flags, and we were already using SameSite=Lax, Secure, and an explicit parent domain. That should have been completely fine under modern browser specs.</p>
+<p>Then we thought we might have a race condition in our frontend code. We had an event listener in the login view listening for window focus events to catch popups, so we wondered if the tab was gaining focus mid-redirect and wiping state.</p>
+<p>We removed that listener, tested again, and the loop was still there.</p>
+<p>Eventually we opened Chrome DevTools, turned on "Preserve log" in the Network tab, and watched the whole redirect chain step by step.</p>
+<p>That user record had an array called sessions. Every time a user logged in, our database pushed an entry tracking their device, IP, user-agent string, and login time.</p>
+<p>On a brand new test account with one session, that whole JSON object was around 300 bytes. It easily fit inside the 4KB limit. But on our personal accounts, which had logged in dozens of times during testing, that session array had 10 or 15 items. The raw JSON alone grew to about 2.6KB.</p>
+<p>Every quote turns into %22. Every bracket turns into %7B or %7D. Every colon turns into %3A. Every comma turns into %2C.</p>
+<p>In practice, percent-encoding regular JSON inflates the byte size by about 2.4 times.</p>
+<p>Email and password login never had this problem because the user data returned in the HTTP response body has no 4KB limit. The frontend read the body, saved it to localStorage, and navigated cleanly.</p>
+<p>Third, we updated our frontend auth hook to check the URL query parameters on mount. If it sees auth_success=true, it immediately fires a background fetch request to our user profile endpoint to pull the full user object over a normal HTTP body.</p>
+<p>As soon as that request finishes and localStorage is updated, the frontend calls window.history.replaceState to scrub the query parameters out of the URL bar so the user never sees them.</p>
+<p>The biggest lesson for us was just how quiet browser networking failures can be.</p>
+<p>If your backend throws a 500 or your React code throws an exception, you get an immediate alert or a red error in your console.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/tday" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/debugging-oauth-redirect-loops-caused-by-oversized-http-cookies?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Making Knowledge Distillation Cheap Enough to Run at Scale</title>
+    <title>PHP 8.6: Things are gonna get a lot more strict around here</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9959.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,35 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Making Knowledge Distillation Cheap Enough to Run at Scale</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>PHP 8.6: Things are gonna get a lot more strict around here</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://image.theregister.com/5247128.jpg?imageId=5247128&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="PHP 8.6: Things are gonna get a lot more strict around here" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/668e37fd9c9aa124a3c867e8/nB5NK4bdfr7AY1IAO14Gh.png" alt="Making Knowledge Distillation Cheap Enough to Run at Scale" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5247128.jpg?imageId=5247128&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="PHP 8.6: Things are gonna get a lot more strict around here" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Knowledge distillation, training a smaller student model to match the performance of a larger teacher, is a well-known technique in Machine Learning. With the recent wave of open-source Large Language Models, such as gpt-oss, Qwen, GLM, or Kimi, it has become a mainstream research topic again. Deploying these very large models is expensive: the recent Kimi-K3 model has 2.8 trillion parameters and needs roughly 3TB of VRAM just to load. Compressing them into smaller models and recovering the original capabilities through knowledge distillation has therefore become standard practice, with companies like Nvidia (Nemotron 3 Puzzle 75B) or Multiverse Computing (Hypernova 60B) recently releasing high-quality compressed models.</p>
-<p>The distillation step is what decides most of the final quality, but it's also usually the most expensive part of the pipeline. Keeping both the teacher and student loaded, and producing a probability distribution over the entire vocabulary for every token, requires enormous amounts of VRAM, typically feasible only with hundreds of GPUs and careful tensor-parallelism strategies. Our latest paper, Efficient Knowledge Distillation for LLMs: Offline Top-K Logits and a Fused Chunked KL Loss, tackles this with two systems changes: caching the teacher's top-K logits once so the teacher never has to sit in memory alongside the student, and a new, memory-efficient KL-divergence loss that avoids ever materializing the full vocabulary-size × sequence-length matrix, cutting VRAM use far below what the default implementations in libraries like PyTorch or NVIDIA Megatron-Bridge achieve. Together, these two changes cut training cost enough to make long-context healing possible on a single GPU, and cheap enough to make large-scale experimentation practical.</p>
-<p>The standard setup, online distillation using the Kullback-Leibler divergence loss (KL loss), keeps both the teacher and the student loaded at the same time. At every training step, the teacher runs a full forward pass to produce its output distribution, and the student is trained to match it. This is the most expressive setup, since the full teacher distribution is available, but it is also the most memory- and compute-intensive: two full-vocabulary tensors have to be held per token position, and the teacher has to be recomputed on every single step even though its behavior does not change across a training run.</p>
-<p>As a practical example, gpt-oss-120b has a vocabulary of 201,088 tokens. At a sequence length of 32K and batch size 4, the teacher-probability tensor alone has shape 4 × 201,088 × 32,768; in bfloat16, that's already about 50GB of VRAM for a single tensor. Add gradients, activations, model weights, and optimizer states, and a single training iteration of distillation can peak at roughly 250GB of VRAM, more than even an H200 or B200 GPU can provide. In this post, we show that reformulating the KL loss to process the data in chunks reduces this cost to almost nothing.</p>
-<p>Dense KL spikes to roughly 250GB, above a single H200's 141GB capacity. The fused chunked loss never forms that spike and peaks at about 128GB. Source: paper Figure 1.</p>
-<p>Offline distillation. Instead of recomputing the teacher at every step, we compute its output once, cache the top-100 most likely tokens per position, and train the student against that cache. The teacher never has to sit in memory during training and does not need to be run again once the cache exists, so the same cache can be reused across many ablations.</p>
-<p>A fused, chunked KL loss. To see why the loss itself is expensive, picture what it actually builds: for every token position in a sequence and every word in the vocabulary, the loss needs a number describing how much the student's prediction disagrees with the teacher's. Laid out as a grid, that's one row per vocabulary entry and one column per sequence position, for a vocabulary of 100K+ words and a long sequence, that grid is enormous, and the default way of computing a KL loss builds the whole thing before it can produce a single number.</p>
-<p>We compare three ways of computing this same loss, all mathematically equivalent:</p>
-<p>The GIF below shows the difference between the dense and fused-chunked approaches: one builds the whole comparison grid and holds onto all of it, the other builds and discards one slice at a time, so memory never grows beyond a single chunk.</p>
-<p>We have open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
-<p>The table below puts all four setups head to head: online distillation, and the three offline loss implementations just described. Comparing them on a single H200 GPU with Llama 3.1 8B Instruct as teacher and a 3.2B Llama model as student at an 8K token context, all four reach near-identical training loss, even though the offline runs train against only the cached top-100 logits per token.</p>
-<p>The loss curves overlap almost exactly across all four methods, confirming offline distillation with top-100 cached logits is lossless relative to online distillation. Source: paper Figure 2. At this sequence length, the fused chunked loss is not yet the fastest option, its extra backward-pass projection costs a bit of speed, but its real advantage only shows up as context length grows, which the next section demonstrates.</p>
-<p>To see the scaling pattern more starkly, we ran an isolated benchmark on a toy output-projection network (no transformer body, just the loss kernel). At 32K tokens, peak memory falls from 85.2 GiB with the dense loss to 5.45 GiB with the fully chunked version, a 15.6× reduction, and the dense loss fails outright from 64K tokens onward. At 256K tokens, the fully chunked loss uses 11.6 GiB against 134.2 GiB for the next-best chunked variant, and is about 3.3× faster per iteration at that length.</p>
-<p>Distilling a GPT-OSS 20B model at a 32,768-token context, the memory freed by the fused loss let the setup shrink from four GPU nodes down to one. Step time fell from 57.0 to 12.23 seconds, about 5× faster, and throughput per GPU rose from 74.2 to 345.7 TFLOP/s.</p>
-<p>The efficient offline setup is what made a large-scale distillation campaign affordable in the first place. The resulting compact student, distilled from Llama 3.1 8B Instruct down to about 3.2B parameters, retains most of the teacher's accuracy on BoolQ and HellaSwag, stays within about nine points of it on MMLU, at less than half the parameter count.</p>
-<p>The student retains most of the teacher's short-context accuracy at less than half the size. Source: paper Figure 6.</p>
-<p>This work is part of Multiverse Computing's ongoing research into making distillation and healing practical to run at scale, not just as a one-off recipe, but as something teams can iterate on cheaply. The paper also covers additional ablations, such as how the choice of loss function and sequence packing affect recovery quality.</p>
-<p>Want the full technical details, including the closed-form gradient behind the fused chunked loss and the complete training configuration? Read the full paper, or get in touch with our team to talk about applying this to your own distillation pipelines.</p>
-<p>We have also open-sourced the chunked-loss implementation: github.com/CompactifAI/Full-Chunked-KL-Loss</p>
+                <p>Like a parent disciplining a misbehaving child, PHP’s annual update clamps down on loose default behaviors to curb malicious hacker horseplay.</p>
+<p>On Thursday,  PHP version 8.6 was released on its usual yearly schedule, popping up as if the web scripting language hadn’t been under intense scrutiny this past month.</p>
+<p>For those who missed it: a swarm of unearthed vulnerabilities has plagued PHP since October, allowing unauthenticated attackers to crash PHP workers or execute arbitrary code on the server. Users of every PHP-based application, including WordPress, Laravel, and Symfony, had to scramble to update their PHP instances.</p>
+<p>The PHP core development community, along with the PHP Foundation, responded with a coordinated release of patched versions of PHP (8.5.13, 8.4.28, 8.3.37, 8.2.36 and the new 8.6) that closed seven critical remote code execution (RCE) flaws in one sweep.</p>
+<p>In addition to patching specific exploitable holes in the PHP engine, the new version of PHP also tamps down some of PHP’s historically liberal configuration settings.</p>
+<p>Lucky for PHP, and for the rest of us, core developer Jörg Sowa called out these lax settings in June, when he posted a proposal to set more security-friendly defaults.</p>
+<p>Sowa saw that three configuration settings of PHP’s session extension – Strict Mode, HttpOnly, and SameSite – were designed to boost security but shipped “with defaults that leave applications unnecessarily exposed.”</p>
+<p>In a retrospective posted last month, the PHP Foundation admitted that consensus-driven gridlock had stalled complex fixes for months and vowed to get patches out the door sooner, should the vulnerabilities leak ahead of the agreed-upon deadline.</p>
+<p>Code-wise, Sowa’s proposal to harden PHP settings was accepted for PHP 8.6. These changes won’t stop the flood of AI-generated CVEs, but at least these holes will be more difficult to exploit.</p>
+<p>For Strict Mode, PHP will no longer accept uninitialized session IDs that it didn’t create itself. Before, an attacker could just plant a made-up session ID on the victim to gain entry. “The built-in files handler checks whether a session file for that ID exists on disk; because an attacker-planted ID has no corresponding file, a fresh random ID is generated instead,” Sowa wrote.</p>
+<p>Collectively, these changes should thwart session hijacking and cross-site request forgeries. They won’t stop remote code execution hacks, though they will make it a lot more difficult for attackers to gain entry.</p>
+<p>The new release brings some other security-minded changes as well.</p>
+<p>The PHP engine will be a lot stricter when it encounters strings with null values (“\0”). In many cases, it will now throw an error rather than silently letting it pass. Null values are a favored trick for triggering RCEs. A C function will treat the null value as the end of the string, processing everything before the null byte and ignoring everything after, much to an attacker’s delight.</p>
+<p>Continuing in this spirit of “if you see something, say something,” a number of other PHP functions will also no longer remain silent when things go awry. Operations for closing a file or copying data, for instance, will explicitly return a false value when terminating prematurely or failing, an alert developers could use to minimize data integrity bugs.</p>
+<p>Beyond security, PHP 8.6 also comes with a number of new goodies.</p>
+<p>PHPers are abuzz over Partial Function Application (PFA), which will let them pre-fill some of a function’s arguments to generate a reusable closure on the fly — leapfrogging JavaScript in this ability.</p>
+<p>The new edition also gets a native polling API, which will be handy for event-driven networking; a stopwatch-like Duration class that can track elapsed time across more than 250 years; and a clamp() function to ensure a given value stays within an acceptable range.</p>
+<p>For administrators, this PHP update round may be a bit of a shambles.</p>
+<p>As backend software engineer Rajekevin Dourepoulle notes in a blog post, these changes will take effect post-installation only if the configurations aren’t specified elsewhere, such as in an application, framework, or even another php.ini file – all of which can override the PHP settings themselves.</p>
+<p>“In practice: if your deployment reuses the old php.ini (an Ansible template, a COPY php.ini in a Dockerfile, a file copied from server to server), you move to 8.6 and gain nothing, because the explicit session.use_strict_mode = 0 line overrides the new default,” he wrote.</p>
+<p>Despite all these heroic efforts, PHP remains the champion of inscrutability. ®</p>
+<p>‘It’s like the Ottoman Empire banning the printing press for Arabic so they would keep in control of the dogma,’ he says</p>
+<p>PARTNER CONTENT: PARTNER CONTENT: Hyperscalers and colos have distinct power strategies, but for both, securing flexible, fast power relies on self-generated solutions</p>
+<p>Easy-to-use, popular, not collecting data for us, or serving our ads? Down with you!</p>
+<p>If a service falls in the forest and nobody hears it...</p>
+<p>No sophisticated malware or attack framework required</p>
+<p>Still slinging hardware – now with added AI and attendant risks or opportunities</p>
+<p>‘It’s like the Ottoman Empire banning the printing press for Arabic so they would keep in control of the dogma,’ he says</p>
+<p>Chip boss gets his old job back, but Washington isn't done investigating one of his former flame's businesses</p>
+<p>Britain wants sovereign capability to test whether military AI will work before it gets deployed for real</p>
+<p>If the AI can't explain what it's proven, are we actually any closer to understanding?</p>
+<p>PLUS: US takes down Iranian propaganda sites; Marketing company asks 'Why Do We Have Your Information?' And more!</p>
+<p>PLUS: China upgrades smartphone surveillance tools; Ring eases anti-snooping stance; and more</p>
+<p>Voting village reports have been so successful, says Jeff Moss, that the whole of DEF CON will now be included</p>
+<p>Went at equivalent of $3.5B+ valuation for entire firm, though portion sold not specified</p>
+<p>On the plus side, infosec's a good bet for a long, stable career</p>
+<p>A spatial classic Finder in the style of A/UX</p>
+<p>Canonical's stretch goal is to make the immutable OS standard in 30.04 – without retiring the traditional distro</p>
+<p>Cheap tiny e-readers and the perils of LLM-generated drive-by pull requests – plus much more</p>
+<p>Devuan-based distro swaps Wayland for XLibre and i3, with Xfce waiting if the tiling gets tiresome</p>
+<p>Version 4.0 of Redmond’s cloudy OS is free to use in its cloud. Repeat. Free to use</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/MultiverseComputingCAI/efficient-knowledge-distillation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/devops/2026/11/20/php-86-things-are-gonna-get-a-lot-more-strict-around-here/5311486" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

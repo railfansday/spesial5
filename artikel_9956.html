@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Worshipping at the altar of Brendan Gregg</title>
+    <title>How an Agent Built a 3D Paris Gallery by Chaining Two Hugging Face Spaces</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9956.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,53 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Worshipping at the altar of Brendan Gregg</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>How an Agent Built a 3D Paris Gallery by Chaining Two Hugging Face Spaces</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
             
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Okay, I am the first to admit that I’m a bit manic with AI. When you are working on a problem that has endless possibilities, it is difficult to constrain yourself to a limited set of features.</p>
-<p>I have been amazed at all the fun and useful things that a deterministic VM like Rewind enables. I have been using it to help find heisenbugs, to make profile-guided optimization reproducible, and to make Nix builds bit-reproducible. But the most fun has been using it to understand performance.</p>
-<p>Turns out that performance is yet another area where Rewind shines. I have been using it to analyze the critical path of builds.</p>
-<p>The critical path is the longest chain of dependent work in a program. It is the minimum time that the program can take to complete, regardless of how many resources you throw at it. The only way to make a program faster is to shorten the critical path.</p>
-<p>If you worship at the altar of Brendan Gregg, you know he spent years turning performance analysis from a dark art into a science. This is a small offering to him. 🤲</p>
-<p>I added a new rewind time command to Rewind that analyzes a recording and tells you where the time went and what would make the run finish sooner. You can drill into any part of that answer and see the source lines responsible for it. It’s like Brendan Gregg’s flame graphs but on steroids for the critical path and with a debugger attached.11All the ideas for the command are either inspired by or directly influenced by Brendan Gregg’s work. Kneel before Zod!</p>
-<p>Aside:
-New to Rewind? Start with a flaky build you only catch once and dafuq is a deterministic VM?</p>
-<p>Let’s see how it works by analyzing the critical path of a libuv build and test run. The build and test suite takes 78 seconds inside Rewind, and even with 64 cores it still takes 47 seconds. Why?</p>
-<p>The usual answer is to look at a CPU profile, and in this case a CPU profile would be almost useless. For two thirds of those 47 seconds, the work the build is waiting on is not computing at all: it is asleep. 💤💤💤</p>
-<p>Every rewind time starts with two numbers:</p>
-<p>The first is how long the run took on the VM’s one virtual CPU. The second is the critical path: the longest chain of work where each step had to wait for the one before.</p>
-<p>No number of CPUs makes a run shorter than its critical path, so the gap between the two numbers is all that parallelism can buy you.</p>
-<p>The line under the two numbers applies Gregg’s thread state analysis. Here the biggest state is asleep: 23 seconds in epoll_pwait and 8.5 in clock_nanosleep.</p>
-<p>A sleeping thread is invisible to a CPU profiler. Gregg’s answer is off-CPU analysis: look at where threads block, not only where they compute.</p>
-<p>On a live machine, off-CPU analysis is hard. Linux can trace which thread woke which, and Gregg built wakeup and off-wake profiling on top of that, but you have to be tracing before the slow run happens, the tracing has a cost, and most of the sleeps you capture are noise. Rewind already logs every context switch because it needs them to replay, and now it records every wakeup and who caused it too. All that juicy information is in every recording. 🤤</p>
-<p>The second table is the path as a tree of processes based on Gregg’s colony graph idea. Each line is a process with everything it started, and its time on the critical path.22A ps snapshot might miss short-lived process invocations; the recording has every fork, regardless of how brief.</p>
-<p>In this build, make check needs 41.9 of the total 47.4 seconds, and 36.4 of that is lt-run-tests, libuv’s test runner. The test runner invokes 287 tests each spending 1-3 seconds.</p>
-<p>All of those tests are on the path, and the path is a single chain, so the runner ran them one after another. Worse, most of each test is spent asleep, waiting on timers.</p>
-<p>The last table answers a different question: how much sooner would the run finish if this part took no time? The critical path method calls this drag.</p>
-<p>For the truly magical part, we can jump to any part of the path and see what was happening, invoke gdb and fork the run at that moment. A profiler hands you a stack, sampled at some moment you can never go back to. Every frame in rewind time is a moment in a recording, and Rewind can replay the run to it.</p>
-<p>--in looks inside one process,33It can take a pid, a program or a word of the command line.  so let’s dive into the hrtime test that spent 3.38 seconds asleep in clock_nanosleep:</p>
-<p>Since this test spent 100% of its time asleep, the step provided on the last line is where it began. rewind where replays the run to that step and asks gdb where the thread was:</p>
-<p>🎯 We can see that the test is calling uv_sleep(45) from line 39 of test/test-hrtime.c, and that it is sleeping for 45 milliseconds.
-It does that 75 times for a total of 3.38 seconds.44Turns out that the test sleeps on purpose: it is checking how far uv_hrtime moves across a sleep. There is nothing to optimize in this case.</p>
-<p>As the cherry on top: the run is deterministic, so step 115,894 is the same instruction every time you replay it. You can open rewind gdb at that step and investigate to your heart’s content.</p>
-<p>The Rewind app’s Time tab shows the same answers. The path becomes a flame graph, colored the way Gregg colors his off-CPU flame graphs: computing is warm, asleep is blue, and a process shades from one to the other by how much of its time it slept.</p>
-<p>Clicking a frame picks it and moves the playhead there, so the build log, the process tree and the files all show that moment; clicking a process again zooms into it. When you pick a blue frame, the app replays the run to that part’s longest sleep and shows the stack where it slept:</p>
-<p>Under the stack, Show source opens the source panel at that moment on that thread, and Open gdb here opens gdb in a fork of the run at the sleep:</p>
-<p>If you’d rather use tools you already know, rewind time can emit the data in their formats: folded stacks for flamegraph.pl and speedscope, or a Perfetto trace for ui.perfetto.dev.</p>
-<p>The flame graph below is the real flamegraph.pl output: click a frame to zoom in, or open it on its own.</p>
-<p>Every idea here predates Rewind. Gregg has been drawing off-CPU and wakeup flame graphs for over a decade, and build systems have reported critical path information potentially even longer.55Bazel’s critical path analysis is a great example of this, and it has been around for years.  I have been inspired by his work since I first dabbled in eBPF, back when flame graphs were new. 🙇</p>
-<p>What Rewind adds is the data. Lots of it.</p>
-<p>Rewind has that data because it can’t replay without it. On a single CPU the only thing that changes from run to run is the scheduler, so every recording already logs every context switch.</p>
-<p>This changes the economics of performance analysis. On a live machine, you have to trace before the run, and tracing has a cost. You can only trace a few runs, and you have to pick which ones. Rewind traces every run, so you can analyze any of them later, and do so exactly.</p>
-<p>It has just been a manic fever joy to take ideas I have admired for years, point them at a deterministic VM, and watch them work in ways that are hard or impossible on a normal machine.</p>
-<p>Please accept rewind time as my offering at the altar of Brendan Gregg.</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://fzakaria.com/2026/11/12/worshipping-at-the-altar-of-brendan-gregg" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/mishig/spaces-agents-md" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

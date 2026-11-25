@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
+    <title>Model Routing Is Simple. Until It Isn’t.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9890.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Rebuilding AUTOMATIC1111 with Gradio Workflow</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>Model Routing Is Simple. Until It Isn’t.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/642ee6f6ffd6084c6a620985/ibA2XHLJsqDH9VAL-3ou-.png" alt="Model Routing Is Simple. Until It Isn’t." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/642ee6f6ffd6084c6a620985/ibA2XHLJsqDH9VAL-3ou-.png" alt="Model Routing Is Simple. Until It Isn’t." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our last post, we built five small gr.Workflow graphs and hinted at what it would take to build something as complex as AUTOMATIC1111's stable-diffusion-webui. In this post we walk you through Workflow1111, where we have rebuilt most of AUTOMATIC1111's feature set as a single workflow canvas.</p>
-<p>Workflow1111 is a graph of eleven media pipelines built using seventy-three nodes. It brings together SOTA models for text-to-image, hi-resolution fix, image-to-image, prompt-matrix grids, VLM interrogate, detection-to-inpaint masks, ControlNet-style annotators, background removal, PNG Info storing, and image-to-video.</p>
-<p>You can run any of these pipelines by signing in with your Hugging Face account or providing an access token. Once you sign in, the model calls use your own quota.</p>
-<p>👉 Try Workflow1111, or duplicate the Space and start rewiring it for your own use case.</p>
-<p>All the media pipelines are built from the same four operator kinds covered in our last post and the official guide. Each node on the canvas wraps one operator, and the operator's inputs and outputs become the ports you connect edges to. As a quick reference on our four operator kinds: fn is a Python function, model is a model called through InferenceClient, space is another Gradio Space, and dataset is a row from a Hub dataset.</p>
-<p>Let's go through the pipelines one by one.</p>
-<p>This is the core pipeline. It has the controls you'd expect from A1111's txt2img tab: negative prompt, steps, CFG, seed, width and height, plus a model_id field for choosing the checkpoint. The prompt goes through a prompt-builder fn node first, which appends the selected style preset and cleans up the text, then into a model node that calls the checkpoint through Inference Providers. A post-process fn node writes the generation parameters into the PNG's metadata on the way out, which is what the PNG Info pipeline reads back later.</p>
-<p>In Automatic1111, hi-resolution fix first upscales the txt2img output and then runs a second denoising pass. Here it's a two-node detour instead. The text-to-image result goes into a FLUX.1-Kontext model node with a refine instruction ("enhance fine detail and micro-texture, keep the composition identical") and comes back sharper and larger.</p>
-<p>That same Kontext node doubles as the image-to-image tab. Upload an image, describe the change you want, and it returns the edited image.</p>
-<p>Start with a rough prompt like "A lighthouse in a storm." This pipeline sends it to a Qwen3-4B model node, and a small fn node turns the reply into a clean list of tags, capped at forty: "stormy sea, wet rocks, dramatic composition, low angle shot, volumetric lighting, ominous tone." You can connect any diffusion model node to this output to render the image.</p>
-<p>There's no custom node involved, unlike in ComfyUI. In a Gradio workflow the LLM and the diffusion model are both ordinary model operators on the same canvas.</p>
-<p>This is like AUTOMATIC1111's Interrogate button, with a VLM doing the interrogating instead of CLIP. Qwen2.5-VL looks at a night-market photo and writes a prompt that could have produced it. A ViT classifier node reads the same image and returns labels: restaurant 51.9%, tobacco shop 15.6%, toyshop 9.1%.</p>
-<p>Both nodes use the same image input, so gr.Workflow runs them in parallel and you get both answers in roughly the time it takes to run one.</p>
-<p>AUTOMATIC1111 makes you paint an inpaint mask by hand. This pipeline generates one from a detector instead. DETR finds six objects in a street photo (three people, a dog, a bicycle, and a car), and from there the workflow splits into two branches: one draws the detected boxes on the original image, the other turns them into a mask you can feed into an inpaint pipeline downstream.</p>
-<p>The drawing and the mask creation both happen locally with Pillow and NumPy. Only the detection call leaves the machine.</p>
-<p>This is like AUTOMATIC1111's prompt matrix. A base prompt, "a lone oak tree," gets combined with four suffixes (at sunrise, in a thunderstorm, under the Milky Way, in autumn fog) by a fn node, and each variant goes to its own text-to-image node. A final node stitches the four results into one contact sheet.</p>
-<p>gr.Workflow has no loop operator, so the four text-to-image nodes sit side by side on the canvas. Since they're at the same dependency depth they run in parallel, and all four images start generating at once.</p>
-<p>This is like the Extras tab in Automatic1111. There are two upscaler nodes, and they take different routes. The first is a local Lanczos resample in an fn node, which needs no network call and finishes as fast as Pillow can resize. The second is AuraSR ×4, and it's the first space node on the canvas: it calls a Space on the Hub and treats the result like any other node output.</p>
-<p>Background removal works the same way. BRIA RMBG-2.0 is another space node, so the whole model lives in its own Space and this canvas just calls it in.</p>
-<p>Canny, line art, sketch, luma-depth, and posterize are the preprocessors you'd normally get from the ControlNet extension in Automatic1111. Here, each one is a fn node written in plain NumPy, with no model behind it. On a pre-loaded example photo of a building facade, each annotator takes about half a second on CPU.</p>
-<p>There are 36 operator nodes in the app, 32 are fn nodes, and 22 of those run entirely in-process without a network call. Roughly two-thirds of the canvas keeps working if you lose your connection. Since these are regular Python functions, you can also test them directly, with no canvas, server, or GPU involved.</p>
-<p>AUTOMATIC1111 stores generation details in the PNG's parameters text chunk, and the PNG Info tab reads them back. Workflow1111 does the same. The post-process node on the text-to-image pipeline writes the metadata, and this pipeline reads it back out, including the prompt, negative prompt, steps, CFG, seed, image size, and model.</p>
-<p>The image node that PNG Info reads from also feeds a Wan 2.2 I2V A14B node, which animates it; in the demo example a sleeping fox wakes up and starts moving. There's no second upload box because one reference node can feed as many downstream pipelines as you need, so a single upload gets its metadata read and gets animated on the same canvas.</p>
-<p>So far every model call has gone to someone else's hardware, through Inference Providers or a Space. That's why you can build and run something like Workflow1111 without a GPU of your own.</p>
-<p>A fn node is just Python, though, so it can equally load a model locally and run it on your own GPU. FastVideo/fastvideo-fasth3-preview is a gr.Workflow app that does exactly that. It runs FastH3, a four-step distillation of MiniMax-H3, and generates video with a soundtrack on ZeroGPU.</p>
-<p>The whole app comes down to one bound function:</p>
-<p>ZeroGPU gives the function a GPU when it needs one, then releases it when the call is done. gr.Workflow doesn't need to know about any of that. It just calls the fn node.</p>
-<p>This isn't specific to Spaces either. Point bind= to a function that loads a local checkpoint, run .launch() on your own machine, and the Workflow1111 canvas can drive your own GPU.</p>
-<p>Every output node on the canvas becomes a REST endpoint, with no routes written by hand. Workflow1111 exposes nine of them: /image, /edited_image, /generated_prompt, /recovered_prompt, /detected_objects, /x_y_grid, /upscaled_local, /annotator_map, and /png_info.</p>
-<p>The same endpoints are also MCP tools. Launch with mcp_server=True (guide) and every output node shows up as a tool an AI assistant can call. Point Claude Code, Cursor, or any MCP client at the server URL:</p>
-<p>Now an agent can generate an image, read a prompt back out, or run detection as steps in a larger task, with no glue code. Each caller sends their own token in the X-HF-Token header, so the Space holds none of its own.</p>
-<p>AUTOMATIC1111 gave us the feature list, but the tool Gradio Workflow really gets compared to is ComfyUI, since both are node graphs. For a lot of what people want to build and ship, gr.Workflow covers the same ground.</p>
-<p>The result is a multi-model pipeline that people can open in a browser, sign into, use right away, and call from code.</p>
-<p>Workflow1111 has 73 nodes, but it started with just this:</p>
-<p>bind= turns your functions into nodes, edges= connects them, and .launch() opens the canvas in your browser so you can keep editing there. When it's ready, gradio deploy puts the whole thing on a Space. The gr.Workflow guide has the full details, including the JSON schema and every operator type.</p>
-<p>If you'd rather start from something that already works, open Workflow1111, hit Duplicate, and pick one of the eleven pipelines to change: delete nodes, swap models, rewire the flow. If you'd rather start smaller, the previous post has five workflows you can get running in about a minute each.</p>
-<p>Whatever you build, post it on X and tag @gradio. We'd be happy to amplify your workflows.</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
-<p>Really impressive breakdown the part that stands out most is how the graph structure gives you free parallelism (the prompt-matrix and interrogate examples) without any extra orchestration code. The mix of fn, model, and space node types on one canvas also makes the ComfyUI comparison land well: you get custom-node flexibility from plain Python, but zero-code REST/MCP endpoints for free. Curious how complex a canvas can get before performance or maintainability becomes a concern has anyone pushed past 73 nodes</p>
-<p>Analisis yang sangat mengesankan, bagian yang paling menonjol adalah bagaimana struktur graf memberikan paralelisme gratis (contoh prompt-matrix dan interrogate) tanpa kode orkestrasi tambahan. Perpaduan tipe node fn, model, dan space pada satu kanvas juga membuat perbandingan dengan ComfyUI tepat: Anda mendapatkan fleksibilitas node kustom dari Python biasa, tetapi endpoint REST/MCP tanpa kode secara gratis. Saya penasaran seberapa kompleks sebuah kanvas dapat dibuat sebelum kinerja atau pemeliharaan menjadi masalah, apakah ada yang pernah melampaui 73 node?</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
+                <p>Building a router into your agent sounds like an easy win. Send simple requests to cheaper models, reserve expensive ones for harder tasks, or route by specialty — Claude for code, Gemini for multimodal, and so on. A classifier or heuristic makes the call, costs go down, performance stays up. Done.</p>
+<p>Except it’s not. Most routing systems assume that model selection is a classification problem. In our experience building routing into agentic systems, what looks like a model-selection problem quickly becomes a systems optimization problem. Three dimensions made this surprisingly hard for us.</p>
+<p>We expected GPT-4.1 to be cheaper than Claude Sonnet 4.6. It wasn’t.</p>
+<p>Across 417 tasks on the AppWorld Test Challenge using the same CodeAct agent, Sonnet cost $79 total ($0.19/task) while GPT-4.1 cost $155 ($0.37/task) — nearly double. On paper, this makes no sense. GPT-4.1’s token pricing is lower on both input and output, and Sonnet takes roughly three times as many reasoning steps to finish the same tasks. By sticker price alone, GPT-4.1 should win easily.</p>
+<p>The explanation? Caching — something most routing discussions ignore entirely.
+Agent workloads tend to reuse large chunks of context across steps. When cache hit rates are high, effective input costs drop dramatically. Sonnet’s lower cache-read pricing meant it benefited disproportionately from this pattern, enough to overcome both its higher base pricing and its longer trajectories.</p>
+<p>The takeaway: actual cost depends on the interaction between the model, the workload, and the serving infrastructure. A router that only looks at pricing sheets is optimizing against the wrong numbers.</p>
+<p>A common routing strategy is to estimate how hard a task is and send harder tasks to stronger models. Intuitive, but it breaks down in two ways.</p>
+<p>First, difficulty is often invisible at routing time. A request like "summarize this contract" looks simple, but might trigger retrieval, compliance checks, tool use, and multiple rounds of refinement before it’s done. Meanwhile, a highly technical prompt might be handled efficiently by a smaller specialized model. You often don’t know how hard a task actually is until execution is underway.</p>
+<p>Routers aren’t solving one problem. They’re constantly juggling cost, quality, latency, compliance, and reliability all at once.</p>
+<p>It’s tempting to think about latency purely in terms of model size — bigger models are slower, smaller ones are faster. But what the user actually experiences depends on much more than that.</p>
+<p>Routing itself adds overhead. Infrastructure factors — which hardware a model is running on, whether the cache is warm, how busy the endpoint is — often dominate end-to-end response times. A theoretically faster model can still produce a slower experience if the serving conditions aren’t right.</p>
+<p>Then there’s routing granularity. Routing once per task adds minimal overhead. But routing at every step — which gives you more flexibility to adapt mid-execution — means every additional decision point introduces latency and operational complexity.</p>
+<p>A router that ignores the serving system is optimizing against the wrong reality.</p>
+<p>These lessons shaped how we built our router. The key shift: we stopped treating routing as a classification problem and started treating it as an optimization problem. Rather than asking "which model is best for this task?", our algorithm optimizes across cost, quality, and latency simultaneously — while staying lightweight enough to avoid becoming a bottleneck itself.</p>
+<p>The figure below shows the result on the AppWorld Test Challenge with a CodeAct agent. Each blue square is a different configuration of our router, tracing out a cost-accuracy frontier. The important thing isn't any single point — it's that the router gives you a range of operating points to choose from depending on whether you want to prioritize cost, latency, or accuracy. Configuration 1 (latency-optimized) lands at 84% accuracy for $93 and 83s — a 21% cost reduction and 9% latency reduction compared to running Opus alone, with only a 4% accuracy drop. Configuration 2 pushes cost even lower.</p>
+<p>Notice that a standard difficulty-based router (the teal diamond) lands in a similar accuracy range but at higher cost — it doesn't explore the full tradeoff space the way an optimization-based approach can. And because the optimization itself is lightweight (roughly 6 ms and 2 kB of memory per task), the router doesn't become the bottleneck we warned about earlier.</p>
+<p>The lesson we took away from this work is that routing isn’t really about choosing models. It’s about optimizing systems. Models are one variable — an important one, but just one among caching behavior, infrastructure state, compliance constraints, and workload patterns.</p>
+<p>When routing works well, it’s rarely because it found the "best" model for a given task. It’s because it found the best operating point for the entire system. That’s a harder problem than classification, but it’s the one worth solving.</p>
+<p>We’ll be sharing more about the technical details behind our approach in a follow-up post. In the meantime, if you’re building routing into your own agentic systems, we’d love to hear what tradeoffs you’re running into.</p>
+<p>This post was influenced by numerous conversations with colleagues, whose thoughtful questions, feedback, and insights helped refine our thinking.</p>
+<p>So I've always felt that model routing is a false proposition; it should have been part of the harness all along.</p>
+<p>Agreed, routing should disappear into the harness and just be part of the system's execution logic. Our goal is exactly that—making model choice an intrinsic capability rather than a separate concern.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/gradio-workflow-1111" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ibm-research/model-routing-is-simple-until-it-isnt" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies</title>
+    <title>Transformers Model Integration Contracts</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9657.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,39 +15,142 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>Transformers Model Integration Contracts</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/vsMwqfBg4GPMoQwiy2fZDNfdse92-8m03mln.jpeg" alt="Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/vsMwqfBg4GPMoQwiy2fZDNfdse92-8m03mln.jpeg" alt="Debugging OAuth Redirect Loops Caused by Oversized HTTP Cookies" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Last week, we spent almost four hours tracking down a login bug that made zero sense on paper.</p>
-<p>Our dashboard users signing in with Google or Discord were getting thrown into an infinite redirect loop. They would hit sign in, pick their Google account, authorize it, watch the screen flash for a second, and then land right back on the empty login form.</p>
-<p>No error message. No red toast. No failed requests in Chrome's network tab. Nothing in the console either.</p>
-<p>Meanwhile, plain old email-and-password logins worked perfectly. Same database, same API server, same users. If an account logged in with a password, it went straight to the dashboard. If that exact same account clicked "Sign in with Google", it got kicked right back to square one.</p>
-<p>To explain why this happened, you have to look at how we split our frontend and backend. The client dashboard runs on one subdomain, and the core API runs on another.</p>
-<p>When someone signs in with an email and password, the frontend just fires an asynchronous POST request to our auth endpoint. The API checks the credentials, returns a 200 with the user profile and session data right in the JSON response body, and the frontend JavaScript saves that into localStorage and routes to the dashboard.</p>
-<p>OAuth can't do that because the initial handoff isn't an in-page fetch request. The user gets bounced to Google's consent screen on google.com, and Google bounces them back to our API callback route on our API subdomain.</p>
-<p>During initial development, this worked every single time. We created test accounts, clicked through OAuth, and landed on the dashboard without an issue.</p>
-<p>The bug only showed up when we started testing with older, heavily used accounts.</p>
-<p>When one of us tried to log in with an account we had been using for weeks across multiple laptops and phones, the redirect loop kicked in immediately.</p>
-<p>But we checked our flags, and we were already using SameSite=Lax, Secure, and an explicit parent domain. That should have been completely fine under modern browser specs.</p>
-<p>Then we thought we might have a race condition in our frontend code. We had an event listener in the login view listening for window focus events to catch popups, so we wondered if the tab was gaining focus mid-redirect and wiping state.</p>
-<p>We removed that listener, tested again, and the loop was still there.</p>
-<p>Eventually we opened Chrome DevTools, turned on "Preserve log" in the Network tab, and watched the whole redirect chain step by step.</p>
-<p>That user record had an array called sessions. Every time a user logged in, our database pushed an entry tracking their device, IP, user-agent string, and login time.</p>
-<p>On a brand new test account with one session, that whole JSON object was around 300 bytes. It easily fit inside the 4KB limit. But on our personal accounts, which had logged in dozens of times during testing, that session array had 10 or 15 items. The raw JSON alone grew to about 2.6KB.</p>
-<p>Every quote turns into %22. Every bracket turns into %7B or %7D. Every colon turns into %3A. Every comma turns into %2C.</p>
-<p>In practice, percent-encoding regular JSON inflates the byte size by about 2.4 times.</p>
-<p>Email and password login never had this problem because the user data returned in the HTTP response body has no 4KB limit. The frontend read the body, saved it to localStorage, and navigated cleanly.</p>
-<p>Third, we updated our frontend auth hook to check the URL query parameters on mount. If it sees auth_success=true, it immediately fires a background fetch request to our user profile endpoint to pull the full user object over a normal HTTP body.</p>
-<p>As soon as that request finishes and localStorage is updated, the frontend calls window.history.replaceState to scrub the query parameters out of the URL bar so the user never sees them.</p>
-<p>The biggest lesson for us was just how quiet browser networking failures can be.</p>
-<p>If your backend throws a 500 or your React code throws an exception, you get an immediate alert or a red error in your console.</p>
+                <p>On July 30, 2026, Transformers enabled PyTorch's scaled dot-product attention
+(SDPA) for T5. As a side effect, UMT5's decoder could attend to future tokens.
+During training, it could peek at the answer it was supposed to predict.
+Nothing crashed, and the bug stayed in main for almost two months.</p>
+<p>When we later replayed those commits, a small UMT5 model running on CPU flagged
+it on every one of them. This post is about that model and the tests built
+around it.</p>
+<p>Transformers supports over 750
+model types, and its test suite is big: 88,000+ CPU tests on main, plus
+200,000+ GPU tests in a daily run. Model tests are only part of it: we also
+test pipelines, training, distributed execution, quantization and attention
+kernels.</p>
+<p>The integration tests load real checkpoints and exercise the model's API on
+real hardware. Running all of that on every PR would mean keeping a lot of GPUs
+busy all day long, which isn't practical. By the time a scheduled run finds a
+regression, it may already be in main.</p>
+<p>Our approach is to shrink the model instead. We build a fixture: a small
+model made from the real checkpoint's configuration, with fewer and narrower
+layers but every kind of layer it has, and its tokenizer and processor files
+unchanged. It is published once, then reused. We run "fast integration tests"
+against it on a cheap CPU runner. In our
+CPU study,
+the experimental UMT5 fixture used 66 MB of weights; the source checkpoint
+is 1,227 MB.</p>
+<p>This also covers very large models: some don't fit on our standard GPU
+runners, but their fixtures run on CPU.</p>
+<p>Model integrators already build tiny test models (Transformers' tiny-random-*
+checkpoints). We wanted a common recipe, and
+checks that go beyond loading the model and running a forward pass. The UMT5
+bug would have passed a forward pass just fine.</p>
+<p>Fixtures won't replace full integration tests, but on PRs they give us a
+chance to catch bugs before they reach main.</p>
+<p>transformers-mic is a proposed
+standard for packaging these tests. A Model Integration Contract (MIC) has
+three parts:</p>
+<p>The contract holds if running the usage path on the fixture still produces the
+baselines.</p>
+<p>A contract covers an architecture and a usage path, not a single checkpoint:
+compatible checkpoints can share a fixture, while each keeps its own expected
+results. We publish them in huggingface-mic.</p>
+<p>For example, the SmolLM contract generates from prompts such as "The capital
+of France is" and compares its token IDs with a recorded answer. After loading
+the model and tokenizer, the generation code is, simplified to one prompt:</p>
+<p>It also compares training loss, checks that gradients are finite and verifies
+that an optimizer step changes the weights. See the full
+usage.md.</p>
+<p>A fleet dataset
+on the Hub pins each MIC to a frozen revision, along with the package versions
+used to record its baselines. Each CI run records the fleet revision it
+used, so we can reproduce it later.</p>
+<p>On a PR, we pick MICs based on the files the patch changes.</p>
+<p>We replayed frozen MICs over five months of Transformers commits. The small
+UMT5 fixture flagged the regression from its introduction on July 30, 2026
+until its fix on September 28.
+Label log-probabilities differed from the reviewed baseline by 1.22 and training
+loss by about 0.20.</p>
+<p>One detail mattered: the contract used SDPA, the default attention path.
+Running only the eager attention variant missed the bug. A fixture only
+helps if it goes through the same code as the real checkpoint.</p>
+<p>We then reverted the fix on a proof branch in Transformers' CI. The check
+failed with the same differences, and the selected T5 contract's runner step
+took 13.4 seconds on CPU, excluding setup.</p>
+<p>The replay results
+and the CI demo
+have the measurements and reproduction details.</p>
+<p>The first recipe was simple: make the dimensions smaller and keep fewer
+layers. That wasn't enough for mixed architectures. Keeping two layers is no
+use if both use sliding attention and the full-attention layers disappear.</p>
+<p>We also keep the original weights file format. Otherwise we would skip the
+conversion code that runs when a user loads the real checkpoint.
+The full recipe
+has more detail.</p>
+<p>The Llama 4 Scout shrink report
+shows what this looks like on a big model. 108.6 billion parameters become 44.7
+million. The vision stack goes from 34 layers to 2 and the language stack from
+48 to 4, keeping the checked layer kinds and MoE routing style.</p>
+<p>Our CLI, tmic, creates the contract and builds the fixture. For a new
+model, an LLM drafts the usage code and manifest, and CPU and GPU runs measure
+the candidate baselines. The LLM drafts; it doesn't approve. Changed
+expectations require human review.</p>
+<p>To try it on your machine, use your source checkpoint in place of org/model:</p>
+<p>It drafts the contract, builds the fixture and records its baselines on your
+machine, asking you to review each step, and stops before uploading anything.
+For a new model, the draft comes from an LLM through Inference Providers, billed
+to your own account (--bill-to ''). The
+CLI docs
+cover the individual steps.</p>
+<p>We used agents to build MICs across model families. When they hit an edge
+case, we fixed the recipe itself rather than the one fixture, with help from
+model experts. The published models and remaining gaps are in the
+coverage space.</p>
+<p>With random weights, our Whisper fixture barely responded to changes in
+the audio. It ran, but that made it a poor test of the audio path.</p>
+<p>So we trained it on a few tones paired with words such as "red" and "green".
+We weren't teaching it speech recognition, just making audio changes visible
+in its outputs. In our weight-initialization study,
+the random Whisper fixtures caught 18 of 24 injected faults. The overfit
+fixtures caught all 24.</p>
+<p>That gives us two ways to build the weights:</p>
+<p>The Whisper result doesn't settle which is better. Those were synthetic
+faults, and we haven't found a real regression caught only by the overfit
+version. Both versions missed an assisted-decoding bug that the real Whisper
+checkpoint exposed.</p>
+<p>So we keep random weights when they pass the checks, and overfit when we need
+better sensitivity or readable answers. Training takes seconds, but it is one
+more step that can fail to converge, and one more thing to maintain. The comparison
+has the results for both.</p>
+<p>As of November 1, 2026, the MIC job in Transformers CI
+reports failures without blocking PRs. Whether it should block depends on
+things we haven't measured yet:</p>
+<p>We also don't know how many bugs, like the Whisper assisted-decoding one, only
+show up with real weights, or whether overfitting catches real bugs that random weights miss.</p>
+<p>Coverage is still partial, across model families and the APIs people use.
+When a regression slips through, we can add the missing usage path and replay
+it on the broken and fixed versions. We'll keep existing tests until their
+coverage is accounted for.</p>
+<p>Finally, we'd like to link original Hub model pages to their MICs, so a
+developer or an agent using a checkpoint could start from an example tested on
+that checkpoint, its environment and its expected outputs.</p>
+<p>Want to help? Pick an uncovered model from the
+coverage space, try
+the tmic workflow,
+and contribute a usage path or review a generated contract.</p>
+<p>MIC contract coverage of Transformers model types</p>
+<p>t5/umt5 in a blog post in 2026, never thought I’d see the day 😍</p>
+<p>MIC contract coverage of Transformers model types</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/debugging-oauth-redirect-loops-caused-by-oversized-http-cookies?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/transformers-mic" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

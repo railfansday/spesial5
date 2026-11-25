@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Green Bean Casserole</title>
+    <title>How to Automate Stateful Headless Browsers With Cloudflare Browser Run /script</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9534.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,217 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Green Bean Casserole</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>How to Automate Stateful Headless Browsers With Cloudflare Browser Run /script</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frlzfrvn0lfh0gridt0k8.png" alt="How to Automate Stateful Headless Browsers With Cloudflare Browser Run /script" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Frlzfrvn0lfh0gridt0k8.png" alt="How to Automate Stateful Headless Browsers With Cloudflare Browser Run /script" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Fresh green beans baked in a creamy Parmesan mushroom sauce with garlic, thyme and a golden crispy onion topping.</p>
+                <p>Posted on Nov 25
+•
+Originally published at mangodeveloper.com</p>
+<p>On November 20, 2026, Cloudflare bridged that divide by launching the /script and /script/[sessionId] endpoints in Browser Run. Documented in detail in the Cloudflare Browser Run Custom scripts guide, the new endpoints accept a JavaScript function written for Playwright, Puppeteer, or the raw Chrome DevTools Protocol (CDP), execute that function inside an isolated Worker managed by Cloudflare, and return your structured JSON or binary output directly over HTTP.</p>
+<p>If you have been following how Cloudflare builds a browser for AI agents, the /script API changes how you wire browser automation into backend services and AI tool calls. You no longer need to deploy a dedicated Worker just to run ten lines of Playwright code, and you can persist a live Chrome session across multiple HTTP requests using two response headers.</p>
+<p>We have not benchmarked these endpoints against a live production Cloudflare enterprise account; every REST path, header name, SDK method, Wrangler configuration key, and timeout rule below comes directly from Cloudflare's official Browser Run documentation and November 20, 2026 changelog.</p>
+<p>Before writing your first automation function, pick the execution path that matches your state and latency requirements. Browser Run now exposes three distinct ways to run browser tasks over HTTP: stateless Quick Actions for single-step extraction, stateful /script sessions for multi-step Playwright or Puppeteer automation, and the stateless ?browser=kitesurf backend for ephemeral CDP commands.</p>
+<p>Architecture diagram comparing Quick Actions, stateful /script sessions, and stateless Kitesurf CDP runs</p>
+<p>Each endpoint handles browser acquisition, session persistence, and billing differently:</p>
+<p>Two architectural rules stand out in that comparison. First, calling POST /script/[sessionId] dispatches your code directly to a browser you already hold, whether you acquired it via POST /script or via the session management endpoint (POST /devtools/browser). Because it reuses a running browser, it skips cold-start acquisition time and does not count against your account's new session acquisition rate limits.</p>
+<p>Second, every response from /script and /script/[sessionId] includes an X-Browser-Ms-Used HTTP header reporting the cumulative browser milliseconds elapsed since that session started. Because Browser Run bills for the total lifetime of the browser session rather than per HTTP script call, leaving a session open after your script returns continues accruing browser time until you close it or hit the idle timeout.</p>
+<p>To call /script from any external backend, CLI tool, or CI pipeline over HTTP, create a custom Cloudflare API Token granted the Browser Run - Edit permission, and note your 32-character Cloudflare Account ID.</p>
+<p>When you send a POST request to https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/script, Browser Run acquires a fresh browser instance, pins execution to the session's first open page tab, and invokes the JavaScript async function string you pass in the code field.</p>
+<p>You can pass four optional query parameters on the initial POST /script URL to configure how the session launches:</p>
+<p>In the JSON request body, provide code (required string containing a JavaScript function expression), library ("playwright" or "puppeteer", or omit for raw CDP), and timeout (optional script execution limit in milliseconds, defaulting to 60000 and capped at 120000).</p>
+<p>Run the following curl command with -i so the terminal prints the HTTP response headers alongside the JSON payload:</p>
+<p>export CF_ACCOUNT_ID="your_cloudflare_account_id"
+export CF_API_TOKEN="your_browser_run_edit_token"
+curl -i -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/script?keep_alive=120000" \
+-H "Authorization: Bearer $CF_API_TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+"library": "playwright",
+"timeout": 60000,
+"code": "async ({ page }) => { await page.goto(\"https://example.com\"); return { title: await page.title(), url: page.url() }; }"
+}'</p>
+<p>Browser Run executes the Playwright function in an isolated Worker and returns an HTTP 200 response carrying three key headers and your serialized return value inside result:</p>
+<p>HTTP/2 200
+content-type: application/json
+cf-browser-session-id: 8f7c2e3a-1b4d-4c6e-9a0f-2d5b7e9c1a3f
+cf-browser-target-id: A1B2C3D4E5F60718293A4B5C6D7E8F90
+x-browser-ms-used: 1420
+{
+"success": true,
+"result": {
+"title": "Example Domain",
+"url": "https://example.com/"
+}
+}</p>
+<p>Always capture both cf-browser-session-id and cf-browser-target-id from the initial response headers. Cloudflare attaches those two headers to every /script response once a browser session has been allocated, even if your function returns a binary ArrayBuffer or throws a runtime error. Having the session ID on failed runs lets you inspect or retry the broken step inside the exact same browser state without starting over from the login page, and gives you the identifier needed to close the session cleanly.</p>
+<p>Once you hold a live cf-browser-session-id, send subsequent automation steps to POST /browser-run/script/$SESSION_ID. Notice two structural differences on the follow-up endpoint:</p>
+<p>Sequence diagram showing four-step Browser Run session lifecycle from POST /script to parallel target creation and DELETE teardown</p>
+<p>Here is how to run a follow-up Playwright script on the existing tab and then close the browser session via the DevTools session management endpoint:</p>
+<p>export SESSION_ID="8f7c2e3a-1b4d-4c6e-9a0f-2d5b7e9c1a3f"
+export TARGET_ID="A1B2C3D4E5F60718293A4B5C6D7E8F90"
+curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/script/$SESSION_ID" \
+-H "Authorization: Bearer $CF_API_TOKEN" \
+-H "Content-Type: application/json" \
+-d "{
+\"library\": \"playwright\",
+\"timeout\": 30000,
+\"targetId\": \"$TARGET_ID\",
+\"code\": \"async ({ page }) => { const heading = await page.locator('h1').textContent(); return { heading, currentUrl: page.url() }; }\"
+}"
+curl -i -X DELETE "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/devtools/browser/$SESSION_ID" \
+-H "Authorization: Bearer $CF_API_TOKEN"</p>
+<p>Browser Run does not serialize concurrent HTTP requests sent to the same sessionId and targetId. If two parallel workers or agent threads fire /script/[sessionId] against the same targetId simultaneously, their clicks and navigations will collide on the same DOM page.</p>
+<p>NEW_TARGET_ID=$(curl -s -X PUT "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/devtools/browser/$SESSION_ID/json/new" \
+-H "Authorization: Bearer $CF_API_TOKEN" | jq -r '.id')
+curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/script/$SESSION_ID" \
+-H "Authorization: Bearer $CF_API_TOKEN" \
+-H "Content-Type: application/json" \
+-d "{
+\"library\": \"playwright\",
+\"targetId\": \"$NEW_TARGET_ID\",
+\"code\": \"async ({ page }) => { await page.goto('https://example.com/pricing'); return { title: await page.title() }; }\"
+}"</p>
+<p>Pages created via PUT /accounts/[accountId]/browser-run/devtools/browser/[sessionId]/json/new live inside the session's default browser context, so they persist across script invocations. By contrast, if your Playwright script calls browser.newContext() inside code, Browser Run automatically closes any script-created contexts when that individual /script call finishes. Keep persistent tabs inside the default context.</p>
+<p>If you use Cloudflare's official TypeScript or Python SDKs, calling client.browserRendering.script.create(params) directly returns only the parsed result object and strips the HTTP headers. To read cf-browser-session-id and cf-browser-target-id for multi-step continuation, use .withResponse() in TypeScript or .with_raw_response.create(params) in Python.</p>
+<p>In TypeScript (npm install cloudflare), chain .withResponse() on the initial .create() call, extract both headers, pass them to .execute(sessionId, params), and close the session when finished:</p>
+<p>import Cloudflare from "cloudflare";
+const client = new Cloudflare({
+apiToken: process.env["CLOUDFLARE_API_TOKEN"],
+});
+const accountId = process.env["CLOUDFLARE_ACCOUNT_ID"]!;
+const { data: firstStep, response } = await client.browserRendering.script
+.create({
+account_id: accountId,
+library: "playwright",
+code: async ({ page }) => {
+await page.goto("https://example.com");
+return { title: await page.title() };
+},
+})
+.withResponse();
+const sessionId = response.headers.get("cf-browser-session-id")!;
+const targetId = response.headers.get("cf-browser-target-id")!;
+const secondStep = await client.browserRendering.script.execute(sessionId, {
+account_id: accountId,
+library: "playwright",
+targetId,
+code: async ({ page }) => {
+const url = page.url();
+await page.context().browser()?.close();
+return { url };
+},
+});</p>
+<p>In the Python SDK (pip install cloudflare), note one important parameter naming difference: the JSON body timeout field is named api_timeout so it does not collide with the HTTP client's transport timeout:</p>
+<p>import os
+from cloudflare import Cloudflare
+client = Cloudflare(api_token=os.environ["CLOUDFLARE_API_TOKEN"])
+account_id = os.environ["CLOUDFLARE_ACCOUNT_ID"]
+raw_first = client.browser_rendering.script.with_raw_response.create(
+account_id=account_id,
+library="playwright",
+api_timeout=60000,
+code='async ({ page }) => { await page.goto("https://example.com"); return { title: await page.title() }; }',
+)
+first_data = raw_first.parse()
+session_id = raw_first.headers["cf-browser-session-id"]
+target_id = raw_first.headers["cf-browser-target-id"]
+second_data = client.browser_rendering.script.execute(
+session_id,
+account_id=account_id,
+library="playwright",
+api_timeout=30000,
+target_id=target_id,
+code='async ({ page, browser }) => { const url = page.url(); await browser.close(); return { url }; }',
+)</p>
+<p>Calling await browser.close() at the end of your final script terminates the underlying browser session cleanly from inside the runner without requiring a separate REST DELETE call.</p>
+<p>When your orchestration logic already runs inside a Cloudflare Worker (or inside an agent built with Cloudflare Agents SDK v0.34.0 and Pi 1.6), you do not need to manage a CLOUDFLARE_API_TOKEN secret or make external REST calls. Bind Browser Run directly to your Worker in wrangler.jsonc and invoke env.BROWSER.script().</p>
+<p>First, declare the browser binding in your wrangler.jsonc configuration file. Note that env.BROWSER.script() does not execute inside local-only wrangler dev simulation; you must either pass --remote (npx wrangler dev --remote) or set "remote": true on the binding so local development attaches to a real Cloudflare headless browser:</p>
+<p>{
+"$schema": "./node_modules/wrangler/config-schema.json",
+"name": "browser-run-script-worker",
+"main": "src/index.ts",
+"compatibility_date": "2026-11-20",
+"browser": {
+"binding": "BROWSER",
+"remote": true
+}
+}</p>
+<p>Inside src/index.ts, env.BROWSER.script(code, options) maps to POST /script when sessionId is omitted, and maps to POST /script/[sessionId] when sessionId is included in the options object. Always wrap follow-up runs in a try-finally block calling await env.BROWSER.closeSession(sessionId) so an unhandled exception or HTTP 422 response never leaves an orphaned browser running:</p>
+<p>interface Env {
+BROWSER: BrowserRun;
+}
+export default {
+async fetch(request: Request, env: Env): Promise {
+const first = await env.BROWSER.script(
+async ({ page }) => {
+await page.goto("https://example.com");
+return { title: await page.title() };
+},
+{ library: "playwright", keepAlive: 120_000, timeout: 60_000 }
+);
+const sessionId = first.headers.get("cf-browser-session-id");
+const targetId = first.headers.get("cf-browser-target-id");
+if (!first.ok || !sessionId || !targetId) {
+if (sessionId) {
+await env.BROWSER.closeSession(sessionId);
+}
+return first;
+}
+try {
+return await env.BROWSER.script(
+async ({ page }) => ({
+url: page.url(),
+userAgent: await page.evaluate(() => navigator.userAgent)
+}),
+{ sessionId, targetId, library: "playwright", timeout: 30_000 }
+);
+} finally {
+await env.BROWSER.closeSession(sessionId);
+}
+},
+} satisfies ExportedHandler;</p>
+<p>Watch out for two subtle behaviors on the Workers binding:</p>
+<p>Depending on whether you set "library": "playwright", "library": "puppeteer", or omit library for raw CDP, Browser Run passes a different argument object into your submitted function.</p>
+<p>async ({ send, sessionId, targetId }) => {
+await send("Page.enable");
+await send("Page.navigate", { url: "https://example.com" });
+const { result } = await send("Runtime.evaluate", {
+expression: "document.title",
+returnByValue: true,
+});
+return {
+sessionId,
+targetId,
+title: result.value,
+};
+}</p>
+<p>Your submitted function is not limited to returning plain JSON objects. Browser Run transforms return values based on four rules:</p>
+<p>Note that if your script returns a Response with a non-2xx HTTP status (such as new Response("Not found", { status: 404 })), Browser Run treats that non-2xx status as a script execution failure and rewrites the output into its standard error envelope. To report an application-level validation failure cleanly to your caller, return a normal JSON object such as { found: false, reason: "Selector missing" }.</p>
+<p>Misconfigured timeouts are the number one reason /script calls fail with puzzling HTTP 422 errors instead of HTTP 408 timeouts. Browser Run maintains three separate timers that do not automatically synchronize with each other:</p>
+<p>Cloudflare Browser Run timeout hierarchy diagram showing 30s library timeout, 45s navigation override, 60s-120s API script timeout, and keep_alive billing meter</p>
+<p>Which timer expires first determines the HTTP status code you receive:</p>
+<p>To give slow pages more than 30 seconds while still allowing your script to catch timeouts gracefully, raise the library timeout inside your code with page.setDefaultNavigationTimeout() and page.setDefaultTimeout(), and set the outer API timeout at least 5 seconds higher:</p>
+<p>curl -s -X POST "https://api.cloudflare.com/client/v4/accounts/$CF_ACCOUNT_ID/browser-run/script" \
+-H "Authorization: Bearer $CF_API_TOKEN" \
+-H "Content-Type: application/json" \
+-d '{
+"library": "playwright",
+"timeout": 50000,
+"code": "async ({ page, browser }) => { page.setDefaultNavigationTimeout(42000); page.setDefaultTimeout(42000); try { await page.goto(\"https://example.com\"); return { ok: true, title: await page.title() }; } finally { await browser.close(); } }"
+}'</p>
+<p>When a /script or /script/[sessionId] call fails, Browser Run returns a structured JSON error array containing code, message, and (when the failure points to a specific line in your submitted code string) a detail string such as "Script location: line 3, column 15". Use the reference table below to diagnose every status code returned by the API:</p>
+<p>Before moving your automation into production, verify your scripts interactively in the Cloudflare dashboard under Browser Run > Script Studio. Script Studio spins up a live browser session, executes your Playwright, Puppeteer, or CDP function against /script/[sessionId] next to a real-time visual preview without requiring an API token or a deployed Worker, and includes a Close browser button so you can test every selector and teardown path cleanly.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.gimmesomeoven.com/green-bean-casserole/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/mango7777/how-to-automate-stateful-headless-browsers-with-cloudflare-browser-run-script-4fag" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

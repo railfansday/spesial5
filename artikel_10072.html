@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Reachy Mini goes fully local</title>
+    <title>Your Pose Model Gives You Coordinates, Not Meaning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10072.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,17 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Reachy Mini goes fully local</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-24</p>
+        <h1>Your Pose Model Gives You Coordinates, Not Meaning</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
         
         <div class="article-body">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_article1_abd13d1712.png" alt="Your Pose Model Gives You Coordinates, Not Meaning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_article1_abd13d1712.png" alt="Your Pose Model Gives You Coordinates, Not Meaning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Konten tidak tersedia.</p>
+                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Pose detection in the browser is a solved problem. You can load a model, point it at a webcam, and get a skeleton tracking a human body in real time, on a laptop, with no server involved.</p>
+<p>And then you have a skeleton that follows someone around the screen, which is a toy.</p>
+<p>The gap between that toy and a feature someone would pay for is smaller than most developers expect, and it isn't made of machine learning. It's made of trigonometry you already know. This article builds a working bicep-curl rep counter to show exactly where that line falls — and more importantly, which side of it your bugs live on.</p>
+<p>I'm using MediaPipe Pose Landmarker from Google AI Edge, which is Apache-2.0 licensed and runs entirely in the tab. Here's the whole setup:</p>
+<p>Point that at a <video> element carrying a camera stream and call detectForVideo. What comes back, per frame, is this:</p>
+<p>Thirty-three points. Each one is a normalised coordinate — x and y run 0 to 1 across the frame, z is a relative depth estimate — plus a visibility score saying how confident the model is that it can actually see that joint.</p>
+<p>That's the entire output. Coordinates and confidences.</p>
+<p>The model has no concept of exercise. It doesn't know what an arm is for. It has never heard of a bicep curl. It reports where it thinks your joints are, thirty-odd times a second, and stops.</p>
+<p>Everything that turns that into a product is yours, and it's ordinary code.</p>
+<p>A bicep curl is a change in the angle at the elbow. The elbow angle is defined by three of those 33 points: shoulder, elbow, wrist. In MediaPipe's pose topology those are indices 11, 13 and 15 on the left side, 12, 14 and 16 on the right.</p>
+<p>Getting the angle is two vectors and a dot product:</p>
+<p>This is the same maths you'd use to point a game character in a direction. Nothing about it is machine learning, and that matters for a reason I'll come back to.</p>
+<p>One thing to notice: I'm ignoring z entirely. The depth estimate is relative, not metric — it's good enough for working out which parts of a body are nearer the camera, and not good enough to measure anything. For a 2D elbow angle, using it adds noise and buys nothing.</p>
+<p>Here's where almost everyone's first attempt breaks.</p>
+<p>The naive version looks at the angle and counts whenever the arm is up:</p>
+<p>Run that at 30 frames a second and one slow curl gives you about twenty reps. You haven't counted repetitions. You've counted frames in which the arm happened to be bent.</p>
+<p>A rep isn't a state. It's a transition between states:</p>
+<p>Fifteen lines, and that's the feature. The counter increments exactly once per cycle, on the edge, because the guard on phase makes every other frame in that cycle a no-op.</p>
+<p>If you used a single threshold — say, 100 degrees — you'd get a counter that fires repeatedly whenever someone holds their arm near 100 degrees and the estimate jitters by a degree either side. Every tiny fluctuation across the line is a transition, and every transition is a rep.</p>
+<p>Two widely separated thresholds give you hysteresis. Once the arm is "up," it has to travel all the way past 150 degrees before the counter will consider another rep. Noise of a few degrees can't produce a count because no amount of jitter near 55 crosses 150.</p>
+<p>This is the same trick a thermostat uses to avoid switching the heating on and off every few seconds, and it's the single most useful pattern in this whole category of work. Any time you turn a continuous signal into discrete events, you want two thresholds, not one.</p>
+<p>visibility is the field people skip, and skipping it is how you get phantom reps.</p>
+<p>When a joint goes out of frame or gets occluded, the model still returns a coordinate for it. It is obliged to return 33 points. What it does is return a guess, with a low visibility score attached — and a guessed wrist position can swing wildly between frames, which looks exactly like a very fast curl.</p>
+<p>Returning null and having update bail out means an occluded frame holds the current state rather than corrupting it. The arm stays "up" until the model can actually see it come down.</p>
+<p>If you want to be stricter, smooth the angle over the last three or four frames with a rolling median before it reaches the state machine. A median rejects single-frame outliers in a way a mean doesn't.</p>
+<p>Once you've written one of these, you start recognising the shape everywhere:</p>
+<p>None of those require a different model. They're the same 33 coordinates with different geometry sitting on top, and the geometry is a few dozen lines each.</p>
+<p>Here's why I keep insisting on the distinction between coordinates and meaning.</p>
+<p>When my rep counter miscounts, I don't retrain anything. I don't collect a dataset, I don't label examples, I don't spin up a training job. I look at two things: my thresholds, and my state machine. One of them is wrong.</p>
+<p>That's a normal bug in normal code, and you already know how to find it. You can log the angle. You can set a breakpoint on the transition. You can write a unit test that feeds a synthetic sequence of angles through update and asserts the count — no camera, no model, no fixtures:</p>
+<p>The hard part of this problem — turning pixels into joint positions — was solved by a research team and shipped to you as a file you can download. The part that's left is the part you're already good at.</p>
+<p>You are not blocked on machine learning knowledge. You were blocked on nobody telling you this was available.</p>
+<p>I set delegate: 'GPU' above without comment, and it deserves one. MediaPipe Tasks lets you choose between a CPU path and a GPU path, and availability of the GPU path varies by browser, platform and graphics driver.</p>
+<p>The practical consequence is that you have to test the CPU path, because for some meaningful share of your users it isn't a fallback — it's the only path they will ever take. If you develop on a machine where the GPU delegate works and never exercise the CPU one, you have shipped something you've never run.</p>
+<p>That, and the question of how often you should run the model at all, is a bigger subject than this article. It's the next one.</p>
+<p>Jay Nirmal is a Senior Software Engineer at Meazure Learning with over eight years of experience in distributed systems, cloud infrastructure, WebRTC, and production reliability. He leads engineering initiatives supporting large-scale digital assessment platforms, focusing on high-availability systems, real-time media infrastructure, recording reliability, and assessment integrity. Jay holds a Master of Science in Information Systems from Northeastern University and a Bachelor of Engineering in Computer Engineering from the University of Mumbai.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/local-reachy-mini-conversation" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/your-pose-model-gives-you-coordinates-not-meaning/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
