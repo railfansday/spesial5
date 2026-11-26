@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Abolish Lock Poisoning</title>
+    <title>I checked Clojure&#x27;s core with Lean and found 17 unreported bugs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9855.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,157 +15,99 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Abolish Lock Poisoning</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>I checked Clojure&#x27;s core with Lean and found 17 unreported bugs</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
-            <img src="https://lucumr.pocoo.org/social/2026-11-25-poisoning-social.png" alt="Abolish Lock Poisoning" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://s.conao3.com/og/blog/2026/e4f733.png" alt="I checked Clojure&#x27;s core with Lean and found 17 unreported bugs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://lucumr.pocoo.org/social/2026-11-25-poisoning-social.png" alt="Abolish Lock Poisoning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://s.conao3.com/og/blog/2026/e4f733.png" alt="I checked Clojure's core with Lean and found 17 unreported bugs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Rust has a curious feature that I don’t think the language would land today,
-if it was not there for a long time: mutex poisoning.  When some Rust code
-panics while holding a std::sync::Mutex, the mutex is poisoned.  That means
-that any further call to lock() returns a PoisonError.  The motivation for
-this feature is that an object might have some internal invariants that need to
-be upheld and panicking in the wrong moment might invalidate reasonable at and leave an
-object behind in a broken state.</p>
-<p>Personally I absolutely hate this feature as it has bitten me so many times and
-I cannot once remember it helping me.  The libs team is
-discussing making the
-non-poisoning locks the default in the next edition but entirely expectedly it
-has caused quite a few people to jump to the defence of the feature.</p>
-<p>In this post I want to make my personal case why poisoned locks should either
-be entirely removed or be made the exception.</p>
-<p>Primarily this is because I have yet to come across code in the wild that
-handles a poisoned lock correctly.  On the other hand I have come across enough
-code that mishandles it and as a result behaves worse than a
-parking_lot lock would which does not support
-poisoning.</p>
-<p>Josh Triplett put it quite
-strongly in a hackernews comment: “In the entire history of the standard
-library, we have never once seen a single report of anyone attempting to recover
-from poison.”</p>
-<p>When a panic happens with a lock held, there are two reasonable reactions: shut
-the process down, or carry on and ignore the flag.  With panic = "abort" you
-get the former and poisoning never comes up.  From all the evidence I have seen,
-with unwinding, the idiomatic lock().unwrap() picks the worst option of all.</p>
-<p>That’s because it neither stops the process nor lets it continue as it will turn
-every further lock into a panic with sometimes disastrous effects.  But that
-is not the only issue with the system today.  So here I want to share some of
-the issues and with some references to real world code of how people got bitten.</p>
-<p>One subtle aspect to the poisoning is that the PoisonError needs to hold the guard.
-That’s because in order to ignore the poison flag, you need to fetch the guard
-from the error object.  Holding on to the error means holding on to the lock!</p>
-<p>That can cause common code that does error wrapping / error conversions into a
-deadlock hazard.  The innocent looking m.lock()? in a function returning
-Box<dyn Error> or similar keeps the mutex locked for as long as the error
-lives (#159930).</p>
-<p>This can also happen with if let.  For instance in
-cc-switch
-you can see that they had a test hung because a if let Ok(..) = lock() { .. } else { .. } fallback locked the same mutex again while the unnamed
-PoisonError from the condition still owned the guard.
-PC-AI had the same bug
-in a match arm.  Another case can be found in
-ox-embed-server.</p>
-<p>Deviously poisoning does not fail fast and done wrong, it fails forever.  The
-original panic happens once, on one thread, often somewhere unrelated from future
-failures.  Every later lock().unwrap() on that lock now however panics as
-well, and because so much Rust code survives panics (thread pools, request
-handlers, tokio tasks, FFI boundaries), the process stays up and becomes
-useless:</p>
-<p>While not live services, test suites show the same general issue.  One failing
-test poisons a shared static and every test after it fails with PoisonError.
-This problem showed up for
-cargo,
-deno,
-polars and
-rustc
-itself.</p>
-<p>If you recover with into_inner(), the flag stays set and every later access
-takes the recovery path again.  And remember that for the first nine years of
-Rust after the poisoning feature landed, you could not even clear it as
-clear_poison arrived only in 1.77.  Not clearing the flag means that potentially
-expensive side effects will happen from that point onwards:</p>
-<p>goose-in-a-pond
-rebuilt its decoder state on every transcription after a single panic,
-librefang
-logged the same warning on every access, and a
-pool threw its
-model away on every return.</p>
-<p>So who is handling poisonings?  I’m really not sure, definitely not the standard library.
-Every place where the standard library’s own code ignores it.  Standard I/O has done so since March
-2015, two months before
-1.0, because “any poison must have been the result of user code which the lock
-isn’t protecting”.  A common issue with a lot of poisoning errors that never
-had anything to do with the mutex that was held.</p>
-<p>Same with the panic output
-capture, the backtrace
-lock and the WASI
-environment lock.  They
-all do the same and unsurprisingly there is an open
-PR to move std’s internal
-mutexes to nonpoison.</p>
-<p>And I would argue the ecosystem has largely come to the same conclusion.  Tokio’s own locks don’t poison.
-Internally it wraps the std one in an adapter that removes poison.  When it landed Carl Lerche remarked “I rather pretend lock poisoning isn’t a
-thing.”  In
-one case Eliza Weisman needed
-into_inner
-to unlink a waiter during drop, or “we’ll leave the list with a potentially
-dangling pointer”.  I want to point to this in particular because this is a case where poisoning stood in the way of memory safety which is commonly argued as a reason you want poisoning.</p>
-<p>Another aspect here is why this is done on Mutex but not on RefCell.  Surely
-if the case for poisoning is that some code temporarily breaks an invariant, panics, and
-someone else observes the broken state, then this should apply to more cases.</p>
-<p>Take the usual example that argues in favor of poisoning and replace Mutex
-with RefCell, and you have exactly the same
-problem.
-Threads are not needed at all and this is not hypothetical either as tokio
-catches every task panic.  Paired with a LocalSet the panic comes back as a
-JoinError, the next borrow() succeeds and reads a null
-pointer
-exactly like the mutex example from the issue.</p>
-<p>Given how much panic catching goes on in async code, much of which is !Send
-for performance reasons, I’m not even convinced that panics get caught more
-often in multi-threaded code yet nobody asks for RefCell to poison.</p>
-<p>The standard library isn’t consistent with itself either as LazyLock poisons
-for good, OnceLock never poisons, Mutex poisons but lets you recover.</p>
-<p>Also remember that poisoning only tracks panics and a more common early return
-has the same issue.  The ? operator (as well as the try! macro before) that
-returns early from the middle of a critical section leaves the same broken
-invariant behind an unpoisoned lock.</p>
-<p>Note also that the coupling of poisoning of mutexes is
-historical
-and an explicit Poison<T> type would allow you to opt into this for any
-interior mutability wrapper.</p>
-<p>Personally I hope the rust team stabilizes std::sync::nonpoison, have
-std::sync::Mutex resolve to it by
-default.  If someone wants
-poisoning add that separate Poison<T> wrapper then anyone who believes they
-need and can handle it, can opt into it for any type including RefCell or
-tokio threads.</p>
-<p>What I think would be the worst of all outcomes is the counter-proposal is to
-keep poisoning but have lock() panic instead of returning a Result.  That
-would only fix the held guard lock semantics, and to a smaller degree the
-ergonomics, but it makes the slow outage the only option.  That is what every
-lock().unwrap() does today, and the issues above should be plenty of evidence
-of this being a problematic behavior in light of the existence of catch_unwind.</p>
-<p>The post In defense of lock
-poisoning is the best argument for
-the other side and worth reading but I believe the evidence all points the other
-way, and most of what Oxide ships aborts on panic anyway which is also a
-reasonable behavior.</p>
-<p>This entry was tagged
-    
-      rust and 
-      thoughts
-
-copy as / view markdown</p>
-<p>Color scheme:
-           auto,
-           light,
-           dark.</p>
+                <p>I read Koukyosyumei's article "èåãªRustè£½OSSãLean 4ã§å½¢å¼æ¤è¨¼ãã¦ã¿ããããã¡ããã¡ããã°ãè¦ã¤ãã£ãè©±" (in Japanese; the title means "I formally verified well-known Rust OSS with Lean 4 and found a lot of bugs").
+The author ported well-known Rust projects into a form they could prove in Lean 4, and where a proof failed, they found a bug in the original code.</p>
+<p>Many people have used Clojure's persistent data structures since around 1.0, so I expected no bugs to remain.
+Still, I wanted to see whether Lean would find something there too.</p>
+<p>hirosassa/lean-verify describes a procedure for modeling a small function in Lean 4 and checking it for all inputs, so I applied it to the part of Clojure's core written in Java.</p>
+<p>I modeled integer and bit arithmetic in Lean and searched for counterexamples.
+I checked the collections with differential testing against the java.util collections, and for Java interop I compared the same call with and without a type hint.</p>
+<p>I found 17 bugs that I could not find in Clojure's JIRA or on ask.clojure.org.
+They include reduce on vector-of, the hash collision node of the HAMT, and calls to functional interfaces without a type hint.</p>
+<p>The HAMT itself showed no mismatch in 3 million operations of differential testing, and the vector tree showed none around its boundaries.
+The bugs sat in separate code outside the trees, and in places where two mechanisms meet, such as = and hashing.</p>
+<p>I used Clojure 1.12.7, released on 2026-11-18, and JDK 21.
+The links to the source point to the clojure-1.12.7 tag.</p>
+<p>The lean-verify procedure picks one function and models it as a Lean definition.
+You write a property that compares it with a naive specification computed at a wider width, and bv_decide searches for a counterexample.</p>
+<p>If you model Java's long and int as BitVec 64 and BitVec 32, the wraparound of addition and multiplication maps onto BitVec operations.
+So do the rounding of / toward zero and the sign of %.</p>
+<p>When Lean found a counterexample, I turned the value into a Clojure input and reproduced it in the original code.
+I then modeled the fixed code in Lean and proved the same property.
+Lean can only take small functions that reduce to integer and bit arithmetic, so I checked the large persistent data structures with differential testing.</p>
+<p>Each test applies the same random sequence of operations to PersistentHashMap and to java.util.HashMap and compares the results.
+For the HAMT, the keys mix partial collisions at each 5-bit level with fully identical hashes, and I ran 1,500 operations for each of 2,000 seeds.</p>
+<p>For vectors, I compared against ArrayList around 32, 1056, 32800, and 1048608, where the tree gains a level.
+The operations were conj, pop, assoc, and their transient versions.</p>
+<p>I checked whether anyone had reported each bug before.
+I searched Clojure's JIRA through its REST API and ask.clojure.org through web search and the site's own search, and found no matching report.</p>
+<p>vector-of is a vector that stores its values in primitive arrays.
+Clojure implements it in gvec.clj, written in Clojure and separate from PersistentVector.
+If you drop from one and then reduce it, the call never returns once the vector has 65505 or more elements.</p>
+<p>The cause is line 79 of gvec.clj, where the seq's reduce computes the start of the next 32-element chunk.</p>
+<p>The code uses 0xffe0 to clear the low 5 bits and round down to a multiple of 32, but the mask also clears bit 16 and everything above it.
+With 65505 elements, the last chunk starts at index 65504.
+After that chunk, the start of the next one should be 65536, but the mask turns it into 0, so reduce goes back to the start and reads the vector again and again.</p>
+<p>The 0xffe0 mask has stayed in place since the 2010 commit that added internal-reduce.
+In Lean, I wrote the property that from a position a that is a multiple of 32, the next chunk starts at a + 32.</p>
+<p>impl_ok fails with the counterexample a = 1073741792, and #eval stepImpl 65504 returns 0 as well.
+fix_ok uses (bit-not 0x1f) as the mask, and its proof goes through under the assumption that a is a multiple of 32 below 0x7fffffe0.</p>
+<p>Clojure's hash-map is a HAMT: it splits the key's hash into 5-bit pieces and uses them to walk down the tree.
+Keys whose 32-bit hashes are identical share a HashCollisionNode at the bottom of the tree, and the node finds a key among them with =.</p>
+<p>HashCollisionNode.without builds the new node with one key removed.
+It should give the new node its own hash, this.hash, but it passes the parameter hash instead.</p>
+<p>The parameter hash is the hash of the key you pass to dissoc.
+If you dissoc with a key that is = to the stored key but has a different hash, the node records the wrong hash.</p>
+<p>In Clojure, a vector is = to a Java ArrayList with the same elements, but the two hash differently.
+CLJ-1372 tracks this mismatch.</p>
+<p>In the example below, I chose a and b so that both ArrayList keys hash to 1003.</p>
+<p>When you print m3, you can see the key b, but (get m3 b) returns nil.
+After the dissoc, the node records 1867155179, the hash of [0 42].
+The next assoc then concludes that a, with hash 1003, does not collide with the node, and splits the two into separate branches.</p>
+<p>A lookup of b follows the branch for 1003 and finds only a there, so it never reaches b.
+In this example the collision node sits on the first level of the tree, so the key passed to dissoc needs the same low 5 bits as 1003, and 1867155179 has them.</p>
+<p>disj on a hash-set has the same bug, while the path through the transient dissoc! does not.</p>
+<p>I changed that line in the 1.12.7 PersistentHashMap.java to this.hash and compiled it.
+With the patched class ahead of the jar on the classpath, the same example returned :B for (get m3 b).</p>
+<p>Since Clojure 1.12, you can pass a Clojure function directly where a Java method takes a functional interface.
+CLJ-2864 removed the logic that read the function's return value as a Clojure truthy value.</p>
+<p>In prior alphas, the FI adapter returns inserted Clojure truthy return logic when adapting a Clojure function to an FI with boolean return.</p>
+<p>The compiler follows this for calls where it knows the type.
+A call without a type hint goes through reflection and uses Reflector.coerceAdapterReturn.
+That method still applies RT.booleanCast to a boolean return value, so the same .removeIf call gives a different result depending on the type hint.</p>
+<p>Wrapping the list in identity hides the type of l, so the call goes through reflection.</p>
+<p>A set used as a function returns the element itself.
+In the call with a known type, the adapter cannot turn the Long into a Boolean and throws.
+The reflective call reads the return value as true and removes the elements.</p>
+<p>Clojure 1.12 added IDrop implementations that make drop faster.
+The ones for string seqs and vector seqs add the current position and n as ints and then compare the sum with the length.
+StringSeq.drop for string seqs is one of them.</p>
+<p>The Lean model gave the counterexample i = 2147483646 and n = 2147483647.
+I changed the check to compare n with the remaining length s.length() - i.
+Under the assumptions 0 < i < s.length()= and 0 < n, Lean proved that the fixed check matches the naive specification for every 32-bit input.</p>
+<p>For assoc on the result of subvec, SubVector.assocN does not reject a negative index.</p>
+<p>The call overwrites an element of the underlying vector outside the subvec, and returns a subvec that looks unchanged.
+CLJ-962 fixed the same bug in nth, but assoc still has it.</p>
+<p>The other 12 bugs have a smaller impact, and I reproduced each of them on Clojure 1.12.7.</p>
+<p>PersistentHashMap and PersistentHashSet matched java.util.HashMap over 3 million operations that mixed persistent and transient updates.
+The tests also covered maps before an update staying unchanged, ArrayNode splits and merges, and collision nodes down to depth 7.</p>
+<p>PersistentTreeMap matched java.util.TreeMap and kept the red-black tree invariants.
+Vectors matched ArrayList around every tree boundary I tested.</p>
+<p>On the numeric side, Lean proved for 64 bits that the check Numbers uses to pick the fast path for addition and subtraction agrees with the overflow check.</p>
+<p>For multiplication, bv_decide timed out at 16 bits, so I checked 8 and 10 bits.
+I proved up to 32 bits that clojure.core/mod matches the floored remainder.</p>
+<p>Every property I proved in Lean holds for the model shown in this article.
+I checked that each model means the same thing as the Java code by comparing it with the source and with the reproduced behavior.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lucumr.pocoo.org/2026/11/25/poisoning/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://s.conao3.com/blog/2026/e4f733" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Kernel prepatch 7.4-rc4</title>
+    <title>Needles, Haystacks, and Numbers Between 0 and 1</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9897.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,41 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Kernel prepatch 7.4-rc4</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>Needles, Haystacks, and Numbers Between 0 and 1</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
+            <img src="https://rustfoundation.org/wp-content/uploads/2026/11/Needles-Haystacks-and-Numbers-Between-0-and-1.png" alt="Needles, Haystacks, and Numbers Between 0 and 1" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://rustfoundation.org/wp-content/uploads/2026/11/Needles-Haystacks-and-Numbers-Between-0-and-1.png" alt="Needles, Haystacks, and Numbers Between 0 and 1" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>The 7.4-rc4 kernel is out for testing. Linus
-said: "It's huge. What a surprise. Lots of little fixes all over, with
-drivers being pretty exactly half of it (gpu and networking showing up
-as usual, but there's usb, iio, nvme, sound.. you name it)."</p>
-<p>Copyright © 2026, Eklektix, Inc.
-            
-            Comments and public postings are copyrighted by their creators.
-            Linux  is a registered trademark of Linus Torvalds</p>
+                <p>Given the increasingly hostile supply chain environment the entire software community is working within, the Rust Foundation is sponsoring exploratory work on using decision models to automatically scan crates as they are published, and flag potentially malicious crates for human review.</p>
+<p>We’ve had the scanner running on the crate firehose for a little more than a week at this point, and here’s what we’ve learned so far.</p>
+<p>Decision models have become prominent in the last 2-3 months as an alternative to the LLM-based chat interfaces that have dominated AI tasks in the last few years. Rather than providing open-ended natural language output, decision models are naturally constrained to choosing from a restricted set of answers, or providing scores against a question. Critically, they are also much faster and cheaper than LLMs, which makes it feasible to feed every crate in without bankrupting the Rust Foundation.</p>
+<p>Almost as soon as decision models became generally available, we started experimenting with feeding crates in: developing and refining prompts, figuring out how to break up crates to fit them in a restrictive context window while still getting reasonable results, extrapolating the crate publication growth curve to estimate the cost that would be involved in running this against the entire crates.io firehose, and looking at the results to see if they are reliable enough to justify the human review required.</p>
+<p>After performing that analysis against a corpus of approximately 1,000 crate files — some known to be malicious from previous takedowns, some known to be good, and some randomly chosen from crates published in October — we decided that the results were cheap and effective enough to be worth a longer (and more expensive) experiment: namely, running every crate published in November and December through the decision model.</p>
+<p>Before getting into the early results, let’s talk about what we’re not doing on this project.</p>
+<p>No automated actions are taken as a result of these scans. Effectively, we’re treating findings the same way as any normal third-party report of a potentially malicious crate: a crates.io team member and/or a member of the Rust Foundation’s security initiative will review the crate file, and if action is deemed necessary, the normal takedown process takes place. As ever, this process involves the crates.io team (for the mechanics of the takedown), Rust security response working group (for any security-related consulting), and RustSec (for advisories to notify users of the takedown).</p>
+<p>The scanning service also doesn’t retain the crate file content once the initial scan is complete. Only the crate name, version number, a list of the file names within the crate, and the score are kept. If we do future comparative work, it will only be on crates that remain available at that time.</p>
+<p>As of the writing of this blog post, we have scanned every crate file published between the 11th and 21st of November1, inclusive. We intend to go back to November 1st, and continue until at least December 31st.</p>
+<p>So far, we’ve scanned 135,548 crate files.</p>
+<p>We’re asking the decision model to give a score in the range 0.0..1.0 that the crate is malicious — not whether it is buggy, or has unintended security concerns, but simply whether it appears to be actively malicious, with some extremely limited2 context provided from previous malware campaigns that we’ve seen.</p>
+<p>Calibrating the threshold for where a human should be involved is an ongoing process. Based on the initial analysis, we set the threshold — which is, of course, going to be highly model and prompt specific — at 0.35, suspecting that that threshold would likely return more false positives than we desired. (We were not wrong.)</p>
+<p>Here are the thresholds we’ve tried so far:</p>
+<p>Given this, it appears that a threshold at or above 0.7 for this particular combination of model and prompt is likely to provide the sort of behaviour we want: relatively low background noise for the humans who need to review the findings, but still finding the malware.</p>
+<p>Of course, this only covers what we find. It’s essentially impossible for us to quantify false negatives in any automated way: there are simply too many crates to review them manually, malicious crates are too infrequent for a random sampling approach to work, and the cost involved in using frontier LLMs is prohibitive.</p>
+<p>On a longer time horizon, we should be able to get a sense of false negatives based on the other reports crates.io receives. We are grateful to the broader security ecosystem of companies, non-profits, and individuals who perform their own checks and make those reports! Commonly used crates tend to receive reports quickly, but it’s not uncommon for several months to pass for crates that see no usage.</p>
+<p>We’ll do an in-depth look back and evaluation of the false negative rate in January as we will hopefully have more data by then.</p>
+<p>On a micro level, there is significant scope for experimentation with prompt and model over the coming weeks and months.</p>
+<p>We’ve already observed specific failure modes for this particular combination: because the model has no real reasoning capability, it tends to over-score crates that contain significant embedded data that isn’t source code, as it simply can’t analyse what that data is or does.3</p>
+<p>While we don’t have the financial resources to run parallel prompt and model combinations on the entire crate corpus during the experiment period, we will likely send some subsets of crates to other combinations to see if we can improve the scoring behaviour further.</p>
+<p>If the outcome of this experiment is that we see value in continuing to scan crates in this way, we will likely seek partnerships and/or sponsorship in early 2027 to fund the operation and further development of this work, including going back through the full historical corpus.</p>
+<p>Finally, on a macro level, we believe that there will be opportunities to match this sort of data with other security signals derived without the use of AI. Crate provenance data, metadata derived from maintainer actions, and capability analysis of the crates themselves are all active areas of research, both within the Rust Foundation, across ecosystems under the auspices of organisations such as OpenSSF and Alpha-Omega, and in for-profit companies.</p>
+<p>Being able to take those signals and integrate them holistically opens up opportunities for more rapid responses to malware, especially in combination with ongoing work at the crates.io level such as RFC 4016 (Registry withholding), which is currently in its final comment period.</p>
+<p>Ultimately, regardless of the success of this particular experiment, we believe that work like this is crucial to the security and success of Rust, and of software development as a whole, and we’re excited to continue this work.</p>
+<p>The Rust Foundation is an independent, non-profit organization that provides the infrastructure, tooling, administration, & community-investment that the Rust programming language needs to grow and thrive.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lwn.net/Articles/1108900/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://rustfoundation.org/media/needles-haystacks-and-numbers-between-0-and-1/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

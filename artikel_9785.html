@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Transformers Model Integration Contracts</title>
+    <title>Abolish Lock Poisoning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9785.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,142 +15,157 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Transformers Model Integration Contracts</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>Abolish Lock Poisoning</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://lucumr.pocoo.org/social/2026-11-25-poisoning-social.png" alt="Abolish Lock Poisoning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/transformers-mic/mic-logo.png" alt="Transformers Model Integration Contracts" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://lucumr.pocoo.org/social/2026-11-25-poisoning-social.png" alt="Abolish Lock Poisoning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>On July 30, 2026, Transformers enabled PyTorch's scaled dot-product attention
-(SDPA) for T5. As a side effect, UMT5's decoder could attend to future tokens.
-During training, it could peek at the answer it was supposed to predict.
-Nothing crashed, and the bug stayed in main for almost two months.</p>
-<p>When we later replayed those commits, a small UMT5 model running on CPU flagged
-it on every one of them. This post is about that model and the tests built
-around it.</p>
-<p>Transformers supports over 750
-model types, and its test suite is big: 88,000+ CPU tests on main, plus
-200,000+ GPU tests in a daily run. Model tests are only part of it: we also
-test pipelines, training, distributed execution, quantization and attention
-kernels.</p>
-<p>The integration tests load real checkpoints and exercise the model's API on
-real hardware. Running all of that on every PR would mean keeping a lot of GPUs
-busy all day long, which isn't practical. By the time a scheduled run finds a
-regression, it may already be in main.</p>
-<p>Our approach is to shrink the model instead. We build a fixture: a small
-model made from the real checkpoint's configuration, with fewer and narrower
-layers but every kind of layer it has, and its tokenizer and processor files
-unchanged. It is published once, then reused. We run "fast integration tests"
-against it on a cheap CPU runner. In our
-CPU study,
-the experimental UMT5 fixture used 66 MB of weights; the source checkpoint
-is 1,227 MB.</p>
-<p>This also covers very large models: some don't fit on our standard GPU
-runners, but their fixtures run on CPU.</p>
-<p>Model integrators already build tiny test models (Transformers' tiny-random-*
-checkpoints). We wanted a common recipe, and
-checks that go beyond loading the model and running a forward pass. The UMT5
-bug would have passed a forward pass just fine.</p>
-<p>Fixtures won't replace full integration tests, but on PRs they give us a
-chance to catch bugs before they reach main.</p>
-<p>transformers-mic is a proposed
-standard for packaging these tests. A Model Integration Contract (MIC) has
-three parts:</p>
-<p>The contract holds if running the usage path on the fixture still produces the
-baselines.</p>
-<p>A contract covers an architecture and a usage path, not a single checkpoint:
-compatible checkpoints can share a fixture, while each keeps its own expected
-results. We publish them in huggingface-mic.</p>
-<p>For example, the SmolLM contract generates from prompts such as "The capital
-of France is" and compares its token IDs with a recorded answer. After loading
-the model and tokenizer, the generation code is, simplified to one prompt:</p>
-<p>It also compares training loss, checks that gradients are finite and verifies
-that an optimizer step changes the weights. See the full
-usage.md.</p>
-<p>A fleet dataset
-on the Hub pins each MIC to a frozen revision, along with the package versions
-used to record its baselines. Each CI run records the fleet revision it
-used, so we can reproduce it later.</p>
-<p>On a PR, we pick MICs based on the files the patch changes.</p>
-<p>We replayed frozen MICs over five months of Transformers commits. The small
-UMT5 fixture flagged the regression from its introduction on July 30, 2026
-until its fix on September 28.
-Label log-probabilities differed from the reviewed baseline by 1.22 and training
-loss by about 0.20.</p>
-<p>One detail mattered: the contract used SDPA, the default attention path.
-Running only the eager attention variant missed the bug. A fixture only
-helps if it goes through the same code as the real checkpoint.</p>
-<p>We then reverted the fix on a proof branch in Transformers' CI. The check
-failed with the same differences, and the selected T5 contract's runner step
-took 13.4 seconds on CPU, excluding setup.</p>
-<p>The replay results
-and the CI demo
-have the measurements and reproduction details.</p>
-<p>The first recipe was simple: make the dimensions smaller and keep fewer
-layers. That wasn't enough for mixed architectures. Keeping two layers is no
-use if both use sliding attention and the full-attention layers disappear.</p>
-<p>We also keep the original weights file format. Otherwise we would skip the
-conversion code that runs when a user loads the real checkpoint.
-The full recipe
-has more detail.</p>
-<p>The Llama 4 Scout shrink report
-shows what this looks like on a big model. 108.6 billion parameters become 44.7
-million. The vision stack goes from 34 layers to 2 and the language stack from
-48 to 4, keeping the checked layer kinds and MoE routing style.</p>
-<p>Our CLI, tmic, creates the contract and builds the fixture. For a new
-model, an LLM drafts the usage code and manifest, and CPU and GPU runs measure
-the candidate baselines. The LLM drafts; it doesn't approve. Changed
-expectations require human review.</p>
-<p>To try it on your machine, use your source checkpoint in place of org/model:</p>
-<p>It drafts the contract, builds the fixture and records its baselines on your
-machine, asking you to review each step, and stops before uploading anything.
-For a new model, the draft comes from an LLM through Inference Providers, billed
-to your own account (--bill-to ''). The
-CLI docs
-cover the individual steps.</p>
-<p>We used agents to build MICs across model families. When they hit an edge
-case, we fixed the recipe itself rather than the one fixture, with help from
-model experts. The published models and remaining gaps are in the
-coverage space.</p>
-<p>With random weights, our Whisper fixture barely responded to changes in
-the audio. It ran, but that made it a poor test of the audio path.</p>
-<p>So we trained it on a few tones paired with words such as "red" and "green".
-We weren't teaching it speech recognition, just making audio changes visible
-in its outputs. In our weight-initialization study,
-the random Whisper fixtures caught 18 of 24 injected faults. The overfit
-fixtures caught all 24.</p>
-<p>That gives us two ways to build the weights:</p>
-<p>The Whisper result doesn't settle which is better. Those were synthetic
-faults, and we haven't found a real regression caught only by the overfit
-version. Both versions missed an assisted-decoding bug that the real Whisper
-checkpoint exposed.</p>
-<p>So we keep random weights when they pass the checks, and overfit when we need
-better sensitivity or readable answers. Training takes seconds, but it is one
-more step that can fail to converge, and one more thing to maintain. The comparison
-has the results for both.</p>
-<p>As of November 1, 2026, the MIC job in Transformers CI
-reports failures without blocking PRs. Whether it should block depends on
-things we haven't measured yet:</p>
-<p>We also don't know how many bugs, like the Whisper assisted-decoding one, only
-show up with real weights, or whether overfitting catches real bugs that random weights miss.</p>
-<p>Coverage is still partial, across model families and the APIs people use.
-When a regression slips through, we can add the missing usage path and replay
-it on the broken and fixed versions. We'll keep existing tests until their
-coverage is accounted for.</p>
-<p>Finally, we'd like to link original Hub model pages to their MICs, so a
-developer or an agent using a checkpoint could start from an example tested on
-that checkpoint, its environment and its expected outputs.</p>
-<p>Want to help? Pick an uncovered model from the
-coverage space, try
-the tmic workflow,
-and contribute a usage path or review a generated contract.</p>
-<p>MIC contract coverage of Transformers model types</p>
-<p>t5/umt5 in a blog post in 2026, never thought I’d see the day 😍</p>
-<p>MIC contract coverage of Transformers model types</p>
+                <p>Rust has a curious feature that I don’t think the language would land today,
+if it was not there for a long time: mutex poisoning.  When some Rust code
+panics while holding a std::sync::Mutex, the mutex is poisoned.  That means
+that any further call to lock() returns a PoisonError.  The motivation for
+this feature is that an object might have some internal invariants that need to
+be upheld and panicking in the wrong moment might invalidate reasonable at and leave an
+object behind in a broken state.</p>
+<p>Personally I absolutely hate this feature as it has bitten me so many times and
+I cannot once remember it helping me.  The libs team is
+discussing making the
+non-poisoning locks the default in the next edition but entirely expectedly it
+has caused quite a few people to jump to the defence of the feature.</p>
+<p>In this post I want to make my personal case why poisoned locks should either
+be entirely removed or be made the exception.</p>
+<p>Primarily this is because I have yet to come across code in the wild that
+handles a poisoned lock correctly.  On the other hand I have come across enough
+code that mishandles it and as a result behaves worse than a
+parking_lot lock would which does not support
+poisoning.</p>
+<p>Josh Triplett put it quite
+strongly in a hackernews comment: “In the entire history of the standard
+library, we have never once seen a single report of anyone attempting to recover
+from poison.”</p>
+<p>When a panic happens with a lock held, there are two reasonable reactions: shut
+the process down, or carry on and ignore the flag.  With panic = "abort" you
+get the former and poisoning never comes up.  From all the evidence I have seen,
+with unwinding, the idiomatic lock().unwrap() picks the worst option of all.</p>
+<p>That’s because it neither stops the process nor lets it continue as it will turn
+every further lock into a panic with sometimes disastrous effects.  But that
+is not the only issue with the system today.  So here I want to share some of
+the issues and with some references to real world code of how people got bitten.</p>
+<p>One subtle aspect to the poisoning is that the PoisonError needs to hold the guard.
+That’s because in order to ignore the poison flag, you need to fetch the guard
+from the error object.  Holding on to the error means holding on to the lock!</p>
+<p>That can cause common code that does error wrapping / error conversions into a
+deadlock hazard.  The innocent looking m.lock()? in a function returning
+Box<dyn Error> or similar keeps the mutex locked for as long as the error
+lives (#159930).</p>
+<p>This can also happen with if let.  For instance in
+cc-switch
+you can see that they had a test hung because a if let Ok(..) = lock() { .. } else { .. } fallback locked the same mutex again while the unnamed
+PoisonError from the condition still owned the guard.
+PC-AI had the same bug
+in a match arm.  Another case can be found in
+ox-embed-server.</p>
+<p>Deviously poisoning does not fail fast and done wrong, it fails forever.  The
+original panic happens once, on one thread, often somewhere unrelated from future
+failures.  Every later lock().unwrap() on that lock now however panics as
+well, and because so much Rust code survives panics (thread pools, request
+handlers, tokio tasks, FFI boundaries), the process stays up and becomes
+useless:</p>
+<p>While not live services, test suites show the same general issue.  One failing
+test poisons a shared static and every test after it fails with PoisonError.
+This problem showed up for
+cargo,
+deno,
+polars and
+rustc
+itself.</p>
+<p>If you recover with into_inner(), the flag stays set and every later access
+takes the recovery path again.  And remember that for the first nine years of
+Rust after the poisoning feature landed, you could not even clear it as
+clear_poison arrived only in 1.77.  Not clearing the flag means that potentially
+expensive side effects will happen from that point onwards:</p>
+<p>goose-in-a-pond
+rebuilt its decoder state on every transcription after a single panic,
+librefang
+logged the same warning on every access, and a
+pool threw its
+model away on every return.</p>
+<p>So who is handling poisonings?  I’m really not sure, definitely not the standard library.
+Every place where the standard library’s own code ignores it.  Standard I/O has done so since March
+2015, two months before
+1.0, because “any poison must have been the result of user code which the lock
+isn’t protecting”.  A common issue with a lot of poisoning errors that never
+had anything to do with the mutex that was held.</p>
+<p>Same with the panic output
+capture, the backtrace
+lock and the WASI
+environment lock.  They
+all do the same and unsurprisingly there is an open
+PR to move std’s internal
+mutexes to nonpoison.</p>
+<p>And I would argue the ecosystem has largely come to the same conclusion.  Tokio’s own locks don’t poison.
+Internally it wraps the std one in an adapter that removes poison.  When it landed Carl Lerche remarked “I rather pretend lock poisoning isn’t a
+thing.”  In
+one case Eliza Weisman needed
+into_inner
+to unlink a waiter during drop, or “we’ll leave the list with a potentially
+dangling pointer”.  I want to point to this in particular because this is a case where poisoning stood in the way of memory safety which is commonly argued as a reason you want poisoning.</p>
+<p>Another aspect here is why this is done on Mutex but not on RefCell.  Surely
+if the case for poisoning is that some code temporarily breaks an invariant, panics, and
+someone else observes the broken state, then this should apply to more cases.</p>
+<p>Take the usual example that argues in favor of poisoning and replace Mutex
+with RefCell, and you have exactly the same
+problem.
+Threads are not needed at all and this is not hypothetical either as tokio
+catches every task panic.  Paired with a LocalSet the panic comes back as a
+JoinError, the next borrow() succeeds and reads a null
+pointer
+exactly like the mutex example from the issue.</p>
+<p>Given how much panic catching goes on in async code, much of which is !Send
+for performance reasons, I’m not even convinced that panics get caught more
+often in multi-threaded code yet nobody asks for RefCell to poison.</p>
+<p>The standard library isn’t consistent with itself either as LazyLock poisons
+for good, OnceLock never poisons, Mutex poisons but lets you recover.</p>
+<p>Also remember that poisoning only tracks panics and a more common early return
+has the same issue.  The ? operator (as well as the try! macro before) that
+returns early from the middle of a critical section leaves the same broken
+invariant behind an unpoisoned lock.</p>
+<p>Note also that the coupling of poisoning of mutexes is
+historical
+and an explicit Poison<T> type would allow you to opt into this for any
+interior mutability wrapper.</p>
+<p>Personally I hope the rust team stabilizes std::sync::nonpoison, have
+std::sync::Mutex resolve to it by
+default.  If someone wants
+poisoning add that separate Poison<T> wrapper then anyone who believes they
+need and can handle it, can opt into it for any type including RefCell or
+tokio threads.</p>
+<p>What I think would be the worst of all outcomes is the counter-proposal is to
+keep poisoning but have lock() panic instead of returning a Result.  That
+would only fix the held guard lock semantics, and to a smaller degree the
+ergonomics, but it makes the slow outage the only option.  That is what every
+lock().unwrap() does today, and the issues above should be plenty of evidence
+of this being a problematic behavior in light of the existence of catch_unwind.</p>
+<p>The post In defense of lock
+poisoning is the best argument for
+the other side and worth reading but I believe the evidence all points the other
+way, and most of what Oxide ships aborts on panic anyway which is also a
+reasonable behavior.</p>
+<p>This entry was tagged
+    
+      rust and 
+      thoughts
+
+copy as / view markdown</p>
+<p>Color scheme:
+           auto,
+           light,
+           dark.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/transformers-mic" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://lucumr.pocoo.org/2026/11/25/poisoning/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

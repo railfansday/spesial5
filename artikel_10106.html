@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText</title>
+    <title>Your Pose Model Gives You Coordinates, Not Meaning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10106.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,38 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>Your Pose Model Gives You Coordinates, Not Meaning</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
-            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Dilco_header.2e16d0ba.fill-1200x600.jpg" alt="Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_article1_abd13d1712.png" alt="Your Pose Model Gives You Coordinates, Not Meaning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Dilco_header.2e16d0ba.fill-1200x600.jpg" alt="Distributed LLM Training Across Metros: Streaming DiLoCo in MaxText" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_article1_abd13d1712.png" alt="Your Pose Model Gives You Coordinates, Not Meaning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Traditionally, training state-of-the-art Large Language Models (LLMs) relies on a monolithic cluster of accelerators, where all devices are collocated and tightly coupled via high-bandwidth to constantly synchronize gradients. However, physical and cost constraints make scaling a single slice increasingly difficult.</p>
-<p>To scale further, we can connect multiple compute slices across geographically distributed datacenters. However, when training across multiple datacenters over wide-area networks (WAN), standard data-parallel training suffers from severe network stalls because slow WAN transfers cannot be fully overlapped with computation.</p>
-<p>To address this, the Google DeepMind and Google Research teams developed DiLoCo (Distributed Low-Communication), a distributed optimization algorithm designed to make training resilient to these low-bandwidth, high-latency connections. In this blog post, we discuss the core concepts of DiLoCo, how it is implemented in MaxText (Google's open-source JAX-based LLM training framework), and the performance benefits it brings to large-scale LLM training on Google Cloud.</p>
-<p>DiLoCo was introduced by Google DeepMind in the paper DiLoCo: Distributed Low-Communication Training of Language Models. Instead of synchronizing gradients across all devices at every single training step (as in standard Data Parallelism), DiLoCo partitions training across M independent compute groups, referred to as learners, and allows each learner to perform many local optimization steps independently before communicating across groups.</p>
-<p>Despite communicating significantly less frequently (by a factor of H, e.g., 1-2 orders of magnitude less) than standard synchronous training, DiLoCo has been shown to achieve comparable convergence and model quality.</p>
-<p>The Vanilla DiLoCo described above reduces total communication volume by a factor of H, however, all learners still transmit their weight deltas for the entire model all at once at every H-th step. On a thin network pipe, that full-model transfer creates a large periodic stall every H steps. This issue is alleviated by Streaming DiLoCo, which is described in the next section.</p>
-<p>In multi-slice training, communication within a single slice is handled by high-speed Inter-Chip Interconnects (ICI). When scaling to multiple slices, synchronization across slices must traverse the Data Center Network (DCN) or, if the slices are geographically distributed, wide-area networks (WAN).</p>
-<p>Within a single datacenter, DCN bandwidth is high enough that JAX and XLA can often hide standard Data Parallel all-reduce collectives by overlapping gradient communication with backward-pass computation. Across datacenters or congested links, however, bandwidth drops and latency rises sharply. Standard DP stalls at every step waiting for global gradient synchronization, collapsing Model FLOPS Utilization (MFU).</p>
-<p>Streaming DiLoCo eliminates this synchronization stall by partitioning the model's parameters into P disjoint fragments. Over the course of H steps, every single fragment in the model is synchronized exactly once, achieving the exact same outer-loop cadence as vanilla DiLoCo without spiky bandwidth utilization.</p>
-<p>Using a roofline model (similar to the JAX Scaling Book), we can calculate the network bandwidth required to prevent communication stalls for a model with ∣Θ∣ parameters (at b bytes per parameter, e.g., b=2 for bfloat16) and per-step compute time tstep=tfwd+tbwd. For example, the standard Data Parallel algorithm transfers 2∣Θ∣b bytes per sync via an all-reduce collective, which is a distributed reduce-scatter where each node reduces a different part, followed by an all-gather so all participants receive all parts. To achieve zero communication stalls, we overlap the reduce-scatter of the gradients with the backward pass, which produces them and takes tbwd time. Therefore, the peak required bandwidth is Bdp ≈ 2∣Θ∣b / tbwd.</p>
-<p>Worked Example (Qwen3-32B in bfloat16, tstep​≈6.2s, P=H=65):</p>
-<p>To evaluate distributed efficiency under realistic network bottlenecks, we benchmarked Qwen3-32B (64 decoder layers, partitioned into P = 65 fragments with H = 65) across 2× TPU v5p-32 slices (dcn_diloco_parallelism=2) using built-in Linux traffic-control (tc) bandwidth shaping to limit inter-slice bandwidth across three network regimes: Unthrottled (Line Rate), 30 Gbit/s aggregate (Moderate Congestion), and 10 Gbit/s aggregate (Severe Congestion).</p>
-<p>A common question with low-communication training is whether allowing learners to train independently between synchronizations degrades model quality—especially on Mixture-of-Experts (MoE) architectures, where independent updates could cause expert routers to drift apart.</p>
-<p>We evaluated Streaming DiLoCo against synchronous Data Parallel pre-training across two MoE architectures in MaxText (Qwen3-30B-A3B and Gemma4-26B-A4B) over 4,000 training steps:</p>
-<p>Empirical results confirm that Streaming DiLoCo preserves—and even slightly improves—validation loss:</p>
-<p>MaxText provides a native JAX and Flax NNX implementation of both Vanilla and Streaming DiLoCo—requiring no external central parameter servers.</p>
-<p>You can enable Streaming DiLoCo in your MaxText YAML configuration or CLI overrides by setting enable_diloco: true and enable_streaming_diloco: true. As a best practice, set both num_diloco_fragments (P) and diloco_sync_period (H) to N_layers + 1 so that exactly one fragment is synchronized per training step (Δh = 1):</p>
-<p>In MaxText, diloco.py splits each global batch across the M learners so each learner processes GBS / M tokens per step. To overlap cross-slice communication with TPU computation in Streaming DiLoCo, weight deltas for the scheduled fragment are offloaded to M-way sharded syncer workers running on the learner host CPUs. Rather than routing through a single central coordinator, the host-CPU syncer shards execute a distributed all-reduce across the network in the background to average the fragment deltas while the TPUs continue running inner-loop training steps. Each syncer shard then applies the outer Nesterov momentum update locally and writes the updated fragment weights back to its colocated TPU learner. To dive deeper or launch your first run:</p>
-<p>Streaming DiLoCo in MaxText decouples large-scale LLM pre-training from the requirement of a single, monolithic, high-bandwidth fabric. By combining use of an inner and outer optimizer with fine-grained parameter streaming, engineering teams can pool TPU slices across congested datacenter networks or geographically distributed metros—sustaining high hardware utilization without compromising model convergence. Streaming DiLoCo is available today in MaxText v0.2.5 on PyPI, the corresponding Docker images and on GitHub main. Try it today for experimenting with distributed training workloads.</p>
-<p>From Files to Cited Answers in One API Call: Managed Ingestion and SearchDocuments in Agent Retrieval</p>
-<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
-<p>Did the user ask for this? Securing AI agents against intent hijacking with Semantic governance policies</p>
+                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Pose detection in the browser is a solved problem. You can load a model, point it at a webcam, and get a skeleton tracking a human body in real time, on a laptop, with no server involved.</p>
+<p>And then you have a skeleton that follows someone around the screen, which is a toy.</p>
+<p>The gap between that toy and a feature someone would pay for is smaller than most developers expect, and it isn't made of machine learning. It's made of trigonometry you already know. This article builds a working bicep-curl rep counter to show exactly where that line falls — and more importantly, which side of it your bugs live on.</p>
+<p>I'm using MediaPipe Pose Landmarker from Google AI Edge, which is Apache-2.0 licensed and runs entirely in the tab. Here's the whole setup:</p>
+<p>Point that at a <video> element carrying a camera stream and call detectForVideo. What comes back, per frame, is this:</p>
+<p>Thirty-three points. Each one is a normalised coordinate — x and y run 0 to 1 across the frame, z is a relative depth estimate — plus a visibility score saying how confident the model is that it can actually see that joint.</p>
+<p>That's the entire output. Coordinates and confidences.</p>
+<p>The model has no concept of exercise. It doesn't know what an arm is for. It has never heard of a bicep curl. It reports where it thinks your joints are, thirty-odd times a second, and stops.</p>
+<p>Everything that turns that into a product is yours, and it's ordinary code.</p>
+<p>A bicep curl is a change in the angle at the elbow. The elbow angle is defined by three of those 33 points: shoulder, elbow, wrist. In MediaPipe's pose topology those are indices 11, 13 and 15 on the left side, 12, 14 and 16 on the right.</p>
+<p>Getting the angle is two vectors and a dot product:</p>
+<p>This is the same maths you'd use to point a game character in a direction. Nothing about it is machine learning, and that matters for a reason I'll come back to.</p>
+<p>One thing to notice: I'm ignoring z entirely. The depth estimate is relative, not metric — it's good enough for working out which parts of a body are nearer the camera, and not good enough to measure anything. For a 2D elbow angle, using it adds noise and buys nothing.</p>
+<p>Here's where almost everyone's first attempt breaks.</p>
+<p>The naive version looks at the angle and counts whenever the arm is up:</p>
+<p>Run that at 30 frames a second and one slow curl gives you about twenty reps. You haven't counted repetitions. You've counted frames in which the arm happened to be bent.</p>
+<p>A rep isn't a state. It's a transition between states:</p>
+<p>Fifteen lines, and that's the feature. The counter increments exactly once per cycle, on the edge, because the guard on phase makes every other frame in that cycle a no-op.</p>
+<p>If you used a single threshold — say, 100 degrees — you'd get a counter that fires repeatedly whenever someone holds their arm near 100 degrees and the estimate jitters by a degree either side. Every tiny fluctuation across the line is a transition, and every transition is a rep.</p>
+<p>Two widely separated thresholds give you hysteresis. Once the arm is "up," it has to travel all the way past 150 degrees before the counter will consider another rep. Noise of a few degrees can't produce a count because no amount of jitter near 55 crosses 150.</p>
+<p>This is the same trick a thermostat uses to avoid switching the heating on and off every few seconds, and it's the single most useful pattern in this whole category of work. Any time you turn a continuous signal into discrete events, you want two thresholds, not one.</p>
+<p>visibility is the field people skip, and skipping it is how you get phantom reps.</p>
+<p>When a joint goes out of frame or gets occluded, the model still returns a coordinate for it. It is obliged to return 33 points. What it does is return a guess, with a low visibility score attached — and a guessed wrist position can swing wildly between frames, which looks exactly like a very fast curl.</p>
+<p>Returning null and having update bail out means an occluded frame holds the current state rather than corrupting it. The arm stays "up" until the model can actually see it come down.</p>
+<p>If you want to be stricter, smooth the angle over the last three or four frames with a rolling median before it reaches the state machine. A median rejects single-frame outliers in a way a mean doesn't.</p>
+<p>Once you've written one of these, you start recognising the shape everywhere:</p>
+<p>None of those require a different model. They're the same 33 coordinates with different geometry sitting on top, and the geometry is a few dozen lines each.</p>
+<p>Here's why I keep insisting on the distinction between coordinates and meaning.</p>
+<p>When my rep counter miscounts, I don't retrain anything. I don't collect a dataset, I don't label examples, I don't spin up a training job. I look at two things: my thresholds, and my state machine. One of them is wrong.</p>
+<p>That's a normal bug in normal code, and you already know how to find it. You can log the angle. You can set a breakpoint on the transition. You can write a unit test that feeds a synthetic sequence of angles through update and asserts the count — no camera, no model, no fixtures:</p>
+<p>The hard part of this problem — turning pixels into joint positions — was solved by a research team and shipped to you as a file you can download. The part that's left is the part you're already good at.</p>
+<p>You are not blocked on machine learning knowledge. You were blocked on nobody telling you this was available.</p>
+<p>I set delegate: 'GPU' above without comment, and it deserves one. MediaPipe Tasks lets you choose between a CPU path and a GPU path, and availability of the GPU path varies by browser, platform and graphics driver.</p>
+<p>The practical consequence is that you have to test the CPU path, because for some meaningful share of your users it isn't a fallback — it's the only path they will ever take. If you develop on a machine where the GPU delegate works and never exercise the CPU one, you have shipped something you've never run.</p>
+<p>That, and the question of how often you should run the model at all, is a bigger subject than this article. It's the next one.</p>
+<p>Jay Nirmal is a Senior Software Engineer at Meazure Learning with over eight years of experience in distributed systems, cloud infrastructure, WebRTC, and production reliability. He leads engineering initiatives supporting large-scale digital assessment platforms, focusing on high-availability systems, real-time media infrastructure, recording reliability, and assessment integrity. Jay holds a Master of Science in Information Systems from Northeastern University and a Bachelor of Engineering in Computer Engineering from the University of Mumbai.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://developers.googleblog.com/distributed-llm-training-across-metros-streaming-diloco-in-maxtext/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/your-pose-model-gives-you-coordinates-not-meaning/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

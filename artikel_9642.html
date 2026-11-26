@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>SteerLatch</title>
+    <title>nsjail, bubblewrap and Firejail compared: three Linux process sandboxes, from their own docs</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9642.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,42 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>SteerLatch</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>nsjail, bubblewrap and Firejail compared: three Linux process sandboxes, from their own docs</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fq11z4vm3fm79mk5nga71.png" alt="nsjail, bubblewrap and Firejail compared: three Linux process sandboxes, from their own docs" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fq11z4vm3fm79mk5nga71.png" alt="nsjail, bubblewrap and Firejail compared: three Linux process sandboxes, from their own docs" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Connect MCP-compatible AIs to your computer
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/steerlatch?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1316846?app_id=339">Link</a>
-          </p></p>
+                <p>Posted on Nov 26
+•
+Originally published at sandscale.dev</p>
+<p>Not every piece of untrusted code needs a virtual machine. Sometimes you want something lighter on one Linux host: run this command with no network, a read-only view of the system, a time limit and a memory cap. Three mature open-source tools do that: nsjail, bubblewrap and Firejail.</p>
+<p>They are built from the same kernel features, namespaces, seccomp and resource limits, but they were made for different jobs. This comparison relies on each project's README and documentation. We have not benchmarked them, and we do not rank them; the right one depends on what you are sandboxing.</p>
+<p>All three use features covered in earlier posts:</p>
+<p>All three share the host kernel with the sandboxed process. That is the main difference from a microVM, and it applies to every tool here: a kernel bug reachable through an allowed system call is reachable from inside.</p>
+<p>nsjail's README calls it a "Linux process isolation tool using namespaces, resource limits, and seccomp-bpf syscall filters". Its feature list is the broadest of the three:</p>
+<p>A single run with the README's basic flags plus a wall-time and memory limit looks like this:</p>
+<p>nsjail fits server-side jobs: running submissions on a judge, running untrusted handlers per connection, or fuzzing. The protobuf config makes policies reviewable files rather than long command lines.</p>
+<p>bubblewrap starts from a different problem. Its README explains that tools like Docker are not suitable to hand to unprivileged users, because that access can easily become root on the host. bubblewrap uses user namespaces so that any user can build a sandbox without privileges; the README notes the old setuid mode has been removed.</p>
+<p>Its design is minimal by intent. Each sandbox starts in a new, completely empty mount namespace whose root is a tmpfs, and you build up the filesystem with command-line options. It turns off setuid binaries with PR_SET_NO_NEW_PRIVS. Flatpak is its best-known user.</p>
+<p>The README is unusually clear about responsibility: bubblewrap "is not a complete, ready-made sandbox with a specific security policy", and the protection between sandbox and host "is entirely determined by the arguments passed to bubblewrap". Whatever builds those arguments owns the security model. Its limitations section adds specifics, such as needing --new-session (unless a seccomp filter blocks TIOCSTI) to prevent command injection into the outer terminal, and noting that everything mounted into the sandbox, a D-Bus socket for example, can potentially be used to escalate privileges.</p>
+<p>--unshare-all includes the network namespace, so the job has no network unless you add --share-net. --clearenv keeps your environment variables, and any secrets in them, out of the sandbox. bubblewrap has no built-in time or memory limits; pair it with cgroups or systemd-run, or with a timeout in the caller.</p>
+<p>bubblewrap fits as a building block inside a larger program that knows exactly what it wants to expose: a desktop app framework, a build tool, or your own job runner.</p>
+<p>Firejail's README describes "a lightweight security tool intended to protect a Linux system by setting up a restricted environment for running (potentially untrusted) applications". It is an SUID program using namespaces, seccomp-bpf and Linux capabilities, works alongside SELinux or AppArmor, and integrates with cgroups.</p>
+<p>Its distinguishing feature is a large library of ready-made profiles for common desktop applications such as Firefox, Chromium and VLC. You run firejail firefox and get a profile that someone has already tuned. Options like --net=none and the private-* family (private home, /tmp, /dev, /etc) restrict what a program sees.</p>
+<p>The SUID design is the main trade-off to weigh for server use. A setuid-root program is itself attack surface for local users. Firejail has had privilege escalation bugs in that code, for example CVE-2022-31214, where a crafted fake container accepted as a join target by the setuid-root program in version 0.9.68 let a local attacker gain root. Bugs get fixed, but a design that needs root to start a sandbox carries that class of risk by construction.</p>
+<p>Firejail fits desktop hardening: running a browser, a media player or a document viewer with less access than your user account has.</p>
+<p>If you are running code an AI agent wrote on your own Linux hosts:</p>
+<p>Whichever you choose, the kernel stays shared. For code nobody has read, from users you do not know, a boundary with its own kernel is worth considering; see containers, gVisor and Firecracker compared. Sandscale runs each run in its own Firecracker microVM for that reason. The habits from this post still apply inside any sandbox: no secrets in the environment, no network unless the task needs it, and a time limit.</p>
+<p>Originally published on the Sandscale blog.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/steerlatch" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/sandscale/nsjail-bubblewrap-and-firejail-compared-three-linux-process-sandboxes-from-their-own-docs-16fj" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

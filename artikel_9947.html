@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Writing a Turn Based Game Websocket Server in Haskell</title>
+    <title>An AI coding agent, a browser, and a Mac tool found a financial firm&#x27;s access key in under 6 minutes</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9947.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,57 +15,60 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Writing a Turn Based Game Websocket Server in Haskell</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-25</p>
+        <h1>An AI coding agent, a browser, and a Mac tool found a financial firm&#x27;s access key in under 6 minutes</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
+            <img src="https://image.theregister.com/5311939.jpg?imageId=5311939&amp;x=0&amp;y=0&amp;cropw=100&amp;croph=100&amp;panox=0&amp;panoy=0&amp;panow=100&amp;panoh=100&amp;width=1200&amp;height=683" alt="An AI coding agent, a browser, and a Mac tool found a financial firm&#x27;s access key in under 6 minutes" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://image.theregister.com/5311939.jpg?imageId=5311939&x=0&y=0&cropw=100&croph=100&panox=0&panoy=0&panow=100&panoh=100&width=1200&height=683" alt="An AI coding agent, a browser, and a Mac tool found a financial firm's access key in under 6 minutes" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>I’d like to share a wee pattern I’ve found useful for writing simple WebSocket apps in Haskell - specifically for my side project wordify - an open source ~ multiplayer crossword board game ~ .</p>
-<p>I have in mind websocket applications where there’s some sort of ‘resource’ that is shared between multiple websocket clients that need to be kept updated as the state changes such as:</p>
-<p>For simplicity, we’ll implement a multiplayer server for Noughts and Crosses (as we’ll call it in a parochially defiant act of patriotism against the US-centric internet :P) to illustrate the pattern.</p>
-<p>I’ll be exploring a pattern where we maintain a Map of all the Noughts and Crosses games we have in progress safely such that all the connected websockets see the same game updates.</p>
-<p>There’s a few different options for writing web apps in haskell. Yesod is the one I’m most familiar with. The canonical examples on Yesod WebSockets illustate how to use a shared broadcast TChan as the basis for a chat server (blog here, code example here.))</p>
-<p>This shared TChan broadcast channel is a useful abstraction which will form part of our implementation but unlike the materials above we’ll need to maintain multiple gmaes at once with their own channel.</p>
-<p>A naive approach might be to plonk our games in a Map GameId GameState stored in a TVar. A TVar is a mutable variable that can be updated by multiple threads (or websocket handlers) and can be updated transactionally along with other TVars (which we’ll get into later.)</p>
-<p>We’ll also set up our GameState types including our board state, our two players, channel to broadcast move updates, etc:</p>
-<p>Since we’re using a TVar each WebSocket thread can load a new game into the game map if necessary by running modifyTVar to update the map.</p>
-<p>That just won’t do though! Only one thread can update the map entries at a time, and we have aspirations of being the Internet’s go-to Noughts and Crosses server! We’ll need something that scales better than that while we’ve still got the luxury of vertically scaling one machine along our path to world domination.</p>
-<p>stm-containers to the rescue! It uses a Hash Array Mapped Trie datastructure to split the map into chunks that can be updated inside independent STM transactions allowing for more concurrency.</p>
-<p>Our next challenge is to load the game state into the game map when the first websocket connects and remove it from the map when it’s no longer needed so that we don’t run out of memory in our path to world domination.</p>
-<p>Imagine our Yesod ‘App’ type also had a GameRepository that was a data store we could use to access and persist our TicTacToe games:</p>
-<p>We will leverage this function to load the game into the cache when it’s not already populated.</p>
-<p>We will use Software Transactional Memory (STM) abstraction to ensure that if two websocket connections try to insert an entry into the game map at the same time, they both end up with the same ‘GameState’ instance so that they receive game updates on the broadcast channel.</p>
-<p>In our getGameState function, if we don’t find the game already present in our game map then we attempt to load it freshly and insert it into the map. We do this insertion inside an STM transaction via the atomically function.</p>
-<p>This means that if there is a conflict in the middle of the transaction because one or more other websocket threads have tried to load the game in another concurrent transaction, the transaction inside the atomically ‘block’ will be retried by the unsuccessful writing websocket threads. They will then read the newly inserted entry and increment the sharer count via registerSharer, meaning  that all threads are reading from the same broadcast channel.</p>
-<p>There’s an improvement we can make to make sure that multiple threads don’t try to load our game at the same time, wasting trips to the database just to throw the result away. This could happen in a thundering herd of observers to watch the latest tournament game between Noughts and Crosses grandmasters!</p>
-<p>We will use an MVar to allow a thread to lay claim to responsibility for loading the resource and signal any other threads waiting when it has done so. MVar’s readMVar function allows the caller to wait (block) until it has been populated with a value (or it will return immediately if it’s already populated with a value.)</p>
-<p>The game entry in our game map will now either be a game loaded into the cache (LoadedGame) or a game that is currently being loaded by another websocket (LoadingGame.) LoadingGame will contain an MVar that can be read to receive a signal that the other thread has completed loading the game.</p>
-<p>When we first try to retrieve a game, we have to decide the action we need to take based on the cache state, which we represent with this type:</p>
-<p>When we load a game we transactionally lay claim to loading the resource if it’s not already loaded or is currently being loaded by writing a ‘LoadingGame’ entry to cache:</p>
-<p>This is performed in an STM transaction, so if multiple threads try to insert their ‘MVar’ claiming ownership then the losers of the race will retry the transaction and see the winning thread’s claim when they read the map again. They will then block on it being populated by the winning thread using using readMVar, which serves as a signal that they can now load the game from the cache.</p>
-<p>When loading the resource we must make sure that threads don’t wait on the MVar indefinetly if an error is thrown while retrieving the game so we clean up the claim if an error occurs while trying to load the game.</p>
-<p>Our last challenge is to make sure that entries are removed from the cache when it’s safe to do so (there are no websocket subscriptions.) Our Noughts and Crosses server will be very busy with many games being started and ended and we can’t have ourselves running out of heap space due to a memory leak of games remaining in the cache!</p>
-<p>When we think of garaunteeing the safe release of scarce resources, one of the options our mind turns to is the resourcet package. This package allows us to use the type system to make sure a resource will be cleaned up when it is no longer being used. See this blog entry for more on how it works if you are unfamilar with it.</p>
-<p>We will use the resourcet package’s allocate function to register the action that must be taken when the game resource is no longer in scope (due to the websocket disconnecting or an exception being thrown.)</p>
-<p>We registered the releaseGameState function as the function that should be ran when the resource goes out of scope. It will check if there’s any sharers left, and if there are not it will remove the game from the game map.</p>
-<p>Again, the STM abstraction has served us well. The transaction inside atomically will be restarted if either the ‘gameConnections’ TVar or game map is updated by another websocket thread.</p>
-<p>If a new websocket connection retrieves the game from the cache at the same time as it is being removed in another transaction, either:</p>
-<p>Note: the conditional deletion can be achieved slightly more efficiently with stm-container’s focus function to avoid having to traverse the map a second time to do the deletion.</p>
-<p>We can now use this game ‘resource’ in our websocket handler inside runResourceT:</p>
-<p>We use race_ to spawn two green threads to manage the Websocket connection.</p>
-<p>handleOutgoingMessages will read from the shared broadcast channel and write to the websocket to inform the client of board changes.</p>
-<p>handleIncomingMessages will read from the websocket to make moves on behalf of the user. It will validate the move, update the state and write to the shared broadcast channel.</p>
-<p>When either handleIncomingMessages or handleOutgoingMessages fails on reading or writing to the socket due to it being disconnected, runResourceT will catch the error and run the releaseGameState function that we registered to run on resource deallocation in our getGameState function before rethrowing the error.</p>
-<p>If you want to see a full implementation (mostly vibe coded other than what we’ve discussed here) of our demo noughts and crosses server, I’ve uploaded it to github here. The NoughtsAndCrosses.hs file contains all the logic we’ve been discussing in this blog entry.</p>
-<p>This pattern can be applied in any situation where it’s important that multiple threads need to share the same reference to something that is dynamically loaded. This is a requirement beyond that of a traditional cache where it doesn’t particularly matter if an item is evicted from the cache (per some eviction policy) while there’s still threads holding on to it, for example.</p>
-<p>If you think you might find this pattern useful for something, I’ve published it as a library named shared-resource-cache. Source here.</p>
-<p>Note: it works slightly differently to what we’ve explored here: when there are no ‘sharers’ of the given resource, it is not cleared from the cache immediately. Instead, it is cleared when there has been no sharers for at least a configured amount of time.</p>
-<p>Feel free to send me a game invite on wordify. My username is happy0 :).</p>
+                <p>No sophisticated malware or attack framework required</p>
+<p>A Romanian hacker, armed with only an open source coding agent, a Chrome browser, and a Mac, tried multiple ways to break into a financial services firm, ultimately found an access key - luckily, it was a decoy - and carried out an entire (almost) attack in under six minutes.</p>
+<p>It’s a stark reminder that miscreants don’t need sophisticated malware - as in the Binance heist - or AI pen-testing tools like ARTEX to carry out intrusions into critical networks. Open source coding agents, and specifically OpenCode in this case, also work just fine.</p>
+<p>“What surprised me most was how little it took and the toolkit: a free coding agent, the curl that comes with every Mac and an ordinary Chrome, all from one laptop,” Jesta co-founder and CTO Lior Finkelshtein told The Register. “Until now I thought that we had more time until tools like OpenCode are used in offensive operations. This incident shows us that it's already in use in the field, and we will probably see more of that in the future.”</p>
+<p>Jesta is a Tel Aviv-based security startup that builds defensive tools to detect and stop autonomous AI attacks. In a report shared exclusively with The Register, Finkelshtein documented an attempted intrusion targeting a major financial services company that’s also a Jesta customer - the security shop declined to say which one.</p>
+<p>Jesta’s investigation into the incident determined that someone in Bucharest downloaded a free AI coding agent called OpenCode and pointed it at the financial services customer on November 16 at 4:24:57 a.m. ET.</p>
+<p>OpenCode is an open source coding agent that lets users connect to more than 200 model providers or local models, including Anthropic’s Claude models, OpenAI’s GPTs, Google’s Gemini, DeepSeek, and Z.ai’s GLM. Jesta doesn’t know which model the attacker used, as there was nothing in the traffic that named the model. OpenCode's web fetch tool, however, did name itself, so Jesta knows the attacker used this coding agent - not a scanner - to do the dirty work.</p>
+<p>“Nothing in OpenCode was built for hacking,” Finkelshtein said in a Tuesday report about the agent-led attack. But, he added, nothing in the coding agent “stops you from pointing it at someone else's website either. When you do, the agent goes through the site the same way it goes through code. It reads, tries something, reads the result and tries the next thing, for as long as you let it run.”</p>
+<p>That’s what it did in this operation, which took less than six minutes and cost the human operator nothing.</p>
+<p>The first call came from a Chrome browser on a Mac, requesting the front page of one of the financial firm’s systems. The site refused it, and six seconds later, the same IPv6 address in Bucharest, on an ordinary DIGI Romania business line, tried again. It used the same Chrome version, but said it was an Android Pixel 10 phone (it wasn’t) to see if the site would let a phone in (it didn’t).</p>
+<p>After failing to gain access through the front page, the agent asked the system for its API definition, which was also refused. Five seconds later, it tried a different address - this one was a decoy set up by Jesta - and it answered the agent, providing the readable file defining how the API works.</p>
+<p>The agent read the document, and 13 seconds later followed a link it contained. At 4:26:01 a.m. ET, Jesta’s defenses marked the website visitor as an AI agent, opened a case, and from here on out, everything the agent accessed was contained inside a fake environment designed to trick intruders. This included a phony key, which the attacker then used to attempt to break into the company’s systems.</p>
+<p>“It worked like a developer,” Finkelshtein said about the coding agent. “It read the API docs and did what they said. It found a key and used it. It checked whether the lock was real, then made up a key of its own and tried that. None of the threat feeds the customer has knew the address, so a blocklist would never have stopped it. The bar for doing this is now installing an app. Think about how many people can do that.”</p>
+<p>In addition to OpenCode, the attacker used only Chrome 157, both in desktop and mobile modes, and curl/8.7.1, a command-line tool that has shipped with every Mac since macOS 15. The agent passed information between the three tools. It included the planted key in a command-line request and then tested three scenarios – using the decoy key, no key, and a fabricated key – to determine whether what it found in the API documentation was legit.</p>
+<p>It also tried multiple URLs using the browser. While it ultimately identified a valid endpoint, it attempted to read from one that accepts only data submissions, so its request was blocked again. Five minutes and 44 seconds after the first request, it gave up, and the logs haven’t detected any activity from this same intruder since then.</p>
+<p>The security shop and its customer disclosed the activity to law enforcement and told us it’s “being handled.”</p>
+<p>While the attacker wasn’t able to steal anything in this attempt, security teams still need to take note, according to Finkelshtein.</p>
+<p>“No blocklist would have helped” detect the malicious traffic, he explained. “Most security tools still decide by asking whether an address is known to be bad, and for this one the answer was no. If that key had been real, it would have been in.”</p>
+<p>Instead of blocklists, Finkelshtein suggests paying attention to what the visitor does. In this case, several of its actions gave it away - including following a link that only existed inside an API doc, using a desktop browser and a fake phone, then curl, all from the same address within minutes, and trying multiple keys - including one with a made up name and then no key - within seconds.</p>
+<p>“Open source lets anyone build software without a big team,” Finkelshtein wrote in the Tuesday blog. “AI is doing the same for hacking. The skill is in the model, the model is a setting, and the person giving the instructions doesn't need to know how any of it works.” ®</p>
+<p>And intruders don't always need to exploit bugs to break in</p>
+<p>Chip design software leans heavily into 3D packaging and multi-node assemblies</p>
+<p>PARTNER CONTENT: PARTNER CONTENT: Hyperscalers and colos have distinct power strategies, but for both, securing flexible, fast power relies on self-generated solutions</p>
+<p>Next step is to move in for a closer look at the carnage</p>
+<p>If a service falls in the forest and nobody hears it...</p>
+<p>It's not our fault if you've implemented it wrong</p>
+<p>Chip design software leans heavily into 3D packaging and multi-node assemblies</p>
+<p>Still slinging hardware – now with added AI and attendant risks or opportunities</p>
+<p>‘It’s like the Ottoman Empire banning the printing press for Arabic so they would keep in control of the dogma,’ he says</p>
+<p>Chip boss gets his old job back, but Washington isn't done investigating one of his former flame's businesses</p>
+<p>Britain wants sovereign capability to test whether military AI will work before it gets deployed for real</p>
+<p>And intruders don't always need to exploit bugs to break in</p>
+<p>It's not our fault if you've implemented it wrong</p>
+<p>FinCEN takes systems offline and extends filing deadlines while investigating 'unauthorized access'</p>
+<p>AutoPay login and vehicle records affected, alongside limited payment information and customer service emails</p>
+<p>Four more critical vulns, including another unauthorized access flaw in vCenter</p>
+<p>A spatial classic Finder in the style of A/UX</p>
+<p>Canonical's stretch goal is to make the immutable OS standard in 30.04 – without retiring the traditional distro</p>
+<p>Cheap tiny e-readers and the perils of LLM-generated drive-by pull requests – plus much more</p>
+<p>Devuan-based distro swaps Wayland for XLibre and i3, with Xfce waiting if the tiling gets tiresome</p>
+<p>Version 4.0 of Redmond’s cloudy OS is free to use in its cloud. Repeat. Free to use</p>
+<p>You can probably guess what he blames for the excessive workload</p>
+<p>Contact usAdvertise with usWho we areNewsletter</p>
+<p>The Next PlatformDevClassBlocks and FilesSituation Publishing</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://blog.gordo.life/2026/04/12/haskell-websockets.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.theregister.com/security/2026/11/24/an-ai-coding-agent-a-browser-and-a-mac-tool-found-a-financial-firms-access-key-in-under-6-minutes/5311922" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
