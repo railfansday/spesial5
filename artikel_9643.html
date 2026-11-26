@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Finer Screenshot</title>
+    <title>How a Side-Channel Attack Exposed Hidden Data in OpenSearch</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9643.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Finer Screenshot</h1>
+        <h1>How a Side-Channel Attack Exposed Hidden Data in OpenSearch</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
         
         <div class="article-body">
+            <img src="https://hackernoon.imgix.net/images/9qWtVsuknggFnDEJs0WSdn1bKtx2-gsc390o.png" alt="How a Side-Channel Attack Exposed Hidden Data in OpenSearch" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/9qWtVsuknggFnDEJs0WSdn1bKtx2-gsc390o.png" alt="How a Side-Channel Attack Exposed Hidden Data in OpenSearch" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            Add text that automatically stays readable on any background
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/finer-screenshot?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1328582?app_id=339">Link</a>
-          </p></p>
+                <p>Tl;dr: In our research, we found an unauthorized data access vulnerability in OpenSearch that allowed an attacker to extract vector fields protected by field-level security using OpenSearch's vector search as a side-channel.</p>
+<p>We reported the issue to OpenSearch team along with a proposed patch, and the vulnerability has since been fixed as of 3.10.</p>
+<p>OpenSearch is an open source distributed search engine created by Amazon, a popular alternative proprietary Elasticsearch.</p>
+<p>Besides the more traditional lexical search and analytics capabilities, it also functions as a vector database, which has become increasingly important for AI and ML applications — RAG, semantic search, recommender systems, etc.</p>
+<p>One of the most common use cases of vector databases is to store and search for vector embeddings.</p>
+<p>An embedding is a point or vector that represents some concept — e.g., a word, image, or something more abstract and opaque — in some high dimensional embedding space.</p>
+<p>Often in these embedding spaces, spatial relationships encode semantic relationships. E.g., in the very oversimplified example below:</p>
+<p>Tl;dr, vector databases are important, and OpenSearch is one such popular database technology.</p>
+<p>OpenSearch has a security feature called field-level security (FLS) which allows you to control which document fields a role can read in an index.</p>
+<p>For example, a cluster might have users with different roles, e.g., QA, support, MLEs, SREs accessing the cluster for different purposes, along with service principals representing different programatic workloads — documents might be composed of different data that not all should have access to even when they have access to an underlying document itself.</p>
+<p>FLS essentially allows you to create different projections of an index with different fields visible or hidden to different users, without having to duplicate that data into a separate index per view.</p>
+<p>In using FLS, we noticed something intriguing: while FLS hid the literal values of fields from users for whom that field was configured as excluded, and while those fields were completely disregarded by lexical search, if the field was a vector field, it was still eligible for vector search, and still influenced search candidacy, scoring, and ranking.</p>
+<p>If you're familiar with the idea of side-channels in security, alarm bells should be going off in your head right now. 🚨</p>
+<p>Any time you have an inaccessible secret, but you are able to indirectly learn information correlated with it, you have a potential side-channel vulnerability.</p>
+<p>Two illustrative examples are that of acoustic cryptanalysis and power analysis.</p>
+<p>The intensity/color of the power LEDs can be used to detect the beginning and end of cryptographic operations. This can be done because the intensity/brightness of a device's power LED […] correlates with its power consumption (which is affected by the CPU operations). This is caused by the fact that the power LED is connected directly to the power line of the electrical circuit which lacks effective means (e.g., filters, voltage stabilizers) of decoupling the correlation with the power consumption.</p>
+<p>At a high level, if a document with a hidden vector field x can be included and scored in a vector search, the score returned for a particular query vector q will be some measure of the similarity between x  and q. With clever probing of q, we can reconstruct x.</p>
+<p>For example, for an L2 vector space, OpenSearch documents the distance function between two vectors as the squared Euclidean distance.</p>
+<p>For a given hidden vector x and query vector q (the probe), this gives us:</p>
+<p>The squared distance is thus recoverable from the score:</p>
+<p>From which the components of x can be computed:</p>
+<p>For an n-dimensional vector, this requires n+1 probes to recover the original .</p>
+<p>This still requires that the target document enter the k-NN candidate set — in order to return a score — for each probe query. In theory this may be difficult if the index is large and there are many vectors, but in practice this can often be achieved, and an attacker can increase their chances by upping the k of the query.</p>
+<p>There's a document in index_1 you have access to with:</p>
+<p>Repeat twice more with [0, 1] and [1, 0]. OpenSearch returns the following _scores, from which the squared distances d(q) can be computed from the derivations above:</p>
+<p>Substituting these into the equations above yields [3.25000049, 4.74999951], approximately (due to the scores being rounded) the original vector in this case!</p>
+<p>Voilà, you've just stolen a vector via side-channel! 🎉</p>
+<p>The technical root cause was a flaw in the k-NN plugin's implementation of vector search: unlike lexical search which completely disregards FLS-excluded fields for purposes of matching and ranking via filtered view, the k-NN plugin during vector search unwrapped the filtered view, accessing the raw reader underneath and thus considered as candidates vectors that should've been hidden by FLS, and returned their scores.</p>
+<p>How I Patched My UniFi Devices Against the eMudhra CA Vulnerability</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/finer-screenshot" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://hackernoon.com/how-a-side-channel-attack-exposed-hidden-data-in-opensearch?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
