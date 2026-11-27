@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore</title>
+    <title>RAM price tracking 2026</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10363.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,62 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>RAM price tracking 2026</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_46a3ec16c3.jpg" alt="How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn.mos.cms.futurecdn.net/3VUDhTYYDLmHbVLRhcwPz4-970-80.png" alt="RAM price tracking 2026" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_46a3ec16c3.jpg" alt="How Much Latency Does a Self-Hosted LLM Gateway Add? Langfuse vs LiteLLM vs AcruxCore" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn.mos.cms.futurecdn.net/3VUDhTYYDLmHbVLRhcwPz4-970-80.png" alt="RAM price tracking 2026" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>A self-hosted LLM gateway sits between your app and the model provider, so every call pays for one extra hop. We measured that cost for three open-source gateways: the Langfuse AI Gateway, the LiteLLM proxy and AcruxCore. Each one ran on the same machine, in front of the same OpenAI model. LiteLLM added 61 to 67 ms to every non-streaming call. AcruxCore added 15 to 24 ms. Langfuse's number could not be told apart from zero.</p>
-<p>The bigger lesson was about the measurement itself. Before we controlled for it, one OpenAI network address moved our results by more than any gateway did.</p>
-<p>Each number is the median time a gateway added to a direct OpenAI call, with its 95% interval in brackets. A gateway can log each call, and logging takes time, so we ran the test three times with three logging levels.</p>
-<p>The direct call took 781 to 831 ms at the median, so even LiteLLM's cost is under 9% of a short call. Read the tables this way:</p>
-<p>The obvious test is to time 100 calls through the gateway, time 100 direct calls, and compare the two medians. That test gives the wrong answer, for two reasons.</p>
-<p>The first reason is noise. OpenAI's own response time moved by hundreds of milliseconds between calls in our runs. The direct call's p95 was 1,047 to 1,233 ms against a median near 800 ms. A gateway that adds 20 ms is hidden inside that spread unless the test removes it.</p>
-<p>The second reason is the network path to OpenAI. It does not stay the same between a direct client and a gateway, and that difference can be larger than the gateway itself.</p>
-<p>api.openai.com resolves to more than one address. From our network, DNS returned two Cloudflare addresses, and one was much farther away than the other. We measured both with a script that pins one address at a time:</p>
-<p>On a connection that is already open, both addresses answer in the same time. On a new connection, the far address adds about 250 ms, because the TCP and TLS handshakes take that much longer.</p>
-<p>A gateway keeps its connection to OpenAI open between calls. It pays the setup once and then stays on whichever address it reached first. A client that opens a new connection for each call pays the setup again on every call. How much it pays depends on which address DNS returns that time.</p>
-<p>Node's built-in fetch closes an idle connection after about 4 seconds. So a test client that calls OpenAI every few seconds reconnects on almost every call. In our first, uncontrolled run, the Langfuse gateway came out 43 ms faster than calling OpenAI directly. A gateway cannot be faster than the call it forwards. The direct client paid for new connections, and the gateway did not.</p>
-<p>The fix has two parts. First, pin api.openai.com to one address on every path. In Docker, that is an extra_hosts entry on each gateway container:</p>
-<p>Second, let the direct client keep its connection open, as a gateway does. With undici, the HTTP client behind Node's fetch, that is a custom Agent:</p>
-<p>We then listed each container's open connections to confirm that every path used the same address. The edge-check script is in the repository linked at the end, and it takes about a minute to run from your own network.</p>
-<p>This advice also applies outside benchmarks. If your app calls OpenAI directly from Node, keep the connection open between calls. Otherwise some of your calls pay the handshake, and on a far address that costs about 250 ms.</p>
-<p>Each test sent 150 rounds after 5 warm-up rounds. One round calls OpenAI directly and through each gateway, once without streaming and once with streaming. The order rotates every round, so no path always goes first or last.</p>
-<p>For each round, the script takes the gateway's time minus the direct call's time in that same round. Calls in one round are made within a few seconds of each other, so a slow moment at OpenAI hits all four paths together and cancels out of the difference. The script then reports the median of the 150 differences.</p>
-<p>The interval comes from a bootstrap. The script draws 150 differences at random, with replacement, and takes their median. It repeats that 2,000 times, and the middle 95% of those medians is the interval. This is a shortened version of the script's function:</p>
-<p>An interval that includes zero means the test could not separate the gateway's cost from zero. That is what the Langfuse rows show. It does not prove that the cost is zero.</p>
-<p>Every call used OpenAI gpt-6-luna with reasoning_effort: "none", the same short prompt and a cap of 5 output tokens. A short answer keeps the model's own time small, so more of the measured time belongs to the path. Each streamed call measured the time to its first token. Each non-streamed call measured the time to the full response.</p>
-<p>All three gateways did real work on every call, which made the comparison fair:</p>
-<p>The three logging levels mapped to these settings:</p>
-<p>The machine was an AMD Ryzen 9 5900X with 62 GB of RAM, running Fedora Linux and Docker 29.9. All three stacks ran on it at once, and the test was run on 10 November 2026.</p>
-<p>LiteLLM added 61 to 67 ms to the full response, but only 9 to 43 ms to the first streamed token. The first token arrives as soon as the model starts to answer, so time spent before that point shows up in both numbers. The larger cost without streaming suggests that most of LiteLLM's extra time is spent after the model has answered. We did not profile LiteLLM to confirm this.</p>
-<p>Logging level made no clear difference for any gateway. Adding LiteLLM's Langfuse callback did not raise its cost. AcruxCore's median rose from 15 ms with logging off to 24 ms with full logging, but its intervals overlap across all three runs. AcruxCore's median is 16 to 24 ms above Langfuse's, and those intervals overlap too, so this test does not rank the two of them.</p>
-<p>If 60 ms per call matters to you, as in a chat app that makes several model calls per user message, LiteLLM's cost is real and repeatable. Langfuse and AcruxCore stayed near or within the noise. If your calls take several seconds, any of the three costs less than OpenAI's own variation from one call to the next.</p>
-<p>Before you trust a gateway number, your own or anyone else's, check two things. Was each gateway compared with a direct call in the same round? And did the direct client keep its connection open on the same OpenAI address as the gateway? Without both, the result measures the network path and not the gateway.</p>
-<p>The scripts, Compose files and raw results are on GitHub: scripts/comparison/langfuse-gateway-vs-litellm-vs-acruxcore.</p>
-<p>Talha Anwar is a senior AI and full-stack engineer and writes about building and running AI systems.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Join for quick access. Enter your email below and we'll send confirmation plus sign you up to our newsletter.</p>
+<p>Get started with free access to reviews, badges and discussions.</p>
+<p>Unlock exclusive tools and insights for enthusiasts who want more.</p>
+<p>Access Bench, Roadmaps, deep analysis and other exclusive tools.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Dive into our proprietary testing data and compare hardware with detailed benchmarks.</p>
+<p>Go beyond the headlines with expert reporting on the hardware industry.</p>
+<p>Track upcoming CPUs, GPUs and tech releases before they arrive.</p>
+<p>In-depth features, interviews and insider stories from the world of hardware.</p>
+<p>Expert insights and analysis delivered to your inbox.</p>
+<p>Keep exploring and earning more as a member.</p>
+<p>Reviews, benchmarks, and updates on current GPUs.</p>
+<p>Join for quick access. Enter your email below and we'll send confirmation plus sign you up to our newsletter.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Unlock instant access to exclusive member features.</p>
+<p>Get full access to premium articles, exclusive features and a growing list of member rewards.</p>
+<p>Check the best prices on DDR5 and DDR4 memory kits.</p>
+<p>When you purchase through links on our site, we may earn an affiliate commission. Here’s how it works.</p>
+<p>In today's market, memory has become one of the most critical and expensive components in any build, and prices have only worsened thanks to the ongoing global DRAM shortage. We're keeping an eye on the volatile memory pricing to help identify any good deals that may arise.</p>
+<p>Now, even more so than before the shortage began, price tags are fluctuating significantly from day to day, and it's becoming increasingly complex to tell when you're getting a fair deal versus overpaying for the same memory kit. We've compiled this comprehensive RAM price tracker that monitors the availability and pricing of different DDR5 and DDR4 memory kits across major U.S. retailers. Our goal is to take the guesswork out of memory shopping and help you make an informed purchasing decision.</p>
+<p>We update this index regularly with the lowest prices available in the U.S. market for each memory kit. Our tracker covers a range of capacities and speeds across both budget and premium brands. We list the lowest price for each available memory kit, regardless of manufacturer, so you see the absolute best deals currently on offer.</p>
+<p>The general availability of many memory kits is limited, with truly exceptional deals scarce and often selling out within seconds of appearing. High-capacity kits, particularly DDR5, frequently show the most severe stock shortages and price premiums. Therefore, timing and vigilance are especially important when shopping for memory in current times. Whether you're budget-conscious and want the best bang for your buck, or you're building a premium system and want the best RAM for gaming available, our index further below gives you the data you need to make the right purchase.</p>
+<p>You can also check out our list of the best RAM and our RAM benchmark hierarchy to see evergreen performance data to help you make an informed decision when choosing a new GPU for your system.</p>
+<p>Here are a few exceptional Black Friday RAM deals, but below that, we have a full list of all the lowest-priced RAM on the market.</p>
+<p>Get a great deal on standalone RAM from Newegg. This deal is currently the lowest priced DDR5-6000 available. The T-Force Delta RGB not only adds flair to your chassis, but does so with decent speeds.</p>
+<p>This RGB-laden kit from Corsair sports a CAS latency of 36 and is tested at 1.35 volts. This pair of 16GB memory sticks is colored black on the aluminum heat spreader, with RGB lighting running along the spine.</p>
+<p>Above are a few of the standout deals from the Black Friday event, which is currently taking place. For a more extensive list of Black Friday deals, head to our Black Friday RAM deals article.</p>
+<p>DDR5 memory prices have exploded over the last year, with triple and, in some cases, quadruple increases. For instance, a conventional 32GB (2x16GB) DDR5-6000 memory kit sold for around $100 to $200 in October 2025, but the same kit now starts at $430, if it's even in stock.</p>
+<p>Retailers are taking advantage of the DRAM shortage, just as they did with the graphics card shortage a few years ago. They've started raising DDR5 prices to align with current market conditions and sometimes bundle DDR5 memory kits with processor or motherboard purchases.</p>
+<p>Nonetheless, these DDR5 memory kits sometimes sell for more reasonable prices. However, you have to be quick to pull the trigger, as scalpers and automated shopping bots tend to gobble up what little stock is left.</p>
+<p>The rising prices of DDR5 memory kits have forced some consumers to stick with DDR4. However, DDR4 has also seen price hikes over the last three months, though not as drastic as DDR5. We've seen the pricing double to triple.</p>
+<p>For reference, it was common to find 32GB (2x16GB) DDR4 memory kits selling for between $60 to $90 back in October 2025. Jump to January 2026, and the same memory kit could cost anywhere between $150 and $180, so DDR4 isn't exactly a safe haven for consumers.</p>
+<p>We've seen more reasonably priced DDR4 memory kits on the market than DDR5. Logically, it makes little sense to build a DDR4-based system now due to processor and motherboard availability. However, if you're in desperate need of a DDR4 memory upgrade, there are viable options on the market.</p>
+<p>Don’t miss out on this Tom’s Hardware Premium. Get a full year of access for just $29, or from $7 per-month. Get an ad-free experience across the site, daily news analysis, deep dives into specialist topics in the semiconductor industry, as well as access to Bench, the largest benchmarking database around.</p>
+<p>Best Tech and PC deals | Best gaming PC deals | Best RAM combo deals | Best 3D printer deals | Best RAM deals | Best gaming laptop deals | Best monitor deals | Best Wi-Fi Router deals | Best GPU deals | Best SSD deals | Best hard drive HDD deals | Best CPU deals | Best gaming chair deals | Best PC building tool deals | Best PC peripherals deals | Best filament and resin deals | Best motherboard deals | Best CPU cooler deals | Best PC case deals | Best Dell and Alienware deals | Best USB charger deals | Best gaming and productivity laptop deals under $1,000 | Best laptop PC dealsAlso, you can join the Tom's Hardware deals Discord for up-to-the-minute hardware deals.</p>
+<p>Get Tom's Hardware's best news and in-depth reviews, straight to your inbox.</p>
+<p>Zhiye Liu is a news editor, memory reviewer, and SSD tester at Tom’s Hardware. Although he loves everything that’s hardware, he has a soft spot for CPUs, GPUs, and RAM.</p>
+<p>Tom's Hardware is part of Future US Inc, an international media group and leading digital publisher. Visit our corporate site.</p>
+<p>©
+Future US, Inc. Full 7th Floor, 130 West 42nd Street,
+New York,
+NY 10036.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/how-much-latency-does-a-self-hosted-llm-gateway-add-langfuse-vs-litellm-vs-acruxcore/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.tomshardware.com/gift-guides-seasonal-sales/the-lowest-priced-ram-in-2026-price-tracking-on-ddr5-and-ddr4-memory-of-all-capacities" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

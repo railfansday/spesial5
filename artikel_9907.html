@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Welcome Inkling by Thinking Machines</title>
+    <title>SpaceX Wins FCC Approval To Deploy 1 Million Orbital Data Center Satellites</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9907.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,75 +15,151 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Welcome Inkling by Thinking Machines</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>SpaceX Wins FCC Approval To Deploy 1 Million Orbital Data Center Satellites</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://a.fsdn.com/sd/topics/communications_64.png" alt="SpaceX Wins FCC Approval To Deploy 1 Million Orbital Data Center Satellites" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/thinkingmachines-inkling/thumbnail.png" alt="Welcome Inkling by Thinking Machines" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://a.fsdn.com/sd/topics/communications_64.png" alt="SpaceX Wins FCC Approval To Deploy 1 Million Orbital Data Center Satellites" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Update: Inkling 2 Small is here! 🤗
-Thinking Machines released Inkling 2 Small, the next generation of the Inkling family. We have updated this post with a new section on Inkling 2 Small, covering what changed in the architecture and how to run it with transformers.</p>
-<p>Inkling is Thinking Machines' family of open multimodal models, and it now spans two generations on the Hub:</p>
-<p>In this post, we start with the first-generation architecture, then walk through what changed in Inkling 2 Small and how to run it. The rest of the post covers inference, use cases, post-training, and deployment, with examples built on the first-generation checkpoints.</p>
-<p>Inkling is the first large open model with ~1T parameters and 1M context window to natively receive image, text, and audio inputs, trained on 45 trillion tokens of text, images, audio and video. It’s focused on reasoning across modalities such as audio, images, and text. It is intended for domain adaptation via fine-tuning. We’ve tinkered (pun intended) with this model to build some demos and explore the architecture, and we think it’s great for building a new wave of multimodal reasoning apps.</p>
-<p>Inkling is a decoder-only multimodal Mixture-of-Experts (MoEs) model with 975B total and 41B active parameters. There are a lot of things going on, so let’s break each part down:</p>
-<p>Here’s a quick glance of the architecture.</p>
-<p>Relative attention: Instead of RoPE, which is the usual method to inject positional information in transformers models, Inkling uses relative attention to encode position information. Each attention layer learns position directly in the attention logits. Aside from key-query-values, there's a fourth projection producing a per-token, per-head relative feature R. This projection tensor is then tweaked with distance information (distance between the key and the query vector) and propagated into the attention module.</p>
-<p>Hybrid attention: The decoder layers alternate between global attention (attending to the full context length at once) and sliding window attention (attending to a fixed context window in a sliding fashion). The architecture has a pattern of 5:1 sliding window to global attention layers. This hybrid attention scheme provides efficiency in computation. The final layer uses global attention to help build feature-rich representations.</p>
-<p>Short convolution: The model uses a distinctive short 1D convolution, or SConv over the hidden states. SConv reads the current token and the previous W-1 hidden states, with W being the sliding window size. The intuition here is that SConv helps with local attention while freeing the attention and MoE modules from local representations.</p>
-<p>MoE with shared experts sink: In Inkling, the router scores both routed experts and shared experts. Top-k selection is performed over 6 experts, plus 2 shared experts always active.</p>
-<p>Vision understanding: The model includes a simple hierarchical MLP patchifier consisting of several linear layers. Each layer merges pixels progressively, until the final layer produces one embedding per patch.</p>
-<p>Audio understanding: The architecture employs a discretized mel spectrogram, where each of the audio chunks (of 100 ms) are converted to the mel scale and then classified into the exact mel spectrogram bin.</p>
-<p>The multimodal towers are relatively simple modules, unlike other models that employ separate encoders for each modality. Each image patch passes through the image embedding tower and the audio chunk is passed through the audio embedding tower to get both media embeddings. Image inputs also include an additional temporal dimension for video processing. We expect this capability to be useful for downstream fine-tuning, but we haven’t evaluated out-of-the-box video performance. The tower folds the patch grid, a small local block of neighboring tokens is stacked into the channel dimension and goes through hMLP. The audio waveform is converted to mel scale, which is then classified into a discrete mel bin. These mel bin values are embedded in the audio embedding tower and the embeddings are then summed to construct the final audio input.</p>
-<p>Inkling 2 is the next generation of the family. It takes text and image inputs (but no audio), and generates text. It keeps the core ideas of Inkling's decoder:</p>
-<p>Almost everything around that core was redesigned, though. The layers read from the residual stream differently, attention is bounded and gated, the MoE is simpler and wider, and the vision tower is now a real vision transformer.</p>
-<p>Let's go over the most notable changes together:</p>
-<p>Block attention residuals: In a standard transformer, every layer adds its output to the residual stream, and the next layer reads it. Inkling 2 has no single residual stream. Instead, it groups its 48 layers into 8 blocks of 6 and keeps one sum per block:</p>
-<p>A sublayer (attention or MLP) doesn't read one of these sums directly. It attends over depth, which means at each token position, it treats the finished block summaries plus the current partial block as a short sequence, and takes a softmax-weighted mix of them.</p>
-<p>The query is a single learned vector per sublayer. The keys and values are the RMS-normalized block summaries at that position. So the weights differ from token to token, depending on what each block wrote there.</p>
-<p>In other words, each sublayer learns how much to draw from each earlier stage of the network, rather than always reading the sum of everything. By the last layer, there are up to 9 sources to choose from (the embeddings, 7 finished blocks and the current partial block), and the final norm reads its input the same way. Global attention layers learn three queries, so their query, key and value projections can each draw on a different mix of blocks.</p>
-<p>Dynamic short convolutions: The short convolutions on keys and values in the global attention layers are now dynamic. The 4 taps of each convolution are a fixed learned weight plus a per-token weight predicted from the input, shared within each key/value head. So the model can change, token by token, how much local context goes into each key and value. All short convolutions also rescale their residual sum to keep its variance stable through depth.</p>
-<p>A leaner, wider MoE: Each layer has 384 routed experts with 8 active per token, and the shared experts are gone.</p>
-<p>A new vision encoder: Inkling encoded images with a lightweight hierarchical MLP. Inkling 2 uses a 23-layer vision transformer based on the Perception Encoder. It has the following properties:</p>
-<p>Several images are packed into one sequence, and each image only attends to itself.</p>
-<p>Inkling 2 uses the same Auto classes as Inkling. Make sure to have updated transformers to run the model.</p>
-<p>Inkling comes with day-0 transformers support and is supported in major inference engines like SGLang and vLLM.</p>
-<p>This model is huge. The bf16 checkpoint requires 2 TB of VRAM, while the nvfp4 version requires 600 GB of VRAM. You can try the model through serverless inference routers like Inference Providers, or use ggml quants for local deployment with llama.cpp.</p>
-<p>The easiest way to infer with transformers directly is to use the any-to-any pipeline. You can use either the 16 bit "thinkingmachines/Inkling" on Hopper or later GPUs, or the quantized NVFP4 checkpoint "thinkingmachines/Inkling-NVFP4" on Blackwell Nvidia GPUs. Make sure to have the latest version of transformers (5.14.0 was released today) (pip install -U transformers).</p>
-<p>After initializing the pipeline, you can pass in the prompt as follows.</p>
-<p>Going one level lower, you can use Auto classes. For inference, you can use the AutoModelForMultimodalLM class for models and AutoProcessor class for processors. For different reasoning tasks, the tokenizer takes in a reasoning_effort argument. Existing options for reasoning effort are "none", "minimal", "low", "medium", "high", "xhigh", and "max".</p>
-<p>For multimodal inference, you can use the same classes. We provide example snippets for each different modality in the model card.</p>
-<p>Inkling also takes in audio input. Below is an example inference snippet, which still uses the same AutoModelForMultimodalLM class.</p>
-<p>For more realistic parallel deployment in a cluster of several nodes, please refer to the Slurm section below.</p>
-<p>SGLang is one of the fastest deployment frameworks for Inkling at the time of release, as it includes a custom model implementation. The launch command below shards the model across 8 GPUs and serves an OpenAI-compatible API on port 30000.</p>
-<p>Match --tp-size to your GPU count. Add --mem-fraction-static (e.g. 0.85) if you need to leave more headroom for the KV cache.</p>
-<p>vLLM is strong for production serving. A single vllm serve command downloads the weights from the Hub, shards the model across your GPUs with tensor parallelism, and starts an OpenAI-compatible server on port 8000. You can view the vLLM Recipe for the model here to customize to your hardware.</p>
-<p>In practice, you might need multiple nodes and a distribution tool like SLURM (see below). Key parameters are --tensor-parallel-size to the number of GPUs on your node, and use --max-model-len to cap the context window if you hit KV-cache memory limits.</p>
-<p>You can infer with this model using several inference providers through Hugging Face. You can see all the code snippets to consume here. Below you can see how to use with the OpenAI client.</p>
-<p>Using the “:auto” suffix routes to your preferred provider in your settings; you can also use “cheapest” or “:fastest” as well. For this release, we cover the inference costs for 2 hours within the release for everyone.</p>
-<p>Note: audio support in Inference Providers is work in progress and will be added shortly.</p>
-<p>You can use llama.cpp to run quantized versions of the model on limited hardware. Unsloth have quantized the model down to 1-bit precision, reducing VRAM consumption by 95% over the original model.</p>
-<p>This starts an OpenAI-compatible server running at http://localhost:8080/v1 that you connect to in your preferred tool or clients. Heading there, you can start chatting with the model, and set it up with your favorite MCPs, pass in images or files conveniently and more!</p>
-<p>Llama cpp also ships with a built-in UI that supports tools, mcp, and agentic workloads. Checkout Inkling running at 1-bit precision in the llama app:</p>
-<p>Inkling GGUFs are also runnable in Unsloth Studio with dynamic 1-bit GGUFs which retain ~74.2% of top-1% accuracy whilst being 86% smaller.</p>
-<p>Pi is a minimal coding agent harness you can use with different language models. You can use Pi with either an inference engine server endpoint, such as llama.cpp, or with Inference Providers on Hugging Face by adding this to your ~/.pi/agent/models.json after installation.</p>
-<p>Then you can start Pi in your project directory by calling pi and you’re good to go! In this demo, we give the model a hard math reasoning problem and it uses tools in pi to solve it.</p>
-<p>Inkling is focused on broad multimodality reasoning and low token consumption, so try it out with document processing or audio tasks.</p>
-<p>MTP adds extra layers to the model that predict several tokens at once, not just the next one. During inference, the extra layers act as “drafters” for speculative decoding, speeding up generation without compromising performance. With MTP, you get the exact same generated outputs, multipliers in generation speed-up at small memory cost in VRAM (due to serving the drafter). Thinking Machines also provides an MTP drafter with this release.</p>
-<p>We have prepared a small suite of reasoning questions from expert-level sources and university entrance exams. We have taken photos of the screen with watermarks in the screenshot to challenge the model. The model has solved all of them on high one, failed one in highest and medium reasoning efforts, so we provide a link to the model answers for you to check out how the model sounds and provide the number of tokens the model has taken to solve each of them. Note that we provide no system prompts in these vibe evals, and these reasoning questions should often be run with a good system prompt. The vibe eval images and results live here.</p>
-<p>We have vibe-evaluated the model on some audio reasoning examples from BigBenchAudio and a few multilingual audio examples of GlobeAudio (Russian and Chinese multi-choice questions asking the last word in transcription). The BigBenchAudio examples we tested consist of logical statements and questions that either ask for formal fallacies (whether an argument can be logically deduced from the context given in audio) or object counting (stating multiple distinctive objects in the audio, asking for the total count of a certain one). Although this benchmark is initially made for speech-to-speech reasoning, we just want to see audio reasoning capabilities of this model. For GlobeAudio, the questions are relatively straightforward, so we ran with reasoning efforts of 0.1. We ran the first example of each language within GlobeAudio. All tests pass on all questions and efforts, except for second formal fallacy example on lowest effort, so we only provide the number of tokens spent in each question against reasoning effort. Vibe eval results and audio files live here.</p>
-<p>If you would like to use Inkling for post-training, Thinking Machines have built tinker, a managed tool for post-training open weight models. Their cookbook includes examples for fine-tuning, distillation, and reinforcement learning.</p>
-<p>We post trained Inkling with tinker and OpenEnv, an agentic RL environment tool. We used the ECHO algorithm that trains a model to predict the environment without a verifier, applying next-token cross-entropy loss to tokens produced by the environment, alongside the usual policy learning on agent actions. This teaches the policy an implicit world model without requiring a separate model, teacher, or additional rollouts. Check out the example.</p>
-<p>If you’re working with Transformers Reinforcement Learning we suggest using Inkling as a teacher model in a knowledge distillation setup. For example, take advantage of Inkling’s document understanding abilities to improve the performance of a smaller (on-device) model. In this example, we use the transformer reinforcement learning library and the GOLD algorithm to distill knowledge. GOLD is handy here because it matches token logits between different tokenizers, so you can distill to any model on the hub.</p>
-<p>Below you can find each Inkling checkpoint as well as their VRAM requirements.</p>
-<p>To deploy Inkling on a cluster, we provide SLURM scripts serving with transformers API, as well as how to query the endpoint with different modalities. You can adapt these scripts to vLLM or SGlang by updating the commands. These scripts live here.</p>
-<p>You can deploy an Inkling-Small NVFP4 checkpoint using Inference Endpoints. We provide a pre-tested configuration to deploy it on 8 RTX PRO 6000s with an aggregated VRAM of·768 GB, giving large space for KV cache, costs $ 22 per hourly uptime (scales to zero when unused). To deploy, run hf endpoints catalog deploy --repo thinkingmachines/Inkling-Small-NVFP4 using the Hugging Face CLI or alternatively, head to https://endpoints.huggingface.co/new/thinkingmachines/Inkling-Small-NVFP4. With this setup, you can get 140 TPS (single user inference, prepared for multi-user support with continuous batching)</p>
-<p>Once the endpoint is up, you can query as follows.</p>
-<p>Releasing a natively multimodal model (text, vision, and audio) open-weights is a huge step forward for the open-source AI ecosystem! Having variable and controllable thinking effort built into a MoE architecture makes Inkling a really attractive foundation for fine-tuning. Excited to test out the smaller 12B active parameter variant for local agent workflows at https://geometrydashsubzero.io</p>
+                <p>The Fine Print: The following comments are owned by whoever posted them.  We are not responsible for them in any way.</p>
+<p>Instead we'll see black blobs of data centers shadowing (as Star Link satellites do now) everything in the night sky and blocking sunlight during the day. Let's just hope the laser data transmission between space data centers to and from Star Link isn't using visible light.</p>
+<p>A million is a lot. I imagine this idea of putting data centers into orbit will stop being enticing when the AI bubble pops, which will be far before they get to 1 mil.</p>
+<p>The FCC is only responsible for US frequency allocation and making sure that the system doesn't cause interference. SpaceX will need to get their system submitted to the ITC after that, or avoid transmitting near the Canadian and Mexican borders. They might actually choose the latter option, at least initially.</p>
+<p>As for allocation of orbits, it's basically first come first serve. If you get a vehicle into an orbit that isn't in use, it's yours. By convention there is international coordination to try to avoid two satellites being launched into the same orbit around the same time, but it's already breaking down due to the shear number of Starlink vehicles. Of course, everyone is blaming everyone else for this, and it will only continue to get worse as other mega constellations go up.</p>
+<p>It's a paradox. The FCC is at times powerless and also too powerful, depending on what republicans want to accomplish.</p>
+<p>yep, didn't realise the FCC owned outer space</p>
+<p>More importantly, I didn't realize that large contributors to trump and the Republican Party owned our government.</p>
+<p>If you didn't realize that until now, I don't know what to tell you.</p>
+<p>I'll be surprised if they get to ten. It'd be orders of magnitude cheaper to build them in Antarctica, and easier to maintain them once built. Not that building data centres in Antarctica is a good idea, or likely to be financially viable, but launching them into space isn't even good sci-fi.</p>
+<p>The satellites have a distinctive pattern that makes their streaks easy to filter from astronomical data.</p>
+<p>The amount of daytime sunlight blocked is negligible.</p>
+<p>I was hoping they would obscure enough sunshine to reverse global warming.That would have been actual progress!</p>
+<p>Moving electricity generation off-world makes a much bigger difference than obscuring sunlight.</p>
+<p>Cooling the chips (moving heat away) still seems quite impractical though. Satellite might be small but it's cooling radiator will be very large and potentially block a lot of star and sun light?A quick calculation shows that the thermal radiators have to be roughly the same size as the solar arrays; possibly slightly less, depending on details, such as the margin assumed on the maximum operating temperature of the electronics.</p>
+<p>Cooling the chips (moving heat away) still seems quite impractical though. Satellite might be small but it's cooling radiator will be very large and potentially block a lot of star and sun light?</p>
+<p>A quick calculation shows that the thermal radiators have to be roughly the same size as the solar arrays; possibly slightly less, depending on details, such as the margin assumed on the maximum operating temperature of the electronics.</p>
+<p>Maybe they can use active heating, that is some mechanism to pump heat from the electronics to radiators? IIRC, the energy radiated grows with the fourth power of temperature, so if radiators operate at a significantly higher temperature they shouldn't need this much surface.</p>
+<p>What about solar panels?  Are those exposed to sunlight?</p>
+<p>Rumor has it that AI requires a bit of power, and the amount of solar power you get seems proportional to the area of your solar array...</p>
+<p>> Perhaps. But more likely, the people spending billions of their own dollars know more than you.Still fucking that chicken after all the contrary evidence of the last few years huh?We've had electronics in space for decades. Yes, cooling is much more of a challenge, but we doo seem to manage it to a degree. Keep in mind these devices are not going to be carrying NVidiia GPUs.</p>
+<p>> Perhaps. But more likely, the people spending billions of their own dollars know more than you.</p>
+<p>Still fucking that chicken after all the contrary evidence of the last few years huh?</p>
+<p>We've had electronics in space for decades. Yes, cooling is much more of a challenge, but we doo seem to manage it to a degree. Keep in mind these devices are not going to be carrying NVidiia GPUs.</p>
+<p>Speaking of, nobody know what the environmental impact will be. You have all those launches to get them up and keep replacing them as they de-orbit every 4-5 years. You have all that material burning up in the upper atmosphere, and the content is a trade secret.</p>
+<p>Yep.  A million satellites that stay up for 5 years means one will de-orbit about every 3 minutes.  Which also means a new one has to be launched every 3 minutes to maintain the one million in orbit.</p>
+<p>The amount of daytime sunlight blocked is zero - all of these will be orbitting along the daytime terminator.  None of them will be in the direction of the sun if you're on the day side of the earth.</p>
+<p>Unfortunately :D a bit shadow might be helpful against global warming.</p>
+<p>I doubt you'll see the inter-satellite lasers. There's nothing much in space for them to scatter off of.</p>
+<p>That's not much comfort of course. One million satellites are hardly welcome as far as lovers of the night sky are concerned.</p>
+<p>If you're on the dark side of earth, all of these satelites will be *at worst* on the horizon just above the setting sun.  If the sun is down down, you won't be able to see any of them, they'll all be below the horizon too.  Every one of these satellites is going to be on the daylight terminator.</p>
+<p>No, these are all confined to a specific polar orbit. They'd make a shiny ring that's overhead at sunset and sunrise, but would probably be less disruptive than Starlink.</p>
+<p>This is a pipe dream by an idiot who thinks Star Wars is a real thing and really REALLY want to be a cool edgy Jedi.</p>
+<p>Things is if someone wastes their money on doing something useless that means it is not spent on doing something useful. It is a loss to us all. If someone like Musk wins a lot of money from all of us (Which he has) and then just burns it all then we are all poorer for nothing.</p>
+<p>The people building the satellites, the solar panels, the CPUs, doing the research for laser communication, heat dissipation, operating the launch systems, building the rockets: would disagree.</p>
+<p>People who can not afford a Yacht are always complaining that the super rich "waste money" which could be spent more useful, however: the ship carpenter, sail maker, riggers, flag tailors, rope makers, safety equipment manufactures, radio manufactures, sailing schools, and the ship yard: all disagree.</p>
+<p>Most people with a brain do in this case. Let's not pretend that he's doing this for the good of society. Repeat after me: It's okay to call out bullshit vanity projects without a moron accusing you of being a communist, friend."</p>
+<p>But perhaps, perhaps he is a communist?What is actually accusing in being called a communist?</p>
+<p>While most of what you wrote is accurate, this one:</p>
+<p>The only gov't interference re spacex was Biden pulling the plug on them rescuing the stranded astros from the ISS.is a bit disingenuous. The answer to the astronauts who were "stranded" on the space station was, nobody was in any imminent danger, they didn't need to be "rescued." They were returned (not "rescued') by a rearrangement of the crew roster of one of the already-scheduled missions.(You can speculate as to why.)No reason to speculate, we already know why: it makes no sense to make up some sort of new emergency mission to solve something that is not an emergency, when there was an already-</p>
+<p>The only gov't interference re spacex was Biden pulling the plug on them rescuing the stranded astros from the ISS.</p>
+<p>is a bit disingenuous. The answer to the astronauts who were "stranded" on the space station was, nobody was in any imminent danger, they didn't need to be "rescued." They were returned (not "rescued') by a rearrangement of the crew roster of one of the already-scheduled missions.</p>
+<p>(You can speculate as to why.)No reason to speculate, we already know why: it makes no sense to make up some sort of new emergency mission to solve something that is not an emergency, when there was an already-</p>
+<p>No reason to speculate, we already know why: it makes no sense to make up some sort of new emergency mission to solve something that is not an emergency, when there was an already-</p>
+<p>Then again, unlike a liberal I can appreciate things he's good at separately.What is that supposed to mean?</p>
+<p>A liberal is the prime description for one who can judge separately about good and bad.</p>
+<p>Yes he does. Interesting to see that you see the idiocy of our billionaire class to be a point in favor of communism. Me, I'd rather not go that far, but keep making that argument, and I suspect the actual communists will be emboldened and gain support.</p>
+<p>Rich people keep getting more rich because they spend other peoples money.</p>
+<p>I think we're allowed to have a problem with him wasting his money on things that effect the whole damn planet, like a million satellites being launched (and re-entering) before we even start talking about replacement.</p>
+<p>But sure, let's just pretend it's personal animus because that's easier for you to comprehend.</p>
+<p>You do know that methalox engines create CO2?  What is a million satellites worth of launching going to do on that score?</p>
+<p>Focusing on the technical aspects of this idea for a moment...if maintenance is one of the barriers to deploying data centers into orbit, what about including maintenance space stations?</p>
+<p>In the vicinity of two or three orbiting data centers ("vicinity" to be defined when coming up with functional specs and requirements) there is an orbiting maintenance center. Astronaut technicians are based there and use small transport vehicles to shuttle between data centers performing inspections, maintenance, and repair</p>
+<p>Repairing things in orbit is extremely difficult, even if you can get out there.  At this scale, if he's considering the problem he must be depending on robot repairmen.  Either that or he's considering the satellites replaceable throw-aways.  (The throw-aways is plausible because nothing in LEO is going to stay there anyway.  The orbit will decay.)</p>
+<p>"much of the rocket science and engineering I've learned is self taught"</p>
+<p>Way to go! You've disregarded armchair rocket scientists to listen to an.... armchair rocket scientist who made content about a video game.</p>
+<p>Well, the video says 20kW of computer, not 100. None of his claims would scale up at all. The heatsinks would become exponentially larger.</p>
+<p>In general the heat sink would grow linear, not exponential. Which is a no brainer.Then you can use a heat pump to heat the radiator up even more, and hence make it smaler.And then again: perhaps they plan to use CPUs/TPUs that do not produce much heat?</p>
+<p>What you guys forget: this are supposedly DCs that are running existing AI models.They are not training models up there (AFAIK).</p>
+<p>Hence: the power consumption is extremely low!</p>
+<p>A powerful desktop computer is in the 1kW range.A Mac Mini is probably below 100W.</p>
+<p>You're just creating a big target for any nefarious actor with access to space launch capabilities (which is a rapidly growing list) to turn it into one big Kessler syndrome.According to recent rumours, Russia is taking this seriously. [slashdot.org]</p>
+<p>You're just creating a big target for any nefarious actor with access to space launch capabilities (which is a rapidly growing list) to turn it into one big Kessler syndrome.</p>
+<p>According to recent rumours, Russia is taking this seriously. [slashdot.org]</p>
+<p>It's certainly not impossible. SpaceX deployed some Starlink V3s the other day and they seem to be working fine. The ISS also works and has done so for quite a while.</p>
+<p>it just comes down to whether or not the cost of putting these in orbit is less than what you can bill for their use</p>
+<p>True, but unless you're aiming for a very specific market that actually needs computers in space how much you can charge comes down to how much your conventional competitors can charge. So building a completely maintenance free, s</p>
+<p>Most likely the satellites will require power in the 2kW to 5kW range.He is not shooting a single data center in one satellite up, but a powerful computer.The million in total makes the data center(s).</p>
+<p>Put this: "how much power uses a space X starlink satellite" into Google Gemini, and you see how far off your idea is.</p>
+<p>Musk has launched more functional computers(satellites) into orbit that any other person, company, or nation in history.Musk has launched precisely nothing into space. Engineers and people working for him have done so, quite often *despite* Musk's attempt to meddle. Musk is a visionary. That means he's good at coming up with ideas. And like all visionaries, many ideas are fucking stupid, but you only focus on the one or two that made absolute bank: e.g. the idea of catching and reusing an orbital vehicle.I think he's got a vague idea about how to do it and what the limitations are. He does not, that has been shown time and time again when his announcements have failed in spectacular fashion. Citation:</p>
+<p>Musk has launched more functional computers(satellites) into orbit that any other person, company, or nation in history.</p>
+<p>Musk has launched precisely nothing into space. Engineers and people working for him have done so, quite often *despite* Musk's attempt to meddle. Musk is a visionary. That means he's good at coming up with ideas. And like all visionaries, many ideas are fucking stupid, but you only focus on the one or two that made absolute bank: e.g. the idea of catching and reusing an orbital vehicle.</p>
+<p>I think he's got a vague idea about how to do it and what the limitations are. He does not, that has been shown time and time again when his announcements have failed in spectacular fashion. Citation:</p>
+<p>I think he's got a vague idea about how to do it and what the limitations are.</p>
+<p>He does not, that has been shown time and time again when his announcements have failed in spectacular fashion. Citation:</p>
+<p>I'm guessing this approval is his consolation prize.</p>
+<p>It's easy to approve a project that is so wildly expensive and has such a poor ROI that it'll never actually happen. The FCC may as well approve SpaceX to build a dyson sphere while they are at it.</p>
+<p>And suddenly, the scene [youtube.com] where WALL-E leaves Earth orbit doesn't seem so far-fetched.</p>
+<p>Burned to a crisp on reentry. What goes up, doesn't necessarily come down. The prices, I mean.</p>
+<p>None of the regular stuff can survive in orbit.</p>
+<p>Burned to a crisp on reentry. What goes up, doesn't necessarily come down. The prices, I mean.You have a hell of a way of reminding me just how many fucktons of CPUs, flash memory, and RAM are going to be tossed into landfills today by GenDigital.  For little more than fashion and fucks sake. Needless to say the other half of that market demand, is merely a different flavor of unfavorable addiction..</p>
+<p>Burned to a crisp on reentry. What goes up, doesn't necessarily come down. The prices, I mean.</p>
+<p>You have a hell of a way of reminding me just how many fucktons of CPUs, flash memory, and RAM are going to be tossed into landfills today by GenDigital.  For little more than fashion and fucks sake.</p>
+<p>Needless to say the other half of that market demand, is merely a different flavor of unfavorable addiction..</p>
+<p>surely only a matter of time before this bizarro world inevitability is announced.</p>
+<p>Sounds like Musk has early onset dementia.</p>
+<p>The only cooling you have in space is radiative. A back of the envelope guess is that he'd need to hoist roughly 400 Vatican City's worth of radiators into LEO. He'd better get praying for a miracle.</p>
+<p>https://spectrum.ieee.org/orbi... [ieee.org]</p>
+<p>Can you dream somewhere it won't fuck up the night sky for everyone on the planet while providing nothing of use to anyone?</p>
+<p>They do not fly over the night sky.The are at the so called day/night terminator.In a polar orbit, that has an additional nudge to rotate together with the earth, so the satellites solar arrays always face the sun, and the earth is slowly rotating under them.</p>
+<p>From your point of view they are "just at" the horizon during sunset and sunrise.</p>
+<p>They're overhead at sunset and sunrise. Otherwise yes.</p>
+<p>Sticking a million satellites into that orbit is going to be fun though. And the average latency to them, or between any two, is going to be R_e / 2c.</p>
+<p>I don't think they will succeed in creating a new popular way to make data centers.</p>
+<p>Cooling is one problem, that should be solvable I'd they solve the power generation problem (radiators on the back of solar panels should be enough).</p>
+<p>Repairability, reusability, and solar radiation seem to be the larger issues to me.</p>
+<p>They'll be too expensive to repair or upgrade, and operating in space has extra complications from solar radiation.</p>
+<p>I suspect they'll get some trials going and</p>
+<p>I'm inclined to believe someone with expertise in the area rather than a ket head. From the link I posted, which it seems you didn't read: At ABI Research, where I work as an aerospace analyst, we did a rough total-cost-of-ownership comparison between a data center on Earth and one in space. It showed that the cost to launch and run a GPU in space for a year is at least an order of magnitude higher than the same feat in a terrestrial data center.That really depends on assumptions. SpaceX is making some assumptions that seem optimistic according to people who are making assumptions that they think seem realistic. I can't disentangle how likely it is that their optimistic assumptions can be made real without knowing a lot more about the details of their planning. I wouldn't personally bet on orbital data centers, but it's not physically impossible that they could make it work.FWIW, for those not willing to scroll back, the link referred to is worth r</p>
+<p>I'm inclined to believe someone with expertise in the area rather than a ket head. From the link I posted, which it seems you didn't read:</p>
+<p>At ABI Research, where I work as an aerospace analyst, we did a rough total-cost-of-ownership comparison between a data center on Earth and one in space. It showed that the cost to launch and run a GPU in space for a year is at least an order of magnitude higher than the same feat in a terrestrial data center.</p>
+<p>At ABI Research, where I work as an aerospace analyst, we did a rough total-cost-of-ownership comparison between a data center on Earth and one in space. It showed that the cost to launch and run a GPU in space for a year is at least an order of magnitude higher than the same feat in a terrestrial data center.</p>
+<p>That really depends on assumptions. SpaceX is making some assumptions that seem optimistic according to people who are making assumptions that they think seem realistic. I can't disentangle how likely it is that their optimistic assumptions can be made real without knowing a lot more about the details of their planning. I wouldn't personally bet on orbital data centers, but it's not physically impossible that they could make it work.</p>
+<p>FWIW, for those not willing to scroll back, the link referred to is worth r</p>
+<p>It's actually not. The authority provided by the FCC extends to communication devices intended to communicate down to the USA. Not only is it not beyond the FCC's authority, but virtually everything that flies above the USA and communicates with its land is governed by FCC regulations.</p>
+<p>As for outside of the USA, that's a separate discussion for all relevant country's local communications departments to provide their approval for. But realistically it's only relevant to space fairing nations.</p>
+<p>Any nation with the capability to launch a sack full of bird shot into LEO has effective veto authority on this scheme.</p>
+<p>...are rolling on the floor from amusement.</p>
+<p>1 Million AI data centres, spread across ~600M km^2, presumably in communication, ergo a distributed AI.If it 'goes rogue', how do you stop it?</p>
+<p>Just in case you thought this US administration had not yet gone batshit crazy... the bat has just pooped.</p>
+<p>Let's assume all 1 million satellites have a certain lifespan before their orbits decay, maybe 5 years on average, same as Starlink.  With a steady-state of 1 million in orbit, that means that one satellite will de-orbit every 3 minutes or so.</p>
+<p>This means (1) there's a pretty good chance that if not everything burns up, someone or something valuable will get hit by debris.  And (2), to maintain the steady-states of 1 million satellites, you'll have to launch a new one every 3 minutes or so.</p>
+<p>I was going to check your launch emissions and reentry fears with some numbers and got a bit carried away. Anyway:</p>
+<p>A Starlink V3 is about 2 tonnes. They'd probably use pretty much the same design for one of these. Apparently they plan to be able to launch about 60 at a time on Starship, although that seems to be right at the low inclination mass capacity so it's probably going to be about 20% fewer for the required polar orbit. Say 50.</p>
+<p>You need to launch 480 a day, so about 10 Starship launches. Currently Sta</p>
+<p>Hopefully they only release a few hundred thousand before they figure out that space isn't a good heatsink. Putting data centers in space is pop culture stupid science. Knowing anything about how any part of it works makes it pointless and wasteful.</p>
+<p>I guess that this would be one way to keep the chinese off the moon - fear of being hit by a datacentre. Of course this would apply to everyone else, too.</p>
+<p>(NYC in the early days of electrification )</p>
+<p>https://c7.alamy.com/comp/BHN8... [alamy.com]</p>
+<p>If there's going to be a million of them, put scary street graffiti on them to give extra terrestrials pause about their plans for conquest, but still avoid any mention of their mother, you know, to avoid conflict</p>
+<p>so, roughly 13K failed satelites deorbiting (likely) uncontrollably at current failure rates for SpaceX/Starlink....</p>
+<p>yup... sounds perfetly safe and fine...  what could go wrong?</p>
+<p>You should have said "at a time".  This is going to put a hard limit on long exposure photographs in MANY parts of the sky.</p>
+<p>You're making a lot of assumptions that are invalid, for example they won't be uniformly distributed.  And visual angle from any point on Earth's surface also isn't uniformly distributed.</p>
+<p>I didn't bother to check your figures, because the other assumptions make them almost irrelevant.</p>
+<p>Your AI is talking bullshit because most space photos have very long exposures, during which time the satellites move and effectively interfere with a line of sky that is thousands of times larger than the point size of the satellite itself.</p>
+<p>We can tell you used AI, because this response is dumb at first glance and more wrong themore you look at it.</p>
+<p>"Loathsome parasite"? I can see one, but you'd have to look in a mirror to see one.</p>
+<p>Just toss a liberal celebrity into the ring with a couple of MarinesUS Marines don't do that. They protect US citizens, regardless of politics. If Marines learn one thing during their service, it is tolerance for stupidity.</p>
+<p>Just toss a liberal celebrity into the ring with a couple of Marines</p>
+<p>US Marines don't do that. They protect US citizens, regardless of politics. If Marines learn one thing during their service, it is tolerance for stupidity.</p>
+<p>There may be more comments in this discussion. Without JavaScript enabled, you might want to turn on Classic Discussion System in your preferences instead.</p>
+<p>Physicists Send an Unblockable Message Using Gravity</p>
+<p>World Has Six Consecutive Days 2C Above Preindustrial Levels For First Time</p>
+<p>There are never any bugs you haven't found yet.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/thinkingmachines-inkling" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://tech.slashdot.org/story/26/11/25/1936200/spacex-wins-fcc-approval-to-deploy-1-million-orbital-data-center-satellites?utm_source=rss1.0mainlinkanon&utm_medium=feed" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

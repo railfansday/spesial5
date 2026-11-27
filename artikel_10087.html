@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How to Add Idempotency Keys to a Node.js API with PostgreSQL</title>
+    <title>How to Use Transformers.js in a Chrome Extension</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10087.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,52 +15,17 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How to Add Idempotency Keys to a Node.js API with PostgreSQL</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>How to Use Transformers.js in a Chrome Extension</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_idempotency_featured_v2_dda4ead290.png" alt="How to Add Idempotency Keys to a Node.js API with PostgreSQL" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_idempotency_featured_v2_dda4ead290.png" alt="How to Add Idempotency Keys to a Node.js API with PostgreSQL" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>A mobile app sends POST /orders. The server creates the order, but the response is lost when the phone switches from Wi-Fi to 4G. The app sees a timeout and retries. Now the customer has two orders, and your support team has a refund to process.</p>
-<p>Retrying is the right thing for a client to do. The problem is that POST is not idempotent: RFC 9110 defines GET, PUT and DELETE as idempotent methods, but not POST or PATCH. Repeating a POST can repeat its side effects.</p>
-<p>An idempotency key fixes this. The client generates a unique key for each logical operation and sends it with every attempt. The server does the work once, stores the response against the key, and returns the stored response for any retry. The IETF HTTPAPI working group is standardizing this pattern as the Idempotency-Key HTTP header field, and this tutorial follows its recommendations.</p>
-<p>We'll build it with Node.js, Express 5 and PostgreSQL. By the end you'll have a table that stores keys, a function that safely claims a key under concurrent requests, an Express route that replays stored responses, and a client that retries without creating duplicates.</p>
-<p>The client's job is simple: generate a key, usually a UUID, and send the same key on every retry of the same operation. The draft defines the header value as a quoted string:</p>
-<p>The server's job is harder, because every request falls into one of five cases:</p>
-<p>To tell case 3 from case 4, the server stores a fingerprint of the request alongside the key. A matching fingerprint means a genuine retry; a different one means key reuse. Case 5 is the one most implementations get wrong, because it only shows up under concurrency. A database constraint handles it for us.</p>
-<p>Create a project and install the two dependencies:</p>
-<p>The key table records who sent the key, the request fingerprint, whether the work has finished, and the response to replay:</p>
-<p>Two details matter here. The primary key includes client_id, so keys are scoped per client: two customers who happen to generate the same value can't see each other's responses. And locked_until lets the server recover a key whose request crashed halfway, which we'll use in Step 3.</p>
-<p>The draft defines the header value as a structured field string, which means it arrives wrapped in double quotes. Many clients send it without quotes, so the parser below accepts both and limits the characters and length it will store:</p>
-<p>The fingerprint has to be identical for identical requests, even if a client serializes the JSON body with its properties in a different order. Sorting object keys before hashing takes care of that. The hash uses SHA-256 from Node's built-in crypto module:</p>
-<p>Including the method and path means a key reused on a different endpoint counts as a mismatch, not as a retry.</p>
-<p>The tempting approach is to SELECT the key, and insert it if nothing comes back. Under concurrency that fails: two retries arriving a few milliseconds apart both see no row, and both do the work.</p>
-<p>Instead, let the primary key decide. INSERT ... ON CONFLICT DO NOTHING either inserts the row or does nothing, atomically, even across many application processes. The PostgreSQL INSERT documentation describes this behavior in detail. If the insert returns a row, this request owns the key. If not, we read the existing row and decide which case we're in:</p>
-<p>The UPDATE in the last step is also atomic. If two retries find the same expired lock, only one of them matches the locked_until < now() condition and gets the key. If the row disappears between the two queries, for example because it was released after a failure, the function reports in_progress and the client simply retries.</p>
-<p>Set LOCK_SECONDS comfortably above the slowest time your operation takes. If the lock expires while the original request is still running, a retry can take over and run the work a second time.</p>
-<p>Once a request owns the key, it creates the order and marks the key as completed. Both writes happen in one transaction, so there is no moment where the order exists but the key still says in_progress, or the other way round. Note that a transaction in node-postgres has to use a single client checked out from the pool, as the node-postgres transaction documentation explains:</p>
-<p>releaseKey runs when the work fails. Deleting the claim lets the client retry with the same key instead of waiting for the lock to expire. It only deletes rows that are still in progress, so a completed response is never thrown away.</p>
-<p>The route validates the body first. A request with invalid input never touches the key table, so the client can fix the input and resend with the same key. Error responses use the application/problem+json format from RFC 9457, which the idempotency draft also uses in its examples:</p>
-<p>The server side only works if the client keeps the key stable. The most common client bug is generating a new key inside the retry loop, which turns every retry into a new operation. Generate the key once per logical action, before the first attempt:</p>
-<p>The catch branch is the reason idempotency keys exist. After a timeout, the client can't know whether the order was created. With a stable key, retrying is safe either way: if the first attempt succeeded, the retry returns the stored order; if it didn't, the retry creates it. The random jitter spreads retries out, so many clients recovering from the same outage don't all hit the server at once.</p>
-<p>In a browser or mobile app, store the key with the pending action, for example in the form state or a local queue. If the user taps "Place order" again after an error, reuse it. Only generate a new key when the user starts a genuinely new action.</p>
-<p>Keys can't live forever, or the table grows without limit. The draft leaves the retention period to the server but says it should be published in the API documentation, so clients know how long a retry stays safe. Twenty-four hours covers most retry scenarios. A scheduled job can delete older rows in batches:</p>
-<p>Run it every few minutes from cron or your job scheduler until it deletes zero rows. Deleting in batches keeps each transaction short, and the created_at index from Step 1 keeps the inner query fast. A retry that arrives after its key has expired is treated as a new request, which is why the retention period belongs in your documentation.</p>
-<p>Start the server with node server.js, then send the same request twice:</p>
-<p>The second request lists the properties in a different order, and it's still recognized as a retry because of the canonical fingerprint. Both responses carry the same order ID, and the orders table contains one row.</p>
-<p>Now change the quantity while keeping the key. The server answers 422, because the key now belongs to a different request:</p>
-<p>To see the concurrent case, add await new Promise((r) => setTimeout(r, 3000)); before completeKey in the route, restart the server, and fire two requests with a new key at the same time:</p>
-<p>One request prints 201 and the other 409. Without the ON CONFLICT claim, both would have printed 201 and created two orders. Remove the delay when you're done.</p>
-<p>This design guarantees that the database work in Step 4 happens once per key. Two situations need extra care:</p>
-<p>Idempotency keys don't replace other safeguards either. A unique constraint on a natural business key, such as one payment per invoice, still catches duplicates that arrive with different keys, for example when a user submits the same form from two tabs.</p>
-<p>With one table, an atomic claim and a transaction that stores the response next to the work, POST endpoints become safe to retry. Clients get a simple rule: generate one key per action, reuse it on every retry. The server takes care of the rest, including the concurrent retries that a SELECT-then-INSERT approach misses.</p>
-<p>The same pattern works for PATCH endpoints and for webhooks you send to other systems. Start with the endpoints where a duplicate costs real money or confuses a customer, and publish your key format and retention period in the API documentation so client developers know what to send.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>Konten tidak tersedia.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/how-to-add-idempotency-keys-to-a-node-js-api-with-postgresql/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/transformersjs-chrome-extension" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

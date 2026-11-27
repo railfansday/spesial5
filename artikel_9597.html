@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Continual-ARC</title>
+    <title>How browser-side file encryption works (AES-256-GCM), and where it stops</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9597.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,24 +15,43 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Continual-ARC</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>How browser-side file encryption works (AES-256-GCM), and where it stops</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F8z5j42cah8o0frazvc14.png" alt="How browser-side file encryption works (AES-256-GCM), and where it stops" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F8z5j42cah8o0frazvc14.png" alt="How browser-side file encryption works (AES-256-GCM), and where it stops" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><p>
-            OpenClaw doesn't learn from experience. Does your agent?
-          </p>
-          <p>
-            <a href="https://www.producthunt.com/products/unify-5?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
-            |
-            <a href="https://www.producthunt.com/r/p/1312113?app_id=339">Link</a>
-          </p></p>
+                <p>Disclosure: we're the TinyX team and this post is about our own product. Everything below comes from what we publish on our features and security pages, and from how the product works today. Where a limit matters, we say so.</p>
+<p>"Encrypted" is one of the least useful words in file sharing. Almost every service encrypts files on disk and protects the connection with TLS. That stops someone stealing a hard drive or listening on the network. It doesn't answer the question that matters for sensitive files: can the company that stores the file open it?</p>
+<p>That depends on where the key lives. If the provider holds a usable key, or can produce one from its own key-management setup, it can open your file, whether for a preview, for support, or because it has been asked to. If the key is made in your browser and never sent, the provider stores the file contents as ciphertext.</p>
+<p>The second design is what we mean by end-to-end encryption at TinyX. This post walks through how it works in plain terms, and then covers the limits of the design, including the ones that sit on our side.</p>
+<p>When you turn on end-to-end encryption for a file, the file contents are encrypted in your browser before they touch our servers. We store file contents as ciphertext and never receive your password or key (links created since v2.18.0). Our homepage puts it this way: "We don't have the key to your files. It never leaves your browser." Our security page says encrypted files are encrypted in your browser "with a key we never receive".</p>
+<p>File names and sizes are stored in plaintext. Only the file contents are ciphertext. Form answers can also be encrypted, as a single GCM message under the same password-derived key, with a fresh random IV per response and no additional authenticated data. The form questions themselves are not encrypted.</p>
+<p>On an encrypted link there is one password. It is both the link password and the source of the encryption key. Your browser turns it into a separate access code (the verifier), and only that code is sent to us. Links created before v2.18.0 sent the password itself to the server; those links are now retired and no longer open.</p>
+<p>The recipient types the password. No key material is placed in the URL, including the fragment. The browser sends us only the verifier. There are no wrapped keys.</p>
+<p>AES-256-GCM. This is the cipher. AES with a 256-bit key is the standard choice for encrypting data, and GCM is the mode. Each chunk is authenticated with GCM and no additional authenticated data. A 12-byte IV is used: a random base IV per file, and each chunk's IV is that base IV with bytes 8 to 11 XORed with the chunk index. The tag is 16 bytes (the Web Crypto default). A tampered chunk fails to decrypt. Order is not cryptographically bound, and whole-file completeness is a length check (the decrypted size must equal the stored plaintext size). Files of 16 MiB or less are a single GCM message, so they are fully authenticated.</p>
+<p>Chunking. Large files are split into 16 MiB chunks (the first is 16 MiB minus 4 bytes). Only each chunk is authenticated. The chunk index, count and "last chunk" flag are not bound into the ciphertext; the count sits in an unauthenticated header. Reordering equal-size chunks is not detected. Dropping or truncating chunks is caught only by the length check.</p>
+<p>Key derivation. People choose passwords, not 256-bit keys, so something has to turn one into the other. Our security page puts it this way: "AES-256-GCM in your browser. Keys: PBKDF2-SHA256 (100,000 iterations), then HKDF-SHA256 into two keys: an encryption key used only in your browser, and an access verifier, the only derived value sent to us." The PBKDF2 step uses a random 32-byte salt (a new salt per file link) and a 256-bit output. The 100,000 iteration count is fixed for every file. HKDF-SHA256 then produces two keys: an AES-GCM-256 encryption key that is non-extractable in the Web Crypto API, and a 32-byte access verifier, which is the only derived value we receive. On an upload link or an encrypted form, one password and one salt (and therefore one key) cover every file or response on that link.</p>
+<p>Here is the key-derivation step, lightly condensed from our browser key-derivation code. It is not a byte-for-byte copy.</p>
+<p>The browser. The encryption runs client-side, using the Web Crypto API, the cryptography interface built into modern browsers. No third-party crypto libraries are in the bundle. The AES-GCM key is non-extractable.</p>
+<p>Whoever holds the stored data, us included, can guess a weak password offline. The salt is shown on the locked page. Either the salt plus the verifier, or the salt plus the ciphertext, is enough for one PBKDF2 pass per guess. That is why encrypted links require a password of at least 14 characters, with at least 8 distinct characters, and why we offer a generated passphrase (about 69 bits).</p>
+<p>Encrypted files still need a product around them, so some operational data exists. We store the ciphertext, the file name and the plaintext size, timing, and link settings such as expiry and download limits. We also store the salt, and a hash of the access code your browser derives from the password, plus its salt. For encrypted form responses, the server still stores country, but drops IP, user agent and city.</p>
+<p>On the infrastructure side, our security page lists Cloudflare Workers for compute, D1 for the database and R2 for object storage, with TLS 1.3 enforced and HSTS. Uploads go to object storage through short-lived signed URLs. Large files can be uploaded in 16 MiB chunks so a flaky connection doesn't force a full restart.</p>
+<p>It rules out us opening files we already hold without the password. We store file contents as ciphertext and never receive your password or key (links created since v2.18.0). File names and sizes are not encrypted. A weak password can still be guessed offline, as described above.</p>
+<p>It also means a lost password is a lost file. There is no escrow, recovery key or admin decrypt. The password can't be changed later; rotating means re-uploading the file.</p>
+<p>This is the part most vendors leave out, and we state it on our security page. The encryption runs in JavaScript that we serve. If our servers were compromised, or if we were compelled to serve modified code, that code could capture a password as it is typed. The architecture rules out us opening files we already hold without the password; it can't rule out a future change to the code we ship.</p>
+<p>We don't yet publish hashes of the JavaScript we serve. There is no Subresource Integrity, no published bundle hash, and no independent audit yet.</p>
+<p>Every product that encrypts in the browser shares the served-code limit. If it matters for your threat model, the answer on our security page is to encrypt your files yourself before uploading them. Treat our encryption as protection against us opening stored file contents without the password, and against a stolen copy of our storage, not as protection against a hostile update or a weak password.</p>
+<p>On the default plan limits, end-to-end encryption is a Pro and Max feature, not part of Free; the pricing section shows the plans. It covers single-file links, upload links and form answers, all encrypted under the password-derived key. The form questions themselves are not encrypted. On an upload link, one password and one key cover every file on that link, so anyone with that password can decrypt every file on it. It does not cover galleries, folders or ordinary URL links. The rest of the product (expiring links, password protection and analytics) is on the features page. If you find a vulnerability, our security page links to our disclosure programme, run on HackerOne.</p>
+<p>We're happy to answer questions in the comments.</p>
+<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
+<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
+<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
+<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.producthunt.com/products/unify-5" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/tinyx/how-browser-side-file-encryption-works-aes-256-gcm-and-where-it-stops-a61" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

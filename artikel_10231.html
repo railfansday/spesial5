@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Serving a Local LLM to Several Users: Ollama, LM Studio, llama.cpp and vLLM Benchmarked</title>
+    <title>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10231.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,58 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Serving a Local LLM to Several Users: Ollama, LM Studio, llama.cpp and vLLM Benchmarked</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>A2UI 1.0: Build delightful, fast, reliable, agentic experiences</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_fb7158b00d.jpg" alt="Serving a Local LLM to Several Users: Ollama, LM Studio, llama.cpp and vLLM Benchmarked" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Gemini_Generated_Image_iu9r44iu9r.2e16d0ba.fill-1200x600.jpg" alt="A2UI 1.0: Build delightful, fast, reliable, agentic experiences" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_cover_fb7158b00d.jpg" alt="Serving a Local LLM to Several Users: Ollama, LM Studio, llama.cpp and vLLM Benchmarked" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://storage.googleapis.com/gweb-developer-goog-blog-assets/images/Gemini_Generated_Image_iu9r44iu9r.2e16d0ba.fill-1200x600.jpg" alt="A2UI 1.0: Build delightful, fast, reliable, agentic experiences" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
-<p>When one person chats with a local model, it barely matters which server you run. On one RTX 3090 with the same model file, Ollama, LM Studio and llama.cpp wrote text within about 10 percent of each other, because all three run llama.cpp underneath. That changes when your app sends several requests at once. With four requests, the best setup produced more than three times as much text as the worst, and the cause was a default setting, not the engine. With 32 requests, vLLM produced 2.5 times as much text as the best llama.cpp setup I tested.</p>
-<p>This article puts those numbers side by side and shows which setting to change for your app.</p>
-<p>I ran every test on one machine. The full write-ups, with every command and the raw results, are on homebrewserver.club.</p>
-<p>Ollama, LM Studio and llama.cpp loaded the exact same GGUF files, checked by SHA-256. vLLM cannot run GGUF files well, so it loaded a 4-bit AWQ file of the same model (9.1 GB). Answer quality was not compared.</p>
-<p>The tests ran between 8 and 16 November 2026, and speeds on this machine varied by a few percent from one day to the next. Treat a gap under about 5% as a tie. All of this is one consumer GPU and one model family, so read the numbers as a guide to how the servers behave, not as a ranking for your hardware.</p>
-<p>This is the short prompt with a 512-token answer.</p>
-<p>Ollama and LM Studio both start llama.cpp's llama-server program for each model they load. Ollama has done this since version 0.30, and a comment in its source code says so. On Linux, LM Studio's CUDA runtime is a folder with llama.cpp libraries and a llama-server binary.</p>
-<p>Ollama logs the command it starts when you set OLLAMA_DEBUG=1. When llama.cpp was started by hand with that exact command, in a run next to Ollama, its speed matched Ollama's within 1%. So Ollama adds no speed cost of its own. LM Studio was 5 to 10% slower in this test. The test did not separate whether that came from its llama.cpp build or its other start options.</p>
-<p>For one user, the gap between Ollama and LM Studio was about 0.4 s on a 512-token answer from the 9B model. You would notice it in long answers, and hardly in a chat window.</p>
-<p>A web app rarely sends one request at a time. A chat page, a background summary job and an agent can all call the same model at the same moment. The next test sent four requests at once, each asking for 256 tokens, and measured the total output per second.</p>
-<p>A slot is one request that the server works on at the same time as others. llama-server sets the number of slots with -np (short for --parallel), and Ollama and LM Studio pass their own setting through to it.</p>
-<p>With one slot, the server answers the four requests one after another, so the total stays at the speed of a single request. That is Ollama's default. With four slots, the server puts the four requests through the model together, and the total rose to more than twice that of one slot. That is the default in LM Studio and llama.cpp. vLLM was the fastest at four requests, but it was tested only with the 9B model. Its lead grows with more requests, as the section after next shows.</p>
-<p>For your app, this means that the fourth user of a default Ollama server waits for the first three answers to finish before their own answer starts.</p>
-<p>The obvious fix is OLLAMA_NUM_PARALLEL=4. It worked for the 9B model, though in one of three rounds Ollama still answered at the speed of a single request. With the 27B model, it made Ollama slower than its default.</p>
-<p>The cause is how each server sizes the context, the memory that holds each request's prompt and answer. Ollama picks the context from the GPU's memory: 32,768 tokens on a 24 GB card, according to its docs. With four slots, it gives each slot its own 32,768 tokens, so it started llama-server with a 131,072-token context. The Ollama FAQ says the memory needed grows with the number of parallel requests multiplied by the context length.</p>
-<p>That context did not fit next to the 27B model in 24 GB. ollama ps showed 16% of the model on the CPU, and the total speed fell to 33.1 tokens per second.</p>
-<p>LM Studio and llama.cpp handle it differently. Their four slots share one pool of context:</p>
-<p>The price of LM Studio's default is a short context. Four requests sharing 8,192 tokens leave little room for long documents or a long chat history. If your app sends long prompts, load the model with a larger context.</p>
-<p>In Ollama, setting a smaller context with OLLAMA_CONTEXT_LENGTH next to OLLAMA_NUM_PARALLEL should avoid the spill to the CPU. The test did not try this, so measure it on your own card.</p>
-<p>The last test went further, from 1 to 32 requests at once, with the 9B model. It compared vLLM, a server built to serve one model to many users, with llama.cpp at its defaults and with more slots. Ollama and LM Studio were tested only up to four requests, so they are not in this table.</p>
-<p>With its defaults, llama-server chose four slots by itself, so it worked on four requests and queued the rest. Its total stayed near 330 tokens per second from 4 requests to 32. Setting -np 16 or -np 32 roughly doubled the total at 16 requests.</p>
-<p>vLLM's lead came from each request running faster inside a large batch. At 32 requests, each vLLM request generated about 61 tokens per second, against about 27 on llama.cpp with 32 slots. vLLM's README names the two techniques behind this: PagedAttention, which stores each request's working memory in small blocks, and continuous batching, which adds new requests to the batch the GPU is already working on.</p>
-<p>Total output tells you how much work the server does. The wait for the first word tells you how the app feels to the user behind the last request:</p>
-<p>For a web app, that is 22.5 seconds of spinner before any text appears. Long prompts make every wait longer, on both servers. With eight requests of about 4,120 tokens each, the last request waited 7.9 s on vLLM and 8.8 s on llama.cpp with 32 slots.</p>
-<p>If you set the slots yourself, the llama-server README lists three options that work together:</p>
-<p>If you run an older llama.cpp, update first. Four requests at once ran 14 to 22% faster on v1.0.0 than on the build from five days earlier, while one request stayed the same. The most likely reason is a new CUDA kernel in v1.0 for steps of 2 to 24 tokens on RTX 30-series and newer cards.</p>
-<p>vLLM's throughput comes with two costs that matter on a shared machine.</p>
-<p>It reserves most of the GPU. By default, vLLM takes 92% of the card's memory before it loads anything, and fills what the model does not need with cache. With a desktop and a browser holding about 2 GiB, vLLM refused to start:</p>
-<p>Setting --gpu-memory-utilization 0.6 alone was not enough with this model, because the default limit of 256 sequences needed more cache than fit. Adding --max-num-seqs 32 fixed it. With both settings, vLLM held 12.7 GiB and kept the same speeds. llama.cpp works the other way: it sizes its cache from -c and -np and never asked for more than 15.1 GiB in this test.</p>
-<p>It starts slowly. llama-server answered requests 2 to 5 s after its container started. vLLM compiles the model before it serves anything. That took 72 s with its compile cache already on disk, and 173 s on the first start without it. Changing a vLLM argument triggered a fresh compile.</p>
-<p>It also needs a different model file. vLLM loads Hugging Face safetensors, so a 4-bit model is a separate AWQ or GPTQ upload. The AWQ file here was 9.1 GB against 5.7 GB for the GGUF, because its recipe leaves some layers unquantized. Check the file size, not only "4-bit", when you size a model for your card.</p>
-<p>All four servers have an OpenAI-compatible API under /v1, so the same client code works with each one. You change the base URL and the model name. These are the ports used in the tests:</p>
-<p>In Node.js with the openai package, that looks like the sketch below. The measurements came from a Python test client, and this snippet was not part of them:</p>
-<p>Qwen3.5 thinks before it answers unless you turn it off. The tests sent "chat_template_kwargs": {"enable_thinking": false} in the request body to vLLM and llama.cpp.</p>
-<p>None of the servers asked for a password in these tests. llama-server also warned at start-up that its CORS rule allowed all origins. Bind the port to 127.0.0.1, as in the table, and set --api-key on llama.cpp or vLLM if anything else on your network can reach it.</p>
-<p>Before you choose, count how many requests your app really sends at the same moment. Log the timestamps for a day, or count the parallel calls your agent makes per user action. If that number is one, any of these servers will do. If it is four or more, the slot setting will change your users' wait more than the choice of engine.</p>
-<p>Not for one request with the same settings. Ollama runs llama.cpp's own server, and the two were within 1% when started with the same command. llama.cpp was faster with four requests at once, because it starts four slots by default and Ollama starts one.</p>
-<p>Ollama gives each parallel request its own full context. With four slots on a 24 GB card, that was 131,072 tokens, which pushed 16% of a 27B model onto the CPU. A smaller context may avoid that, but this test did not measure it.</p>
-<p>When many requests arrive together. At 32 requests, vLLM produced 2.5 times the output of llama.cpp with 32 slots and kept every first-word wait under a second. For one request at a time, llama.cpp was 5% faster and started in seconds instead of more than a minute.</p>
-<p>Usually not. All four serve OpenAI-compatible endpoints under /v1, so you change the base URL and the model name.</p>
-<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
+                <p>User interactions with agents today are where computers were in the terminal era: capable, and answering almost everything in text. Users can ask an agent for anything by typing or talking, and what comes back is usually a wall of text, a poor way to compare three products or edit and approve a detailed plan.</p>
+<p>Today, we're releasing A2UI 1.0, the first stable version of our open protocol for generative UI. It lets AI agents answer with interactive screens, such as a form to confirm or a chart. Developers can use it now with open-source renderer SDKs for the web, Android, and iOS and agent SDKs for Python, TypeScript, and Dart. Companies such as Atlassian, Alation, Bloomberg, and ByteDance are already building with it.</p>
+<p>With A2UI, the agent describes what to show, and every app draws the UI with its own native components. The application receives A2UI messages and each app renders the content securely and at native speed. Users get the same low latency, high trust, and complete native fidelity whether they reach a company's agent in its own app or in a third-party AI assistant that hosts MCP apps, such as Gemini or Claude.</p>
+<p>You wake up sick. Getting through the morning takes six apps: book a video visit, move your meetings, tell your team, turn on an out-of-office reply, ask your partner to do school pickup and order soup. Ask a text-only agent instead, and you get a numbered wall of text, then round after round of “which ones?”. A2UI won't handle your sick day, but it gives developers the framework to build an agent that can. That agent could answer with one view of all six apps. Changing your plan is a couple of taps instead of another round of messages, and nothing is sent until you confirm.</p>
+<p>Sorry, your browser doesn't support playback for this video</p>
+<p>The same agent output works on any screen. Ask an agent to “move dinner with Priya to Friday”, and it can answer with one view that lines up your calendar, open tables from a restaurant booking app and prices from a rideshare app, so the time that works for everyone is obvious. The developer builds that view once with A2UI, and it renders natively on your phone and on your laptop.</p>
+<p>Sorry, your browser doesn't support playback for this video</p>
+<p>In both examples, A2UI is the framework that simplifies building these experiences across platforms. Developers build the agent and choose the platforms it works with. A2UI gives them the protocol the agent uses to describe each view, a way to combine components from different apps in one view, and renderers that draw it natively on the web, Android, and iOS.</p>
+<p>New to A2UI? Start with the A2UI Playground by CopilotKit or check out industry examples.</p>
+<p>Atlassian is bringing A2UI to Jira, where teams can assign work items to AI agents. When an agent needs a follow-up from the team to finish a work item, such as a missing detail or a decision, it asks with an interactive card in the work item, and the team answers right there in Jira.</p>
+<p>The Alation Intelligence Operating System (AIOS) builds its feeds using A2UI: metric cards, charts, and more. Each chart can show the SQL query and data behind it. Ask Claude for a feed about profitable products, and the feed renders in the conversation using A2UI to render metric cards, charts, and custom components. The same feed with the same information can be viewed directly inside Alation with a nearly identical layout.</p>
+<p>ByteDance released an A2UI renderer for Lynx, its cross-platform framework, in June 2026. Lynx keeps streamed screens smooth and ships a default set of components built on its `lynx-ui` library. In the Lynx GenUI Playground, you can watch A2UI messages rendered natively, for example, as a two-day trip planner for Kyoto. Lynx supports A2UI 0.9 today and is adapting to 1.0 with the A2UI team.</p>
+<p>Ask Gemini Notebook for a slide deck and it replies with a card that asks two things: presenter slides or a detailed deck, and which topics to focus on. A review card follows with the format, focus, and visual style, which you can edit before it generates the deck. The same cards guide Video Overviews on the web and on mobile.</p>
+<p>Organizations can register their own agents that respond with A2UI. Gemini renders those responses using the components in its A2UI component gallery, and supports A2UI 0.9.1 today. The Google Cloud documentation covers registering an agent and hosting one on Cloud Run.</p>
+<p>Several other Google teams, including some behind our largest products, are building features with A2UI.</p>
+<p>Several other Google teams, including some behind our largest products, are building features with A2UI that haven’t launched yet. We’ll share more as they ship.</p>
+<p>A2UI and MCP Apps work together. Alation already uses both to show its A2UI feeds in Claude. Our June post, A2UI + MCP Apps, covers three ways to combine them, and the A2UI in MCP Apps guide shows how to run A2UI screens inside an MCP App.</p>
+<p>Jetpack Compose support for 1.0 is coming soon. Agents in Gemini Enterprise can already use A2UI, and we're working on upgrading Gemini Enterprise to A2UI 1.0. The A2UI roadmap covers the rest, from design-system primitives that render natively on every platform to official SDK support for decision models like Jev.</p>
+<p>We’ve collaborated with partners who have built A2UI 1.0 demos across different industries to give you inspiration on how to adapt A2UI to your use cases. Explore what they’ve built:</p>
+<p>From Files to Cited Answers in One API Call: Managed Ingestion and SearchDocuments in Agent Retrieval</p>
+<p>Multi-Turn Agentic Reinforcement Learning with Tunix and Gemma 4 on Google TPUs</p>
+<p>Securing Your Agents: A Hands-On Guide to Agent Anomaly Detection</p>
+<p>Did the user ask for this? Securing AI agents against intent hijacking with Semantic governance policies</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.sitepoint.com/serving-a-local-llm-to-several-users-ollama-lm-studio-llama-cpp-and-vllm-benchmarked/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://developers.googleblog.com/a2ui-10-build-delightful-fast-reliable-agentic-experiences/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

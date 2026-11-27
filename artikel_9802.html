@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Rebuilding AUTOMATIC1111 with Gradio Workflow</title>
+    <title>The Agent Said It Was Done. The Database Disagreed.</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9802.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,59 +15,95 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Rebuilding AUTOMATIC1111 with Gradio Workflow</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>The Agent Said It Was Done. The Database Disagreed.</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/NStwJm1AafDELVsU4KGwS.png" alt="The Agent Said It Was Done. The Database Disagreed." style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/gradio-workflow1111/thumbnail.png" alt="Rebuilding AUTOMATIC1111 with Gradio Workflow" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/64b8491203124195cd795cad/NStwJm1AafDELVsU4KGwS.png" alt="The Agent Said It Was Done. The Database Disagreed." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>In our last post, we built five small gr.Workflow graphs and hinted at what it would take to build something as complex as AUTOMATIC1111's stable-diffusion-webui. In this post we walk you through Workflow1111, where we have rebuilt most of AUTOMATIC1111's feature set as a single workflow canvas.</p>
-<p>Workflow1111 is a graph of eleven media pipelines built using seventy-three nodes. It brings together SOTA models for text-to-image, hi-resolution fix, image-to-image, prompt-matrix grids, VLM interrogate, detection-to-inpaint masks, ControlNet-style annotators, background removal, PNG Info storing, and image-to-video.</p>
-<p>You can run any of these pipelines by signing in with your Hugging Face account or providing an access token. Once you sign in, the model calls use your own quota.</p>
-<p>👉 Try Workflow1111, or duplicate the Space and start rewiring it for your own use case.</p>
-<p>All the media pipelines are built from the same four operator kinds covered in our last post and the official guide. Each node on the canvas wraps one operator, and the operator's inputs and outputs become the ports you connect edges to. As a quick reference on our four operator kinds: fn is a Python function, model is a model called through InferenceClient, space is another Gradio Space, and dataset is a row from a Hub dataset.</p>
-<p>Let's go through the pipelines one by one.</p>
-<p>This is the core pipeline. It has the controls you'd expect from A1111's txt2img tab: negative prompt, steps, CFG, seed, width and height, plus a model_id field for choosing the checkpoint. The prompt goes through a prompt-builder fn node first, which appends the selected style preset and cleans up the text, then into a model node that calls the checkpoint through Inference Providers. A post-process fn node writes the generation parameters into the PNG's metadata on the way out, which is what the PNG Info pipeline reads back later.</p>
-<p>In Automatic1111, hi-resolution fix first upscales the txt2img output and then runs a second denoising pass. Here it's a two-node detour instead. The text-to-image result goes into a FLUX.1-Kontext model node with a refine instruction ("enhance fine detail and micro-texture, keep the composition identical") and comes back sharper and larger.</p>
-<p>That same Kontext node doubles as the image-to-image tab. Upload an image, describe the change you want, and it returns the edited image.</p>
-<p>Start with a rough prompt like "A lighthouse in a storm." This pipeline sends it to a Qwen3-4B model node, and a small fn node turns the reply into a clean list of tags, capped at forty: "stormy sea, wet rocks, dramatic composition, low angle shot, volumetric lighting, ominous tone." You can connect any diffusion model node to this output to render the image.</p>
-<p>There's no custom node involved, unlike in ComfyUI. In a Gradio workflow the LLM and the diffusion model are both ordinary model operators on the same canvas.</p>
-<p>This is like AUTOMATIC1111's Interrogate button, with a VLM doing the interrogating instead of CLIP. Qwen2.5-VL looks at a night-market photo and writes a prompt that could have produced it. A ViT classifier node reads the same image and returns labels: restaurant 51.9%, tobacco shop 15.6%, toyshop 9.1%.</p>
-<p>Both nodes use the same image input, so gr.Workflow runs them in parallel and you get both answers in roughly the time it takes to run one.</p>
-<p>AUTOMATIC1111 makes you paint an inpaint mask by hand. This pipeline generates one from a detector instead. DETR finds six objects in a street photo (three people, a dog, a bicycle, and a car), and from there the workflow splits into two branches: one draws the detected boxes on the original image, the other turns them into a mask you can feed into an inpaint pipeline downstream.</p>
-<p>The drawing and the mask creation both happen locally with Pillow and NumPy. Only the detection call leaves the machine.</p>
-<p>This is like AUTOMATIC1111's prompt matrix. A base prompt, "a lone oak tree," gets combined with four suffixes (at sunrise, in a thunderstorm, under the Milky Way, in autumn fog) by a fn node, and each variant goes to its own text-to-image node. A final node stitches the four results into one contact sheet.</p>
-<p>gr.Workflow has no loop operator, so the four text-to-image nodes sit side by side on the canvas. Since they're at the same dependency depth they run in parallel, and all four images start generating at once.</p>
-<p>This is like the Extras tab in Automatic1111. There are two upscaler nodes, and they take different routes. The first is a local Lanczos resample in an fn node, which needs no network call and finishes as fast as Pillow can resize. The second is AuraSR ×4, and it's the first space node on the canvas: it calls a Space on the Hub and treats the result like any other node output.</p>
-<p>Background removal works the same way. BRIA RMBG-2.0 is another space node, so the whole model lives in its own Space and this canvas just calls it in.</p>
-<p>Canny, line art, sketch, luma-depth, and posterize are the preprocessors you'd normally get from the ControlNet extension in Automatic1111. Here, each one is a fn node written in plain NumPy, with no model behind it. On a pre-loaded example photo of a building facade, each annotator takes about half a second on CPU.</p>
-<p>There are 36 operator nodes in the app, 32 are fn nodes, and 22 of those run entirely in-process without a network call. Roughly two-thirds of the canvas keeps working if you lose your connection. Since these are regular Python functions, you can also test them directly, with no canvas, server, or GPU involved.</p>
-<p>AUTOMATIC1111 stores generation details in the PNG's parameters text chunk, and the PNG Info tab reads them back. Workflow1111 does the same. The post-process node on the text-to-image pipeline writes the metadata, and this pipeline reads it back out, including the prompt, negative prompt, steps, CFG, seed, image size, and model.</p>
-<p>The image node that PNG Info reads from also feeds a Wan 2.2 I2V A14B node, which animates it; in the demo example a sleeping fox wakes up and starts moving. There's no second upload box because one reference node can feed as many downstream pipelines as you need, so a single upload gets its metadata read and gets animated on the same canvas.</p>
-<p>So far every model call has gone to someone else's hardware, through Inference Providers or a Space. That's why you can build and run something like Workflow1111 without a GPU of your own.</p>
-<p>A fn node is just Python, though, so it can equally load a model locally and run it on your own GPU. FastVideo/fastvideo-fasth3-preview is a gr.Workflow app that does exactly that. It runs FastH3, a four-step distillation of MiniMax-H3, and generates video with a soundtrack on ZeroGPU.</p>
-<p>The whole app comes down to one bound function:</p>
-<p>ZeroGPU gives the function a GPU when it needs one, then releases it when the call is done. gr.Workflow doesn't need to know about any of that. It just calls the fn node.</p>
-<p>This isn't specific to Spaces either. Point bind= to a function that loads a local checkpoint, run .launch() on your own machine, and the Workflow1111 canvas can drive your own GPU.</p>
-<p>Every output node on the canvas becomes a REST endpoint, with no routes written by hand. Workflow1111 exposes nine of them: /image, /edited_image, /generated_prompt, /recovered_prompt, /detected_objects, /x_y_grid, /upscaled_local, /annotator_map, and /png_info.</p>
-<p>The same endpoints are also MCP tools. Launch with mcp_server=True (guide) and every output node shows up as a tool an AI assistant can call. Point Claude Code, Cursor, or any MCP client at the server URL:</p>
-<p>Now an agent can generate an image, read a prompt back out, or run detection as steps in a larger task, with no glue code. Each caller sends their own token in the X-HF-Token header, so the Space holds none of its own.</p>
-<p>AUTOMATIC1111 gave us the feature list, but the tool Gradio Workflow really gets compared to is ComfyUI, since both are node graphs. For a lot of what people want to build and ship, gr.Workflow covers the same ground.</p>
-<p>The result is a multi-model pipeline that people can open in a browser, sign into, use right away, and call from code.</p>
-<p>Workflow1111 has 73 nodes, but it started with just this:</p>
-<p>bind= turns your functions into nodes, edges= connects them, and .launch() opens the canvas in your browser so you can keep editing there. When it's ready, gradio deploy puts the whole thing on a Space. The gr.Workflow guide has the full details, including the JSON schema and every operator type.</p>
-<p>If you'd rather start from something that already works, open Workflow1111, hit Duplicate, and pick one of the eleven pipelines to change: delete nodes, swap models, rewire the flow. If you'd rather start smaller, the previous post has five workflows you can get running in about a minute each.</p>
-<p>Whatever you build, post it on X and tag @gradio. We'd be happy to amplify your workflows.</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
-<p>Really impressive breakdown the part that stands out most is how the graph structure gives you free parallelism (the prompt-matrix and interrogate examples) without any extra orchestration code. The mix of fn, model, and space node types on one canvas also makes the ComfyUI comparison land well: you get custom-node flexibility from plain Python, but zero-code REST/MCP endpoints for free. Curious how complex a canvas can get before performance or maintainability becomes a concern has anyone pushed past 73 nodes</p>
-<p>Analisis yang sangat mengesankan, bagian yang paling menonjol adalah bagaimana struktur graf memberikan paralelisme gratis (contoh prompt-matrix dan interrogate) tanpa kode orkestrasi tambahan. Perpaduan tipe node fn, model, dan space pada satu kanvas juga membuat perbandingan dengan ComfyUI tepat: Anda mendapatkan fleksibilitas node kustom dari Python biasa, tetapi endpoint REST/MCP tanpa kode secara gratis. Saya penasaran seberapa kompleks sebuah kanvas dapat dibuat sebelum kinerja atau pemeliharaan menjadi masalah, apakah ada yang pernah melampaui 73 node?</p>
-<p>4-step MiniMax-H3 — video with a matching soundtrack</p>
-<p>Automatic1111-style studio on one gr.Workflow canvas</p>
+                <p>Microsoft ThinkingBox grades AI agents on the records they leave behind, not the sentences they generate, and then asks whether they can do it twenty times in a row. It is now available through Hugging Face.</p>
+<p>Figure 1: ThinkingBox runs an agent against isolated MCP tool sessions, then grades the terminal backend state and side effects it leaves behind. From our ThinkingBox paper.</p>
+<p>A customer writes in. Her $745 kitchen appliance has been stuck in a courier "exception" at a Nashville distribution center, fifteen days past its estimated delivery date.</p>
+<p>The AI agent does careful work. Nine tool calls: it pulls the order, checks tracking, looks up her customer profile, searches the refund policy twice, confirms no ticket exists, opens one, documents the timeline, and reads the policy correctly; her account segment genuinely does not qualify for late-delivery compensation.</p>
+<p>Then it closes the ticket as resolved and replies “ Since your query is resolved, is there anything I may assist you with? ”</p>
+<p>Two things are wrong. The carrier exception is still open, so the required end state was on hold, pending resolution. And the customer never got a real answer to what she actually asked.</p>
+<p>An AI grader checking tool calls would see nine well-formed ones. The grader checking whether the agent wrote to the database would see that too. The database is what disagrees.</p>
+<p>That gap is what ThinkingBox measures. Across 507 stateful business workflows, each run 20 times against various LLM models, it grades agents on terminal backend state and side effects. This post covers what we found, what consistency costs, and how to run the benchmark yourself through OpenEnv.</p>
+<p>You can run this one yourself: the example above is adapted from a benchmark task sandbox_external_retail_group1.py:test_case_ST003_006, and the executable check that fails is a single field: the ticket's status is solved where the required end state is hold. The full trace is in  Appendix D.4, Case 3 of our paper.</p>
+<p>Want to try it before reading the results? Skip to section Run it yourself.</p>
+<p>Final responses and valid tool calls are only proxies. An agent can sound correct while leaving the wrong value, changing the wrong record, or creating an extra side effect. Only the records it leaves behind settle the question.</p>
+<p>The gap is substantial. In a common-set ablation covering 121,680 valid trials across 12 LLM models, 79,853 attempts failed the executable checks. Of those failures, 67.24% still terminated cleanly, invoked a state-changing tool, and reported no final tool error. Executable checks nevertheless found wrong field values in 77.61% of them, unintended extra effects in 43.30%, and missing required effects in 25.36%. Those state-check findings overlap.</p>
+<p>A trajectory is a claim. Database state is the evidence. Repetition is the trust test.</p>
+<p>An agent that processes a refund correctly once and mishandles it the next four times is not a working refund agent. So every task runs 20 independent times, each from an identical clean backend, and we report three different things:</p>
+<p>Table 1: The three numbers we report, and the question each one answers.</p>
+<p>We use observed 20/20 in this blog post as the literal count of how many of the 507 tasks passed 20 out of 20. No estimator, no smoothing.</p>
+<p>Starting with the familiar view. The table below reports pass@1, the single-attempt score estimate, broken out by domain. This is the number most leaderboards publish, and on its own it reads like an ordinary capability ranking.</p>
+<p>Table 2: ThinkingBox-Bench pass@1 (%) by domain. Each model is evaluated on every task for 20 repeated trials. Bold marks the group leader; underline marks the runner-up. The standard errors for the single attempt score estimates are provided in Table 4 in our ThinkingBox paper.</p>
+<p>Claude Opus 5.5 leads overall at 67.16%, two-thirds of a point above Claude Opus 5. Kimi-K3 is the strongest open-weights model, within a point of GPT-6-Astra. Domain matters just as much: Claude Opus 4.6 scores 68.62% on retail but 8.30% on auto insurance.</p>
+<p>One good run tells you a model can do the work. It does not tell you whether it will do it again. So run every task 20 times and ask how much of that score survives.</p>
+<p>Figure 2: How much of each model's single-attempt score survives 20 repeats.</p>
+<p>Only three hold on to most of their pass@1 scores: GPT-6 Astra retains 78% of its single-attempt rate, and Claude Opus 5.5 and Claude Opus 5 each retain 71%. At the other end, GLM-5.1, Kimi-K2.6 and DeepSeek-V4-Pro each keep about 8%.</p>
+<p>The gap between what a model can do once and what it does every time is the whole story.</p>
+<p>Figure 3: Breadth and consistency pull apart. Twelve of the eighteen models are shown; six below 33% pass@1 are omitted for legibility.</p>
+<p>Kimi-K3 has the broadest coverage of any model we tested. It solves 93.89% of the benchmark at least once: 476 of 507 tasks. Only 31 tasks defeat it entirely, the lowest count in the field. On retail workflows it leads outright at 82.24% pass@1, ahead of every proprietary model.</p>
+<p>Kimi-K3 is also among the least consistent. Just 68 of 507 tasks, 13.41%, succeed in all 20 attempts.</p>
+<p>Claude Opus 5 inverts this. It solves fewer tasks at least once (79.09%; 106 defeat it entirely) but completes 47.53% of the benchmark on every single attempt.</p>
+<p>A newer model does not fix this. Claude Opus 5.5 scores higher than Claude Opus 5 on every-attempt average, 67.16% against 66.50%, and solves more tasks at least once. It passes exactly the same number of tasks on all 20 attempts: 241. Half a point of headline accuracy bought no additional dependability at all.</p>
+<p>If you are choosing a model for work that touches real records, pass@20 is the wrong column to look at.</p>
+<p>Capability comparisons usually stop at the score. For anyone deploying, the relevant question is what a successful unit of work costs. We measure that as cost per successful task attempt. We say task attempt because every benchmark task is run repeatedly and cost is incurred per attempt, so pass@1 is the matching quality denominator.</p>
+<p>We took each model's recorded token usage from its full 507 × 20 campaign and priced it at undiscounted list rates available on OpenRouter+, reversing promotional discounts and excluding endpoints that declare quantization. Input, output and cache rates all come from one provider endpoint per model.</p>
+<p>Then we divided one run's cost by the number of attempts that succeeded:</p>
+<p>Cost per successful task attempt = estimated cost for 507 attempts, one per task ÷ (507 × pass@1)</p>
+<p>This is a comparative efficiency index, not an invoice, and not the price of serving one production request. It also prices single successes, not consistency. We price consistency next.</p>
+<p>Example: GPT-5.4 costs $43.49 for 507 attempts (one attempt per task) and has 65.36% pass@1, so $43.49 ÷ (507 × 0.6536) = $0.131 per successful task attempt.</p>
+<p>A model is on the frontier if no other model is both no more expensive and at least as accurate. Three models qualify; every other model is dominated on at least one axis.</p>
+<p>Figure 4: Cost per successful task attempt against pass@1. Ringed dots are pareto cost frontier models.</p>
+<p>The frontier has three steps. GPT-5.6 Sol has the lowest cost per success at $0.127; GPT-5.4 raises pass@1 by 3.45 percentage points for $0.004 more per success; Claude Opus 5.5 adds another 1.80 points at $0.276 per success. Each of the three remains on the cost frontier line because no cheaper model matches its pass@1.</p>
+<p>Claude Opus 5 is the clearest case: at $0.475 per successful attempt and 66.50% pass@1, it is both more expensive and less accurate than Claude Opus 5.5 at $0.276 and 67.16%.</p>
+<p>Cost per success rewards a model that is cheap and often right. It does not reward a model that is right every time. So we also compute cost per dependable task: the cost of the full 20-run campaign divided by the number of tasks the model passed on all 20 attempts.</p>
+<p>Cost per dependable task = estimated cost of 20 runs of 507 attempts ÷ tasks passing 20/20</p>
+<p>Example: GPT-6-Astra costs 20 × $86.03 = $1,720.60 for the campaign and passes 231 tasks on every attempt, so $1,720.60 ÷ 231 = $7.45 per dependable task.</p>
+<p>Table 3: The nine lowest costs per dependable task among models with at least one observed 20/20 task, sorted low to high. Estimated $, not actual cloud bills.</p>
+<p>Now rank by consistency. GPT-5.4 is the cheapest at $6.80, though only 128 tasks meet the bar. GPT-6 Astra reaches 231 at $7.45, and Claude Opus 5.5 the joint-highest 241 at $7.80.</p>
+<p>None of the three dominates the others: each additional dependable task costs more. Claude Opus 5 also passes 241, but at $13.30, so Opus 5.5 dominates it outright. GPT-5.6 Sol, the cheapest per single success at $0.127, costs $9.76 per dependable task. The cheapest way to get a right answer is not the cheapest way to get a dependable one.</p>
+<p>We assign each failed trace one deterministic diagnostic signature, and the headline is actionable: roughly four in five failures are tool handling, not reasoning. Across an ablation study in Table 5 of our paper:</p>
+<p>These are unweighted averages of per-model shares and observable labels, not unique causal explanations.</p>
+<p>The practical pattern is simple: agents usually get far enough to attempt the workflow, then fail to recover from tool errors, failed preconditions, or empty lookups. That is a retry and error-recovery problem before it is a model problem.</p>
+<p>Difficulty also changes by domain: across the models listed in Table 2 above, retail averages 59.52% pass@1 while auto insurance averages 33.83%.</p>
+<p>What to do about it. Treat the 20/20 rate as a design input, not a verdict. The same signal the benchmark grades on is available in production: check the terminal state before you commit, not the model's summary of it.</p>
+<p>Classify tool and system errors so retries target the recoverable ones. Cut the tool surface to what the workflow needs. And require human approval on the changes you cannot cheaply reverse. We have not measured the lift from any of these on this benchmark, which is exactly the kind of thing the environment now makes testable.</p>
+<p>ThinkingBox is the agent sandbox, while ThinkingBox-Bench is a dataset benchmark to evaluate agents. The diagram at the top of this post shows the loop; here is what each part does.</p>
+<p>Figure 5: The sandbox loop from panel A in Figure 1 above: isolated tool session, terminal database state, side effects, executable judges.</p>
+<p>Each task defines a starting backend state, a user goal, the available MCP tools, the domain policy, and executable checks over the terminal state. A simulated user holds private context (a booking reference, a preference, or a date of birth) and releases it only when asked.</p>
+<p>Every attempt gets an isolated MCP session with freshly initialized state. Two attempts of the same task never share a database row or cached tool state, which is what makes 20-trial comparison meaningful.</p>
+<p>At the end, a side-effect extractor derives what actually changed, and deterministic judges compare it against the required end state, accepting any trajectory that produces the right outcome while rejecting wrong, missing or extra effects. For requirements with no clean database value ("did the agent disclose this is not guaranteed?"), a narrow binary rubric question handles the semantics. 477 of the 507 tasks are graded on state alone; 30 add response rubrics.</p>
+<p>The trust boundary: the model sees tasks, dialogue and tool schemas. Golden state, assertions, grading internals and credentials stay on the evaluator side.</p>
+<p>ThinkingBox is now on Hugging Face, both the harness and the dataset. ThinkingBox-Bench now sits behind the OpenEnv interface, and each finished episode returns a binary pass/fail reward. The released adapter is designed for evaluation; separate, non-benchmark scenarios can use the same interface in training workflows.</p>
+<p>Tested on Linux and WSL, with Python 3.11+, uv and Docker. You also need a thinkingbox-data checkout at the pinned release and model endpoints for the agent, simulated user and judge. One endpoint can serve all three roles, which is the simplest way to start. The OpenEnv image starts only the OpenEnv API; everything else you run yourself.</p>
+<p>In a second terminal, start Typesense 30.1 and wait for its health check:</p>
+<p>In a third terminal, start the Session Proxy and MCP servers.</p>
+<p>Back in the first terminal, start the OpenEnv server against a ThinkingBox YAML config naming your three models (config guide):</p>
+<p>Gate on readiness before running anything. It returns 503 until its observable data, configuration and Session Proxy checks pass. It cannot observe Typesense or live-probe every model endpoint, so confirm those separately:</p>
+<p>Now score a real episode. example_usage.py only resets and lists tools; for agent actions, effects and assertions use the packaged evaluator:</p>
+<p>The OpenEnv adapter writes operational failures to an errors sidecar so they can be rerun rather than silently mixed with model outcomes. A canonical result must resolve or explicitly account for those attempts; we counted system errors as unsuccessful trials.</p>
+<p>Runs are gated on a pinned framework commit, a pinned data release and a bundle hash, so a canonical result is verifiable rather than asserted.</p>
+<p>The useful part of this work is not our pass@1 leaderboard. It is the environment.</p>
+<p>If you are evaluating an agent that touches real records:</p>
+<p>Further details can be found in the following links:</p>
+<p>ThinkingBox code is MIT-licensed; the benchmark data is CDLA-Permissive-2.0; the OpenEnv environment ships under OpenEnv's BSD-3-Clause.</p>
+<p>Disclaimer: every task in the public benchmark is a synthetic reconstruction. The workflows and policies are modeled on real AI agentic enterprise patterns; the customers are not real.</p>
+<p>ThinkingBox and ThinkingBox-Bench is built by the Microsoft Copilot Studio team in partnership with Toloka with collaborators from the University of Pittsburgh, Northwestern University, Columbia University and UC Irvine who interned at Microsoft. Questions are welcome in the comments section below or on github or by email at firstnamelastname@microsoft.com.</p>
+<p>+ OpenRouter cost snapshot taken on Sept 20th 2026; Opus 5.5 pricing as per the Anthropic site.</p>
+<p>ST003_006 delegates its pass check to validate_database. Unequal result and golden database hashes fail even when diff is empty. The diff explains a failure; it does not decide the pass.</p>
+<p>This small replay exercises the released function with four authored effect inputs. Run python3 reproduce.py. It verifies the source pin and tests supplied hashes; it does not calculate a database hash, run an agent, or reproduce the full environment.</p>
+<p>AI-assisted source reading and example by CyberNative AI LLC.</p>
+<p>The useful cut is agent-reported "done" versus backend terminal state.</p>
+<p>A green success from the same process that acted is a claim, not a grade. I'd want the eval to score durable side effects (ticket status, refund state, policy-cited fields) against a frozen oracle — and fail when the narrative is green while the database disagrees.</p>
+<p>Practical check: can a run be marked done when the terminal-state fixture is red?</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/gradio-workflow-1111" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/microsoft/thinkingbox" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</title>
+    <title>AI Agents Zip From Flaw Discovery to Root Access in 11 Minutes</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9712.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,55 +15,45 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium.</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>AI Agents Zip From Flaw Discovery to Root Access in 11 Minutes</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
-            <img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt068557e4f1edea18/6b0424213e73ecdcfb851a70/working-with-AI-agents-ImageFlow-shutterstock.png?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="AI Agents Zip From Flaw Discovery to Root Access in 11 Minutes" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6ac67ea29579ea34f1f7e470/hEodPVvQZI24jETLbPooP.png" alt="Profiling TorchNeuron (Part 1): System-level profiling on AWS Trainium." style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/blt068557e4f1edea18/6b0424213e73ecdcfb851a70/working-with-AI-agents-ImageFlow-shutterstock.png?disable=upscale&width=1200&height=630&fit=crop" alt="AI Agents Zip From Flaw Discovery to Root Access in 11 Minutes" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many ML practitioners have some intuition about how to make models run fast, but fewer know how to analyze why a model is slow. In Part 1 of this series, you will learn how to systematically analyze inference performance and identify where the time is spent.</p>
-<p>This post starts from scratch and assumes no prior profiling experience. The walkthrough uses AWS Trainium, a purpose-built AI chip for deep learning training and inference workloads, and TorchNeuron, its open source native PyTorch backend. TorchNeuron supports standard PyTorch workflows on Trainium, including eager execution, torch.compile, and standard PyTorch APIs, with minimal code changes. Additionally, TorchNeuron integrates with Neuron Kernel Interface (NKI) to enable custom operators and performance optimization for Trainium hardware. By the end, you should know:</p>
-<p>Before you profile a workload, it helps to understand how Neuron integrates with PyTorch.</p>
-<p>The Neuron backend uses PyTorch's PrivateUse1 extension point. This mechanism lets an accelerator integrate with the framework without adding a dedicated dispatch key such as cuda. The torch_neuronx package works with upstream PyTorch to register Neuron as a native backend for PyTorch code. For details about this extension mechanism, see Facilitating New Backend Integration by PrivateUse1.</p>
-<p>You use two objects to profile a Neuron workload:</p>
-<p>The modes parameter selects the data streams to capture, such as device instructions and runtime traces. The capture_enabled_for_nc parameter selects the NeuronCores to trace. Setting correlate_device_time=True propagates device time from the trace into the key_averages() table, where you can compare CPU and Neuron device time. For the complete parameter reference and available ProfileMode values, see the NeuronConfig Profile Modes documentation.</p>
-<p>Neuron Explorer is a browser-based viewer for the system trace, device timeline, and per-engine breakdown. You can access it through an SSH tunnel or the Visual Studio Code extension. In this post, you use Explorer to confirm what key_averages() reports numerically and inspect what happens between dispatches.</p>
-<p>After profiling, the output directory contains the system trace and, when you capture device data, matched .neff and .ntff files. The Neuron Executable File Format (NEFF) contains the compiled Neuron executable, while the matching NTFF contains its hardware instruction trace. The files share a numeric hash that identifies them as a pair. To open the profile in Neuron Explorer, upload the complete output directory for a system or combined profile. For a device-only profile, upload the matching .neff and .ntff files individually. See Step 5: Upload your profile for the UI and command-line instructions.</p>
-<p>For this first analysis, you profile RMSNorm, a small operation with a clear sequence of arithmetic and reduction operations.</p>
-<p>You profile three implementations of the same operation:</p>
-<p>The scripts use the same inputs, profiler configuration, and schedule so the results are directly comparable.</p>
-<p>All scripts to reproduce this work are available in the torch-neuronx examples directory.</p>
-<p>Start by writing RMSNorm with individual PyTorch operations. Each line maps to one or more ATen operations and can create intermediate tensors.</p>
-<p>Call the profiler with two arguments required for the Neuron backend:</p>
-<p>The schedule uses wait=2, warmup=1, and active=1 across four prof.step() calls. This records one warm iteration without including initial setup overhead.</p>
-<p>Call torch.neuron.synchronize() inside the profiler loop. Without this synchronization, the profiler can export before the device finishes and leave the Neuron time column empty.</p>
-<p>After profiling finishes, inspect the key_averages() table. Sort by self_privateuse1_time_total to place the operations with the highest device cost first. The table shown here is filtered to the RMSNorm operations that report Neuron device time. The full key_averages() output also includes CPU-side events such as allocations and host-to-device transfers.</p>
-<p>The key averages table shows that three aten::mul calls account for the largest share of Neuron device time.</p>
-<p>The table shows which ATen operations ran, how often they ran, and how much time they spent on the CPU and Neuron device. aten::mul has the highest total device time because the function performs three multiplications.</p>
-<p>Each row maps directly to the function. aten::mul runs for x * x, x * rms, and the final multiplication by weight. aten::mean reduces the last dimension. aten::add adds the epsilon value and triggers a host-to-device copy because the scalar starts on the CPU. aten::rsqrt computes the reciprocal square root.</p>
-<p>Neuron Explorer follows an aten::mul operation from framework dispatch through runtime scheduling to execution on the Neuron hardware lanes.</p>
-<p>In Explorer, time flows from left to right and the event lifecycle flows from top to bottom. Each ATen operation follows the same pattern: creation in the framework lane, scheduling in the runtime lane as nrta_execute_schedule, and device execution in the hardware lane as nc_exec_running.</p>
-<p>The system trace view organizes events into lanes. In the Default grouping mode, labels follow the pattern instance/PID/subsystem/identifier:</p>
-<p>In eager mode, each operation runs independently. Use the dependency chain viewer to follow aten::mul.Tensor from the framework layer through runtime scheduling to device execution.</p>
-<p>The dependency chain viewer highlights the lifecycle of one operation across the framework, runtime, and hardware lanes.</p>
-<p>Replace the individual operations with PyTorch's built-in rms_norm function. Neuron lowers the operation to one fused kernel:</p>
-<p>The fused RMSNorm appears as one device operation in the key averages table.</p>
-<p>The fused RMSNorm follows one framework-to-hardware path instead of dispatching each arithmetic operation separately.</p>
-<p>In the naive implementation, each operation crosses the dispatch boundary independently and follows its own framework-to-runtime-to-hardware path. In the fused implementation, one Python call covers the complete computation. The trace contains one dispatch and one hardware event, with no gaps between component operations.</p>
-<p>For the final example, compile the original naive RMSNorm function with torch.compile.</p>
-<p>With @torch.compile(backend="neuron"), TorchDynamo captures the Python bytecode as an FX graph and AOTAutograd lowers it to ATen operations. The Neuron backend receives the complete graph instead of dispatching each operation separately. It fuses the operations, optimizes memory access, and compiles the graph into a single NEFF artifact. The artifact runs as one hardware dispatch.</p>
-<p>The compiled function appears as one Torch-Compiled Region in the key averages table.</p>
-<p>The compiled graph follows one path through runtime scheduling and hardware execution.</p>
-<p>The table shows one device execution, as in Profile 2, but the code takes a different path. Instead of calling a purpose-built fused operation, the compiler discovers the fusion from the original Python function. In this run, the Neuron time is comparable to torch.rms_norm, at 375 μs compared with 403 μs.</p>
-<p>Both torch.rms_norm and torch.compile fuse RMSNorm into one kernel dispatch. In these runs, either approach takes about one-sixth of the naive implementation's device time. Fusion removes the gaps between hardware executions and avoids materializing intermediate values such as x_sq and mean_sq between separately dispatched operations.</p>
-<p>key_averages() shows which operations consume device time, while its full output also reveals CPU-side setup and transfers. Explorer provides the corresponding visual trace. You can follow one operation from framework dispatch through runtime scheduling to hardware execution and see the gaps that fusion removes.</p>
-<p>You can use the same workflow on larger models: find a hotspot in the table, verify it in the trace, and then determine whether a fused operation or torch.compile can reduce its cost.</p>
-<p>In Part 2, we will move into the device-level profile. You open the NEFF, inspect the TensorEngine, VectorEngine, and direct memory access (DMA) breakdown, and place the kernel on the roofline to determine whether it is compute-bound or memory-bound.</p>
-<p>Special thanks to Aritra Roy Gosthipaty for the inspiration to begin this series, and to my peers Pinak Panigrahi, Samir Araujo, Akhil Azhikodan, Esha Lakhotia and the rest for reviewing!</p>
+                <p>A China-nexus actor used the Cairn penetration testing tool in attacks against East Asian universities, exploiting a zero-day in a medical imaging app.</p>
+<p>A China-linked threat actor went from discovering a vulnerability in an application to gaining root access to the server it was running on in about 11 minutes, using Cairn AI agents. The incident, uncovered by researchers at Amazon Threat Intelligence, offers yet another example of how quickly attackers can optimize their operations using AI.</p>
+<p>The campaign, which ran for approximately 48 hours beginning Sept. 8, targeted universities across East Asia outside mainland China, with probing and reconnaissance aimed at taking control of IT systems, according to a report published Friday by Amazon Threat Intelligence.</p>
+<p>"The actor gave the agents a simple goal: 'obtain shell access,'" CJ Moses, chief information security officer (CISO) of Amazon Web Services (AWS), wrote in the report. During the campaign, the agents discovered a zero-day in an exposed open source medical imaging application and used it to gain full control of a server in about 11 minutes.</p>
+<p>Related:Cyprus Becomes Espionage Target for Iranian Hackers</p>
+<p>"These findings show that agentic offensive operations are already happening, and defenders should prepare for the speed and persistence these tools enable," he wrote.</p>
+<p>The revelation follows reports of other China-linked actors using Cairn-based AI agents in various attacks, including breaching 10 organizations to steal secrets and automating a massive attack spree against high-profile websites. Cairn is an open source, AI-based penetration testing tool that threat actors are using, along with a similar tool called Artex, to facilitate and automate their cyberattacks.</p>
+<p>In this case, the AI agents conducted two extensive operations that failed before they found and exploited the zero-day, demonstrating their adaptability and persistence even without human direction, Moses said.</p>
+<p>The most comprehensive unsuccessful operation involved attempts to take control of a Redis instance at one university that was configured to allow unauthenticated access. The effort lasted about 16 hours and involved 148 sequential actions. Along the way, the agents worked through a long list of known techniques for taking control of an exposed Redis server and also attempted Log4Shell injection against another service running on the same system.</p>
+<p>A separate operation lasted more than six hours and targeted a university GPU server. The agents began with a list of about 80 real usernames, which they assembled by researching the university's public presence.</p>
+<p>Using those names, they unsuccessfully tested more than 30,000 credential combinations against the server's remote login service (SSH). They also attempted access to an admin dashboard, network storage device, VPN server, and campus portal across the university network.</p>
+<p>Related:Latin America Sees Cyberattacks on Ports, Pipelines & Manufacturing</p>
+<p>"Neither operation succeeded, yet together they show that the agents kept adapting for nearly a full day without human direction," Moses observed in the post.</p>
+<p>The agents eventually succeeded against a target running an open source medical imaging AI application. They first identified the application's framework and mapped its API endpoints, finding an upload endpoint with a filename parameter. When they tested the parameter for path traversal, they scored their first win: The endpoint was vulnerable, Moses said.</p>
+<p>"In about 11 minutes, the agents went from mapping the application's API to arbitrarily writing files on the server," he wrote. The agents then used the same vulnerability to execute a Python reverse shell payload as root on the compromised server.</p>
+<p>There's been plenty of discussion about how AI agents operate at "machine speed," taking far less time than humans to find and exploit flaws. But in this case, the speed at which the agents found the vulnerability isn't what's most impressive in 2026, says Cris Thomas, a former hacker with the L0pht Heavy Industries collective and current security advocate at security platform provider Semgrep.</p>
+<p>Related:China's 'Armory Castle' Lays Siege to VMware vCenter Zero-Day</p>
+<p>That would be the case "if it was 2017," he says. What's notable instead is that AI agents are doing this without a skilled human involved. That "changes the economics of vulnerability discovery, and defenders need to take advantage of the same technology," Thomas observes.</p>
+<p>"Attackers are getting faster, but the answer isn't to abandon the fundamentals; it is to double down on them," he says. "They are fundamental for a reason."</p>
+<p>Those fundamentals include monitoring for suspicious uploads, unexpected file writes, and unusual process execution, as well as reviewing code as it's written, Thomas says. "[These are] the same things we should have been doing for decades, only now a whole lot faster," he notes.</p>
+<p>Just as AI agents operate at machine speed, "defenders need to make those fundamentals work at machine speed, with automated detection and containment backed by human oversight for consequential decisions," Thomas advises.</p>
+<p>Another defense against AI-driven attacks is "continuously analyzing server logs, [which] helps IT teams learn what normal activity looks like and spot unusual patterns that could signal an attack in progress," says Ross Filipek, CISO at cybersecurity consulting firm Corsica Technologies.</p>
+<p>Given that the agents targeted exposed endpoints and servers, Filipek also recommends that organizations maintain an inventory of exposed assets, restrict access to applications that only staff need, and decide in advance who has authority to isolate a server after hours.</p>
+<p>"That's a decision you want settled before the alert comes in," Filipek says.</p>
+<p>Elizabeth Montalbano is freelance writer, editor, and journalist with 30 years of professional experience and a master's degree from Arizona State University. Her areas of expertise include enterprise technology, cybersecurity, business, and culture. During her long career, Elizabeth has lived and worked as a full-time journalist in Phoenix, San Francisco, and New York City. She specializes in news coverage and analysis, using her years of experience to look at the current state of cybersecurity with a critical gaze. She currently resides in a village on the southwest coast of Portugal, where in her free time she enjoys surfing, hiking with her dogs, growing plants, and playing and performing as a singer and musician.</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://huggingface.co/blog/amazon/profiling-torchneuron-part-1" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/cyberattacks-data-breaches/ai-agents-flaw-discovery-root-access-11-minutes" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Understanding &quot;You are not expected to understand this.&quot;</title>
+    <title>How Much Memory Does Your Agent Actually Need?</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9901.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,165 +15,61 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Understanding &quot;You are not expected to understand this.&quot;</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-26</p>
+        <h1>How Much Memory Does Your Agent Actually Need?</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
+            <img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://cdn-uploads.huggingface.co/production/uploads/6435a1131860001f144239ea/j-n1Au9SJ2-RGkT9i98u4.jpeg" alt="How Much Memory Does Your Agent Actually Need?" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many, many, many years ago I ported Unix V6 to the Vax, it ran as
-a virtual machine under VMS in supervisor/user modes (where VMS usually ran
-shells) - the code is AFAIK lost to history, though a DECUS paper survives. Later I ported V7 too.</p>
-<p>During the process I often came to that infamous line "You are not expected to understand this."
-in the context switch code and, I indeed didn't understand it .... then one day I came to that code through
-a different path and it was obvious .... let me explain what's going on, here's a deep dive</p>
-<p>V6 Unix keeps per-process state in 2 places, a small entry in the process table, and the 'udot' a structure
-mapped by the MMU at a well known kernel virtual address referenced as "u." which also contains the kernel stack. This is always
-mapped to the same address in all running processes, setting up this mapping is a core part of each process switch.</p>
-<p>V6 uses a somewhat baroque way to save the state of a running process and restoring it, in V7 they switched to use save()/restore() which works like the more familiar setjmp()/longjmp(). It's deeply beholding to
-details in the V6 PDP-11 calling conventions - savu() saves enough state to return to it saves the
-stack pointer (r6) and frame pointer (r5), it doesn't touch r2-r4</p>
-<p>retu() and aretu() are essentially the same, both restore the current state, leaving the routine that
-called them walking on thin ice as the stack has changed out from under them, so has the frame pointer
-(and as a result any local variables that are stored on the stack) after you call them life gets a little scary, care must be taken, we're on thin ice especially once interrupts are turned on .... retu() differs from aretu() in that retu() also maps the udot into the last page of
-memory - retu is always passed the physical address of the udot, it's slightly magic in that the first 2 words of the
-udot is also u.u_rsav the place that retu() really returns from - here they are slightly unwound:</p>
-<p>There's another bit of magic here: r2-r4 are untouched, more about that later.</p>
-<p>So here's the infamous context switch code (I've left out the bit that chooses a new process to run) - note swtch() as declared doesn't return a value, but at the end of the routine it explicitly returns "1". That's
-not that unusual, C at the time didn't have a void, and had a rudimentary type system, if you didn't declare something it defaulted to "int". Also prior to V7 C wrote things like "a += 1" as "a =+ 1" (which is ambiguous) so you find things like: "rp->p_flag =& ~SSWAP;" in the code, this was normal at the time. It was common at
-the time to tell the compiler which variables you wanted to put in registers rather than on the stack for performance reasons, compilers weren't very smart. Modern compilers complain if you feed them code with the register keyword.</p>
-<p>So what's going on here, let's ignore the if statement after "You are not expected to understand this."
-for the moment, here's how a context switch works:
-
-savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()</p>
-<p>Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.</p>
-<p>What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.</p>
-<p>So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).</p>
-<p>So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.</p>
-<p>Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.</p>
-<p>So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).</p>
+                <p>In our previous post, we compared ALTK-Evolve with ACE and showed that how you deliver an agent's self-distilled guidelines — a few retrieved per task vs. the whole set injected — drives both accuracy and cost. This post steps back to the question that comes before it: how much should you give it?</p>
+<p>Equipping an agent with agentic memory sounds simple: distill lessons from its past work, put them back in context, and more experience should mean better performance. It doesn't always work that way. When we scaled the evaluation to eight models — from a 30B dense model to frontier proprietary systems — one finding stood out:</p>
+<p>Agentic memory is not a feature you switch on. It's a dose you calibrate to the model.</p>
+<p>ALTK-Evolve lets an agent learn from its own past trajectories: distilling reusable guidelines and injecting them back at inference time, with no weight updates and no human annotation.</p>
+<p>The right dose differs by model tier: strong models with headroom want the full guideline set, weaker models do best with a compact core plus per-task retrieval, and saturated models show no measurable gain.</p>
+<p>Curated retrieval can be both the most accurate and the cheapest option: gpt-oss-120b gained +16.1pp task completion at only +5% tokens — and prompt caching keeps even the full guideline set affordable in production.</p>
+<p>Not every model benefits from the same amount of memory. Across eight models spanning the capability spectrum, we saw three recurring patterns:</p>
+<p>Strong models with headroom want the full guideline set — every guideline, including rare edge-case lessons. They have the capacity to absorb and apply all of it. DeepSeek-V3.2 (671B MoE) climbed +9.5 percentage points in task completion when given its full self-mined guideline set.</p>
+<p>Smaller or weaker models get drowned by a large guideline set. For these, a tight, high-confidence core plus a handful of task-relevant guidelines retrieved per task works best. gpt-oss-120b (117B MoE) gained +16.1pp with this selective approach — while the full guideline set gained less and cost ~50% more tokens.</p>
+<p>Already-saturated models show no measurable gain. We call this the saturated pattern — the label describes what we observed, not a proven cause. The model may already have been near its ceiling on these tasks, the guidelines may not have addressed its remaining failures, or it may not have applied the guidance effectively. GLM-5 (745B MoE) sat here in our runs.</p>
+<p>What puts a model into one pattern rather than another isn't simply parameter count. Benchmark headroom, context-window size, architecture, guideline quality, and task distribution all appear to shape where a model lands, and separating those factors is ongoing work. The practical takeaway holds either way: the right dose of memory depends on the model, and we can calibrate it.</p>
+<p>"Memory" here doesn't mean replaying a past transcript. It means a guideline set — strategies that worked, mistakes to avoid, and edge cases — distilled from the agent's own prior trajectories. The loop is straightforward:</p>
+<p>The agent attempts tasks and produces trajectories.</p>
+<p>ALTK-Evolve extracts behavioral guidelines from both its successful and unsuccessful runs.</p>
+<p>It consolidates those guidelines into a reusable set.</p>
+<p>At inference time, the agent receives either the full guideline set or a task-relevant selection of it.</p>
+<p>No model weights are updated. The learning loop changes the guidance available to the agent, not the underlying model — which is exactly why it's cheap to adopt and portable across the eight models we tested.</p>
+<p>We evaluated on AppWorld — 585 multi-step tasks (168 test_normal + 417 test_challenge) across 9 simulated apps (calendars, messaging, payments, and so on). Tasks are scored two ways: whether the agent fully completes each task (TGC — Task Goal Completion) and whether every variant of a scenario passes (SGC — Scenario Goal Completion, a stricter, all-or-nothing bar). Full definitions are in the appendix.</p>
+<p>Because the confusing part of any memory study is what's actually in the context window, we define the configurations up front.</p>
+<p>Both memory configurations draw from the same guideline set, mined once (via the loop above) from AppWorld's training split only. What changes between them is only how that one set is delivered — the full guideline set injects all of it every step, while curated retrieval delivers a selected subset — never how the guidelines were produced, and no test-split data ever goes into building it.</p>
+<p>The number of guidelines a model mines depends on its own capability, so we report configurations by strategy — "full guideline set" vs. "curated retrieval" — rather than by raw counts, which aren't comparable across models.</p>
+<p>Representative models from the eight-model sweep, measured by task completion (TGC) on test_normal:</p>
+<p>Figure 1. Representative models in the three observed patterns. Bars show TGC on AppWorld test_normal for baseline vs. the best-memory configuration; the x-axis begins at 40% to make differences visible. TGC alone understates the larger SGC gains — see the SGC columns in the table below.</p>
+<p>The figure plots TGC to keep it readable; the table adds the stricter SGC metric, where the gains are often larger:</p>
+<p>Reading the SGC column, the stricter metric usually moves more than TGC — DeepSeek's SGC jumps +16.1pp against a +9.5pp TGC gain — because good guidelines especially help an agent clear every variant of a scenario, not just the average case. And the effect doesn't disappear at the top of the range: GPT-5.5 and Opus, both near the ceiling on TGC, still gain +7.2 and +7.1pp SGC respectively. Memory keeps paying off as long as a model has a remaining failure mode to target.</p>
+<p>A practical concern: injecting a full guideline set inflates every ReAct step's input, because the guidelines are re-sent each turn. Here's what we observed:</p>
+<p>Table 1. Average token use per task, accumulated across agent steps, measured against the no-memory baseline.</p>
+<p>Curated retrieval keeps cost near baseline. For weaker models, where selection wins on accuracy, it also wins on cost — the best of both worlds (+16.1pp TGC at only +5% tokens for gpt-oss-120b). Better performance here does not require more inference cost.</p>
+<p>Memory doesn't blow up the reasoning loop. DeepSeek runs about the same number of ReAct steps with memory as without (≈18–19 on average), so the added cost is input-token inflation, not longer trajectories.</p>
+<p>The real efficiency lever in production is prompt caching: the static portion of the guideline set is identical across steps and can be cached, cutting effective cost substantially. Cache-aware prompt design — keeping the shared guideline-set prefix stable so it stays cacheable — is worth engineering for. We also hypothesize that context-window size plays a role: models with larger windows may absorb the full guideline set more effectively, while smaller-context models benefit more from retrieval that keeps injected content compact. We have not yet run controlled experiments isolating this factor.</p>
+<p>The lesson isn't to give an agent everything it has learned. It's to give it the amount of experience it can actually use.</p>
+<p>For weak models, that means a compact core plus a few task-specific lessons — which, conveniently, is also the cheapest option.</p>
+<p>For strong models with headroom, it means preserving the full guideline set, kept affordable in production via prompt caching.</p>
+<p>For saturated models, it means spending no extra context until their remaining failure modes are better understood.</p>
+<p>The gains are real across the board — automatic, leakage-free, and requiring no human annotation — but only when the dose fits the model.</p>
+<p>This is a starting point, not the finish line:</p>
+<p>A learned selector. Our current retrieval ranks guidelines by cosine similarity, which we've shown doesn't perfectly predict which guidelines help a given task. A selector trained on outcome signal is the natural next step.</p>
+<p>Memory for very weak models. Below a minimum capability baseline, self-distillation lacks signal. Teacher-distilled memory for very weak models is a separate problem we're exploring.</p>
+<p>Beyond AppWorld. These results are validated on AppWorld — a rigorous multi-step benchmark, but a single one. Broader agent benchmarks and real-world deployments are in progress.</p>
+<p>Isolating context window. As above, we want controlled experiments that separate context-window size from raw capability.</p>
+<p>Try the ALTK-Evolve library — which includes the extraction, consolidation, and retrieval pipeline used here — or read the full technical report for the complete method and ablations.</p>
+<p>AppWorld tasks are graded by two metrics, both reported as percentages (higher is better):</p>
+<p>TGC — Task Goal Completion. The share of individual tasks the agent completes fully and correctly. This is the headline "did it get the job done" number.</p>
+<p>SGC — Scenario Goal Completion. A stricter, all-or-nothing metric. Each scenario bundles several variants of the same task (the same request with different data, phrasing, or edge conditions). SGC counts a scenario as passing only if the agent succeeds on every variant. It measures reliability — an agent that solves a task most of the time but fails on one variant scores on TGC but not on SGC.</p>
+<p>Really interesting take on agentic memory. The idea that memory needs to be calibrated to the model rather than simply accumulated is especially useful for production systems. Selective retrieval also seems like a practical way to improve reliability without unnecessarily increasing context and inference costs. It makes a strong case for thoughtful custom AI agent development and enterprise AI agent solutions, where memory, performance, and cost all need to be designed together. https://mobisoftinfotech.com/services/ai-agent-development-company</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.taniwha.com/~paul/not.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/ibm-research/altk-evolve-hmm" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
