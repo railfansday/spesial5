@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Geren reopens Texas casino fight, but his amendment still needs 21 Republican-led Senate votes</title>
+    <title>How to Shut Down a Node.js API Without Dropping Requests</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_10105.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,19 +15,39 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Geren reopens Texas casino fight, but his amendment still needs 21 Republican-led Senate votes</h1>
+        <h1>How to Shut Down a Node.js API Without Dropping Requests</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
+            <img src="https://uploads.sitepoint.com/wp-content/uploads/medium_shutdown_featured_f95b84ac2c.png" alt="How to Shut Down a Node.js API Without Dropping Requests" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://uploads.sitepoint.com/wp-content/uploads/medium_shutdown_featured_f95b84ac2c.png" alt="How to Shut Down a Node.js API Without Dropping Requests" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p><div><img alt="Texas State Capitol dome with U.S. and Texas flags against a clear blue sky" class="attachment-medium size-medium wp-post-image" height="200" src="https://readwrite.com/wp-content/uploads/2026/11/texas-state-capitol-300x200.jpg" style="width: 100%; height: 66.65%; margin-bottom: 15px;" width="300" /></div>
-<p>Rep. Charlie Geren filed a constitutional amendment on the first filing day of Texas's 2027 session that would let voters decide on casinos and sports betting. A Democratic House and a supportive lieutenant governor-elect improve its odds, but a two-thirds Senate vote and a fight over the Senate's leadership stand in the way.</p>
-<p>The post <a href="https://readwrite.com/geren-reopens-texas-casino-fight-but-his-amendment-still-needs-21-republican-led-senate-votes/">Geren reopens Texas casino fight, but his amendment still needs 21 Republican-led Senate votes</a> appeared first on <a href="https://readwrite.com">ReadWrite</a>.</p></p>
+                <p>Stay up to date with AI tools, model releases, and developer workflows that matter.</p>
+<p>Every deploy, autoscaling event and node drain ends the same way for a running Node.js process: the platform sends it SIGTERM and waits. What happens next decides whether your users notice the deploy.</p>
+<p>If the process has no handler for that signal, it exits on the spot. Any request that was halfway through, say a report that takes three seconds of database work, never gets a response. Here is what that looks like with a plain Express app and no signal handling:</p>
+<p>Exit code 143 is 128 plus 15, the number of SIGTERM: the process was killed by the signal rather than exiting on its own. The client gets an empty reply, and if that request was writing data, nobody knows whether the write finished.</p>
+<p>A graceful shutdown fixes this by draining the process: it stops taking new work, finishes what it already started, closes its connections and then exits. This tutorial builds that sequence for an Express 5 API backed by PostgreSQL, tests it against a real database, and covers the container and Kubernetes details that decide whether the signal ever reaches your code.</p>
+<p>The order of operations matters more than any single line of code. A process that receives SIGTERM should go through four steps:</p>
+<p>The first step is the one most implementations skip. If the server closes immediately, requests that the load balancer routes in the next second or two get connection errors, which is exactly what graceful shutdown was supposed to prevent.</p>
+<p>Create an ES module project and install Express 5 and node-postgres:</p>
+<p>Two timings drive the whole sequence. DRAIN_DELAY_MS is how long the process keeps serving after it fails readiness. It should be longer than your load balancer's health-check interval multiplied by its failure threshold. SHUTDOWN_TIMEOUT_MS is the hard deadline for the whole shutdown, and it must be shorter than the time your platform waits before sending SIGKILL.</p>
+<p>The sleep helper comes from Node's promise-based timers API, so the shutdown code can await a delay without wrapping setTimeout by hand.</p>
+<p>The middleware handles a detail that is easy to miss. HTTP clients reuse connections with keep-alive, so a client that already has a socket open to this instance would keep sending requests down it. A Connection: close header on the response tells the client to close that socket and open a new one, which the load balancer will route to a healthy instance.</p>
+<p>Liveness stays green during shutdown. The process isn't broken; it's leaving on purpose, and a failing liveness probe could get it restarted in the middle of draining.</p>
+<p>Shutdown code rarely gets tested, because it only runs on deploys. You can test it locally with curl and kill. Start the server with a short drain delay, start the slow request, and send SIGTERM while it is running:</p>
+<p>Here is the timeline from a run against PostgreSQL 16 on Node.js 22:</p>
+<p>Everything the sequence promised shows up in order. Readiness failed within a third of a second, the instance kept answering during the drain delay, new connections were refused once the server closed, and the request that was already running finished with a 200 before the process exited cleanly. Compare that with the empty reply and exit code 143 at the start of this article.</p>
+<p>All of this only works if SIGTERM actually arrives at the Node.js process. In containers, that is not a given.</p>
+<p>The Dockerfile reference explains the difference between the shell and exec forms. With the shell form, CMD node server.js, Docker starts /bin/sh -c as the main process, and the shell does not pass SIGTERM on to Node.js. Your handler never runs, docker stop waits out its grace period (10 seconds by default), and then the container is killed. For the same reason, start node directly rather than through an npm script or a shell wrapper, so there is no extra process between the platform and your code.</p>
+<p>The first process in a container runs as PID 1, which the Linux kernel treats specially: signals whose default action is to terminate are ignored unless the process installs a handler. The code above installs handlers, so Node.js shuts down correctly as PID 1. But any code path that relies on default signal behavior won't, and PID 1 also has to reap orphaned child processes. Running the container with docker run --init puts a tiny init process in front of Node.js that forwards signals and reaps zombies, and it costs nothing to add.</p>
+<p>When Kubernetes deletes a pod, it removes the pod from Service endpoints and sends SIGTERM at roughly the same time, not one after the other. That race is the reason for the drain delay: for a few seconds after the signal, traffic can still arrive. After the grace period, 30 seconds by default, the kubelet sends SIGKILL. The pod termination documentation describes the full sequence, including preStop hooks, which run before SIGTERM and count toward the same grace period.</p>
+<p>The timings need to nest inside each other:</p>
+<p>With a 2-second readiness period and a failure threshold of 1, a 5-second drain delay leaves a comfortable margin for the pod to leave rotation. The 20-second shutdown deadline sits well inside the 30-second grace period, so the process exits on its own terms instead of being killed. If your slowest legitimate request takes longer than about 15 seconds, raise terminationGracePeriodSeconds along with the deadline rather than letting those requests be cut off.</p>
+<p>Graceful shutdown is about forty lines of code, and it runs on every single deploy. Getting it right means a release is something your users never notice, which is exactly how a release should feel.</p>
+<p>Get the freshest news and resources for developers, designers and digital creators in your inbox each week</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://readwrite.com/geren-reopens-texas-casino-fight-but-his-amendment-still-needs-21-republican-led-senate-votes/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.sitepoint.com/how-to-shut-down-a-node-js-api-without-dropping-requests/?utm_source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

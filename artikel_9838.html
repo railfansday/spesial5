@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Understanding &quot;You are not expected to understand this.&quot;</title>
+    <title>&#x27;Sleeper Agent&#x27; Tactic Hides Payloads in Open-Weight AI Models</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9838.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,165 +15,44 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Understanding &quot;You are not expected to understand this.&quot;</h1>
+        <h1>&#x27;Sleeper Agent&#x27; Tactic Hides Payloads in Open-Weight AI Models</h1>
         <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
         
         <div class="article-body">
+            <img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/bltc64dc86fdbfba025/6af7630521de23678b058bc7/Spy-IconicBestiary-Getty.jpg?disable=upscale&amp;width=1200&amp;height=630&amp;fit=crop" alt="&#x27;Sleeper Agent&#x27; Tactic Hides Payloads in Open-Weight AI Models" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://eu-images.contentstack.com/v3/assets/blt6d90778a997de1cd/bltc64dc86fdbfba025/6af7630521de23678b058bc7/Spy-IconicBestiary-Getty.jpg?disable=upscale&width=1200&height=630&fit=crop" alt="'Sleeper Agent' Tactic Hides Payloads in Open-Weight AI Models" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many, many, many years ago I ported Unix V6 to the Vax, it ran as
-a virtual machine under VMS in supervisor/user modes (where VMS usually ran
-shells) - the code is AFAIK lost to history, though a DECUS paper survives. Later I ported V7 too.</p>
-<p>During the process I often came to that infamous line "You are not expected to understand this."
-in the context switch code and, I indeed didn't understand it .... then one day I came to that code through
-a different path and it was obvious .... let me explain what's going on, here's a deep dive</p>
-<p>V6 Unix keeps per-process state in 2 places, a small entry in the process table, and the 'udot' a structure
-mapped by the MMU at a well known kernel virtual address referenced as "u." which also contains the kernel stack. This is always
-mapped to the same address in all running processes, setting up this mapping is a core part of each process switch.</p>
-<p>V6 uses a somewhat baroque way to save the state of a running process and restoring it, in V7 they switched to use save()/restore() which works like the more familiar setjmp()/longjmp(). It's deeply beholding to
-details in the V6 PDP-11 calling conventions - savu() saves enough state to return to it saves the
-stack pointer (r6) and frame pointer (r5), it doesn't touch r2-r4</p>
-<p>retu() and aretu() are essentially the same, both restore the current state, leaving the routine that
-called them walking on thin ice as the stack has changed out from under them, so has the frame pointer
-(and as a result any local variables that are stored on the stack) after you call them life gets a little scary, care must be taken, we're on thin ice especially once interrupts are turned on .... retu() differs from aretu() in that retu() also maps the udot into the last page of
-memory - retu is always passed the physical address of the udot, it's slightly magic in that the first 2 words of the
-udot is also u.u_rsav the place that retu() really returns from - here they are slightly unwound:</p>
-<p>There's another bit of magic here: r2-r4 are untouched, more about that later.</p>
-<p>So here's the infamous context switch code (I've left out the bit that chooses a new process to run) - note swtch() as declared doesn't return a value, but at the end of the routine it explicitly returns "1". That's
-not that unusual, C at the time didn't have a void, and had a rudimentary type system, if you didn't declare something it defaulted to "int". Also prior to V7 C wrote things like "a += 1" as "a =+ 1" (which is ambiguous) so you find things like: "rp->p_flag =& ~SSWAP;" in the code, this was normal at the time. It was common at
-the time to tell the compiler which variables you wanted to put in registers rather than on the stack for performance reasons, compilers weren't very smart. Modern compilers complain if you feed them code with the register keyword.</p>
-<p>So what's going on here, let's ignore the if statement after "You are not expected to understand this."
-for the moment, here's how a context switch works:
-
-savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()</p>
-<p>Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.</p>
-<p>What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.</p>
-<p>So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).</p>
-<p>So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.</p>
-<p>Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.</p>
-<p>So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).</p>
+                <p>Malware can lurk inside just 0.00001% of a neural network. How, then, can any user tell it's there?</p>
+<p>AI models downloaded from the open Internet can be subtly poisoned with malicious payloads if attackers are careful enough.</p>
+<p>Open-weight AI models have become seriously popular lately. Even early last year, McKinsey found that 63% of organizations used them, and 76% of survey respondents said that they expected to use them more in the coming years. They're auditable, developers like using them, and, perhaps most of all, they're cheap.</p>
+<p>Like any other software you can download off the Internet, however, open-weight and open source AI tools carry some degree of risk. Last week, researchers described a technique they call "Lazarus," which could allow an attacker to poison a model using a near-imperceptible few of its neurons. Microsoft described it as turning a model into a "sleeper agent," capable of granting an attacker access to its user's environment.</p>
+<p>"A model is a file almost nobody inspects, yet we download models from strangers and give them access to our code, credentials, and systems," explains Briland Hitaj, senior AI security research engineer at Confidencial, whose research into techniques like this preceded Microsoft's. "Malicious models have already turned up on Hugging Face, though so far they abuse file formats like Python's Pickle to run code when loaded. I'm not aware of anyone hiding payloads inside the weights themselves outside research, but that's where the research points."</p>
+<p>Related:'God Mode' Flaws Could Wreak Border-Control Havoc</p>
+<p>Since at least 2020, researchers have been coming up with clever ways to store bad stuff inside of neural networks.</p>
+<p>The premise behind this whole category of research is that the size and complexity of these networks provide cover for small, secret, but potentially powerful payloads. Just look at Qwen 3.8-Max: It's totally open-weight, so you can inspect it to your heart's content. But it's made of 2.4 trillion parameters, and probably around 100 million neurons. If an attacker plants a functioning payload in some of those neurons or parameters, how exactly are you going to find it?</p>
+<p>The trick, then, isn't finding a place to hide a payload. First, it's getting that payload to function reliably amid so many moving parts; second, it's making sure it doesn't noticeably impact the normal functioning of the model; and lastly, optionally making the payload robust to fine-tuning.</p>
+<p>Different researchers have come up with different ways to do it. In 2022, Hitaj and his colleagues came up with a technique called "MaleficNet," which repurposed an old military and, later, 2G and 3G mobile network technique called "code division multiple access" (CDMA).</p>
+<p>Related:Navigating Vulnerability Hysteria in the AI Era</p>
+<p>Very simply, they split malware binaries into tiny pieces and spread the pieces across the many individual weights that make up a neural network. It wouldn't look like anything but noise to a passerby, yet with a trigger mechanism and a way to decode the weights, they could recover, recombine, and execute the binary.</p>
+<p>"The vulnerability comes from how neural networks work, not from a bug," Hitaj explains. "Models have far more parameters than they strictly need, so you can nudge millions of weights slightly, or repurpose a few neurons that rarely fire, without visibly changing the model's behavior. And since nobody can read weights the way they read code, those changes go unnoticed."</p>
+<p>Microsoft's new technique compromises on capacity for simplicity. Where Hitaj proposed encoding an entire binary across many model parameters, Microsoft researchers propose sneaking a brief command inside of fewer than 10 neurons. Specifically, one must target "dormant" neurons — those that prove to have little effect on the overall model's functioning — late in a model's processing cycle, and thus more directly influential over its output. One encodes a payload in these neurons, arranged to fire sequentially, and configures them to stay largely inactive unless they're fed a trigger. Eventually, you get a sleeper agent.</p>
+<p>Related:Java4Shell Flaw Threatens Global Enterprises, Java Application Ecosystem</p>
+<p>The target payload can be arbitrary, so long as it's small and formatted correctly. The trigger can be any particular user input to the model, or tool output, or something so simple as a date read in a user's terminal.</p>
+<p>Luigi Vincenzo Mancini, a professor at Sapienza University of Rome and one of the co-authors of the MaleficNet paper, advises organizations to take a defense-in-depth approach to open-weight AI security, "rather than trying to find a single magical 'AI malware scanner.'"</p>
+<p>Like any third-party software, users should download AI models from official sources. As an added measure, users can compare the models they download with a known, trusted baseline.</p>
+<p>"Microsoft says that reliable detection of these kinds of modifications requires being able to diff the deployed weights against the original, unmodified weights," Mancini notes. "That's a powerful argument for treating model weights more like source code or binaries than like ordinary data files."</p>
+<p>Next, users should scan their models in general for anomalies. Though as Hitaj points out, "No scan proves a model is clean, and ordinary testing rarely finds a trigger the attacker chose. So the key controls limit what a compromised model can do: give AI agents only the access they need, keep credentials and production systems out of reach, restrict network access, log what agents do, and require human approval for consequential actions. If a model turns malicious, you want it boxed in and visible."</p>
+<p>Beyond restricting them from the outset, "Organizations should monitor for unexpected agent behaviour at the system boundary," Mancini says. Practically speaking, "a model emitting an unusual shell command, attempting an unexpected network connection, accessing credentials it normally doesn't need, or suddenly invoking a tool in an unusual context can be a much more actionable detection technique than directly inferring malicious intent from billions of model parameters."</p>
+<p>Nate Nelson is a journalist and award-winning scriptwriter. In addition to Dark Reading he writes for Darknet Diaries, the most popular show in cybersecurity across all media.</p>
+<p>He began his career as a freelancer, ghostwriting Forbes and CNBC op-eds for executives in tech and finance. Then he transitioned to journalism at Threatpost, where he covered cybersecurity news and trends. Throughout those years he co-created a cybersecurity podcast, Malicious Life, which in its day climbed into the Top 20 technology podcasts charts on Apple Podcasts and Spotify.</p>
+<p>He holds degrees from New York University and Bard College. As a born and bred New Yorker, he enjoys a superiority complex, but is polite enough to keep it to himself.</p>
+<p>Check out the Black Hat USA 2026 Conference Guide for coverage and intel from — and about — the show!</p>
+<p>Couldn’t make it to Las Vegas for Black Hat USA? We tracked the developments that matter most.</p>
+<p>Want more Dark Reading stories in your Google search results?</p>
+<p>Copyright © 2026 TechTarget, Inc. d/b/a Informa TechTarget. This website is owned and operated by Informa TechTarget, part of a global network that informs, influences and connects the world’s technology buyers and sellers. All copyright resides with them. Informa PLC’s registered office is 5 Howick Place, London SW1P 1WG. Registered in England and Wales. TechTarget, Inc.’s registered office is 275 Grove St. Newton, MA 02466.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.taniwha.com/~paul/not.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.darkreading.com/vulnerabilities-threats/sleeper-agent-tactic-payloads-open-weight-ai-models" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
