@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Security updates for Tuesday</title>
+    <title>The State of Allocators in 2026 - Finally Stabilised</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9822.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,20 +15,54 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Security updates for Tuesday</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>The State of Allocators in 2026 - Finally Stabilised</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
             
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Copyright © 2026, Eklektix, Inc.
-            
-            Comments and public postings are copyrighted by their creators.
-            Linux  is a registered trademark of Linus Torvalds</p>
+                <p>It's only been a couple of months since the last article, and I am pleased to see that, after 10 years of limbo, allocators have finally been stabilised! While it feels like the never type did steal a bit of thunder, rust 1.100 was nonetheless a monumental release. Congratulations on the team that shepherded this through.</p>
+<p>So, now we have an MVP of the allocator API, what can we do with it? What does it get us besides closer feature parity with other system languages like C++ & Zig?</p>
+<p>In this article I'll step through a few use cases that might be handy to the layman rust programmer, so hopefully you can see the benefit.</p>
+<p>This was one of the leading cases for custom allocation. Dropping in rust is not free. There has been prior art in actually moving memory to a dedicated thread to Drop highly nested structures. This is actually only half a solution. You're still paying for the deallocation call costs, just it's not in the hot path anymore.</p>
+<p>Instead, what if we knew that we would have a period of time in our code, where we're going to allocate a lot of stuff, do something with it, and then free everything? A good example of this is a web request, or a database query.</p>
+<p>A request comes in, fills in some data structures, and then when the request finishes, the memory isn't needed anymore so it's dropped. This sort of "burst" pattern of allocation, where you allocate a lot up front, and then tear things down all at once at the end, is quite common.</p>
+<p>For this we can use a bump allocator: reserve a big block of memory, and allocate from that, rather than paying the cost of talking to the system allocator for every allocation. Think of it like the BufReader and BufWriter of std io, rather than make repeated syscalls to fetch data, we can buffer that data in a big block, so that we can reduce the overhead considerably.</p>
+<p>You want more memory? Just check if the size fits in our block, return that slice, increment our counter (bump!), and we're done. We can add more blocks as well, if we run out. This makes allocations very cheap, we don't need to keep much state around besides from a counter.</p>
+<p>The downsides of this approach is when we come to deallocate memory. We don't keep track around where individual allocations are made. However, this actually solves our drop takes a long time problem, since we can just deallocate everything all at once.</p>
+<p>Essentially if the impl of the bump allocator is:</p>
+<p>There are a few tradeoffs for doing things like this in a bump allocator, and not every allocation is going to benefit. Hence why it's important to be able to adjust our allocation strategy locally rather than just globally. However, an astute reader might notice that, if we are bumping large swathes of memory, this is going to possibly cause our memory usage to increase considerably. Well, that brings us to our next section: memory accounting.</p>
+<p>The next challenge that can be solved by custom allocators is knowing how much memory particular sections of code is being used. I.e, memory accounting. The key here is that, we can use existing allocators, and sprinkle in some extra bookkeeping to keep a pretty accurate ledger.</p>
+<p>There are a number of use cases that accounting can shape the behaviour of code. Say you have a cache of objects, and you want to set a threshold above which, we start evicting entries. Or say you want to do an external sort, but you don't know how big your data structures are at the start, but you want to use up as much memory as possible. Or maybe you are wanting to place a limit on a code sandbox, because it's sharing resources with other sandboxes.</p>
+<p>What you can do is wrap an allocator, with a custom accounting layer, and use this to drive your decisions. I.e, here is a very trivial example:</p>
+<p>Then we can wrap the global allocator, and see how much our cache is using:</p>
+<p>Now, a single atomic, while is great for an example, does have some perf overhead. So, one of the crates that I have created, while keeping in mind performance, is thresher: an accounting allocator with a callback on threshold. It uses a combined "local" task/thread and "global" counter to avoid atomic contention, feeding back in every 64KiB of allocation.</p>
+<p>thresher gets its name from the cutest shark: the Thresher Shark.</p>
+<p>Now, what you can do with thresher is, use it to trigger callbacks when allocations are hit:</p>
+<p>One production use case, is that we're using thresher on logfire to provide us heap profiles of our rust services when memory hits a configured threshold. I did a deep dive into heap profiles and why they are extremely useful in an older blog: a tale of two lengths. In thresher you can find a jemalloc example where you can instrument this yourself!</p>
+<p>OK so we can control memory when it is dropped, we can use memory accounting to know how much memory we're using, what's left? How about where it goes?</p>
+<p>This is probably the more esoteric of the 3 examples I wanted to give. There are some situations where you actually need to control where the memory lives, and sometimes by doing some allocation tricks you can get better performance out.</p>
+<p>One example would be what smallvec and friends do. Instead of going straight to the heap to allocate things, they have a small amount that lives on the stack, and only if allocations go above a certain size, then do they write to the heap.</p>
+<p>While smallvec is more battle tested, here is some example code about how you could do this with the allocator API:</p>
+<p>Then we can use our toy stack first allocator:</p>
+<p>Et voila! We have smaller allocations on the stack and then push to the heap as needed. This can give some good performance boosts.</p>
+<p>Normally when you align memory allocations, this is based upon the thing that is being allocated for. I.e, is it a u64? align to 8 bytes or a u32? align to 4. If it's not correctly aligned, this can cause undefined behaviour and all sorts. You notice in both the bump and small stack example I had to do some shenanigans to find the next appropriately aligned address. However, there is some scenarios where the alignment of memory is external to what is being allocated.</p>
+<p>In linux, when you read anything from disk via standard syscalls, you are usually reading from the kernel's page cache. I.e, the spare memory the kernel has around to make things transparently fast. Most of the time that is fine, but there are some times when you want to bypass it.</p>
+<p>I.e, there is a long standing bug in kubernetes that can cause pod eviction if you are using the page cache. Or: if you are doing your own caching layer, sometimes it doesn't make sense to double up on memory devoted to caching files.</p>
+<p>So, there is a bailout provided, in the guise of O_DIRECT that allows you to directly access files from the file system. However: one of the requirements of using this flag is that you are reading or writing into memory that is aligned to the device's logical block size. This is usually a multiple of 512, but can be less or more depending on the hardware.</p>
+<p>The implementation of a block aligned allocator is pretty simple, here's one where we just hardset it to 4096:</p>
+<p>With this, we can now write simple code to read directly using O_DIRECT:</p>
+<p>Here, the read_exact call can fail on some devices if we're not using block size aligned allocations.</p>
+<p>Like with the stack first allocation, there are libraries that allow you do this already, such as the aligned-vec crate, with their own data types to work nicely.</p>
+<p>But here's the rub: say you had an application where you wanted to blend and mix in different allocation strategies: some vecs you want to be block aligned, some you want allocated on the stack, but you want to be able to use shared methods for both. Do we want to use smallvec and aligned-vec in order to deal with a data structure that is essentially the same thing, just allocated differently?</p>
+<p>std allocators allows you to be generic over the collections, regardless of allocator used:</p>
+<p>It's going to take a bit of time for the ecosystem to catch up to custom allocators. A lot of popular crates have an MSRV policy that precludes them from using even new standard features, and some existing crates, which I would think are a shoe in for the new allocator API, as of writing do not yet have support.</p>
+<p>The libs team isn't done yet. This is the MVP of allocators, and, like I mentiond in the the last article, this is the beginning of custom allocator support. There is still work to go to support other collection types like maps etc.. so much to be done. I think that what we have is useful enough to start using it now, and also to start adapting and allowing library consumers the ability to provide their own allocators with their API.</p>
+<p>I'm excited to see what people build, and what other use cases are unlocked with it!</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://lwn.net/Articles/1109472/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://cetra3.github.io/blog/state-of-allocators-2026-finally-stabilised/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

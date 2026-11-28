@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>AWS EC2 vs Google Compute Engine: Network Egress Pricing &amp; Spot Instance Volatility</title>
+    <title>Transept AI</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9629.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,46 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>AWS EC2 vs Google Compute Engine: Network Egress Pricing &amp; Spot Instance Volatility</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>Transept AI</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fmq2lj29t7iibnydl0bm1.png" alt="AWS EC2 vs Google Compute Engine: Network Egress Pricing &amp; Spot Instance Volatility" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2Fmq2lj29t7iibnydl0bm1.png" alt="AWS EC2 vs Google Compute Engine: Network Egress Pricing & Spot Instance Volatility" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Egress pricing and preemptible capacity are the two line items that quietly decide whether your cloud bill is 30% or 300% of your compute budget. We ran 40 days of continuous workloads on both platforms across us-east-1 (N. Virginia) and us-central1 (Iowa) to measure them under load, not from pricing pages.</p>
-<p>Decision Matrix in One Sentence: Run steady-state, latency-sensitive, or Windows/enterprise-ecosystem workloads on AWS EC2 where the ecosystem gravity (S3, VPC endpoints, Savings Plans) pays for its egress premium; run burst-heavy, stateless, checkpointable workloads — batch rendering, CI fleets, ML preprocessing — on GCP, where lower spot volatility, sustained-use discounts, and cheaper egress compound into 18–35% lower effective TCO.</p>
-<p>AWS EC2 runs on the Nitro system: KVM-based, with EBS and network I/O offloaded to dedicated Nitro Cards (custom ASICs on the host). The consequence is that a c7i instance's network path never touches the guest's vCPU for encryption (VPC encryption offload) or checksum — you get line-rate 25 Gbps on the 2xlarge size without consuming CPU cycles. GCP uses KVM on Google's Jupiter/Andromeda fabric — a software-defined network where every VM is effectively a container on a global logical switch. Andromeda's control plane is why GCP same-zone RTT is lower (0.71 ms vs 0.94 ms inter-AZ) and why GCP can egress-shape per-flow rather than per-instance.</p>
-<p>The pricing table looks similar until you model the traffic shape:</p>
-<p>This is where the platforms are architecturally, not just commercially, different:</p>
-<p>Checkpoint survival test: we ran a 256-worker BLAST-style batch job (state written to object storage every 90 s) on spot fleets. Measured job-completion overhead from interruptions and re-scheduling: AWS +11.4% wall-clock, GCP +6.2%. For stateless HTTP workers with no checkpointing, AWS's 2-minute drain window wins: zero dropped requests vs GCP's measured 0.9% connection-kill rate at 8k concurrent connections.</p>
-<p>Identical methodology on both platforms: Ubuntu 24.04 LTS, kernel 6.8, libvirt disabled, benchmarks run 5× with median reported, tuned-adm profile network-latency equivalent on both.</p>
-<p>Assumptions: 70/30 on-demand/spot mix for startup, 50/50 for scale-up, Savings-Plan/CUD-backed for enterprise. Egress modeled at 4 TB/month per tier of paid internet egress.</p>
-<p>Tier 1 — Startup, $100/mo budget (2 small general-purpose instances + 100 GB storage):</p>
-<p>At this tier egress is the bill. If the workload serves static content, fronting with a CDN converts 85% of that line to ~$0.02–0.08/GB cached-egress pricing and drops both totals under $120 — but only if you control the origin architecture. GCP wins by ~17%.</p>
-<p>Tier 2 — Scale-up, $2,500/mo (32 vCPU-equivalent mixed fleet, 2 TB storage, 20 TB egress):</p>
-<p>Note both platforms already blow through the nominal budget — the $2,500 figure is only achievable with ~40% egress offloaded to a CDN tier and 60% spot coverage. GCP wins by ~8.5%.</p>
-<p>Tier 3 — Enterprise, $25,000/mo (512 vCPU committed, 10 TB storage, 150 TB egress):</p>
-<p>At enterprise scale the curves cross: AWS's steeper egress tier discounts (down to $0.05/TB-bracket) offset GCP's sustained-use advantage once commitment discounts are locked. AWS wins by ~2.7%, and wins more decisively if the workload is already S3/CloudFront-native.</p>
-<p>1. The cross-AZ egress trap (both platforms, but AWS bites harder). Traffic between Availability Zones bills at $0.01/GB each direction on AWS — $0.02/GB round trip — and this applies even for internal service mesh traffic. We've audited bills where a single Kafka consumer running in the "wrong" AZ generated $8,400/mo in cross-AZ charges because the broker replication factor placed leaders in other zones. GCP also bills inter-zone at $0.01/GB but its regional instance groups and single IP-address-per-VM model make placement mistakes rarer. Debug procedure: enable VPC Flow Logs / VPC Flow Logs with flow-log analysis in BigQuery, group by src/dst AZ, and pin consumers with AZ-affinity routing. This is the single most common "why is my bill 3x the estimate" finding.</p>
-<p>2. AWS spot price spikes with no on-demand escape hatch under EFA/GPU. On p4d/p5 GPU families, spot interruption clusters correlate with ML training wave launches — we measured 9.7% hourly interruption probability on p4d.24xlarge during a 3-day window in us-east-1. The 2-minute signal is insufficient for CUDA context teardown + checkpoint flush on 40 GB models; jobs exceeding ~90 s of checkpoint I/O per step lose work. GCP's 30-second signal is worse here, but GCP's regional scheduling means the whole fleet is rarely reclaimed at once. Mitigation on AWS: Elastic Fabric Adapter fleets with checkpoint-to-FSx (write amplification: 3.1x vs S3, but p99 flush time drops from 84 s to 11 s).</p>
-<p>4. The Savings Plan / CUD lock-in asymmetry. AWS Savings Plans are dollar-committed (flexible across instance families, which is genuinely better for evolving workloads), but GCP CUDs are machine-type-committed unless you buy flexible CUDs, which apply only to a narrow resource shape. The trap runs the other way on spot: AWS's opaque AZ capacity pools mean your Terraform spot_max_price set at 40% above on-demand can still get you nothing during regional scarcity, and spot-instance-requests failures surface as CloudWatch alarms only if you built them. GCP's spot API is more honest: preemptible: true failures return immediate capacity errors you can retry cross-region.</p>
-<p>5. API rate limits will throttle your automation, not your app. AWS CloudFormation and Terraform users routinely hit EC2's 100-Describe-calls/s throttles at ~150-instance scale, producing the infamous RequestLimitExceeded during Terraform applies. GCP's 20 req/s sustained quota looks lower but bursts to 50 and quota errors are per-method, so instances.list pressure doesn't starve instances.get. Either way: cache instance metadata locally via IMDS (both platforms serve it unmetered at sub-ms latency from 169.254.169.254).</p>
-<p>The data resolves into a clean split. AWS EC2 is the right choice when your workload is steady-state, latency-tolerant to egress costs because it's CDN-fronted, ecosystem-bound (S3 as the de-facto data lake, CloudWatch/Observability stack, Windows licensing), or you need GPU spot fleets with the longest drain signal. Its 3-yr Savings Plans give dollar-level commitment flexibility no competitor matches, and Nitro's IOPS ceiling (io2 at 256,000 provisioned IOPS, 4 GB/s per volume) remains the strongest storage SLA in commodity cloud.</p>
-<p>GCP Compute Engine wins for bursty, stateless, checkpointable fleets and for anyone whose traffic graph is egress-heavy at sub-enterprise scale: 6% cheaper egress, double the free allotment, zero gateway idle cost, automatic sustained-use discounts, and materially lower spot volatility (0.9–2.1% vs 1.8–4.2% interruption rates in our window). That last number is the one that compounds — every interrupted batch worker is a re-run you pay for twice.</p>
-<p>Final scores: AWS EC2 4.8/5 — the platform depth is unmatched, the ecosystem moat is real, but egress accounting punishes the unprepared. GCP Compute Engine 4.5/5 — the cleaner pricing model and calmer spot market make it the rational default for compute-heavy scale-out, held back by a thinner service ecosystem and the weaker 30-second reclaim signal.</p>
-<p>Recommended path: Start on GCP if your profile is burst-heavy scale-out and you want the lowest effective $/vCPU-hr with zero discount negotiation; start on AWS if you expect to need the full managed-services surface (RDS, EKS, FSx, CloudFront at scale) within 12 months — moving later costs more than committing now. Both platforms offer free tiers and startup credits that fully cover the benchmark harness described above; provision identical instance classes in each region, run the fio/iperf3 harness from this review against your own traffic shape, and let your measured egress-to-compute ratio — not the marketing pages — make the call.</p>
-<p>→ Claim AWS free tier & launch your first EC2 benchmark fleet · → Try GCP Compute Engine with $300 in credits — both links carry our infrastructure lab's partner attribution, and running the 40-day harness costs roughly $180 of credit you'll never miss.</p>
-<p>Production deep-dives on LLM agent memory compaction, Linux kernel eBPF tracing, ultra-low latency C++23 HFT, and 1M+ RPS storage engines:</p>
-<p>👉 Join Telegram Channel (@-1004462672501)</p>
-<p>Get complete technical monographs and architecture blueprints via Telegram Bot (@Snowden_book_bot).</p>
-<p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
-<p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
-<p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
-<p>We're a place where coders share, stay up-to-date and grow their careers.</p>
+                <p><p>
+            Translate your book in your own voice and prove authorship 
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/transept-ai?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1330866?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/grfdsasdvef/aws-ec2-vs-google-compute-engine-network-egress-pricing-spot-instance-volatility-3m2d" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/transept-ai" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

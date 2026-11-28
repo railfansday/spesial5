@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The State of Allocators in 2026 - Finally Stabilised</title>
+    <title>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9885.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,54 +15,52 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The State of Allocators in 2026 - Finally Stabilised</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
+            <img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;">
             
-            
-            
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://huggingface.co/blog/assets/open-tts-leaderboard/thumbnail.png" alt="Open TTS Leaderboard: Scalable Evaluation for Multilingual Text-to-Speech and Voice Cloning" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>It's only been a couple of months since the last article, and I am pleased to see that, after 10 years of limbo, allocators have finally been stabilised! While it feels like the never type did steal a bit of thunder, rust 1.100 was nonetheless a monumental release. Congratulations on the team that shepherded this through.</p>
-<p>So, now we have an MVP of the allocator API, what can we do with it? What does it get us besides closer feature parity with other system languages like C++ & Zig?</p>
-<p>In this article I'll step through a few use cases that might be handy to the layman rust programmer, so hopefully you can see the benefit.</p>
-<p>This was one of the leading cases for custom allocation. Dropping in rust is not free. There has been prior art in actually moving memory to a dedicated thread to Drop highly nested structures. This is actually only half a solution. You're still paying for the deallocation call costs, just it's not in the hot path anymore.</p>
-<p>Instead, what if we knew that we would have a period of time in our code, where we're going to allocate a lot of stuff, do something with it, and then free everything? A good example of this is a web request, or a database query.</p>
-<p>A request comes in, fills in some data structures, and then when the request finishes, the memory isn't needed anymore so it's dropped. This sort of "burst" pattern of allocation, where you allocate a lot up front, and then tear things down all at once at the end, is quite common.</p>
-<p>For this we can use a bump allocator: reserve a big block of memory, and allocate from that, rather than paying the cost of talking to the system allocator for every allocation. Think of it like the BufReader and BufWriter of std io, rather than make repeated syscalls to fetch data, we can buffer that data in a big block, so that we can reduce the overhead considerably.</p>
-<p>You want more memory? Just check if the size fits in our block, return that slice, increment our counter (bump!), and we're done. We can add more blocks as well, if we run out. This makes allocations very cheap, we don't need to keep much state around besides from a counter.</p>
-<p>The downsides of this approach is when we come to deallocate memory. We don't keep track around where individual allocations are made. However, this actually solves our drop takes a long time problem, since we can just deallocate everything all at once.</p>
-<p>Essentially if the impl of the bump allocator is:</p>
-<p>There are a few tradeoffs for doing things like this in a bump allocator, and not every allocation is going to benefit. Hence why it's important to be able to adjust our allocation strategy locally rather than just globally. However, an astute reader might notice that, if we are bumping large swathes of memory, this is going to possibly cause our memory usage to increase considerably. Well, that brings us to our next section: memory accounting.</p>
-<p>The next challenge that can be solved by custom allocators is knowing how much memory particular sections of code is being used. I.e, memory accounting. The key here is that, we can use existing allocators, and sprinkle in some extra bookkeeping to keep a pretty accurate ledger.</p>
-<p>There are a number of use cases that accounting can shape the behaviour of code. Say you have a cache of objects, and you want to set a threshold above which, we start evicting entries. Or say you want to do an external sort, but you don't know how big your data structures are at the start, but you want to use up as much memory as possible. Or maybe you are wanting to place a limit on a code sandbox, because it's sharing resources with other sandboxes.</p>
-<p>What you can do is wrap an allocator, with a custom accounting layer, and use this to drive your decisions. I.e, here is a very trivial example:</p>
-<p>Then we can wrap the global allocator, and see how much our cache is using:</p>
-<p>Now, a single atomic, while is great for an example, does have some perf overhead. So, one of the crates that I have created, while keeping in mind performance, is thresher: an accounting allocator with a callback on threshold. It uses a combined "local" task/thread and "global" counter to avoid atomic contention, feeding back in every 64KiB of allocation.</p>
-<p>thresher gets its name from the cutest shark: the Thresher Shark.</p>
-<p>Now, what you can do with thresher is, use it to trigger callbacks when allocations are hit:</p>
-<p>One production use case, is that we're using thresher on logfire to provide us heap profiles of our rust services when memory hits a configured threshold. I did a deep dive into heap profiles and why they are extremely useful in an older blog: a tale of two lengths. In thresher you can find a jemalloc example where you can instrument this yourself!</p>
-<p>OK so we can control memory when it is dropped, we can use memory accounting to know how much memory we're using, what's left? How about where it goes?</p>
-<p>This is probably the more esoteric of the 3 examples I wanted to give. There are some situations where you actually need to control where the memory lives, and sometimes by doing some allocation tricks you can get better performance out.</p>
-<p>One example would be what smallvec and friends do. Instead of going straight to the heap to allocate things, they have a small amount that lives on the stack, and only if allocations go above a certain size, then do they write to the heap.</p>
-<p>While smallvec is more battle tested, here is some example code about how you could do this with the allocator API:</p>
-<p>Then we can use our toy stack first allocator:</p>
-<p>Et voila! We have smaller allocations on the stack and then push to the heap as needed. This can give some good performance boosts.</p>
-<p>Normally when you align memory allocations, this is based upon the thing that is being allocated for. I.e, is it a u64? align to 8 bytes or a u32? align to 4. If it's not correctly aligned, this can cause undefined behaviour and all sorts. You notice in both the bump and small stack example I had to do some shenanigans to find the next appropriately aligned address. However, there is some scenarios where the alignment of memory is external to what is being allocated.</p>
-<p>In linux, when you read anything from disk via standard syscalls, you are usually reading from the kernel's page cache. I.e, the spare memory the kernel has around to make things transparently fast. Most of the time that is fine, but there are some times when you want to bypass it.</p>
-<p>I.e, there is a long standing bug in kubernetes that can cause pod eviction if you are using the page cache. Or: if you are doing your own caching layer, sometimes it doesn't make sense to double up on memory devoted to caching files.</p>
-<p>So, there is a bailout provided, in the guise of O_DIRECT that allows you to directly access files from the file system. However: one of the requirements of using this flag is that you are reading or writing into memory that is aligned to the device's logical block size. This is usually a multiple of 512, but can be less or more depending on the hardware.</p>
-<p>The implementation of a block aligned allocator is pretty simple, here's one where we just hardset it to 4096:</p>
-<p>With this, we can now write simple code to read directly using O_DIRECT:</p>
-<p>Here, the read_exact call can fail on some devices if we're not using block size aligned allocations.</p>
-<p>Like with the stack first allocation, there are libraries that allow you do this already, such as the aligned-vec crate, with their own data types to work nicely.</p>
-<p>But here's the rub: say you had an application where you wanted to blend and mix in different allocation strategies: some vecs you want to be block aligned, some you want allocated on the stack, but you want to be able to use shared methods for both. Do we want to use smallvec and aligned-vec in order to deal with a data structure that is essentially the same thing, just allocated differently?</p>
-<p>std allocators allows you to be generic over the collections, regardless of allocator used:</p>
-<p>It's going to take a bit of time for the ecosystem to catch up to custom allocators. A lot of popular crates have an MSRV policy that precludes them from using even new standard features, and some existing crates, which I would think are a shoe in for the new allocator API, as of writing do not yet have support.</p>
-<p>The libs team isn't done yet. This is the MVP of allocators, and, like I mentiond in the the last article, this is the beginning of custom allocator support. There is still work to go to support other collection types like maps etc.. so much to be done. I think that what we have is useful enough to start using it now, and also to start adapting and allowing library consumers the ability to provide their own allocators with their API.</p>
-<p>I'm excited to see what people build, and what other use cases are unlocked with it!</p>
+                <p>The pace of open-source text-to-speech (TTS) model releases has been incredible. On the Hugging Face Hub (as of Sep 30, 2026) there are more than 8K TTS models available 🚀</p>
+<p>Evaluation, however, hasn't kept pace: it remains fragmented and unstandardized. The gold standard is human preference scores such as MOS or MUSHRA (more on metrics). To this end, several arena-based leaderboards have established themselves as useful reference points for the community:</p>
+<p>These arenas compare models by presenting users with TTS outputs from two models, and asking them to choose one over the other. After collecting a sufficient number of votes, an Elo score is computed to rank models, typically with the Bradley–Terry model (see Voice Arena methodology).</p>
+<p>While human preference is the ultimate decider, arenas cannot scale to keep up with the pace of TTS releases. This may partly explain why open-source models are underrepresented on arena-style leaderboards: as of Sep 30, 2026, only 16 of the 92 models on Artificial Analysis are open-weights, with a similar skew on Voice Arena. This likely reflects practical factors: adding an API model requires little more than an API key, whereas an open model must be hosted and served by the arena operator, and commercial providers have more reason to seek placement than open-source authors. Another limitation with arena-style evaluation is voter consistency: no arena can ensure that the same voters with the same criteria of “better” can consistently evaluate models over time. Even the preferences of a single person change over time (“A man cannot step into the same river twice” as famously said by Heraclitus).</p>
+<p>To this end, we've built the Open TTS Leaderboard, which uses objective metrics to evaluate models on complementary aspects of performance:</p>
+<p>By relying on objective metrics evaluating a model drops from a couple weeks (for collecting votes) to a couple hours ⚡</p>
+<p>Importantly, the Open TTS Leaderboard does not replace human preference ranking. ASR-based WER provides a proxy for intelligibility, while speaker similarity estimates voice identity preservation. Neither directly measures naturalness, expressiveness, or listener preference. Nevertheless, they can even inform voting-based leaderboards which models to include in their evaluations.</p>
+<p>Our intention with this leaderboard is for it to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. The next few sections give an overview of main features of the Open TTS Leaderboard.</p>
+<p>From the default view of the leaderboard, models are ranked by macro-average WER on the English splits of Seed TTS Eval (paper) and CV3 Eval (zero shot) (paper).</p>
+<p>hexgrad/Kokoro-82M, Supertone/supertonic-3, and fishaudio/s2-pro lead the pack on English WER when averaged on these two splits, while the Pareto plots visualize which models strike a good balance between WER, batched inference (RTFx), and size.</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>k2-fsa/OmniVoice, fishaudio/s2-pro, and FunAudioLLM/Fun-CosyVoice3-0.5B-2512 are strong multilingual models.</p>
+<p>By toggling “Voice cloning”, the models that support this functionality (on the selected languages) can be compared.</p>
+<p>Moreover, a SIM column for speaker similarity now appears in the table, as well as two more Pareto plots for visualizing the tradeoff between SIM, batched inference, and size.</p>
+<p>The average WER of some models, such as bosonai/higgs-tts-3-4b and openbmb/VoxCPM2, improve under voice cloning, namely when a reference audio is provided.</p>
+<p>Numbers only tell part of the story, and as mentioned earlier human preference is the ultimate decider. From the “Listen” tab, you can compare the generated outputs that are behind the metrics, to find which model(s) you prefer!</p>
+<p>Pick the language/dataset you're interested in, whether you want to compare voice cloning, and optionally pick the models or listen to outputs from a random selection.</p>
+<p>The “Listen” tab fills an important gap in existing TTS leaderboards: a space to explore model outputs of various models.</p>
+<p>You can even give feedback on the generated outputs. As we collect more votes from the community, we may include this data on the leaderboard. So vote! But please login with your HF account to help us weed out spam/bots.</p>
+<p>The “Streaming” tab compares the streaming capabilities. Models are ranked by TTFA (time-to-first-audio), which quantifies how long a user waits after probing a model in order to obtain audio that can be played. This is important for voice agents and other interactive apps.</p>
+<p>For streaming models (✅ under “Streaming API”) it's the time until the first audio chunk arrives. For non-streaming models, it's the time until the whole utterance is generated, because playback can't start any earlier. Every model runs one audio at a time (batch size 1), on the same 50 English prompts from CV3-Eval, on the same hardware and in its default voice. We drop the first 3 runs as warm-up and report the median TTFA across the rest.</p>
+<p>The default view compares performance on an H200 GPU. Results are also available for CPU for a small (but growing) set of models!</p>
+<p>kyutai/pocket-tts is a great model for streaming on both GPU and CPU!</p>
+<p>The goal of the Open TTS Leaderboard is not only to keep up with the incredible pace of TTS model releases, but to be shaped by the community; we want to hear your feedback so the evaluations stay relevant and insightful. Let us know which datasets, models, and metrics you want to see!</p>
+<p>We will soon open-source the evaluation scripts, much like the Open ASR Leaderboard repo, so that you can directly provide your feedback and suggestions via GitHub Issues and PRs! Let's shape TTS evaluations together 🤗</p>
+<p>Explore ASR model performance across languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
+<p>Glad this board splits multilingual TTS quality from voice-cloning identity instead of one aggregate green.</p>
+<p>The check I'd keep reading: whether the ranking still holds when you hold language/domain fixed versus when cloning is the axis. Otherwise teams optimize the easier subscale and still call the result "SOTA TTS."</p>
+<p>English performance doesn't necessarily translate to other languages. Multiple languages can be toggled to rank models on multilingual performance. Seed TTS Eval only has movie box audio for English and Chinese, so the other languages are simply the score on CV3 Eval (zero shot). Note that Chinese, Japanese, and Korean are character-based languages and so character error rate (CER) is reported, and the “Average WER” across languages is a macro-average across languages.</p>
+<p>Open TTS Leaderboard is an open evaluation platform designed to make multilingual text-to-speech and voice-cloning models easier to compare at scale. Traditional TTS arenas usually let users listen to outputs from two models and choose the one they prefer. Those votes can then be used to calculate an Elo-style score, often through approaches such as the Bradley–Terry model, giving users a simple way to understand how different systems perform based on human preference.</p>
+<p>Human feedback remains an important part of evaluating speech quality, but relying only on arena-style voting can be difficult as new TTS models are released at a rapid pace. Open-source models can also face practical barriers because they generally need to be hosted and served by the evaluation platform, while API-based commercial models can be added more easily. This can result in open-weight systems being less visible on public leaderboards. Another challenge is consistency: people's preferences and listening criteria can change over time, meaning that votes collected months apart may not always represent exactly the same standards.</p>
+<p>Open TTS Leaderboard aims to address these challenges by providing a scalable and transparent space for evaluating multilingual TTS and voice-cloning systems. The goal is to make comparisons easier to reproduce, expand coverage of open models, and provide useful evaluation signals alongside human preference. By bringing together scalable testing and community feedback, the project can help researchers, developers, and users better understand how speech models perform across different languages, voices, and use cases.</p>
+<p>GitHub repo with the eval scripts is public! https://github.com/huggingface/open-tts-leaderboard</p>
+<p>Explore ASR model performance across languages</p>
+<p>TTS systems evaluated on objective metrics.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://cetra3.github.io/blog/state-of-allocators-2026-finally-stabilised/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://huggingface.co/blog/open-tts-leaderboard" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

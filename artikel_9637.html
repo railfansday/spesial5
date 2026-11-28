@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>How I Built a Self-Hosted Alternative to LaunchDarkly in 300 Lines of Code</title>
+    <title>OpenChat</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9637.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,47 +15,24 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>How I Built a Self-Hosted Alternative to LaunchDarkly in 300 Lines of Code</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>OpenChat</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
-            <img src="https://hackernoon.imgix.net/images/noonification_42_mv7b13dr8u0xfnqyd57xv2wj.png" alt="How I Built a Self-Hosted Alternative to LaunchDarkly in 300 Lines of Code" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://hackernoon.imgix.net/images/noonification_42_mv7b13dr8u0xfnqyd57xv2wj.png" alt="How I Built a Self-Hosted Alternative to LaunchDarkly in 300 Lines of Code" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            
+            
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
-<p>Feature flags and A/B testing are table stakes. The hosted services charge per seat, per flag evaluation, per environment, per month. For a solo product with a handful of active experiments, the bill adds up to a line item that should not exist. I built Flip as a self-hosted replacement because I wanted three things: a drop-in SDK, a clean dashboard, and a real statistical significance engine that does more than show me which variant got more clicks.</p>
-<p>MurmurHash3 handles all three. It is a non-cryptographic hash function designed for lookup keys: fast, well-distributed, and deterministic. The 32-bit version is thirty lines of code and produces a uniform integer from any string input.</p>
-<p>The constants 0xcc9e2d51 and 0x1b873593 are the MurmurHash3 mixing multipliers from Austin Appleby's original implementation. They are not magic numbers I made up: they were chosen because they produce good avalanche behaviour, which means flipping a single input bit flips about half the output bits. That property is what gives you even distribution.</p>
-<p>Math.imul matters. JavaScript numbers are 64-bit floats, so naive multiplication of two 32-bit integers can exceed 2^53 and lose precision. Math.imul performs the multiplication modulo 2^32 with correct sign handling, which is exactly what MurmurHash needs.</p>
-<p>Assignment composes the visitor ID and experiment key into the hash input, so the same visitor gets a different variant in each experiment but always the same variant in a single experiment:</p>
-<p>The second thing Flip does beyond most DIY A/B stacks is compute significance properly. Showing "variant A got 12% conversion, variant B got 14%" is a presentation failure, not a statistical one: without a p-value, the reader has no way to know whether the difference is signal or noise.</p>
-<p>A two-proportion z-test compares two conversion rates and returns the probability of a difference at least this large if the variants really converted at the same rate:</p>
-<p>The pooled proportion pPooled is used in the standard error because under the null hypothesis the two variants share a single true conversion rate. Using separate proportions in the SE biases the test. This is the textbook move, and it matters: skipping it is one of the most common DIY A/B bugs.</p>
-<p>pValue is two-tailed because you do not know in advance which variant will win. The dashboard shows (1 - pValue) * 100 as a "confidence" percentage for readability, but it is not the probability that the variant is better. "Significant" is defined as confidence >= 95, which is just pValue <= 0.05: the standard 5% false-positive rate when there is no real difference.</p>
-<p>normalCdf is the Abramowitz and Stegun polynomial approximation to the standard normal cumulative distribution function. It has six constants and maximum error of about 7.5 × 10⁻⁸, which is more than good enough for A/B results:</p>
-<p>No dependency on a stats library. Thirty lines of code give you a z-test that matches SciPy to six decimal places.</p>
-<p>A p-value tells you whether there is a difference. A confidence interval tells you how big the difference might actually be, which is what you want to know when deciding whether to ship.</p>
-<p>The naive confidence interval for a proportion uses the normal approximation: p ± z * sqrt(p(1-p)/n). This breaks badly when p is near 0 or 1, or when n is small, because the interval can go below 0 or above 1. Those bounds are nonsensical: a conversion rate cannot be negative.</p>
-<p>The Wilson interval is the fix. It is derived from inverting the z-test and solving for the interval endpoints directly:</p>
-<p>z = 1.96 is the 95% confidence value. The centre and denominator terms come from the algebra of inverting the z-test. It still rests on the normal approximation, but because it solves for the endpoints instead of plugging the observed rate into the standard error, the Wilson interval always sits inside [0, 1] and holds up much better than the naive interval at small n.</p>
-<p>The dashboard shows Wilson intervals as bars on each variant's conversion rate. A variant with 500 exposures and 50 conversions shows a 10% rate with a visibly wide bar. A variant with 50,000 exposures and 5,000 conversions shows a 10% rate with a bar so narrow you can only just see it. The bar is how "how confident am I in this number?" is communicated without a single line of text.</p>
-<p>The significance check is applied in computeStats:</p>
-<p>A winner is then the first significant variant whose lift is positive:</p>
-<p>This avoids two common traps. First, declaring a loser as a winner (significant but lift is negative). Second, letting noise promote a marginal variant before the sample is large enough for the test to have real power. The 95% threshold is chosen deliberately; at the standard 5% alpha and typical sample sizes, roughly one in twenty A/A tests will show false significance. If you lower the threshold you will ship winners faster and also ship losers more often.</p>
-<p>Wilson intervals and z-tests assume independent trials and fixed sample sizes. They are not sequential-testing-aware. If you peek at an experiment every day and stop as soon as it hits significance, your effective false-positive rate is much higher than 5%. Flip's solution is simple: do not do that. Set a minimum sample size per variant before the test is evaluated, and commit to running for a fixed window. Sequential-testing frameworks (like mSPRT or Bayesian approaches) solve this more elegantly, but add complexity that a personal-project A/B tool does not need.</p>
-<p>The SDK's job is three things: fetch flag and experiment configuration from the dashboard API, cache it, and call assignVariant locally. All the logic is in the hashing function, which is shared between dashboard and SDK so assignments match exactly.</p>
-<p>The whole SDK compresses to under 2 KB because the hashing function is the only non-trivial part and that function is already small. No websockets, no streaming, no background sync: experiments update when the SDK refetches (every 60 seconds by default), which is plenty fast for decisions that happen at page-view frequency.</p>
-<p>A ClickHouse or warehouse integration. Flip uses Postgres for exposure and conversion events. Events are tiny (experiment id, variant, visitor id, timestamp), and the hot queries are aggregations grouped by variant. Postgres is perfectly adequate for a single-product traffic volume.</p>
-<p>A dedicated UI framework. The dashboard is Next.js App Router with server components where possible and minimal client state. The charts are just numbers rendered as divs with widths computed from the Wilson intervals. Nothing fancy.</p>
-<p>An auth provider. API keys are UUIDs stored hashed. Requests that carry a valid key are trusted for write access; public decide calls do not need auth.</p>
-<p>Flip is three hundred lines of meaningful code and a Postgres schema. LaunchDarkly charges a few hundred pounds a month for a feature flag service. I get the one I need for the cost of the Vercel deployment, which is zero because it fits on the free tier. If your product does not have a data scientist reviewing experiments daily, a service like Flip is probably what you actually want.</p>
-<p>Do We Really Die? A Journey Through Light, Consciousness, and Ancient Philosophy</p>
-<p>Design engineer, AI product engineer and founder of Lunar Computing. I build products and write about the decisions underneath them.</p>
+                <p><p>
+            Open-source live chat in your own Cloudflare account
+          </p>
+          <p>
+            <a href="https://www.producthunt.com/products/openchat-5?utm_campaign=producthunt-atom-posts-feed&amp;utm_medium=rss-feed&amp;utm_source=producthunt-atom-posts-feed">Discussion</a>
+            |
+            <a href="https://www.producthunt.com/r/p/1330938?app_id=339">Link</a>
+          </p></p>
                 <p style="margin-top: 25px;">
-                    <a href="https://hackernoon.com/how-i-built-a-self-hosted-alternative-to-launchdarkly-in-300-lines-of-code?source=rss" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://www.producthunt.com/products/openchat-5" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

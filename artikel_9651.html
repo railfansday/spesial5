@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>The path to AI FDE #25: API keys, authentication and rate limits</title>
+    <title>SC-500 deep dive #3: &quot;private&quot; storage that still had a public door</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9651.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,51 +15,36 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>The path to AI FDE #25: API keys, authentication and rate limits</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>SC-500 deep dive #3: &quot;private&quot; storage that still had a public door</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
-            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F86rjmw98ctz2zuy3sccq.png" alt="The path to AI FDE #25: API keys, authentication and rate limits" style="max-width:100%; height:auto; border-radius:8px;">
+            <img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fgitlab.com%2Fcuongdo.hcm%2Fazure-security-weekly%2F-%2Fraw%2Fmain%2Faz-500%2Fsc500-deep-dive-03-private-vs-service-endpoint%2Fimages%2Fdevto-cover.png" alt="SC-500 deep dive #3: &quot;private&quot; storage that still had a public door" style="max-width:100%; height:auto; border-radius:8px;">
             
-            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fdev-to-uploads.s3.us-east-2.amazonaws.com%2Fuploads%2Farticles%2F86rjmw98ctz2zuy3sccq.png" alt="The path to AI FDE #25: API keys, authentication and rate limits" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
+            <div style="text-align:center; margin-bottom:20px;"><img src="https://media2.dev.to/dynamic/image/width=1200,height=627,fit=cover,gravity=auto,format=auto/https%3A%2F%2Fgitlab.com%2Fcuongdo.hcm%2Fazure-security-weekly%2F-%2Fraw%2Fmain%2Faz-500%2Fsc500-deep-dive-03-private-vs-service-endpoint%2Fimages%2Fdevto-cover.png" alt="SC-500 deep dive #3: "private" storage that still had a public door" style="max-width:100%; height:auto; border-radius:8px;" loading="lazy"></div>
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Posted on Nov 27
+                <p>Posted on Nov 28
 •
-Originally published at dhanushkumarsivaji.substack.com</p>
-<p>This is a “From Zero” issue. So far, every API we’ve called has been open to anyone. Real AI APIs aren’t: they need to know who you are (so they can bill you) and they cap how much you can ask for (so one user can’t swamp everyone else). Today covers both.</p>
-<p>You need the same setup as yesterday (#24): your api-practice uv project with httpx added (run scripts with uv run). Everything here is safe to run. We use httpbin’s practice login check, a fake API that runs entirely on your computer, and made-up tokens. No real key appears anywhere, and you shouldn’t paste one in either.</p>
-<p>1. Authentication: proving who you are. An API key (or token) is a long random string the provider gives you. You send it with every request, and the server checks it. httpbin has a practice endpoint, /bearer, that accepts any token, so you can see both sides safely.</p>
-<p>First, put a made-up token in an environment variable, a named value your terminal hands to programs (#13). On macOS or Linux:</p>
-<p>(On Windows PowerShell: $env:DEMO_TOKEN = "demo-token-123".) Then, in the same terminal:</p>
-<p>No key gets 401 Unauthorized, plus a WWW-Authenticate header naming the kind of credential it expects. With a key, you get 200. The standard calls this a bearer token for a reason: anyone who holds it can use it. Treat a real key like a password.</p>
-<p>2. The Authorization header, and its cousins. The key travels in a header. There are two common styles:</p>
-<p>Both carry the same kind of secret; only the label differs. Your provider’s docs tell you which one to use, so copy the header name from there. Two status codes to tell apart:</p>
-<p>And as #23 warned: keys go in headers, never in the URL, because URLs end up in logs.</p>
-<p>3. Keys stay on the server. Anything you ship to a browser or a phone app can be read by whoever uses it: open the browser’s developer tools, or unpack the app, and the key is right there. So the rule is simple: the provider key lives only on a server you control. The browser talks to your server, and your server talks to the provider.</p>
-<p>On that server, read the key from the environment, never from your code:</p>
-<p>With nothing set, it stops with the message Set DEMO_API_KEY first. Never paste a key into your code. With a made-up value such as demo-key-not-real-7f3a, it prints:</p>
-<p>Printing just the last four characters lets you check which key loaded without exposing it. If you keep keys in a .env file for convenience, add .env to your .gitignore (#11) so it never reaches GitHub.</p>
-<p>4. Rate limits: how much, how fast. Providers cap how much each key can do: requests per minute, and for AI APIs often tokens per minute (tokens are chunks of text, a later issue) or per day. The limits usually depend on your account tier. Go over any of them and you get 429 Too Many Requests.</p>
-<p>Requests four and five are turned away. (fortune.example is a reserved example name, and nothing leaves your machine.) Real limits reset over time, such as each minute, while this toy just counts.</p>
-<p>5. Retry-After: the server tells you when. A 429 (or a 503) may come with a Retry-After header: how long to wait before trying again. The polite client reads it, sleeps, then retries, and gives up after a few tries:</p>
-<p>Two honest caveats. Retry-After can also be a date rather than a number of seconds; this toy handles only seconds. And when there’s no header, the usual move is to wait a little longer after each failure (”backoff”). Proper retries get a full issue later in the series.</p>
-<p>6. Quotas and billing: usage costs money. Every successful call to a paid API is billed, usually by how much text goes in and out. Small amounts add up fast when code goes wrong. Here’s illustrative arithmetic (the price is made up, not any provider’s):</p>
-<p>A fraction of a cent per call turns into a real bill overnight. Before you write your first loop over a paid API:</p>
-<p>Rate limits protect the provider. Spending limits protect you.</p>
-<p>Keep the table: you’ll want it next week.</p>
-<p>Check your understanding: your script gets 401 on one call and 429 on another. What does each mean, and should you retry either one?</p>
-<p>Answer: 401 means the key is missing or wrong. Retrying won’t help, so fix the key. 429 means you’re over a rate limit. Wait (for Retry-After if it’s sent), then retry a limited number of times.</p>
-<p>An API key proves who you are; send it in a header (Authorization: Bearer ... or the provider’s own name) and keep it on your server. 401 means fix the key. 429 means slow down: wait for Retry-After, retry a few times, then stop. Usage costs money, so set a spending limit before your first loop.</p>
-<p>Where this fits in my roadmap: this finishes the “how APIs work” basics. Next week: your first LLM API call, where everything from #23 to #25 comes together. Later in the series, timeouts, rate limits and safe retries get a full lesson of their own.</p>
-<p>Over to you: which provider’s rate-limit page did you read for the Try it, and what surprised you? Reply with one line.</p>
-<p>All code ran on Nov 2, 2026 with Python 3.13 and httpx 0.28.1. The /bearer call used a made-up token; the rate-limit and retry examples use an offline fake API; prices are illustrative, not any provider’s. No real API keys were used. Sources checked Nov 2, 2026.</p>
-<p>Free: the 5-page roadmap from Novice to AI FDE.</p>
+Originally published at gitlab.com</p>
+<p>Every Thursday I post SC-500 practice questions. Every Saturday I take one exam topic and go deep: the real problem, how it works, the fix, and the exam traps. Week 3: private endpoints vs service endpoints, two features with similar names that solve different problems.</p>
+<p>Lab story, lab names only (contoso.com). Screens are drawings, numbers are invented.</p>
+<p>In this lab story, the storage account stlabhr01 holds HR documents. The network team said it was private: they had turned on a service endpoint for Microsoft.Storage on the subnet snet-lab-app, and set the storage firewall to Selected networks, allowing only that subnet.</p>
+<p>None of this was a bug. A service endpoint was simply the wrong tool for what they wanted.</p>
+<p>The key line is the last but two. A service endpoint says "traffic from this subnet to Azure Storage goes over the Azure backbone and shows up with the subnet's private address". It is about the route and source identity, for the whole service. It does not care which storage account, yours or someone else's.</p>
+<p>A private endpoint says "this one storage account now lives at 10.20.3.4 inside my network". Traffic to it never needs the public endpoint at all, and other accounts are not reachable through it.</p>
+<p>One private endpoint per sub-resource you use: blob, file, queue, table, dfs. The HR app only uses blob.</p>
+<p>Create the private DNS zone privatelink.blob.core.windows.net, link it to the VNet, and add a DNS zone group to the private endpoint so the A record is managed for you. For the office over VPN, forward DNS queries for blob.core.windows.net from your on-premises DNS to a resolver in Azure (Azure DNS Private Resolver), or nothing changes for them.</p>
+<p>Remove the office IP range that was added as a "fix", and remove the subnet rule and the service endpoint if nothing else on that subnet needs it.</p>
+<p>A private endpoint for stlabhr01 does not stop a VM from reaching other storage accounts over the internet. Data exfiltration control is a separate layer:</p>
+<p>Next deep dive: Defender for Cloud, Foundational CSPM vs Defender CSPM, and what the free tier never shows you. On Thursday: SC-500 practice questions, as usual.</p>
+<p>Thanks for reading! I'm Cuong, and on CD Security Lab I rebuild real Microsoft security cases in a safe lab and explain them simply. Follow along:</p>
+<p>Got a question about your own tenant? Drop it in the comments.</p>
 <p>DEV Community — A space to discuss and keep up software development and manage your software career</p>
 <p>Built on Forem — the open source software that powers DEV and other inclusive communities.</p>
 <p>Made with love and Ruby on Rails. DEV Community © 2016 - 2026.</p>
 <p>We're a place where coders share, stay up-to-date and grow their careers.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://dev.to/dhanushkumarsivaji/the-path-to-ai-fde-25-api-keys-authentication-and-rate-limits-29a6" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://dev.to/cdsecuritylab/sc-500-deep-dive-3-private-storage-that-still-had-a-public-door-30mc" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>

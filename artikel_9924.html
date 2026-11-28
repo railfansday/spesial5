@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Understanding &quot;You are not expected to understand this.&quot;</title>
+    <title>The need for a formally verifiable mainstream programming language</title>
     <link rel="canonical" href="https://railfansday.github.io/spesial2/artikel_9924.html">
     <style>
         body { font-family: Arial, sans-serif; padding: 20px; background: #f4f4f9; line-height: 1.6; }
@@ -15,165 +15,31 @@
 <body>
     <div class="container">
         <a href="index.html" class="btn-back">&larr; Kembali ke Daftar Berita</a>
-        <h1>Understanding &quot;You are not expected to understand this.&quot;</h1>
-        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-27</p>
+        <h1>The need for a formally verifiable mainstream programming language</h1>
+        <p style="color: #888; font-size: 14px;">Tanggal: 2026-11-28</p>
         
         <div class="article-body">
             
             
             
             <div class="article-body" style="font-size: 16px; line-height: 1.8; color: #333;">
-                <p>Many, many, many years ago I ported Unix V6 to the Vax, it ran as
-a virtual machine under VMS in supervisor/user modes (where VMS usually ran
-shells) - the code is AFAIK lost to history, though a DECUS paper survives. Later I ported V7 too.</p>
-<p>During the process I often came to that infamous line "You are not expected to understand this."
-in the context switch code and, I indeed didn't understand it .... then one day I came to that code through
-a different path and it was obvious .... let me explain what's going on, here's a deep dive</p>
-<p>V6 Unix keeps per-process state in 2 places, a small entry in the process table, and the 'udot' a structure
-mapped by the MMU at a well known kernel virtual address referenced as "u." which also contains the kernel stack. This is always
-mapped to the same address in all running processes, setting up this mapping is a core part of each process switch.</p>
-<p>V6 uses a somewhat baroque way to save the state of a running process and restoring it, in V7 they switched to use save()/restore() which works like the more familiar setjmp()/longjmp(). It's deeply beholding to
-details in the V6 PDP-11 calling conventions - savu() saves enough state to return to it saves the
-stack pointer (r6) and frame pointer (r5), it doesn't touch r2-r4</p>
-<p>retu() and aretu() are essentially the same, both restore the current state, leaving the routine that
-called them walking on thin ice as the stack has changed out from under them, so has the frame pointer
-(and as a result any local variables that are stored on the stack) after you call them life gets a little scary, care must be taken, we're on thin ice especially once interrupts are turned on .... retu() differs from aretu() in that retu() also maps the udot into the last page of
-memory - retu is always passed the physical address of the udot, it's slightly magic in that the first 2 words of the
-udot is also u.u_rsav the place that retu() really returns from - here they are slightly unwound:</p>
-<p>There's another bit of magic here: r2-r4 are untouched, more about that later.</p>
-<p>So here's the infamous context switch code (I've left out the bit that chooses a new process to run) - note swtch() as declared doesn't return a value, but at the end of the routine it explicitly returns "1". That's
-not that unusual, C at the time didn't have a void, and had a rudimentary type system, if you didn't declare something it defaulted to "int". Also prior to V7 C wrote things like "a += 1" as "a =+ 1" (which is ambiguous) so you find things like: "rp->p_flag =& ~SSWAP;" in the code, this was normal at the time. It was common at
-the time to tell the compiler which variables you wanted to put in registers rather than on the stack for performance reasons, compilers weren't very smart. Modern compilers complain if you feed them code with the register keyword.</p>
-<p>So what's going on here, let's ignore the if statement after "You are not expected to understand this."
-for the moment, here's how a context switch works:
-
-savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>savu(u.u_rsav); saves the current process's state at the beginning of its udot
-retu(proc[0].p_addr); context switches on to process 0
-.... some code chooses a next process to run and points rp at its entry in the process table
-retu(rp->p_addr); switches the context to a new udot and loads its context from the new udot - at this point we're on the aforementioned "thin ice"
-sureg() sets up the user space MMU mappings for the new process (on thin ice sureg() better be careful ...)
-then we return 1 to all those calls to swtch() that never use it
-
-Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()
-Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.
-Here's the relevant code:
-
-newproc()
-{
-	....
-	savu(u.u_rsav);
-	....
-
-	a2 = malloc(coremap, n);
-	/*
-	* If there is not enough core for the
-	* new process, swap out the current process to generate the
-	* copy.
-	*/
-	if(a2 == NULL) {
-		rip-&p_stat = SIDL;
-		rpp-&p_addr = a1;
-		savu(u.u_ssav);
-		xswap(rpp, 0, 0);
-		rpp-&p_flag =| SSWAP;
-		rip-&p_stat = SRUN;
-	} else {
-
-	.....
-
-	return(0);
-}
-
-What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.  
-
-	 *
-	 * You are not expected to understand this.
-	 */
-	if(rp->p_flag&SSWAP) {
-		rp->p_flag =& ~SSWAP;
-		aretu(u.u_ssav);
-	}
-	return(1);
-
-So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).
-So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.
-Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.
-So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).
-Paul Campbell taniwha@gmail.com 2026</p>
-<p>Now the ice isn't all that thin here, we restored the stack and frame pointers to how they were inside 
-swtch() where we did the savu(u.u_rsav); any interrupts that come along are not going to trash the stack we're 
-using. Also we're pointing at any local variables we were using at the point where we last did a savu()</p>
-<p>Now let's talk about the bit we're not supposed to understand: if for the new process, the process flag SSWAP is set we clear it
-and do an aretu(u.u_ssav); - return to the swap save address and then return 1 .... so where does SSWAP get set? The answer is whenever a process is swapped out because there isn't enough memory, and when it does we've just done a savu(u.u_ssav); saved the current stack state to a special swap save state. Mostly that is the newproc() routine called from fork() - newproc returns 1 for the new process from a fork() and 0 from the old one.</p>
-<p>What happens when we execute the code we're not expected to understand? It only gets triggered by a newly swapped in process with that flag set.</p>
-<p>So we do an aretu(u.u_ssav); that reloads the stack and frame pointers to the  point when savu(u.u_ssav); was executed in newproc() above, the xswap() has written out the udot at that point (shared between the new and old processes) to a swap file, that swap file has been reloaded and now we just switched to that new udot) the aretu() reloads the the stack and frame pointers to where they were in newproc() however the PC is still pointing to code in swtch() and it subsequently does a return(1) - it ends up returning a 1 to whoever called newproc() (which is either fork() or to main() when init is created).</p>
-<p>So after the call to aretu() we're also on thin ice, but because the stack is in a safe state for interrupts
-the whole time as retu(rp->p_addr); (essentially retu(u.u_rsav); matching the savu(u.u_rsav); in newproc()) is not below the spot aretu(u.u_ssav); goes to.</p>
-<p>Finally let's talk about the variable rp in that code we're not expected to understand, it's a local variable accessed after retu() is called, but it's a register variable - there's some magic there, probably in the ordering of the declarations at the beginning of swtch(), my guess is that the compiler puts it in r4 (which is calee save) r2-r4 are not touched by savu and retu/aretu, but r2-r3 are caller save, if they're saved and restored by swtch() they will get junk off the new stack - o r4 contains rp and the rest of the register variables are not live so either they are not save/restored on the calls to retu/aretu or no one cares because they're not used after the first retu() call - I suspect the latter as the compiler was not probably smart enough to do lifetime analysis.</p>
-<p>So there you are, all the gory details, please let me know if you find a mistake here (it was 45 years ago).</p>
+                <p>published: June 21, 2026 - last updated: November 27, 2026</p>
+<p>Because of LLMs, the discipline of software engineering is in crisis. Quality is nose-diving  (opens new window), and I see no reason why it won't keep getting worse. Software engineering was struggling before LLMs  (opens new window). The default was to be sloppy and poorly considered, and now everyone is frantically accelerating those same terrible practices to LLM speed.</p>
+<p>Something has to change. I've been preoccupied with this for a while  (opens new window), but much more qualified people finally fully agree with me  (opens new window). The only way forward is to fully embrace formal verification  (opens new window), all the way down to the foundations of our civilizational software stack. We have to post-hoc verify the things we can, and rewrite the rest.</p>
+<p>But that's easier said than done. Existing formal verification tools suffer from massive usability  (opens new window) and understandability  (opens new window) problems, and have failed to make any kind of noticeable impact on the broader culture of software engineering.</p>
+<p>It might be tempting to say that LLMs will actually save us in this regard, by allowing humans to create formally verified code without needing to understand its fundamentals in any way. This is pure cope. Merely having excellent proof assistants and LLMs will never be good enough. Even in a world where something like Lean is extremely scalable and LLMs can write all proofs, it doesn't matter if they aren't adopted by actual industry engineers as they build the real apps we actually use. For provably correct code to defend us from the LLM future:</p>
+<p>Proof assistants guarantee that proofs are correct, but correctness alone is not enough. Someone has to read the theorem statements and confirm they capture the intended mathematics. This is the human contract that no amount of automation can eliminate.</p>
+<p>This is what most voices are missing in this discussion: a safe future isn't going to be delivered by a small priestly class of formal methods researchers, too much code must be produced in too many contexts. The entire discipline of software engineering has to grow up and demand that all code we produce is at minimum provably safe. This requires many different projects and bets that attack this imperative of cultural change from different directions.</p>
+<p>My chosen angle is Magmide, a project whose goal is to create a new formally verifiable programming language intended for immediate adoption by practitioners. However when I first had this idea my specific plan was woefully over-ambitious and unrealistic, since I wanted to make a whole new proof assistant and an assembly-level base language so the system could be verified all the way down to the metal.</p>
+<p>I pursued it for a time as a startup, and I met with some investors and was applying for an SBIR grant. Then I realized some obvious problems with my approach  (opens new window):</p>
+<p>So now after a few years pursuing other projects and letting all these ideas marinate, I've arrived at a much simpler and more pragmatic vision of what Magmide could be. If I started working on it today, it would:</p>
+<p>This design is specifically intended to appeal to actual engineers and "meet them where they are". The roadmap would start from a simpler more mainstream design and go "bottom up" by adding more and more proving capabilities, rather than going "top down" by starting with the most formally powerful system and then seeking to make it more usable.</p>
+<p>A possible analogue for the adoption of Magmide is Deno  (opens new window): Deno is "just javascript/typescript", but it adds a runtime layer of permissions checking. Engineers who care about sandbox safety have enthusiastically adopted Deno, and Flow Effects would offer strictly more security.</p>
+<p>I continue to stand behind basically all the arguments I made in the Magmide repo  (opens new window) (aside from the specific architecture). Formal verification must become the mainstream of software engineering, and we have to embrace a wide diversity of approaches to make that happen. Software engineers aren't a monolith, and not every cultural pocket will respond to the same new tools and resources.</p>
+<p>And you know what, LLMs will probably help a lot! But we can't just wait around for an all-knowing machine god to save us from ourselves. If we bet our whole future on ASI making all our problems go away and then that doesn't happen  (opens new window), history will look back on us even more foolish and disastrous than all the millennialists  (opens new window) who merely wasted their own time and resources.</p>
+<p>It is our responsibility to meet the challenges of our age with full agency and responsibility, and treat the emergence of a beneficent super-intelligence as an improbable jackpot.</p>
                 <p style="margin-top: 25px;">
-                    <a href="https://www.taniwha.com/~paul/not.html" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
+                    <a href="https://blainehansen.me/post/mainstream-verifiable-language/" target="_blank" rel="nofollow noopener" style="color: #0d6efd; text-decoration: none; font-weight: bold;">
                         &rarr; Baca artikel asli
                     </a>
                 </p>
